@@ -1,0 +1,33 @@
+mode: paper
+log_level: INFO
+
+trading:
+  pairs:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - BNBUSDT
+    - ADAUSDT
+    - XRPUSDT
+    - DOTUSDT
+    - DOGEUSDT
+    - AVAXUSDT
+    - LINKUSDT
+  timeframe: 1m
+
+database:
+  host: timescaledb
+  port: 5432
+  name: marketdata
+  user: trading
+  password: change_me
+
+prometheus:
+  port: 8000
+
+trading_execution:
+  enabled: false  # Disabled until strategy engine is implemented
+  api_key: ""  # Set via BINANCE_API_KEY environment variable
+  api_secret: ""  # Set via BINANCE_API_SECRET environment variable
+  test_mode: true  # Set to false for live trading
+  order_size_usdt: 100.0  # Default order size in USDT

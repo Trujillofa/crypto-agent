@@ -1,0 +1,97 @@
+apiVersion: 1
+
+groups:
+  - name: data_ingestion_alerts
+    interval: 30s
+    rules:
+      # No Bitcoin data received (stale data)
+      - alert: BitcoinDataStale
+        expr: |
+          SELECT
+            EXTRACT(EPOCH FROM (NOW() - MAX(time))) as seconds_since_last
+          FROM ohlcv
+          WHERE symbol = 'BTCUSDT'
+          GROUP BY symbol
+          HAVING EXTRACT(EPOCH FROM (NOW() - MAX(time))) > 300
+        for: 1m
+        labels:
+          severity: critical
+          symbol: BTCUSDT
+          alert_type: data_stale
+        annotations:
+          summary: "Bitcoin data is stale (no new data for 5+ minutes)"
+          description: "Last Bitcoin data received: ${{ $value.seconds_since_last }} seconds ago"
+
+      # No Ethereum data received
+      - alert: EthereumDataStale
+        expr: |
+          SELECT
+            EXTRACT(EPOCH FROM (NOW() - MAX(time))) as seconds_since_last
+          FROM ohlcv
+          WHERE symbol = 'ETHUSDT'
+          GROUP BY symbol
+          HAVING EXTRACT(EPOCH FROM (NOW() - MAX(time))) > 300
+        for: 1m
+        labels:
+          severity: critical
+          symbol: ETHUSDT
+          alert_type: data_stale
+        annotations:
+          summary: "Ethereum data is stale (no new data for 5+ minutes)"
+          description: "Last Ethereum data received: ${{ $value.seconds_since_last }} seconds ago"
+
+      # No Solana data received
+      - alert: SolanaDataStale
+        expr: |
+          SELECT
+            EXTRACT(EPOCH FROM (NOW() - MAX(time))) as seconds_since_last
+          FROM ohlcv
+          WHERE symbol = 'SOLUSDT'
+          GROUP BY symbol
+          HAVING EXTRACT(EPOCH FROM (NOW() - MAX(time))) > 300
+        for: 1m
+        labels:
+          severity: critical
+          symbol: SOLUSDT
+          alert_type: data_stale
+        annotations:
+          summary: "Solana data is stale (no new data for 5+ minutes)"
+          description: "Last Solana data received: ${{ $value.seconds_since_last }} seconds ago"
+
+      # No new data for any trading pair (system-wide issue)
+      - alert: AllDataStale
+        expr: |
+          SELECT COUNT(DISTINCT symbol) as stale_symbols
+          FROM ohlcv
+          WHERE time >= NOW() - INTERVAL '5 minutes'
+          HAVING COUNT(DISTINCT symbol) = 0
+        for: 2m
+        labels:
+          severity: critical
+          alert_type: system_stale
+        annotations:
+          summary: "No new data for ANY trading pair (system-wide issue)"
+          description: "Data ingestion pipeline appears to be down. No OHLCV data received in the last 5 minutes."
+
+      # Agent health check (via Prometheus metrics)
+      - alert: AgentIngestionErrorRate
+        expr: |
+          rate(ingest_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          alert_type: ingestion_error
+        annotations:
+          summary: "High agent ingestion error rate"
+          description: "Agent error rate: ${{ $value }} errors/second over the last 5 minutes"
+
+      - alert: AgentNotReporting
+        expr: |
+          up{job="crypto-agent"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          alert_type: agent_down
+        annotations:
+          summary: "Crypto trading agent is not reporting"
+          description: "The crypto trading agent has stopped responding to health checks."

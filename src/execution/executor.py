@@ -1,0 +1,397 @@
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+from src.execution.binance_client import (
+    BinancePrivateClient,
+    OrderInfo,
+)
+from src.execution.metrics import ExecutionMetrics
+from src.risk.manager import RiskManager
+from src.utils.logger import get_logger
+
+
+@dataclass(frozen=True)
+class TradingConfig:
+    """Trading execution configuration."""
+
+    api_key: str
+    api_secret: str
+    test_mode: bool = True
+    enabled: bool = False
+    symbols: list[str] = field(default_factory=list)
+    order_size_usdt: float = 100.0  # Default order size in USDT
+
+
+class TradingExecutor:
+    """Main trading execution service with risk management integration."""
+
+    def __init__(
+        self,
+        config: TradingConfig,
+        risk_manager: RiskManager,
+        metrics: ExecutionMetrics,
+    ) -> None:
+        self._config = config
+        self._risk_manager = risk_manager
+        self._metrics = metrics
+        self._logger = get_logger(self.__class__.__name__)
+        self._client: BinancePrivateClient | None = None
+        self._running = False
+
+    async def __aenter__(self) -> TradingExecutor:
+        if not self._config.enabled:
+            self._logger.info(
+                "TradingExecutor disabled (trading_execution.enabled=false)"
+            )
+            return self
+
+        self._client = BinancePrivateClient(
+            api_key=self._config.api_key,
+            api_secret=self._config.api_secret,
+            test_mode=self._config.test_mode,
+        )
+        await self._client.__aenter__()
+        self._metrics.start_trading()
+        self._logger.info("TradingExecutor initialized")
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        if self._client is not None:
+            await self._client.__aexit__(exc_type, exc, tb)
+        self._metrics.stop_trading()
+        self._logger.info("TradingExecutor stopped")
+
+    async def run(self) -> None:
+        """Main trading loop."""
+        if not self._config.enabled:
+            self._logger.info(
+                "Trading executor loop skipped (no strategy engine configured)"
+            )
+            return
+
+        self._running = True
+        self._logger.info("Starting trading execution loop...")
+
+        try:
+            while self._running:
+                await self._monitor_and_update()
+                await asyncio.sleep(30)  # Check every 30 seconds
+        except asyncio.CancelledError:
+            self._logger.info("Trading execution loop cancelled")
+
+    async def _monitor_and_update(self) -> None:
+        """Monitor positions and update metrics."""
+        # Check if trading is allowed
+        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        if not is_allowed:
+            self._logger.warning(f"Trading blocked: {reason}")
+            return
+
+        # Get account info
+        try:
+            account_info = await self._client.get_account_info()
+            self._metrics.update_account_balance(
+                total_wallet=account_info.total_wallet_balance,
+                total_margin=account_info.total_margin_balance,
+                available=account_info.available_balance,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error("Failed to get account info: %s", exc)
+            self._metrics.record_api_error("get_account_info", str(type(exc).__name__))
+
+        # Get positions for all symbols
+        positions_data = []
+        for symbol in self._config.symbols:
+            try:
+                positions = await self._client.get_positions(symbol=symbol)
+                for pos in positions:
+                    positions_data.append(
+                        (
+                            pos.symbol,
+                            pos.position_side,
+                            abs(pos.position_amount),
+                            pos.unrealized_pnl,
+                        )
+                    )
+            except Exception as exc:  # noqa: BLE001
+                self._logger.error("Failed to get positions for %s: %s", symbol, exc)
+                self._metrics.record_api_error("get_positions", str(type(exc).__name__))
+
+        if positions_data:
+            self._metrics.update_positions(positions_data)
+
+        # Get open orders
+        open_orders_data = []
+        for symbol in self._config.symbols:
+            try:
+                orders = await self._client.get_open_orders(symbol=symbol)
+                open_orders_data.append((symbol, len(orders)))
+            except Exception as exc:  # noqa: BLE001
+                self._logger.error("Failed to get open orders for %s: %s", symbol, exc)
+                self._metrics.record_api_error(
+                    "get_open_orders", str(type(exc).__name__)
+                )
+
+        if open_orders_data:
+            self._metrics.update_open_orders(open_orders_data)
+
+    async def place_market_order(
+        self,
+        symbol: str,
+        side: str,  # "BUY" or "SELL"
+        quantity: float | None = None,
+    ) -> OrderInfo:
+        """Place a market order with risk checks.
+
+        Args:
+            symbol: Trading pair symbol (e.g., BTCUSDT)
+            side: Order side ("BUY" or "SELL")
+            quantity: Order quantity. If None, calculates from config.
+
+        Returns:
+            OrderInfo: Information about placed order
+
+        Raises:
+            RuntimeError: If risk checks fail or order placement fails
+        """
+        if not self._config.enabled:
+            raise RuntimeError("Trading executor is disabled")
+
+        # Check if trading is allowed
+        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        if not is_allowed:
+            self._metrics.record_risk_block(symbol, reason)
+            raise RuntimeError(f"Trading blocked: {reason}")
+
+        # Get account info for portfolio value
+        try:
+            account_info = await self._client.get_account_info()
+            portfolio_value = account_info.available_balance
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error("Failed to get account info: %s", exc)
+            self._metrics.record_api_error("get_account_info", str(type(exc).__name__))
+            raise RuntimeError("Failed to get account info") from exc
+
+        # Calculate quantity if not provided
+        if quantity is None:
+            quantity = self._calculate_quantity(symbol, portfolio_value)
+
+        # Check position limits
+        allowed, risk_reason = self._risk_manager.check_position_limit(
+            symbol, quantity, portfolio_value
+        )
+        if not allowed:
+            self._metrics.record_risk_block(symbol, risk_reason)
+            raise RuntimeError(f"Position limit check failed: {risk_reason}")
+
+        # Place order
+        start_time = time.perf_counter()
+        try:
+            order = await self._client.place_market_order(
+                symbol=symbol, side=side, quantity=quantity
+            )
+            elapsed = time.perf_counter() - start_time
+
+            self._metrics.record_order_placed(
+                symbol=symbol,
+                order_type="MARKET",
+                status=order.status,
+                latency_seconds=elapsed,
+            )
+
+            if order.status == "FILLED":
+                self._metrics.record_order_filled(symbol, side)
+                # Record trade in risk manager
+                self._risk_manager.record_trade(
+                    symbol=symbol,
+                    pnl=0.0,  # PnL will be realized when position closes
+                    portfolio_value=portfolio_value,
+                )
+
+            self._logger.info(
+                "Market order placed: %s %s %s (qty: %.4f, status: %s)",
+                side,
+                symbol,
+                order.order_id,
+                quantity,
+                order.status,
+            )
+
+            return order
+
+        except Exception as exc:  # noqa: BLE001
+            elapsed = time.perf_counter() - start_time
+            self._logger.error("Failed to place market order: %s", exc)
+            self._metrics.record_order_placed(
+                symbol=symbol,
+                order_type="MARKET",
+                status="FAILED",
+                latency_seconds=elapsed,
+            )
+            self._metrics.record_api_error(
+                "place_market_order", str(type(exc).__name__)
+            )
+            raise
+
+    async def place_limit_order(
+        self,
+        symbol: str,
+        side: str,  # "BUY" or "SELL"
+        price: float,
+        quantity: float | None = None,
+        reduce_only: bool = False,
+    ) -> OrderInfo:
+        """Place a limit order with risk checks.
+
+        Args:
+            symbol: Trading pair symbol (e.g., BTCUSDT)
+            side: Order side ("BUY" or "SELL")
+            price: Limit price
+            quantity: Order quantity. If None, calculates from config.
+            reduce_only: If true, order can only reduce position size
+
+        Returns:
+            OrderInfo: Information about placed order
+
+        Raises:
+            RuntimeError: If risk checks fail or order placement fails
+        """
+        if not self._config.enabled:
+            raise RuntimeError("Trading executor is disabled")
+
+        # Check if trading is allowed
+        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        if not is_allowed:
+            self._metrics.record_risk_block(symbol, reason)
+            raise RuntimeError(f"Trading blocked: {reason}")
+
+        # Get account info for portfolio value
+        try:
+            account_info = await self._client.get_account_info()
+            portfolio_value = account_info.available_balance
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error("Failed to get account info: %s", exc)
+            self._metrics.record_api_error("get_account_info", str(type(exc).__name__))
+            raise RuntimeError("Failed to get account info") from exc
+
+        # Calculate quantity if not provided
+        if quantity is None:
+            quantity = self._calculate_quantity(symbol, portfolio_value)
+
+        # Check position limits
+        allowed, risk_reason = self._risk_manager.check_position_limit(
+            symbol, quantity, portfolio_value
+        )
+        if not allowed:
+            self._metrics.record_risk_block(symbol, risk_reason)
+            raise RuntimeError(f"Position limit check failed: {risk_reason}")
+
+        # Place order
+        start_time = time.perf_counter()
+        try:
+            order = await self._client.place_limit_order(
+                symbol=symbol,
+                side=side,
+                price=price,
+                quantity=quantity,
+                reduce_only=reduce_only,
+            )
+            elapsed = time.perf_counter() - start_time
+
+            self._metrics.record_order_placed(
+                symbol=symbol,
+                order_type="LIMIT",
+                status=order.status,
+                latency_seconds=elapsed,
+            )
+
+            self._logger.info(
+                "Limit order placed: %s %s %s @ %.4f (qty: %.4f, status: %s)",
+                side,
+                symbol,
+                order.order_id,
+                price,
+                quantity,
+                order.status,
+            )
+
+            return order
+
+        except Exception as exc:  # noqa: BLE001
+            elapsed = time.perf_counter() - start_time
+            self._logger.error("Failed to place limit order: %s", exc)
+            self._metrics.record_order_placed(
+                symbol=symbol,
+                order_type="LIMIT",
+                status="FAILED",
+                latency_seconds=elapsed,
+            )
+            self._metrics.record_api_error("place_limit_order", str(type(exc).__name__))
+            raise
+
+    async def cancel_order(self, symbol: str, order_id: str | int) -> dict[str, Any]:
+        """Cancel an existing order.
+
+        Args:
+            symbol: Trading pair symbol
+            order_id: Order ID to cancel
+
+        Returns:
+            dict: Cancellation response from Binance
+        """
+        try:
+            result = await self._client.cancel_order(symbol, order_id)
+            self._metrics.record_order_cancelled(symbol, "user_request")
+
+            self._logger.info("Order cancelled: %s %s", symbol, order_id)
+
+            return result
+
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error("Failed to cancel order %s: %s", order_id, exc)
+            self._metrics.record_api_error("cancel_order", str(type(exc).__name__))
+            raise
+
+    async def cancel_all_orders(self, symbol: str) -> int:
+        """Cancel all open orders for a symbol.
+
+        Args:
+            symbol: Trading pair symbol
+
+        Returns:
+            int: Number of orders cancelled
+        """
+        try:
+            count = await self._client.cancel_all_orders(symbol)
+            self._logger.info("Cancelled %d orders for %s", count, symbol)
+
+            for _ in range(count):
+                self._metrics.record_order_cancelled(symbol, "bulk_cancel")
+
+            return count
+
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error("Failed to cancel all orders for %s: %s", symbol, exc)
+            self._metrics.record_api_error("cancel_all_orders", str(type(exc).__name__))
+            raise
+
+    def _calculate_quantity(self, symbol: str, portfolio_value: float) -> float:
+        """Calculate order quantity based on config and portfolio value.
+
+        Args:
+            symbol: Trading pair symbol
+            portfolio_value: Current available balance
+
+        Returns:
+            float: Order quantity to place
+        """
+        order_size_usdt = self._config.order_size_usdt
+        return order_size_usdt
+
+    def stop(self) -> None:
+        """Stop the trading loop."""
+        self._running = False
