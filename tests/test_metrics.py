@@ -42,6 +42,12 @@ class TestLabelValidator:
         result = validator.sanitize_label_value("timeframe", "30s")
         assert result == "unknown"
 
+    def test_sanitize_stream(self) -> None:
+        """Test sanitizing stream labels."""
+        validator = LabelValidator()
+        assert validator.sanitize_label_value("stream", "klines") == "klines"
+        assert validator.sanitize_label_value("stream", "invalid") == "unknown"
+
     def test_sanitize_long_value(self) -> None:
         """Test that long values are truncated."""
         validator = LabelValidator()
