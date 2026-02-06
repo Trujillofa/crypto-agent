@@ -1,52 +1,64 @@
 # Copilot instructions (crypto-agent)
 
+**Read `CLAUDE.md` first.** It is the shared source of truth for all agents on this project.
+
+## Your identity
+
+When committing, use this Co-Authored-By line:
+```
+Co-Authored-By: GitHub Copilot <noreply@github.com>
+```
+
 ## Project overview
-This repo is a **Python 3.11** crypto trading agent foundation:
+
+This is a **Python 3.11** async crypto trading agent:
 - Async Binance market-data ingestion (`src/ingest/`)
 - TimescaleDB persistence (`src/ingest/db.py`, `migrations/`)
 - Technical indicator computation (`src/features/`)
 - Risk gating + (paper-first) trading execution (`src/risk/`, `src/execution/`)
+- Strategy engine with signal generation (`src/strategy/`)
 - Prometheus metrics + structured logging (`src/*/metrics.py`, `src/utils/logger.py`)
 
 Default intent is **safe / paper-first** operation. Do not introduce live-trading behavior unless explicitly requested.
 
 ## How to run
-- Local stack (recommended):
-  - `cp .env.example .env` (fill secrets; never commit `.env`)
-  - `docker-compose up --build`
+
+- Local stack: `cp .env.example .env` then `docker-compose up --build`
 - Entrypoint: `python -m src.main`
-- Config files:
-  - `config/settings.yaml` (pairs, timeframe, DB, prometheus port, trading_execution)
-  - `config/risk.yaml` (limits/circuit breakers/kill switch)
+- Config: `config/settings.yaml` (pairs, timeframe, DB, prometheus) and `config/risk.yaml` (limits/circuit breakers)
 
 ## Tests
+
 - Run: `pytest`
 - Prefer adding/adjusting tests in `tests/` when changing behavior.
 
-## Coding conventions (follow these)
+## Before editing any file
+
+1. Read the file first to check for recent changes.
+2. Check `git status` to see if another agent has uncommitted edits.
+3. Run `pytest` before committing.
+
+## Coordination protocol
+
+See `CLAUDE.md` for the full protocol. Key points:
+- Conventional commits: `<type>(<scope>): <description>`
+- Branch for non-trivial work: `feat/<short-description>`
+- Stage specific files, not `git add -A`.
+- All tests must pass before committing.
+
+## Coding conventions
+
+See `CLAUDE.md` for full standards. Summary:
 - Keep changes **minimal and surgical**; avoid broad refactors unless asked.
-- Prefer **typed**, explicit code:
-  - Add type hints for new functions/classes.
-  - Avoid `Any` unless unavoidable; if used, keep it localized.
-- Async I/O:
-  - Use `aiohttp` session reuse/pooling patterns (see `BinanceIngestor`).
-  - Ensure background tasks are cancellable and shut down cleanly.
-- Logging/metrics:
-  - Use `get_logger(...)` from `src/utils/logger.py`.
-  - When adding significant operations, add Prometheus metrics in the relevant `*Metrics` class.
-  - Avoid logging secrets (API keys, DB passwords, tokens).
-- Configuration:
-  - Prefer `config/settings.yaml` + environment variables for secrets.
-  - If adding new settings, update parsing/validation in `src/main.py::load_settings`.
+- Add type hints for new functions/classes. Avoid `Any`.
+- Use `aiohttp` session reuse/pooling patterns (see `BinanceIngestor`).
+- Ensure background tasks are cancellable and shut down cleanly.
+- Use `get_logger(...)` from `src/utils/logger.py`. No `print()`.
+- Add Prometheus metrics for significant operations.
+- Never log secrets.
 
 ## Safety / trading rules
-- Keep **paper mode** the default (`mode: paper`, `trading_execution.test_mode: true`).
+
+- Keep **paper mode** the default.
 - Enforce risk checks via `RiskManager` before any trading actions.
 - If a change could impact order placement, require explicit config flags and clear logging.
-
-## Repo layout hints
-- `src/ingest/`: market data models, Binance client, DB writer, ingestion metrics
-- `src/features/`: indicator computation + writing + metrics
-- `src/execution/`: trading executor (test-mode by default)
-- `src/notifications/`: Telegram notifier/rate limiting
-- `tests/`: pytest suite (asyncio mode enabled via `pyproject.toml`)
