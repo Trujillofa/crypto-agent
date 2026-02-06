@@ -105,9 +105,18 @@ class RiskManager:
         )
 
     def check_position_limit(
-        self, symbol: str, size: float, portfolio_value: float
+        self, symbol: str, quantity_usdt: float, portfolio_value: float
     ) -> tuple[bool, str]:
-        """Check if a new position would violate position limits."""
+        """Check if a new position would violate position limits.
+
+        Args:
+            symbol: Trading pair symbol
+            quantity_usdt: Position size in USDT
+            portfolio_value: Total portfolio value in USDT
+
+        Returns:
+            tuple[bool, str]: (Allowed, Reason)
+        """
         if self._kill_switch_triggered:
             return False, "Kill switch is active"
 
@@ -119,16 +128,15 @@ class RiskManager:
                     f"Max open positions ({self._config.position_limits.max_open_positions}) reached",
                 )
 
-        # Check position size
-        position_value = size * portfolio_value
+        # Check position size vs portfolio percentage
         max_position_value = (
             portfolio_value * self._config.position_limits.max_position_pct
         )
 
-        if position_value > max_position_value:
+        if quantity_usdt > max_position_value:
             return False, (
-                f"Position size {position_value:.2f} exceeds max "
-                f"({self._config.position_limits.max_position_pct * 100:.1f}% = {max_position_value:.2f})"
+                f"Position size {quantity_usdt:.2f} USDT exceeds max "
+                f"({self._config.position_limits.max_position_pct * 100:.1f}% = {max_position_value:.2f} USDT)"
             )
 
         return True, "OK"

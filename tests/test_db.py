@@ -176,6 +176,25 @@ class TestInsertRow:
         with pytest.raises(RuntimeError, match="connection missing"):
             writer._insert_row(sample_ohlcv)
 
+    def test_insert_row_db_error_propagates(
+        self,
+        db_config: dict[str, object],
+        metrics: IngestMetrics,
+        sample_ohlcv: Ohlcv,
+    ) -> None:
+        """Test that database errors are propagated during insert."""
+        writer = TimescaleWriter(db_config, metrics)
+        writer._connected = True
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("DB Insert Error")
+        mock_conn.cursor.return_value = mock_cursor
+        writer._conn = mock_conn
+        writer._use_sqlite = True
+
+        with pytest.raises(Exception, match="DB Insert Error"):
+            writer._insert_row(sample_ohlcv)
+
 
 class TestWriteOhlcv:
     """Test suite for async write_ohlcv."""

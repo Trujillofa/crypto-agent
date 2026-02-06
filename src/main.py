@@ -37,11 +37,11 @@ def load_settings(config_path: Path) -> Settings:
     with config_path.open("r", encoding="utf-8") as file_handle:
         raw = cast(object, yaml.safe_load(file_handle))
 
-    config = _as_mapping(raw, "config")
-    trading = _as_mapping(config.get("trading"), "trading")
-    database = _as_mapping(config.get("database"), "database")
-    prometheus = _as_mapping(config.get("prometheus"), "prometheus")
-    trading_exec = _as_mapping(config.get("trading_execution"), "trading_execution")
+    root = _as_mapping(raw, "root configuration")
+    trading = _as_mapping(root.get("trading"), "trading section")
+    database = _as_mapping(root.get("database"), "database section")
+    prometheus = _as_mapping(root.get("prometheus"), "prometheus section")
+    trading_exec = _as_mapping(root.get("trading_execution"), "trading_execution section")
 
     # Get API key from environment if not in config
     import os as _os
@@ -58,6 +58,10 @@ def load_settings(config_path: Path) -> Settings:
     if not api_secret:
         api_secret = _os.getenv("BINANCE_API_SECRET", "").strip()
 
+    trading_pairs = _as_str_list(trading.get("pairs"), "trading.pairs")
+    if not trading_pairs:
+        raise ValueError("No trading pairs configured in 'trading.pairs'")
+
     trading_config = TradingConfig(
         api_key=api_key,
         api_secret=api_secret,
@@ -67,7 +71,7 @@ def load_settings(config_path: Path) -> Settings:
         enabled=_as_bool(
             trading_exec.get("enabled"), "trading_execution.enabled", default=False
         ),
-        symbols=_as_str_list(trading.get("pairs"), "trading.pairs"),
+        symbols=trading_pairs,
         order_size_usdt=_as_float(
             trading_exec.get("order_size_usdt"),
             "trading_execution.order_size_usdt",
@@ -76,9 +80,9 @@ def load_settings(config_path: Path) -> Settings:
     )
 
     return Settings(
-        mode=_as_str(config.get("mode"), "mode", default="paper"),
-        log_level=_as_str(config.get("log_level"), "log_level", default="INFO"),
-        trading_pairs=_as_str_list(trading.get("pairs"), "trading.pairs"),
+        mode=_as_str(root.get("mode"), "mode", default="paper"),
+        log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
+        trading_pairs=trading_pairs,
         timeframe=_as_str(trading.get("timeframe"), "trading.timeframe", default="1m"),
         database=database,
         prometheus_port=_as_int(

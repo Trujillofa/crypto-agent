@@ -140,6 +140,18 @@ class TestParseKline:
         assert ohlcv.open_time.tzinfo == timezone.utc
         assert ohlcv.close_time.tzinfo == timezone.utc
 
+    def test_parse_kline_invalid_data_raises(self, ingestor: BinanceIngestor) -> None:
+        """Test parsing kline with invalid data types raises error."""
+        raw = ["not-a-timestamp", "not-a-float", "high", "low", "close", "vol"]
+        with pytest.raises((ValueError, TypeError, IndexError)):
+            ingestor._parse_kline("BTCUSDT", raw)
+
+    def test_parse_kline_missing_fields_raises(self, ingestor: BinanceIngestor) -> None:
+        """Test parsing kline with missing fields raises error."""
+        raw = [1704067200000, "45000.00"] # Missing high, low, etc.
+        with pytest.raises(IndexError):
+            ingestor._parse_kline("BTCUSDT", raw)
+
 
 class TestToDatetime:
     """Test suite for datetime conversion."""

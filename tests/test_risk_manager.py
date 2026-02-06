@@ -144,7 +144,7 @@ class TestRiskManager:
         manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
         allowed, reason = manager.check_position_limit(
             symbol="BTCUSDT",
-            size=0.05,  # 5% of portfolio
+            quantity_usdt=500,  # 5% of 10000
             portfolio_value=10000,
         )
         assert allowed is True
@@ -155,7 +155,7 @@ class TestRiskManager:
         manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
         allowed, reason = manager.check_position_limit(
             symbol="BTCUSDT",
-            size=0.20,  # 20% of portfolio, exceeds 10% limit
+            quantity_usdt=2000,  # 20% of 10000, exceeds 10% limit
             portfolio_value=10000,
         )
         assert allowed is False
@@ -171,7 +171,7 @@ class TestRiskManager:
         # Try to add 6th position
         allowed, reason = manager.check_position_limit(
             symbol="NEWPAIR",
-            size=0.05,
+            quantity_usdt=100,
             portfolio_value=10000,
         )
         assert allowed is False
@@ -183,7 +183,7 @@ class TestRiskManager:
         manager._kill_switch_triggered = True
         allowed, reason = manager.check_position_limit(
             symbol="BTCUSDT",
-            size=0.05,
+            quantity_usdt=100,
             portfolio_value=10000,
         )
         assert allowed is False

@@ -31,12 +31,12 @@ def test_risk_management():
 
     # Test 2: Position limits
     print("3️⃣  Testing position limits...")
-    ok, msg = risk.check_position_limit("BTCUSDT", 0.05, 100000)  # 5% position
-    print(f"   Small position (5%): {ok} - {msg}")
+    ok, msg = risk.check_position_limit("BTCUSDT", 5000, 100000)  # 5% position
+    print(f"   Small position (5000 USDT): {ok} - {msg}")
     assert ok, "Small position should be allowed"
 
-    ok, msg = risk.check_position_limit("BTCUSDT", 0.15, 100000)  # 15% position
-    print(f"   Large position (15%): {ok} - {msg}")
+    ok, msg = risk.check_position_limit("BTCUSDT", 15000, 100000)  # 15% position
+    print(f"   Large position (15000 USDT): {ok} - {msg}")
     assert not ok, "Large position should be rejected"
     print("   ✅ Position limits working correctly")
     print()
