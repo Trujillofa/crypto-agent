@@ -149,10 +149,16 @@ class PortfolioManager:
         if self._conn is None:
             return []
         cursor = self._conn.cursor()
-        cursor.execute(
-            "SELECT * FROM positions WHERE status = %s ORDER BY entry_time DESC",
-            ("open",) if not self._use_sqlite else ("open",),
-        )
+        if self._use_sqlite:
+            cursor.execute(
+                "SELECT * FROM positions WHERE status = ? ORDER BY entry_time DESC",
+                ("open",),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM positions WHERE status = %s ORDER BY entry_time DESC",
+                ("open",),
+            )
         return cursor.fetchall()
 
     def _row_to_position(self, row: tuple) -> Position:
