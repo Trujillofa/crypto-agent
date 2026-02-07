@@ -122,6 +122,7 @@ class IndicatorReader:
             return []
 
         # Reverse to get oldest-first, then convert to dicts
+        rows = list(rows)
         rows.reverse()
         results = []
         for row in rows:
