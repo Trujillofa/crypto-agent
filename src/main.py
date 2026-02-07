@@ -19,6 +19,7 @@ from src.features.reader import IndicatorReader
 from src.features.metrics import IndicatorMetrics
 from src.execution import TradingExecutor, TradingConfig
 from src.execution.metrics import ExecutionMetrics
+from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy import StrategyEngine, EngineConfig, SimpleMACrossoverStrategy
 from src.utils.logger import configure_logger
@@ -211,11 +212,15 @@ async def run() -> None:
         compute_interval=60,  # Compute every 60 seconds
     )
 
+    # Initialize portfolio manager for position tracking
+    portfolio_manager = PortfolioManager(settings.database)
+
     # Initialize trading executor
     trading_executor = TradingExecutor(
         config=settings.trading_execution,
         risk_manager=risk_manager,
         metrics=execution_metrics,
+        portfolio_manager=portfolio_manager,
     )
 
     # Initialize indicator reader and strategy engine
@@ -241,50 +246,55 @@ async def run() -> None:
     async with writer:
         async with indicator_writer:
             async with indicator_reader:
-                async with ingestor:
-                    async with trading_executor:
-                        async with strategy_engine:
-                            # Start risk monitoring in background
-                            risk_task = asyncio.create_task(risk_manager.monitor_loop())
-
-                            # Start OHLCV ingestion
-                            ingest_task = asyncio.create_task(
-                                ingestor.run(writer.write_ohlcv)
-                            )
-
-                            # Start indicator computation
-                            indicator_task = asyncio.create_task(
-                                indicator_computer.run()
-                            )
-
-                            # Start trading executor
-                            trading_task = asyncio.create_task(trading_executor.run())
-
-                            # Start strategy engine
-                            strategy_task = asyncio.create_task(
-                                strategy_engine.run(
-                                    on_signal=trading_executor.on_signal
+                async with portfolio_manager:
+                    async with ingestor:
+                        async with trading_executor:
+                            async with strategy_engine:
+                                # Start risk monitoring in background
+                                risk_task = asyncio.create_task(
+                                    risk_manager.monitor_loop()
                                 )
-                            )
 
-                            await stop_event.wait()
+                                # Start OHLCV ingestion
+                                ingest_task = asyncio.create_task(
+                                    ingestor.run(writer.write_ohlcv)
+                                )
 
-                            # Cancel all tasks
-                            ingest_task.cancel()
-                            risk_task.cancel()
-                            indicator_task.cancel()
-                            trading_task.cancel()
-                            strategy_task.cancel()
+                                # Start indicator computation
+                                indicator_task = asyncio.create_task(
+                                    indicator_computer.run()
+                                )
 
-                            indicator_computer.stop()
-                            trading_executor.stop()
+                                # Start trading executor
+                                trading_task = asyncio.create_task(
+                                    trading_executor.run()
+                                )
 
-                            with contextlib.suppress(asyncio.CancelledError):
-                                await ingest_task
-                                await risk_task
-                                await indicator_task
-                                await trading_task
-                                await strategy_task
+                                # Start strategy engine
+                                strategy_task = asyncio.create_task(
+                                    strategy_engine.run(
+                                        on_signal=trading_executor.on_signal
+                                    )
+                                )
+
+                                await stop_event.wait()
+
+                                # Cancel all tasks
+                                ingest_task.cancel()
+                                risk_task.cancel()
+                                indicator_task.cancel()
+                                trading_task.cancel()
+                                strategy_task.cancel()
+
+                                indicator_computer.stop()
+                                trading_executor.stop()
+
+                                with contextlib.suppress(asyncio.CancelledError):
+                                    await ingest_task
+                                    await risk_task
+                                    await indicator_task
+                                    await trading_task
+                                    await strategy_task
 
 
 def main() -> None:

@@ -10,6 +10,8 @@ from src.execution.binance_client import (
     OrderInfo,
 )
 from src.execution.metrics import ExecutionMetrics
+from src.notifications.telegram import TelegramNotifier
+from src.portfolio.manager import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -35,10 +37,14 @@ class TradingExecutor:
         config: TradingConfig,
         risk_manager: RiskManager,
         metrics: ExecutionMetrics,
+        portfolio_manager: PortfolioManager | None = None,
+        notifier: TelegramNotifier | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
+        self._portfolio_manager = portfolio_manager
+        self._notifier = notifier or TelegramNotifier()
         self._logger = get_logger(self.__class__.__name__)
         self._client: BinancePrivateClient | None = None
         self._running = False
@@ -56,6 +62,7 @@ class TradingExecutor:
             test_mode=self._config.test_mode,
         )
         await self._client.__aenter__()
+        await self._notifier.__aenter__()
         self._metrics.start_trading()
         self._logger.info("TradingExecutor initialized")
         return self
@@ -63,6 +70,7 @@ class TradingExecutor:
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._client is not None:
             await self._client.__aexit__(exc_type, exc, tb)
+        await self._notifier.__aexit__(exc_type, exc, tb)
         self._metrics.stop_trading()
         self._logger.info("TradingExecutor stopped")
 
@@ -184,12 +192,27 @@ class TradingExecutor:
 
             if order.status == "FILLED":
                 self._metrics.record_order_filled(symbol, side)
-                # Record trade in risk manager
-                self._risk_manager.record_trade(
-                    symbol=symbol,
-                    pnl=0.0,  # PnL will be realized when position closes
-                    portfolio_value=portfolio_value,
-                )
+                # Record trade in portfolio manager for PnL tracking
+                if self._portfolio_manager is not None:
+                    if side == "BUY":
+                        await self._portfolio_manager.open_position(
+                            symbol=symbol,
+                            quantity=quantity,
+                            price=float(order.price) if order.price else 0.0,
+                            order_id=str(order.order_id),
+                        )
+                    elif side == "SELL":
+                        _, pnl = await self._portfolio_manager.close_position(
+                            symbol=symbol,
+                            price=float(order.price) if order.price else 0.0,
+                            order_id=str(order.order_id),
+                        )
+                        # Record realized PnL in risk manager
+                        self._risk_manager.record_trade(
+                            symbol=symbol,
+                            pnl=pnl,
+                            portfolio_value=portfolio_value,
+                        )
 
             self._logger.info(
                 "Market order placed: %s %s %s (qty: %.4f, status: %s)",
@@ -393,16 +416,35 @@ class TradingExecutor:
 
         try:
             if signal.type == SignalType.BUY:
-                # Spot BUY: spend order_size_usdt via quoteOrderQty
-                await self.place_market_order(
+                order = await self.place_market_order(
                     signal.symbol, "BUY", self._config.order_size_usdt
                 )
+                await self._notifier.send_trade_alert(
+                    symbol=signal.symbol,
+                    side="BUY",
+                    quantity=self._config.order_size_usdt,
+                    price=signal.price,
+                    pnl=None,
+                )
             elif signal.type == SignalType.SELL:
-                # Spot SELL: sell all held base asset
                 base_asset = signal.symbol.replace("USDT", "")
                 balance = await self._client.get_asset_balance(base_asset)
                 if balance > 0:
-                    await self.place_market_order(signal.symbol, "SELL", balance)
+                    order = await self.place_market_order(
+                        signal.symbol, "SELL", balance
+                    )
+                    pnl = None
+                    if self._portfolio_manager is not None:
+                        position = self._portfolio_manager.get_position(signal.symbol)
+                        if position is not None:
+                            pnl = position.calculate_unrealized_pnl(signal.price)
+                    await self._notifier.send_trade_alert(
+                        symbol=signal.symbol,
+                        side="SELL",
+                        quantity=balance,
+                        price=signal.price,
+                        pnl=pnl,
+                    )
                 else:
                     self._logger.info("SELL signal but no %s balance", base_asset)
         except RuntimeError as exc:
