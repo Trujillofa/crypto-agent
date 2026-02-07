@@ -11,6 +11,7 @@ from src.execution.binance_client import (
 )
 from src.execution.metrics import ExecutionMetrics
 from src.risk.manager import RiskManager
+from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
 
@@ -84,7 +85,7 @@ class TradingExecutor:
             self._logger.info("Trading execution loop cancelled")
 
     async def _monitor_and_update(self) -> None:
-        """Monitor positions and update metrics."""
+        """Monitor account and update metrics."""
         # Check if trading is allowed
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
@@ -95,34 +96,12 @@ class TradingExecutor:
         try:
             account_info = await self._client.get_account_info()
             self._metrics.update_account_balance(
-                total_wallet=account_info.total_wallet_balance,
-                total_margin=account_info.total_margin_balance,
+                total_wallet=account_info.total_balance,
                 available=account_info.available_balance,
             )
         except Exception as exc:  # noqa: BLE001
             self._logger.error("Failed to get account info: %s", exc)
             self._metrics.record_api_error("get_account_info", str(type(exc).__name__))
-
-        # Get positions for all symbols
-        positions_data = []
-        for symbol in self._config.symbols:
-            try:
-                positions = await self._client.get_positions(symbol=symbol)
-                for pos in positions:
-                    positions_data.append(
-                        (
-                            pos.symbol,
-                            pos.position_side,
-                            abs(pos.position_amount),
-                            pos.unrealized_pnl,
-                        )
-                    )
-            except Exception as exc:  # noqa: BLE001
-                self._logger.error("Failed to get positions for %s: %s", symbol, exc)
-                self._metrics.record_api_error("get_positions", str(type(exc).__name__))
-
-        if positions_data:
-            self._metrics.update_positions(positions_data)
 
         # Get open orders
         open_orders_data = []
@@ -243,7 +222,6 @@ class TradingExecutor:
         side: str,  # "BUY" or "SELL"
         price: float,
         quantity: float | None = None,
-        reduce_only: bool = False,
     ) -> OrderInfo:
         """Place a limit order with risk checks.
 
@@ -252,7 +230,6 @@ class TradingExecutor:
             side: Order side ("BUY" or "SELL")
             price: Limit price
             quantity: Order quantity. If None, calculates from config.
-            reduce_only: If true, order can only reduce position size
 
         Returns:
             OrderInfo: Information about placed order
@@ -298,7 +275,6 @@ class TradingExecutor:
                 side=side,
                 price=price,
                 quantity=quantity,
-                reduce_only=reduce_only,
             )
             elapsed = time.perf_counter() - start_time
 
@@ -395,3 +371,39 @@ class TradingExecutor:
     def stop(self) -> None:
         """Stop the trading loop."""
         self._running = False
+
+    async def on_signal(self, signal: Signal) -> None:
+        """Handle trading signal from StrategyEngine.
+
+        Args:
+            signal: Trading signal (BUY/SELL/HOLD)
+
+        Spot-aware behavior:
+        - BUY: Uses order_size_usdt via quoteOrderQty
+        - SELL: Sells all held base asset (checks balance first)
+        - HOLD: No action
+        - Disabled executor: Returns early without client access
+        """
+        if signal.type == SignalType.HOLD:
+            return
+
+        if not self._config.enabled:
+            self._logger.info("Signal ignored (executor disabled): %s", signal)
+            return
+
+        try:
+            if signal.type == SignalType.BUY:
+                # Spot BUY: spend order_size_usdt via quoteOrderQty
+                await self.place_market_order(
+                    signal.symbol, "BUY", self._config.order_size_usdt
+                )
+            elif signal.type == SignalType.SELL:
+                # Spot SELL: sell all held base asset
+                base_asset = signal.symbol.replace("USDT", "")
+                balance = await self._client.get_asset_balance(base_asset)
+                if balance > 0:
+                    await self.place_market_order(signal.symbol, "SELL", balance)
+                else:
+                    self._logger.info("SELL signal but no %s balance", base_asset)
+        except RuntimeError as exc:
+            self._logger.warning("Signal rejected: %s — %s", signal, exc)

@@ -16,7 +16,6 @@ from src.utils.logger import get_logger
 @dataclass
 class PositionLimits:
     max_position_pct: float = 0.10
-    max_leverage: int = 3
     max_open_positions: int = 5
 
 

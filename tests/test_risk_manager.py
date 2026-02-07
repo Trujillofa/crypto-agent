@@ -25,18 +25,15 @@ class TestPositionLimits:
         """Test default position limits."""
         limits = PositionLimits()
         assert limits.max_position_pct == 0.10
-        assert limits.max_leverage == 3
         assert limits.max_open_positions == 5
 
     def test_custom_values(self) -> None:
         """Test custom position limits."""
         limits = PositionLimits(
             max_position_pct=0.20,
-            max_leverage=5,
             max_open_positions=10,
         )
         assert limits.max_position_pct == 0.20
-        assert limits.max_leverage == 5
         assert limits.max_open_positions == 10
 
 

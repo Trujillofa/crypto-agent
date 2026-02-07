@@ -33,18 +33,6 @@ open_orders_count = Gauge(
     "execution_open_orders_count", "Current number of open orders", ["symbol"]
 )
 
-# Gauge for current position exposure
-position_exposure = Gauge(
-    "execution_position_exposure",
-    "Current position exposure (absolute value)",
-    ["symbol", "side"],
-)
-
-# Gauge for unrealized PnL
-unrealized_pnl = Gauge(
-    "execution_unrealized_pnl", "Current unrealized profit/loss", ["symbol"]
-)
-
 # Histogram for order latency
 order_latency_seconds = Histogram(
     "execution_order_latency_seconds",
@@ -62,7 +50,7 @@ realized_pnl_total = Summary(
 account_balance = Gauge(
     "execution_account_balance",
     "Current account balance",
-    ["type"],  # total_wallet, total_margin, available
+    ["type"],  # total_wallet, available
 )
 
 # Gauge for trading status
@@ -84,14 +72,6 @@ risk_blocks_total = Counter(
     ["symbol", "reason"],
 )
 
-# Histogram for position duration
-position_duration_seconds = Histogram(
-    "execution_position_duration_seconds",
-    "Position duration in seconds",
-    ["symbol", "side"],
-    buckets=[60, 300, 900, 1800, 3600, 7200, 14400, 28800],  # 1min to 8 hours
-)
-
 
 class ExecutionMetrics:
     """Container for trading execution metrics."""
@@ -102,15 +82,12 @@ class ExecutionMetrics:
         self.orders_filled = orders_filled_total
         self.orders_rejected = orders_rejected_total
         self.open_orders = open_orders_count
-        self.position_exposure = position_exposure
-        self.unrealized_pnl = unrealized_pnl
         self.order_latency = order_latency_seconds
         self.realized_pnl = realized_pnl_total
         self.account_balance = account_balance
         self.trading_active = trading_active
         self.api_errors = api_errors_total
         self.risk_blocks = risk_blocks_total
-        self.position_duration = position_duration_seconds
 
     def start_trading(self) -> None:
         """Mark trading as active."""
@@ -154,26 +131,11 @@ class ExecutionMetrics:
     def update_account_balance(
         self,
         total_wallet: float,
-        total_margin: float,
         available: float,
     ) -> None:
         """Update account balance metrics."""
         self.account_balance.labels(type="total_wallet").set(total_wallet)
-        self.account_balance.labels(type="total_margin").set(total_margin)
         self.account_balance.labels(type="available").set(available)
-
-    def update_positions(
-        self,
-        positions: list[tuple[str, str, float, float]],  # (symbol, side, exposure, pnl)
-    ) -> None:
-        """Update position metrics."""
-        # Reset position exposure gauges
-        self.position_exposure.clear()
-        self.unrealized_pnl.clear()
-
-        for symbol, side, exposure, pnl in positions:
-            self.position_exposure.labels(symbol=symbol, side=side).set(exposure)
-            self.unrealized_pnl.labels(symbol=symbol).set(pnl)
 
     def update_open_orders(
         self, open_orders: list[tuple[str, int]]

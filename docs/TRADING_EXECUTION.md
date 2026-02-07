@@ -1,14 +1,14 @@
 # Trading Execution
 
-This document describes the trading execution system that integrates Binance Futures private API with risk management.
+This document describes the trading execution system that integrates Binance Spot API with risk management.
 
 ## Overview
 
 The trading execution system:
-1. **Authenticates** with Binance Futures API using API keys
+1. **Authenticates** with Binance Spot API using API keys
 2. **Places** orders (market/limit) with risk manager validation
 3. **Cancels** orders (single or bulk)
-4. **Monitors** positions and account status
+4. **Monitors** account and order status
 5. **Records** all execution metrics to Prometheus
 
 ## Architecture
@@ -33,15 +33,15 @@ Prometheus Metrics + Notifications
 
 **Location**: `src/execution/binance_client.py`
 
-Async Binance Futures API client with methods:
+Async Binance Spot API client with methods:
 
 #### Account Management
-- `get_account_info()` - Get wallet balance and margin info
-- `get_positions(symbol)` - Get current positions
+- `get_account_info()` - Get wallet balance info
+- `get_asset_balance(asset)` - Get specific asset balance
 - `get_open_orders(symbol)` - Get open orders
 
 #### Order Execution
-- `place_market_order(symbol, side, quantity)` - Place market order
+- `place_market_order(symbol, side, quantity=None, quoteOrderQty=None)` - Place market order (BUY uses quoteOrderQty, SELL uses quantity)
 - `place_limit_order(symbol, side, price, quantity)` - Place limit order
 - `cancel_order(symbol, order_id)` - Cancel single order
 - `cancel_all_orders(symbol)` - Cancel all orders for a symbol
@@ -76,8 +76,7 @@ Pre-configured risk controls enforced before every order:
 
 - **Position Limits**:
   - Max position % of portfolio (default: 10%)
-  - Max leverage (default: 3x)
-  - Max open positions (default: 5)
+  - Max open orders (default: 10)
 
 - **Loss Limits**:
   - Max daily loss % (default: 5%)
@@ -132,14 +131,11 @@ The execution system exports the following metrics:
 
 ### Gauges
 - `execution_open_orders_count{symbol}` - Current open orders per symbol
-- `execution_position_exposure{symbol, side}` - Position exposure
-- `execution_unrealized_pnl{symbol}` - Unrealized PnL per symbol
-- `execution_account_balance{type}` - Account balance (total_wallet, total_margin, available)
+- `execution_account_balance{asset}` - Account balance per asset
 - `execution_trading_active` - Whether trading is active (1/0)
 
 ### Histograms
 - `execution_order_latency_seconds{symbol, order_type}` - Order placement latency
-- `execution_position_duration_seconds{symbol, side}` - Position duration
 
 ### Summary
 - `execution_realized_pnl_total{symbol}` - Realized PnL summary
@@ -409,8 +405,8 @@ order = await client.place_market_order("BTCUSDT", "BUY", 1.0)
 
 ## References
 
-- [Binance Futures API Docs](https://binance-docs.github.io/apidocs/futures/en/)
-- [Binance Trading Rules](https://www.binance.com/en/futures/trading-rules/future)
+- [Binance Spot API Docs](https://binance-docs.github.io/apidocs/spot/en/)
+- [Binance Trading Rules](https://www.binance.com/en/trade-rule)
 - [Risk Management Best Practices](https://www.investopedia.com/terms/r/risk-management.asp)
 
 ## Support

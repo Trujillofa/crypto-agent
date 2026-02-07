@@ -1,11 +1,11 @@
 # Crypto Trading AI/ML Agent (Phase 1 Foundation)
 
-This project implements the Phase 1 foundation of a Binance Futures trading agent based on the provided reference specs. It focuses on reliable market data ingestion, TimescaleDB persistence, and technical indicator computation for downstream ML/RL pipelines.
+This project implements the Phase 1 foundation of a Binance Spot trading agent based on the provided reference specs. It focuses on reliable market data ingestion, TimescaleDB persistence, and technical indicator computation for downstream ML/RL pipelines.
 
-## What’s Included
+## What's Included
 
 - Docker Compose stack (TimescaleDB, Prometheus, Grafana, agent)
-- Binance Futures OHLCV ingestion via REST polling
+- Binance Spot OHLCV ingestion via REST polling
 - TimescaleDB hypertable schema for OHLCV
 - Prometheus metrics and structured JSON logging
 - Technical indicator computation (RSI, MACD, Bollinger Bands, ATR)

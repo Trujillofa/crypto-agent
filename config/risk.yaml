@@ -1,6 +1,5 @@
 position_limits:
   max_position_pct: 0.10
-  max_leverage: 3
   max_open_positions: 5
 
 loss_limits:

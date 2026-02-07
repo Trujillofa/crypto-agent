@@ -28,28 +28,11 @@ class OrderInfo:
 
 
 @dataclass(frozen=True)
-class PositionInfo:
-    """Information about a Binance position."""
-
-    symbol: str
-    position_side: str  # "LONG" or "SHORT"
-    position_amount: float
-    entry_price: float
-    mark_price: float
-    unrealized_pnl: float
-    percentage: float
-    leverage: int
-
-
-@dataclass(frozen=True)
 class AccountInfo:
     """Information about Binance Spot account (USDT balances)."""
 
-    total_wallet_balance: float
-    total_margin_balance: float
-    available_balance: float
-    total_position_initial_margin: float
-    total_unrealized_profit: float
+    total_balance: float  # Total USDT (free + locked)
+    available_balance: float  # Free USDT available for trading
 
 
 class BinancePrivateClient:
@@ -170,20 +153,30 @@ class BinancePrivateClient:
         total = free + locked
 
         return AccountInfo(
-            total_wallet_balance=total,
-            total_margin_balance=total,
+            total_balance=total,
             available_balance=free,
-            total_position_initial_margin=0.0,
-            total_unrealized_profit=0.0,
         )
 
-    async def get_positions(self, symbol: str | None = None) -> list[PositionInfo]:
-        """Return empty positions for spot accounts.
+    async def get_asset_balance(self, asset: str = "USDT") -> float:
+        """Get balance for a specific asset.
 
-        Spot trading does not have leveraged positions like futures.
+        Args:
+            asset: Asset symbol (default: USDT)
+
+        Returns:
+            float: Available balance for the asset
         """
-        _ = symbol
-        return []
+        if self._test_mode:
+            self._logger.info("TEST MODE: Returning mock balance for %s", asset)
+            return 1.0
+
+        data = await self._request("GET", "/api/v3/account", signed=True)
+        balances = data.get("balances", [])
+        asset_balance = next(
+            (balance for balance in balances if balance.get("asset") == asset),
+            None,
+        )
+        return float(asset_balance.get("free", 0)) if asset_balance else 0.0
 
     async def get_open_orders(self, symbol: str | None = None) -> list[OrderInfo]:
         """Get all currently open orders.
@@ -224,7 +217,6 @@ class BinancePrivateClient:
         symbol: str,
         side: str,  # "BUY" or "SELL"
         quantity: float,
-        reduce_only: bool = False,
     ) -> OrderInfo:
         """Place a market order.
 
@@ -233,21 +225,22 @@ class BinancePrivateClient:
         Args:
             symbol: Trading pair symbol (e.g., BTCUSDT)
             side: Order side ("BUY" or "SELL")
-            quantity: Order quantity in base asset
-            reduce_only: Ignored for spot orders
+            quantity: For BUY: amount in quote asset (USDT). For SELL: amount in base asset.
 
         Returns:
             OrderInfo: Information about the placed order
         """
-        if reduce_only:
-            self._logger.debug("Ignoring reduce_only for spot order: %s", symbol)
-
         params = {
             "symbol": symbol,
             "side": side,
             "type": "MARKET",
-            "quantity": str(quantity),
         }
+
+        # BUY uses quoteOrderQty (USDT), SELL uses quantity (base asset)
+        if side == "BUY":
+            params["quoteOrderQty"] = str(quantity)
+        else:
+            params["quantity"] = str(quantity)
 
         if self._test_mode:
             self._logger.info("TEST MODE: Would place market order: %s", params)
@@ -284,7 +277,6 @@ class BinancePrivateClient:
         side: str,  # "BUY" or "SELL"
         quantity: float,
         price: float,
-        reduce_only: bool = False,
     ) -> OrderInfo:
         """Place a limit order.
 
@@ -295,14 +287,10 @@ class BinancePrivateClient:
             side: Order side ("BUY" or "SELL")
             quantity: Order quantity in base asset
             price: Limit price
-            reduce_only: Ignored for spot orders
 
         Returns:
             OrderInfo: Information about the placed order
         """
-        if reduce_only:
-            self._logger.debug("Ignoring reduce_only for spot order: %s", symbol)
-
         params = {
             "symbol": symbol,
             "side": side,

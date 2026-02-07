@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
+from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
-from src.strategy.signals import Signal
+from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
 
@@ -15,9 +16,11 @@ class EngineConfig:
     """Strategy engine configuration."""
 
     symbols: list[str]
+    database: Mapping[str, object] = field(default_factory=dict)
+    timeframe: str = "1m"
     evaluation_interval_seconds: int = 60
-    strategy_classes: list[type[BaseStrategy]] = []
-    strategy_configs: list[Mapping[str, object] | None] = []
+    strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
+    strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
 
 
 class StrategyEngine:
@@ -33,8 +36,10 @@ class StrategyEngine:
     def __init__(
         self,
         config: EngineConfig,
+        reader: IndicatorReader,
     ) -> None:
         self._config = config
+        self._reader = reader
         self._logger = get_logger(self.__class__.__name__)
         self._strategies: dict[str, list[BaseStrategy]] = {}
         self._running = False
@@ -66,7 +71,7 @@ class StrategyEngine:
 
     async def run(
         self,
-        on_signal: callable[[Signal], Any] | None = None,
+        on_signal: Callable[[Signal], Any] | None = None,
     ) -> None:
         """Main evaluation loop.
 
@@ -87,38 +92,49 @@ class StrategyEngine:
 
     async def _evaluate_all(
         self,
-        on_signal: callable[[Signal], Any] | None = None,
+        on_signal: Callable[[Signal], Any] | None = None,
     ) -> None:
         """Evaluate all strategies for all symbols.
 
         Args:
             on_signal: Callback to receive signals
         """
-        # In a full implementation, this would:
-        # 1. Fetch latest indicators from database
-        # 2. Pass indicators to each strategy
-        # 3. Collect all signals
-        # 4. Call on_signal callback for each signal
-
-        # For now, this is a scaffold
-        self._logger.debug("Would evaluate strategies for all symbols")
-
         for symbol in self._config.symbols:
-            # TODO: Fetch indicators from database
-            # indicators = await self._fetch_indicators(symbol)
-            indicators = {}  # Placeholder
+            # Fetch indicators from database
+            indicators = await self._fetch_indicators(symbol)
+            if indicators is None:
+                # Warmup period - not enough data yet
+                continue
 
             for strategy in self._strategies.get(symbol, []):
                 try:
                     signal = await strategy.evaluate(symbol, indicators)
                     self._logger.info(f"{strategy.get_name()} generated {signal}")
 
-                    # Call signal callback if provided
-                    if on_signal:
+                    # Only forward BUY/SELL signals (skip HOLD)
+                    if signal.type != SignalType.HOLD and on_signal:
                         await on_signal(signal)
 
                 except Exception as exc:  # noqa: BLE001
                     self._logger.error(f"Strategy {strategy.get_name()} failed: {exc}")
+
+    async def _fetch_indicators(self, symbol: str) -> dict[str, float] | None:
+        """Fetch latest indicators for symbol from database.
+
+        Args:
+            symbol: Trading pair symbol
+
+        Returns:
+            Dict with ema_12, ema_26, close_price keys.
+            None if insufficient data (< 2 rows for crossover detection).
+        """
+        rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
+        if len(rows) < 2:
+            self._logger.info(
+                "Warming up %s: need 2 indicator rows, have %d", symbol, len(rows)
+            )
+            return None
+        return rows[-1]  # Return latest row (strategy handles crossover via state)
 
     def get_strategy_names(self) -> list[str]:
         """Get names of all active strategies."""

@@ -31,3 +31,6 @@ trading_execution:
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
   order_size_usdt: 100.0  # Default order size in USDT
+
+strategy:
+  evaluation_interval_seconds: 60

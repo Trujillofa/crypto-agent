@@ -15,11 +15,18 @@ from src.ingest.binance import BinanceIngestor
 from src.ingest.db import TimescaleWriter
 from src.ingest.metrics import IngestMetrics, MetricsServer
 from src.features import IndicatorComputer, IndicatorWriter
+from src.features.reader import IndicatorReader
 from src.features.metrics import IndicatorMetrics
 from src.execution import TradingExecutor, TradingConfig
 from src.execution.metrics import ExecutionMetrics
 from src.risk.manager import RiskManager
+from src.strategy import StrategyEngine, EngineConfig, SimpleMACrossoverStrategy
 from src.utils.logger import configure_logger
+
+
+@dataclass(frozen=True)
+class StrategySettings:
+    evaluation_interval_seconds: int
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,7 @@ class Settings:
     database: Mapping[str, object]
     prometheus_port: int
     trading_execution: TradingConfig
+    strategy: StrategySettings
 
 
 def load_settings(config_path: Path) -> Settings:
@@ -41,7 +49,10 @@ def load_settings(config_path: Path) -> Settings:
     trading = _as_mapping(root.get("trading"), "trading section")
     database = _as_mapping(root.get("database"), "database section")
     prometheus = _as_mapping(root.get("prometheus"), "prometheus section")
-    trading_exec = _as_mapping(root.get("trading_execution"), "trading_execution section")
+    trading_exec = _as_mapping(
+        root.get("trading_execution"), "trading_execution section"
+    )
+    strategy = _as_mapping(root.get("strategy"), "strategy section")
 
     # Get API key from environment if not in config
     import os as _os
@@ -79,6 +90,14 @@ def load_settings(config_path: Path) -> Settings:
         ),
     )
 
+    strategy_config = StrategySettings(
+        evaluation_interval_seconds=_as_int(
+            strategy.get("evaluation_interval_seconds"),
+            "strategy.evaluation_interval_seconds",
+            default=60,
+        )
+    )
+
     return Settings(
         mode=_as_str(root.get("mode"), "mode", default="paper"),
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
@@ -89,6 +108,7 @@ def load_settings(config_path: Path) -> Settings:
             prometheus.get("port"), "prometheus.port", default=8000
         ),
         trading_execution=trading_config,
+        strategy=strategy_config,
     )
 
 
@@ -198,6 +218,20 @@ async def run() -> None:
         metrics=execution_metrics,
     )
 
+    # Initialize indicator reader and strategy engine
+    indicator_reader = IndicatorReader(settings.database)
+    engine_config = EngineConfig(
+        symbols=settings.trading_pairs,
+        database=settings.database,
+        timeframe=settings.timeframe,
+        evaluation_interval_seconds=settings.strategy.evaluation_interval_seconds,
+        strategy_classes=[SimpleMACrossoverStrategy],
+        strategy_configs={
+            "SimpleMACrossoverStrategy": {"ema_short_period": 12, "ema_long_period": 26}
+        },
+    )
+    strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
+
     stop_event = asyncio.Event()
 
     def _handle_signal() -> None:
@@ -208,36 +242,51 @@ async def run() -> None:
 
     async with writer:
         async with indicator_writer:
-            async with ingestor:
-                async with trading_executor:
-                    # Start risk monitoring in background
-                    risk_task = asyncio.create_task(risk_manager.monitor_loop())
+            async with indicator_reader:
+                async with ingestor:
+                    async with trading_executor:
+                        async with strategy_engine:
+                            # Start risk monitoring in background
+                            risk_task = asyncio.create_task(risk_manager.monitor_loop())
 
-                    # Start OHLCV ingestion
-                    ingest_task = asyncio.create_task(ingestor.run(writer.write_ohlcv))
+                            # Start OHLCV ingestion
+                            ingest_task = asyncio.create_task(
+                                ingestor.run(writer.write_ohlcv)
+                            )
 
-                    # Start indicator computation
-                    indicator_task = asyncio.create_task(indicator_computer.run())
+                            # Start indicator computation
+                            indicator_task = asyncio.create_task(
+                                indicator_computer.run()
+                            )
 
-                    # Start trading executor
-                    trading_task = asyncio.create_task(trading_executor.run())
+                            # Start trading executor
+                            trading_task = asyncio.create_task(trading_executor.run())
 
-                    await stop_event.wait()
+                            # Start strategy engine
+                            strategy_task = asyncio.create_task(
+                                strategy_engine.run(
+                                    on_signal=trading_executor.on_signal
+                                )
+                            )
 
-                    # Cancel all tasks
-                    ingest_task.cancel()
-                    risk_task.cancel()
-                    indicator_task.cancel()
-                    trading_task.cancel()
+                            await stop_event.wait()
 
-                    indicator_computer.stop()
-                    trading_executor.stop()
+                            # Cancel all tasks
+                            ingest_task.cancel()
+                            risk_task.cancel()
+                            indicator_task.cancel()
+                            trading_task.cancel()
+                            strategy_task.cancel()
 
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await ingest_task
-                        await risk_task
-                        await indicator_task
-                        await trading_task
+                            indicator_computer.stop()
+                            trading_executor.stop()
+
+                            with contextlib.suppress(asyncio.CancelledError):
+                                await ingest_task
+                                await risk_task
+                                await indicator_task
+                                await trading_task
+                                await strategy_task
 
 
 def main() -> None:
