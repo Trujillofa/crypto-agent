@@ -226,9 +226,7 @@ async def run() -> None:
         timeframe=settings.timeframe,
         evaluation_interval_seconds=settings.strategy.evaluation_interval_seconds,
         strategy_classes=[SimpleMACrossoverStrategy],
-        strategy_configs={
-            "SimpleMACrossoverStrategy": {"ema_short_period": 12, "ema_long_period": 26}
-        },
+        strategy_configs=[{"ema_short_period": 12, "ema_long_period": 26}],
     )
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 

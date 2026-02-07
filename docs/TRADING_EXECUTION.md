@@ -22,7 +22,7 @@ TradingExecutor
     ↓
 BinancePrivateClient (API calls)
     ↓
-Order Placement/Position Monitoring
+Order Placement/Account Monitoring
     ↓
 Prometheus Metrics + Notifications
 ```
@@ -41,13 +41,20 @@ Async Binance Spot API client with methods:
 - `get_open_orders(symbol)` - Get open orders
 
 #### Order Execution
-- `place_market_order(symbol, side, quantity=None, quoteOrderQty=None)` - Place market order (BUY uses quoteOrderQty, SELL uses quantity)
+- `place_market_order(symbol, side, quantity)` - Place market order
+  - **BUY**: Uses `quoteOrderQty` internally (spend X USDT to acquire base asset)
+  - **SELL**: Uses `quantity` parameter (sell Y amount of base asset)
 - `place_limit_order(symbol, side, price, quantity)` - Place limit order
 - `cancel_order(symbol, order_id)` - Cancel single order
 - `cancel_all_orders(symbol)` - Cancel all orders for a symbol
 
 #### Order Query
 - `get_order_status(symbol, order_id)` - Query order status
+
+**Important Spot API Behavior**:
+- BUY orders require sufficient USDT balance (order uses quoteOrderQty)
+- SELL orders require holding the base asset (no short-selling on Spot)
+- Executor checks asset balance before SELL signals
 
 **Test Mode**: Set `test_mode=True` to skip actual API calls (for development/testing).
 
@@ -57,16 +64,22 @@ Async Binance Spot API client with methods:
 
 Main trading service that:
 1. Checks risk manager before placing orders
-2. Enforces position limits
+2. Enforces position limits (risk management for Spot holdings)
 3. Records execution metrics
-4. Monitors positions and orders periodically
+4. Monitors account balance and open orders periodically
 
 #### Key Methods
-- `run()` - Main trading loop (monitors every 30s)
+- `run()` - Main trading loop (monitors account balance every 30s)
+- `on_signal(signal)` - Process trading signals from StrategyEngine
 - `place_market_order(symbol, side, quantity)` - Place market order with risk checks
 - `place_limit_order(symbol, side, price, quantity)` - Place limit order with risk checks
 - `cancel_order(symbol, order_id)` - Cancel an order
 - `cancel_all_orders(symbol)` - Cancel all orders for a symbol
+
+**Signal Handler**:
+- BUY signal: Places market order using `order_size_usdt` (quoteOrderQty)
+- SELL signal: Checks asset balance, sells if held (base asset quantity)
+- HOLD signal: Ignored (no action taken)
 
 ### RiskManager Integration
 
@@ -131,7 +144,7 @@ The execution system exports the following metrics:
 
 ### Gauges
 - `execution_open_orders_count{symbol}` - Current open orders per symbol
-- `execution_account_balance{asset}` - Account balance per asset
+- `execution_account_balance{type}` - Account balance (type: total_wallet, available)
 - `execution_trading_active` - Whether trading is active (1/0)
 
 ### Histograms
@@ -219,15 +232,15 @@ export BINANCE_API_SECRET="your_api_secret"
 python scripts/test_binance_private.py
 ```
 
-This tests:
-1. Account info endpoint
-2. Balance endpoint
-3. Position info endpoint
-4. Open orders endpoint
-5. User trades endpoint
-6. Income history endpoint
-7. Leverage brackets endpoint
-8. API key permissions endpoint
+This tests (Binance Spot API endpoints):
+1. **Account info**: `GET /api/v3/account` - Get wallet balances
+2. **Asset balance**: `GET /api/v3/account` - Query specific asset balance
+3. **Open orders**: `GET /api/v3/openOrders` - List open orders
+4. **Order placement**: `POST /api/v3/order` - Place market/limit orders
+5. **Order cancellation**: `DELETE /api/v3/order` - Cancel orders
+6. **API key permissions**: Validates Spot trading permissions
+
+**Note**: Spot API only. No Futures, margin, or leverage endpoints.
 
 ### Test Trading Execution
 

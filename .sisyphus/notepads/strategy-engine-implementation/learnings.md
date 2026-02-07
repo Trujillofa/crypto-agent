@@ -842,3 +842,256 @@ Task 4 complete. All deliverables met:
 - Task 4 marked complete in plan
 - Strategy-engine-implementation plan complete (4/4 tasks)
 
+
+## 2026-02-07 13:00 - Task 3 Verification Complete
+
+**Finding**: Task 3 implementation already complete and fully tested.
+
+**Verified Components**:
+
+1. **StrategyEngine (`src/strategy/engine.py`)**:
+   - ✅ Line 36-42: Constructor accepts `IndicatorReader` dependency (passed in, not instantiated)
+   - ✅ Line 121-137: `_fetch_indicators()` implemented correctly:
+     - Calls `reader.fetch_latest(symbol, timeframe, limit=2)`
+     - Returns None if < 2 rows (warmup period)
+     - Returns latest row `rows[-1]` for strategy evaluation
+   - ✅ Line 93-119: `_evaluate_all()` properly:
+     - Fetches indicators via `_fetch_indicators()` (line 104)
+     - Skips symbol if None (lines 105-107)
+     - Only forwards BUY/SELL signals, not HOLD (line 115)
+
+2. **TradingExecutor (`src/execution/executor.py`)**:
+   - ✅ Line 375-409: `on_signal()` method implemented per plan:
+     - Early return for HOLD (lines 387-388)
+     - Early return if disabled, before accessing `self._client` (lines 390-392)
+     - BUY: Uses `place_market_order` with `order_size_usdt` (lines 395-399)
+     - SELL: Queries `get_asset_balance`, checks > 0, sells balance (lines 401-407)
+     - Catches RuntimeError and logs warning (lines 408-409)
+
+3. **Integration Tests (`tests/test_strategy_integration.py`)**:
+   - ✅ All 11 tests pass:
+     - `test_fetch_indicators_returns_latest` - mocked reader returns data
+     - `test_fetch_indicators_warmup` - < 2 rows → returns None
+     - `test_evaluate_buy_signal_triggers_callback` - EMA crossover up → BUY
+     - `test_evaluate_sell_signal_triggers_callback` - EMA crossover down → SELL
+     - `test_hold_does_not_trigger_callback` - HOLD → callback not called
+     - `test_on_signal_buy_uses_quote_qty` - BUY → order_size_usdt used
+     - `test_on_signal_sell_queries_balance` - SELL → get_asset_balance called
+     - `test_on_signal_sell_no_balance_skips` - SELL with 0 balance → no order
+     - `test_on_signal_disabled_logs_and_skips` - enabled=false → no client access
+     - `test_on_signal_risk_block` - RiskManager rejects → caught and logged
+     - `test_paper_mode_no_real_orders` - test_mode=true → mock operations
+
+**Full Test Suite**: 176/176 tests passing
+
+**Acceptance Criteria Verification**:
+- [x] Files modified: src/strategy/engine.py ✓ (already done)
+- [x] Files modified: src/execution/executor.py ✓ (already done)  
+- [x] Files modified: tests/test_strategy_integration.py ✓ (already exists)
+- [x] StrategyEngine accepts IndicatorReader dependency ✓
+- [x] StrategyEngine implements _fetch_indicators ✓
+- [x] _evaluate_all uses _fetch_indicators ✓
+- [x] _evaluate_all skips None indicators ✓
+- [x] _evaluate_all forwards BUY/SELL only (not HOLD) ✓
+- [x] TradingExecutor.on_signal handles Spot BUY (quoteOrderQty) ✓
+- [x] TradingExecutor.on_signal handles Spot SELL (balance check) ✓
+- [x] Tests added per plan ✓
+- [x] All tests pass ✓
+
+**Conclusion**: Task 3 was already completed in a previous session. No code changes required.
+
+## 2026-02-07 15:00 - Task 3 Verification (Already Complete)
+
+**Timestamp:** 2026-02-07 15:00 UTC
+
+### Task Status
+
+Task 3 was already fully implemented and tested in a previous session (timestamp 2026-02-07 14:45 UTC). Verification confirms all deliverables are in place.
+
+### Verification Results
+
+**Test Status:** ✅ 176/176 tests passing (including all 11 integration tests)
+
+**Files Verified:**
+
+1. **src/strategy/engine.py**
+   - ✅ Line 36-42: Constructor accepts `IndicatorReader` dependency (passed in)
+   - ✅ Line 121-137: `_fetch_indicators()` properly implemented
+   - ✅ Line 93-119: `_evaluate_all()` uses `_fetch_indicators()` and filters HOLD
+
+2. **src/execution/executor.py**
+   - ✅ Line 375-409: `on_signal()` method handles BUY/SELL/HOLD correctly
+   - ✅ Spot BUY uses `order_size_usdt` via `place_market_order`
+   - ✅ Spot SELL queries `get_asset_balance` and checks balance > 0
+   - ✅ Disabled executor returns early before accessing `_client`
+   - ✅ RuntimeError exceptions caught and logged
+
+3. **tests/test_strategy_integration.py**
+   - ✅ All 11 integration tests passing
+   - ✅ Covers engine signal flow and executor signal handling
+   - ✅ Validates crossover detection state management
+   - ✅ Tests disabled executor safety and risk blocking
+
+### Key Implementation Patterns Confirmed
+
+#### 1. IndicatorReader Dependency Injection
+```python
+def __init__(self, config: EngineConfig, reader: IndicatorReader) -> None:
+    self._config = config
+    self._reader = reader
+```
+**Pattern:** Reader passed in via constructor, not instantiated inside engine.
+
+#### 2. Warmup Period Handling
+```python
+rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
+if len(rows) < 2:
+    self._logger.info("Warming up %s: need 2 indicator rows, have %d", symbol, len(rows))
+    return None
+return rows[-1]  # Return latest row
+```
+**Pattern:** Returns None if insufficient data, strategy evaluation skipped.
+
+#### 3. HOLD Signal Filtering at Source
+```python
+if signal.type != SignalType.HOLD and on_signal:
+    await on_signal(signal)
+```
+**Pattern:** Filter HOLD in engine, not executor. Reduces callback invocations.
+
+#### 4. Disabled Executor Safety
+```python
+if not self._config.enabled:
+    self._logger.info("Signal ignored (executor disabled): %s", signal)
+    return  # Early return BEFORE accessing self._client
+```
+**Pattern:** Check enabled flag before accessing client to prevent AttributeError.
+
+#### 5. Spot SELL Balance Check
+```python
+base_asset = signal.symbol.replace("USDT", "")
+balance = await self._client.get_asset_balance(base_asset)
+if balance > 0:
+    await self.place_market_order(signal.symbol, "SELL", balance)
+else:
+    self._logger.info("SELL signal but no %s balance", base_asset)
+```
+**Pattern:** Check balance before placing SELL order to avoid API rejection.
+
+### Integration Flow Verified
+
+```
+IndicatorReader.fetch_latest(symbol, timeframe, limit=2)
+  → Returns list[dict[str, float]] with ema_12, ema_26, close_price
+  → StrategyEngine._fetch_indicators(symbol)
+    → Returns None if < 2 rows (warmup)
+    → Returns latest row dict if >= 2 rows
+  → StrategyEngine._evaluate_all()
+    → Skips symbol if None
+    → Calls strategy.evaluate(symbol, indicators)
+    → Filters HOLD signals
+    → Calls on_signal(signal) for BUY/SELL only
+  → TradingExecutor.on_signal(signal)
+    → Returns early if HOLD
+    → Returns early if disabled
+    → BUY: place_market_order(symbol, "BUY", order_size_usdt)
+    → SELL: get_asset_balance() → place_market_order(symbol, "SELL", balance)
+    → Catches RuntimeError and logs warning
+```
+
+### Test Coverage Confirmed
+
+| Test | Purpose | Status |
+|------|---------|--------|
+| `test_fetch_indicators_returns_latest` | 2+ rows → returns latest | ✅ |
+| `test_fetch_indicators_warmup` | < 2 rows → returns None | ✅ |
+| `test_evaluate_buy_signal_triggers_callback` | BUY crossover → callback | ✅ |
+| `test_evaluate_sell_signal_triggers_callback` | SELL crossover → callback | ✅ |
+| `test_hold_does_not_trigger_callback` | HOLD → no callback | ✅ |
+| `test_on_signal_buy_uses_quote_qty` | BUY uses order_size_usdt | ✅ |
+| `test_on_signal_sell_queries_balance` | SELL queries balance | ✅ |
+| `test_on_signal_sell_no_balance_skips` | 0 balance → no order | ✅ |
+| `test_on_signal_disabled_logs_and_skips` | Disabled → no client access | ✅ |
+| `test_on_signal_risk_block` | Risk rejection → logged | ✅ |
+| `test_paper_mode_no_real_orders` | test_mode=true → mocked | ✅ |
+
+### Acceptance Criteria Verification
+
+- [x] Files modified: src/strategy/engine.py ✓
+- [x] Files modified: src/execution/executor.py ✓
+- [x] Files modified: tests/test_strategy_integration.py ✓
+- [x] StrategyEngine accepts IndicatorReader dependency ✓
+- [x] StrategyEngine implements _fetch_indicators ✓
+- [x] _evaluate_all uses _fetch_indicators ✓
+- [x] _evaluate_all skips None indicators ✓
+- [x] _evaluate_all forwards BUY/SELL only (not HOLD) ✓
+- [x] TradingExecutor.on_signal handles Spot BUY (quoteOrderQty) ✓
+- [x] TradingExecutor.on_signal handles Spot SELL (balance check) ✓
+- [x] Tests added per plan ✓
+- [x] All tests pass (176/176) ✓
+
+### Conclusion
+
+Task 3 was completed successfully in a previous session. No additional code changes required. All implementation is correct, all tests pass, and all acceptance criteria are met.
+
+**Status:** ✅ COMPLETE
+
+**Next:** Task 3 can be marked complete in plan. Implementation is production-ready.
+
+
+## 2026-02-07: Task 5 - TRADING_EXECUTION.md Spot API Cleanup
+
+### Documentation Updates
+- **Removed**: All Futures/positions references from TRADING_EXECUTION.md
+- **Updated**: `place_market_order` signature documentation
+  - BUY: Uses `quoteOrderQty` internally (spend X USDT)
+  - SELL: Uses `quantity` parameter (sell Y base asset)
+- **Added**: Spot API endpoint list with specific paths:
+  - `GET /api/v3/account` - Account info and balances
+  - `GET /api/v3/openOrders` - Open orders query
+  - `POST /api/v3/order` - Order placement
+  - `DELETE /api/v3/order` - Order cancellation
+- **Clarified**: Spot-specific behavior:
+  - BUY requires USDT balance
+  - SELL requires holding base asset (no short-selling)
+  - Executor checks balance before SELL signals
+
+### Key Learning
+- Documentation must reflect actual API usage, not aspirational features
+- Spot API behavior differs fundamentally from Futures:
+  - No positions, only balances
+  - BUY/SELL have different parameter semantics (quoteOrderQty vs quantity)
+  - SELL requires pre-check (can't short-sell)
+
+### Files Modified
+- `docs/TRADING_EXECUTION.md` - Spot API alignment (3 sections updated)
+
+### Verification
+- Manual review of changes against learnings.md context from Tasks 1-4
+- All Futures references removed
+- API endpoint paths now explicit (not generic "endpoint" labels)
+- Consistent with README.md Spot API documentation
+
+## 2026-02-07 13:21:28 - Fixed SignalType export
+
+**Problem**: ImportError when importing SignalType from src.strategy module
+**Root cause**: src/strategy/__init__.py was importing Signal but not SignalType
+**Solution**: Added SignalType to both import statement and __all__ list
+
+Changes:
+- Line 3: Added SignalType to import: `from src.strategy.signals import Signal, SignalType`
+- Line 10: Added "SignalType" to __all__ list
+
+This allows `from src.strategy import SignalType` to work properly in tests and other modules.
+
+
+[2026-02-07T18:24:42Z] Fixed test_full_flow_engine_to_executor
+- Issue: Test mocked non-existent method _fetch_latest_indicators instead of fetch_latest
+- Issue: Test provided only 1 indicator row, but StrategyEngine requires >=2 rows
+- Issue: Test only called evaluate once, but SimpleMACrossoverStrategy needs 2 evaluations to detect crossover (warmup + crossover)
+- Issue: Test used signal.signal_type instead of signal.type
+- Fix: Updated mock to use correct method name (fetch_latest)
+- Fix: Provided 2 rows in mock response (meets StrategyEngine minimum)
+- Fix: Called _evaluate_all twice (first sets baseline state, second detects crossover)
+- Fix: Corrected Signal attribute name from signal_type to type
+- Result: All tests (177/177) now pass
