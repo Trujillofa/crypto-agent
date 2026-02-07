@@ -22,7 +22,7 @@ from src.execution.metrics import ExecutionMetrics
 from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy import StrategyEngine, EngineConfig, SimpleMACrossoverStrategy
-from src.utils.logger import configure_logger
+from src.utils.logger import configure_logger, get_logger
 
 
 @dataclass(frozen=True)
@@ -184,7 +184,8 @@ async def run() -> None:
     # Check if trading is allowed
     is_allowed, reason = risk_manager.is_trading_allowed()
     if not is_allowed:
-        print(f"Trading blocked: {reason}")
+        logger = get_logger("main")
+        logger.error("Trading blocked: %s", reason)
         return
 
     # Initialize metrics

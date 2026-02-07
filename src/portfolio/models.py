@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class PositionStatus(Enum):
@@ -32,7 +36,7 @@ class Position:
 
     id: int | None = None
     symbol: str = ""
-    entry_time: datetime = field(default_factory=datetime.utcnow)
+    entry_time: datetime = field(default_factory=_utc_now)
     entry_price: float = 0.0
     quantity: float = 0.0
     status: PositionStatus = PositionStatus.OPEN
@@ -79,7 +83,7 @@ class Position:
             Realized profit/loss
         """
         self.exit_price = exit_price
-        self.exit_time = exit_time or datetime.utcnow()
+        self.exit_time = exit_time or datetime.now(timezone.utc)
         self.status = PositionStatus.CLOSED
         self.realized_pnl = (exit_price - self.entry_price) * self.quantity
         return self.realized_pnl
@@ -102,7 +106,7 @@ class Trade:
     """
 
     id: int | None = None
-    time: datetime = field(default_factory=datetime.utcnow)
+    time: datetime = field(default_factory=_utc_now)
     symbol: str = ""
     side: str = ""  # "BUY" or "SELL"
     quantity: float = 0.0

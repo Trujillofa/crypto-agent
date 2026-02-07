@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pg8000
@@ -202,7 +202,7 @@ class PortfolioManager:
         Returns:
             The created Position
         """
-        entry_time = datetime.utcnow()
+        entry_time = datetime.now(timezone.utc)
 
         if self._use_sqlite:
             insert_query = """
@@ -293,7 +293,7 @@ class PortfolioManager:
             raise ValueError(f"No open position for {symbol}")
 
         position = self._positions[symbol]
-        exit_time = datetime.utcnow()
+        exit_time = datetime.now(timezone.utc)
         realized_pnl = position.close(price, exit_time)
 
         if self._use_sqlite:
