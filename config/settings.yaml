@@ -15,12 +15,21 @@ trading:
     - LINKUSDT
   timeframe: 1m
 
+ingest:
+  use_websocket: true
+
 database:
   host: timescaledb
   port: 5432
   name: marketdata
   user: trading
   password: change_me
+
+telegram:
+  enabled: true
+  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
+  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
+  rate_limit_seconds: 5
 
 prometheus:
   port: 8000

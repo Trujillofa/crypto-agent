@@ -60,6 +60,14 @@ def test_settings_all_required_sections():
     assert settings.strategy is not None, "Strategy config required"
 
 
+def test_settings_telegram_config():
+    """Verify telegram settings are loaded correctly."""
+    settings = load_settings(Path("config/settings.yaml"))
+    assert settings.telegram is not None, "Telegram config required"
+    assert settings.telegram.rate_limit_seconds == 5
+    assert isinstance(settings.telegram.enabled, bool)
+
+
 @pytest.mark.asyncio
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""

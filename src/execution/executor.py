@@ -56,6 +56,10 @@ class TradingExecutor:
             )
             return self
 
+        if not self._config.api_key or not self._config.api_secret:
+            self._logger.error("Trading enabled but API keys are missing")
+            raise RuntimeError("API keys missing for enabled trading execution")
+
         self._client = BinancePrivateClient(
             api_key=self._config.api_key,
             api_secret=self._config.api_secret,

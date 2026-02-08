@@ -12,6 +12,7 @@ from typing import cast
 import yaml
 
 from src.ingest.binance import BinanceIngestor
+from src.ingest.websocket import BinanceWebSocketIngestor
 from src.ingest.db import TimescaleWriter
 from src.ingest.metrics import IngestMetrics, MetricsServer
 from src.features import IndicatorComputer, IndicatorWriter
@@ -19,6 +20,7 @@ from src.features.reader import IndicatorReader
 from src.features.metrics import IndicatorMetrics
 from src.execution import TradingExecutor, TradingConfig
 from src.execution.metrics import ExecutionMetrics
+from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy import (
@@ -48,6 +50,8 @@ class Settings:
     prometheus_port: int
     trading_execution: TradingConfig
     strategy: StrategySettings
+    telegram: TelegramConfig
+    use_websocket: bool
 
 
 def load_settings(config_path: Path) -> Settings:
@@ -62,6 +66,8 @@ def load_settings(config_path: Path) -> Settings:
         root.get("trading_execution"), "trading_execution section"
     )
     strategy = _as_mapping(root.get("strategy"), "strategy section")
+    ingest = _as_mapping(root.get("ingest"), "ingest section")
+    telegram = _as_mapping(root.get("telegram"), "telegram section")
 
     # Get API key from environment if not in config
     import os as _os
@@ -107,6 +113,25 @@ def load_settings(config_path: Path) -> Settings:
         )
     )
 
+    telegram_bot_token = _as_str(
+        telegram.get("bot_token"), "telegram.bot_token", default=""
+    )
+    if not telegram_bot_token:
+        telegram_bot_token = _os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+
+    telegram_chat_id = _as_str(telegram.get("chat_id"), "telegram.chat_id", default="")
+    if not telegram_chat_id:
+        telegram_chat_id = _os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+    telegram_config = TelegramConfig(
+        bot_token=telegram_bot_token,
+        chat_id=telegram_chat_id,
+        enabled=_as_bool(telegram.get("enabled"), "telegram.enabled", default=True),
+        rate_limit_seconds=_as_int(
+            telegram.get("rate_limit_seconds"), "telegram.rate_limit_seconds", default=5
+        ),
+    )
+
     return Settings(
         mode=_as_str(root.get("mode"), "mode", default="paper"),
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
@@ -118,6 +143,10 @@ def load_settings(config_path: Path) -> Settings:
         ),
         trading_execution=trading_config,
         strategy=strategy_config,
+        telegram=telegram_config,
+        use_websocket=_as_bool(
+            ingest.get("use_websocket"), "ingest.use_websocket", default=False
+        ),
     )
 
 
@@ -206,9 +235,15 @@ async def run() -> None:
 
     # Initialize OHLCV writer and ingestor
     writer = TimescaleWriter(settings.database, ingest_metrics)
-    ingestor = BinanceIngestor(
-        settings.trading_pairs, settings.timeframe, ingest_metrics
-    )
+
+    if settings.use_websocket:
+        ingestor = BinanceWebSocketIngestor(
+            settings.trading_pairs, settings.timeframe, ingest_metrics
+        )
+    else:
+        ingestor = BinanceIngestor(
+            settings.trading_pairs, settings.timeframe, ingest_metrics
+        )
 
     # Initialize indicator pipeline
     indicator_writer = IndicatorWriter(settings.database)
@@ -224,12 +259,15 @@ async def run() -> None:
     # Initialize portfolio manager for position tracking
     portfolio_manager = PortfolioManager(settings.database)
 
+    telegram_notifier = TelegramNotifier(settings.telegram)
+
     # Initialize trading executor
     trading_executor = TradingExecutor(
         config=settings.trading_execution,
         risk_manager=risk_manager,
         metrics=execution_metrics,
         portfolio_manager=portfolio_manager,
+        notifier=telegram_notifier,
     )
 
     # Initialize indicator reader and strategy engine

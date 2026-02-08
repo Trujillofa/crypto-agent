@@ -194,6 +194,20 @@ class TestTradingExecutorOnSignal:
     """Test TradingExecutor.on_signal() method."""
 
     @pytest.mark.asyncio
+    async def test_init_raises_without_keys_when_enabled(self, risk_manager, metrics):
+        """Executor raises RuntimeError if enabled but keys are missing."""
+        config = TradingConfig(
+            api_key="",
+            api_secret="",
+            test_mode=True,
+            enabled=True,
+        )
+        executor = TradingExecutor(config, risk_manager, metrics)
+
+        with pytest.raises(RuntimeError, match="API keys missing"):
+            await executor.__aenter__()
+
+    @pytest.mark.asyncio
     async def test_on_signal_buy_uses_quote_qty(
         self, trading_config, risk_manager, metrics
     ):
