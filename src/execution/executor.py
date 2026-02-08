@@ -130,6 +130,37 @@ class TradingExecutor:
         if open_orders_data:
             self._metrics.update_open_orders(open_orders_data)
 
+    async def _wait_for_fill(
+        self, symbol: str, order_id: str, timeout: float = 5.0
+    ) -> OrderInfo:
+        """Poll order status until filled or timeout.
+
+        Args:
+            symbol: Trading pair symbol
+            order_id: Order ID to poll
+            timeout: Max seconds to wait
+
+        Returns:
+            Updated OrderInfo
+        """
+        start_time = time.time()
+        while (time.time() - start_time) < timeout:
+            try:
+                if self._client is None:
+                    break
+                order = await self._client.get_order_status(symbol, order_id)
+                if order.status in ("FILLED", "CANCELED", "EXPIRED", "REJECTED"):
+                    return order
+                await asyncio.sleep(0.5)
+            except Exception as exc:
+                self._logger.warning(f"Error polling order {order_id}: {exc}")
+                await asyncio.sleep(1.0)
+
+        # Return last known status
+        if self._client:
+            return await self._client.get_order_status(symbol, order_id)
+        raise RuntimeError("Client disconnected during polling")
+
     async def place_market_order(
         self,
         symbol: str,
@@ -187,6 +218,21 @@ class TradingExecutor:
             )
             elapsed = time.perf_counter() - start_time
 
+            # E-2: Order Reconciliation - Poll for fill if not immediately filled
+            if order.status not in ("FILLED", "CANCELED", "EXPIRED", "REJECTED"):
+                self._logger.info(
+                    "Order %s not immediately filled (status: %s). Polling...",
+                    order.order_id,
+                    order.status,
+                )
+                try:
+                    order = await self._wait_for_fill(symbol, str(order.order_id))
+                except Exception as poll_exc:
+                    self._logger.warning(
+                        "Polling failed for order %s: %s", order.order_id, poll_exc
+                    )
+                    # We continue with the last known state of 'order'
+
             self._metrics.record_order_placed(
                 symbol=symbol,
                 order_type="MARKET",
@@ -205,6 +251,12 @@ class TradingExecutor:
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
                         )
+                        # Register position in risk manager
+                        self._risk_manager.register_open_position(
+                            symbol,
+                            quantity * (float(order.price) if order.price else 0.0),
+                            float(order.price) if order.price else 0.0,
+                        )
                     elif side == "SELL":
                         _, pnl = await self._portfolio_manager.close_position(
                             symbol=symbol,
@@ -217,6 +269,8 @@ class TradingExecutor:
                             pnl=pnl,
                             portfolio_value=portfolio_value,
                         )
+                        # Register position close in risk manager
+                        self._risk_manager.register_close_position(symbol)
 
             self._logger.info(
                 "Market order placed: %s %s %s (qty: %.4f, status: %s)",
@@ -304,6 +358,22 @@ class TradingExecutor:
                 quantity=quantity,
             )
             elapsed = time.perf_counter() - start_time
+
+            # Order Reconciliation - Poll for fill if not immediately filled
+            if order.status not in ("FILLED", "CANCELED", "EXPIRED", "REJECTED"):
+                self._logger.info(
+                    "Limit order %s status: %s. Polling...",
+                    order.order_id,
+                    order.status,
+                )
+                try:
+                    order = await self._wait_for_fill(symbol, str(order.order_id))
+                except Exception as poll_exc:
+                    self._logger.warning(
+                        "Polling failed for limit order %s: %s",
+                        order.order_id,
+                        poll_exc,
+                    )
 
             self._metrics.record_order_placed(
                 symbol=symbol,
@@ -420,6 +490,16 @@ class TradingExecutor:
 
         try:
             if signal.type == SignalType.BUY:
+                # Check for duplicate orders/existing positions
+                if self._portfolio_manager and self._portfolio_manager.has_position(
+                    signal.symbol
+                ):
+                    self._logger.info(
+                        "BUY signal ignored: Position already exists for %s",
+                        signal.symbol,
+                    )
+                    return
+
                 order = await self.place_market_order(
                     signal.symbol, "BUY", self._config.order_size_usdt
                 )

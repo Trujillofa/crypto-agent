@@ -119,21 +119,45 @@ def load_settings(config_path: Path) -> Settings:
     if not telegram_bot_token:
         telegram_bot_token = _os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
-    telegram_chat_id = _as_str(telegram.get("chat_id"), "telegram.chat_id", default="")
+    telegram_chat_id = _as_str(
+        telegram.get("chat_id"), "telegram.chat_id", default=""
+    )
     if not telegram_chat_id:
         telegram_chat_id = _os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
     telegram_config = TelegramConfig(
         bot_token=telegram_bot_token,
         chat_id=telegram_chat_id,
-        enabled=_as_bool(telegram.get("enabled"), "telegram.enabled", default=True),
+        enabled=_as_bool(telegram.get("enabled"), "telegram.enabled", default=False),
         rate_limit_seconds=_as_int(
-            telegram.get("rate_limit_seconds"), "telegram.rate_limit_seconds", default=5
+            telegram.get("rate_limit_seconds"),
+            "telegram.rate_limit_seconds",
+            default=5,
         ),
     )
 
+    # BLOCKER R-1 FIX: Enforce mode: paper safety
+    global_mode = _as_str(root.get("mode"), "mode", default="paper")
+    if global_mode == "paper":
+        if not trading_config.test_mode:
+            import logging
+
+            logging.getLogger("settings").warning(
+                "Configured mode='paper' but trading_execution.test_mode=False. "
+                "Forcing test_mode=True for safety."
+            )
+            # Create new config with test_mode=True (dataclass is frozen, so use replace or new init)
+            trading_config = TradingConfig(
+                api_key=trading_config.api_key,
+                api_secret=trading_config.api_secret,
+                test_mode=True,  # FORCE TRUE
+                enabled=trading_config.enabled,
+                symbols=trading_config.symbols,
+                order_size_usdt=trading_config.order_size_usdt,
+            )
+
     return Settings(
-        mode=_as_str(root.get("mode"), "mode", default="paper"),
+        mode=global_mode,
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
         trading_pairs=trading_pairs,
         timeframe=_as_str(trading.get("timeframe"), "trading.timeframe", default="1m"),

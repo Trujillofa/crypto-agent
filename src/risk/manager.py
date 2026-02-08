@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import asyncio
+import json
 import time
+import asyncio
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -54,10 +56,12 @@ class RiskManager:
         self,
         config_path: Path | None = None,
         notifier: TelegramNotifier | None = None,
+        state_path: Path | None = None,
     ) -> None:
         self._logger = get_logger(self.__class__.__name__)
         self._config = self._load_config(config_path)
         self._notifier = notifier or TelegramNotifier()
+        self._state_path = state_path or Path("data/risk_state.json")
         self._logger.info("Risk manager initialized")
 
         # Trading state tracking
@@ -78,6 +82,9 @@ class RiskManager:
 
         # Track daily reset
         self._last_reset: float = time.time()
+
+        # Load persisted state if available
+        self._load_state()
 
         # Pending notifications (for async sending)
         self._pending_notifications: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
@@ -102,6 +109,51 @@ class RiskManager:
             circuit_breakers=CircuitBreakers(**raw.get("circuit_breakers", {})),
             kill_switch=KillSwitch(**raw.get("kill_switch", {})),
         )
+
+    def _load_state(self) -> None:
+        """Load risk state from disk."""
+        if not self._state_path.exists():
+            return
+
+        try:
+            with self._state_path.open("r", encoding="utf-8") as f:
+                state = json.load(f)
+
+            self._positions = state.get("positions", {})
+            self._daily_pnl = state.get("daily_pnl", 0.0)
+            self._peak_balance = state.get("peak_balance", 0.0)
+            self._consecutive_losses = state.get("consecutive_losses", 0)
+            self._api_error_count = state.get("api_error_count", 0)
+            self._kill_switch_triggered = state.get("kill_switch_triggered", False)
+            self._circuit_breakers = state.get(
+                "circuit_breakers", self._circuit_breakers
+            )
+            self._last_reset = state.get("last_reset", time.time())
+
+            self._logger.info("Loaded risk state from disk")
+
+        except Exception as exc:
+            self._logger.error(f"Failed to load risk state: {exc}")
+
+    def _save_state(self) -> None:
+        """Save risk state to disk."""
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            state = {
+                "positions": self._positions,
+                "daily_pnl": self._daily_pnl,
+                "peak_balance": self._peak_balance,
+                "consecutive_losses": self._consecutive_losses,
+                "api_error_count": self._api_error_count,
+                "kill_switch_triggered": self._kill_switch_triggered,
+                "circuit_breakers": self._circuit_breakers,
+                "last_reset": self._last_reset,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with self._state_path.open("w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception as exc:
+            self._logger.error(f"Failed to save risk state: {exc}")
 
     def check_position_limit(
         self, symbol: str, quantity_usdt: float, portfolio_value: float
@@ -140,6 +192,23 @@ class RiskManager:
 
         return True, "OK"
 
+    def register_open_position(
+        self, symbol: str, quantity_usdt: float, price: float
+    ) -> None:
+        """Register a newly opened position in risk manager."""
+        self._positions[symbol] = {
+            "entry_price": price,
+            "quantity_usdt": quantity_usdt,
+            "entry_time": time.time(),
+        }
+        self._save_state()
+
+    def register_close_position(self, symbol: str) -> None:
+        """Register a closed position in risk manager."""
+        if symbol in self._positions:
+            del self._positions[symbol]
+            self._save_state()
+
     def record_trade(self, symbol: str, pnl: float, portfolio_value: float) -> None:
         """Record a completed trade for risk tracking."""
         self._daily_pnl += pnl
@@ -157,6 +226,8 @@ class RiskManager:
                 self._trigger_circuit_breaker("max_single_loss")
         else:
             self._consecutive_losses = 0
+
+        self._save_state()  # Persist PnL and counters
 
         # Check consecutive losses circuit breaker
         if self._consecutive_losses >= self._config.circuit_breakers.consecutive_losses:
@@ -207,6 +278,7 @@ class RiskManager:
     def _trigger_circuit_breaker(self, reason: str) -> None:
         """Trigger a circuit breaker."""
         self._circuit_breakers[reason] = True
+        self._save_state()  # Persist circuit breaker state
         self._logger.error(f"CIRCUIT BREAKER TRIGGERED: {reason}")
 
         # Queue circuit breaker notification
@@ -221,6 +293,7 @@ class RiskManager:
             return
 
         self._kill_switch_triggered = True
+        self._save_state()  # Persist kill switch state
         self._logger.critical(f"KILL SWITCH ACTIVATED: {reason}")
 
         # Queue Telegram notification
@@ -238,6 +311,7 @@ class RiskManager:
             self._consecutive_losses = 0
             self._api_error_count = 0
             self._last_reset = current_time
+            self._save_state()  # Persist reset
 
     def is_trading_allowed(self) -> tuple[bool, str]:
         """Check if trading is currently allowed."""

@@ -2,6 +2,7 @@
 """Test risk management functionality."""
 
 import sys
+import tempfile
 from pathlib import Path
 
 # Add project root to path
@@ -9,15 +10,30 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.risk.manager import RiskManager
 
+# Use a temp directory for risk state to avoid pollution between tests
+_tmp_dir = tempfile.mkdtemp()
+_state_path = Path(_tmp_dir) / "risk_state.json"
+
+
+def _make_risk() -> RiskManager:
+    """Create a fresh RiskManager with clean state."""
+    if _state_path.exists():
+        _state_path.unlink()
+    return RiskManager(Path("config/risk.yaml"), state_path=_state_path)
+
 
 def test_risk_management():
     """Test risk manager functionality."""
     print("🧪 Testing Risk Management System...")
     print()
 
+    # Clean state for each run
+    if _state_path.exists():
+        _state_path.unlink()
+
     # Create risk manager
     print("1️⃣  Initializing risk manager...")
-    risk = RiskManager(Path("config/risk.yaml"))
+    risk = _make_risk()
     print("   ✅ Risk manager initialized")
     print()
 
@@ -44,7 +60,7 @@ def test_risk_management():
     # Test 3: API error tracking
     print("4️⃣  Testing API error circuit breaker...")
     # Create fresh risk manager for this test
-    risk = RiskManager(Path("config/risk.yaml"))
+    risk = _make_risk()
 
     # Record 2 errors (should not trigger yet)
     risk.record_api_error()
@@ -64,7 +80,7 @@ def test_risk_management():
     # Test 4: Consecutive losses
     print("5️⃣  Testing consecutive losses circuit breaker...")
     # Create fresh risk manager for this test
-    risk = RiskManager(Path("config/risk.yaml"))
+    risk = _make_risk()
 
     # Record 4 small losses (should not trigger)
     for _ in range(4):
@@ -84,7 +100,7 @@ def test_risk_management():
     # Test 5: Max single loss
     print("6️⃣  Testing max single loss limit...")
     # Create fresh risk manager for this test
-    risk = RiskManager(Path("config/risk.yaml"))
+    risk = _make_risk()
 
     # Small loss (should be fine)
     risk.record_trade("BTCUSDT", -100, 10000)  # 1% loss
@@ -99,7 +115,7 @@ def test_risk_management():
     # Test 6: Risk summary
     print("7️⃣  Testing risk summary...")
     # Create fresh risk manager for this test
-    risk = RiskManager(Path("config/risk.yaml"))
+    risk = _make_risk()
     summary = risk.get_risk_summary()
     print(f"   Kill switch active: {summary['kill_switch_active']}")
     print(f"   Circuit breakers: {summary['circuit_breakers']}")

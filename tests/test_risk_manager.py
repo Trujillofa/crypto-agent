@@ -95,9 +95,21 @@ class TestRiskConfig:
 class TestRiskManager:
     """Test suite for RiskManager."""
 
+    @pytest.fixture(autouse=True)
+    def _clean_state(self, tmp_path: Path) -> None:
+        """Ensure each test gets a fresh risk state (no disk pollution)."""
+        self._state_path = tmp_path / "risk_state.json"
+
+    def _make_manager(self, config_path: Path | None = None) -> RiskManager:
+        """Create a RiskManager with isolated state path."""
+        return RiskManager(
+            config_path=config_path or Path("/nonexistent/path.yaml"),
+            state_path=self._state_path,
+        )
+
     def test_init_without_config(self) -> None:
         """Test initialization without config file uses defaults."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         assert manager._config is not None
         assert manager._kill_switch_triggered is False
 
@@ -113,7 +125,7 @@ class TestRiskManager:
             yaml.dump(config, f)
             config_path = Path(f.name)
 
-        manager = RiskManager(config_path=config_path)
+        manager = self._make_manager(config_path=config_path)
         assert manager._config.position_limits.max_position_pct == 0.20
         assert manager._config.loss_limits.max_daily_loss_pct == 0.10
         assert manager._config.circuit_breakers.consecutive_losses == 3
@@ -123,14 +135,14 @@ class TestRiskManager:
 
     def test_is_trading_allowed_initial(self) -> None:
         """Test trading is allowed initially."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         allowed, reason = manager.is_trading_allowed()
         assert allowed is True
         assert reason == "Trading allowed"
 
     def test_is_trading_blocked_by_kill_switch(self) -> None:
         """Test trading blocked when kill switch is active."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._kill_switch_triggered = True
         allowed, reason = manager.is_trading_allowed()
         assert allowed is False
@@ -138,7 +150,7 @@ class TestRiskManager:
 
     def test_check_position_limit_allowed(self) -> None:
         """Test position limit check passes for valid position."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         allowed, reason = manager.check_position_limit(
             symbol="BTCUSDT",
             quantity_usdt=500,  # 5% of 10000
@@ -149,7 +161,7 @@ class TestRiskManager:
 
     def test_check_position_limit_exceeded(self) -> None:
         """Test position limit check fails for oversized position."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         allowed, reason = manager.check_position_limit(
             symbol="BTCUSDT",
             quantity_usdt=2000,  # 20% of 10000, exceeds 10% limit
@@ -160,7 +172,7 @@ class TestRiskManager:
 
     def test_check_position_limit_max_positions(self) -> None:
         """Test max open positions limit."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         # Fill up positions to max (5)
         for i in range(5):
             manager._positions[f"SYMBOL{i}"] = {"size": 0.01}
@@ -176,7 +188,7 @@ class TestRiskManager:
 
     def test_check_position_limit_kill_switch_blocks(self) -> None:
         """Test position checks blocked by kill switch."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._kill_switch_triggered = True
         allowed, reason = manager.check_position_limit(
             symbol="BTCUSDT",
@@ -188,7 +200,7 @@ class TestRiskManager:
 
     def test_record_trade_winning(self) -> None:
         """Test recording a winning trade."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._peak_balance = 10000
         manager.record_trade("BTCUSDT", pnl=100, portfolio_value=10000)
         assert manager._daily_pnl == 100
@@ -196,7 +208,7 @@ class TestRiskManager:
 
     def test_record_trade_losing(self) -> None:
         """Test recording a losing trade."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._peak_balance = 10000
         manager.record_trade("BTCUSDT", pnl=-50, portfolio_value=10000)
         assert manager._daily_pnl == -50
@@ -212,7 +224,7 @@ class TestRiskManager:
             yaml.dump(config, f)
             config_path = Path(f.name)
 
-        manager = RiskManager(config_path=config_path)
+        manager = self._make_manager(config_path=config_path)
         manager._peak_balance = 10000
 
         for i in range(3):
@@ -223,7 +235,7 @@ class TestRiskManager:
 
     def test_record_api_error(self) -> None:
         """Test API error recording."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager.record_api_error()
         assert manager._api_error_count == 1
 
@@ -237,7 +249,7 @@ class TestRiskManager:
             yaml.dump(config, f)
             config_path = Path(f.name)
 
-        manager = RiskManager(config_path=config_path)
+        manager = self._make_manager(config_path=config_path)
         manager.record_api_error()
         manager.record_api_error()
 
@@ -246,7 +258,7 @@ class TestRiskManager:
 
     def test_record_latency(self) -> None:
         """Test latency recording."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager.record_latency(100)
         assert len(manager._latency_readings) == 1
         assert manager._latency_readings[0] == 100
@@ -261,7 +273,7 @@ class TestRiskManager:
             yaml.dump(config, f)
             config_path = Path(f.name)
 
-        manager = RiskManager(config_path=config_path)
+        manager = self._make_manager(config_path=config_path)
         manager.record_latency(1500)  # Exceeds 1000ms threshold
 
         assert manager._circuit_breakers["latency"] is True
@@ -269,7 +281,7 @@ class TestRiskManager:
 
     def test_get_risk_summary(self) -> None:
         """Test risk summary generation."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._daily_pnl = 100
         manager._consecutive_losses = 2
         manager.record_latency(50)
@@ -283,7 +295,7 @@ class TestRiskManager:
 
     def test_kill_switch_triggered_by_circuit_breaker(self) -> None:
         """Test kill switch is triggered by circuit breaker when enabled."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._peak_balance = 10000
 
         # Trigger consecutive losses
@@ -302,7 +314,7 @@ class TestRiskManager:
             yaml.dump(config, f)
             config_path = Path(f.name)
 
-        manager = RiskManager(config_path=config_path)
+        manager = self._make_manager(config_path=config_path)
         manager._peak_balance = 10000
         # Record a loss exceeding 5% of portfolio
         manager.record_trade("BTCUSDT", pnl=-600, portfolio_value=10000)
@@ -312,7 +324,7 @@ class TestRiskManager:
 
     def test_circuit_breakers_block_trading(self) -> None:
         """Test active circuit breakers block trading."""
-        manager = RiskManager(config_path=Path("/nonexistent/path.yaml"))
+        manager = self._make_manager()
         manager._circuit_breakers["api_errors"] = True
 
         allowed, reason = manager.is_trading_allowed()

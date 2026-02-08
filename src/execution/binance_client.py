@@ -120,7 +120,7 @@ class BinancePrivateClient:
             )
 
             async with self._session.post(
-                url, headers=headers, json=params
+                url, headers=headers, data=params
             ) as response:
                 return await self._handle_response(response)
 
