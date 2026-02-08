@@ -140,7 +140,9 @@ class IndicatorReader:
                 i.vwap,
                 i.stoch_k,
                 i.stoch_d,
-                i.cci
+                i.cci,
+                o.high_price,
+                o.low_price
             FROM indicators i
             INNER JOIN ohlcv o
                 ON i.time = o.time
@@ -186,6 +188,12 @@ class IndicatorReader:
                     "stoch_k": float(row[19]) if row[19] is not None else None,
                     "stoch_d": float(row[20]) if row[20] is not None else None,
                     "cci": float(row[21]) if row[21] is not None else None,
+                    "high_price": float(row[22])
+                    if row[22] is not None
+                    else float(row[3]),
+                    "low_price": float(row[23])
+                    if row[23] is not None
+                    else float(row[3]),
                 }
             )
 

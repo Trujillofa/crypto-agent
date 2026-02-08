@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Mapping
+from collections.abc import Mapping
 
 from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
@@ -22,6 +22,8 @@ class BacktestConfig:
     end_date: str  # ISO 8601
     initial_capital: float = 10000.0
     fee_rate: float = 0.001  # 0.1%
+    stop_loss_pct: float = 0.0  # 0.0 = disabled
+    take_profit_pct: float = 0.0  # 0.0 = disabled
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
@@ -39,6 +41,7 @@ class Trade:
     quantity: float
     pnl: float
     return_pct: float
+    exit_reason: str = "SIGNAL"
 
 
 @dataclass
@@ -98,6 +101,27 @@ class BacktestEngine:
         for row in data:
             current_time = str(row["time"])
             current_price = row["close_price"]
+            high_price = row.get("high_price", current_price)
+            low_price = row.get("low_price", current_price)
+
+            if self._position_qty > 0:
+                if self._config.stop_loss_pct > 0:
+                    sl_price = self._position_entry_price * (
+                        1 - self._config.stop_loss_pct
+                    )
+                    if low_price <= sl_price:
+                        self._close_position(current_time, sl_price, reason="STOP_LOSS")
+                        continue
+
+                if self._config.take_profit_pct > 0:
+                    tp_price = self._position_entry_price * (
+                        1 + self._config.take_profit_pct
+                    )
+                    if high_price >= tp_price:
+                        self._close_position(
+                            current_time, tp_price, reason="TAKE_PROFIT"
+                        )
+                        continue
 
             signals = []
             for strategy in strategies:
@@ -136,9 +160,11 @@ class BacktestEngine:
             self._position_entry_time = timestamp
 
         elif signal.type == SignalType.SELL and self._position_qty > 0:
-            self._close_position(timestamp, price)
+            self._close_position(timestamp, price, reason="SIGNAL")
 
-    def _close_position(self, timestamp: str, price: float) -> None:
+    def _close_position(
+        self, timestamp: str, price: float, reason: str = "SIGNAL"
+    ) -> None:
         revenue = self._position_qty * price
         fee = revenue * self._config.fee_rate
         net_revenue = revenue - fee
@@ -157,6 +183,7 @@ class BacktestEngine:
             quantity=self._position_qty,
             pnl=pnl,
             return_pct=return_pct,
+            exit_reason=reason,
         )
 
         self._trades.append(trade)

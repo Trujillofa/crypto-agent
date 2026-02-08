@@ -1,24 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
-
-
-@dataclass
-class AggregationConfig:
-    """Configuration for signal aggregation."""
-
-    # Minimum score required to trigger a BUY signal (positive)
-    buy_threshold: float = 0.5
-
-    # Minimum score required to trigger a SELL signal (negative)
-    sell_threshold: float = -0.5
-
-    # Minimum number of strategies that must agree (non-HOLD)
-    min_agreement: int = 1
 
 
 class SignalAggregator:

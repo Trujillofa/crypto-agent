@@ -248,7 +248,7 @@ async def run() -> None:
         ],
         strategy_configs=[
             {"ema_short_period": 12, "ema_long_period": 26},
-            {"rsi_period": 14, "rsi_oversold": 30, "rsi_overbought": 70},
+            {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
             {"min_histogram_threshold": 0.0, "use_atr_filter": True},
             {"band_distance_threshold": 0.0, "rsi_oversold": 30, "rsi_overbought": 70},
             {"rsi_buy_threshold": 50, "rsi_sell_threshold": 50},

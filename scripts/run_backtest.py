@@ -31,7 +31,7 @@ async def main():
         "--capital", type=float, default=10000.0, help="Initial capital"
     )
     parser.add_argument(
-        "--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%)"
+        "--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)"
     )
 
     args = parser.parse_args()

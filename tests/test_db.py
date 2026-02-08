@@ -81,7 +81,9 @@ class TestConnectSQLiteFallback:
             writer = TimescaleWriter(db_config, metrics)
 
             # Mock pg8000 to fail and sqlite3 to succeed
-            with patch("src.ingest.db.pg8000.connect", side_effect=Exception("PG unavailable")):
+            with patch(
+                "src.ingest.db.pg8000.connect", side_effect=Exception("PG unavailable")
+            ):
                 with patch("src.ingest.db.sqlite3.connect") as mock_sqlite:
                     mock_conn = MagicMock()
                     mock_sqlite.return_value = mock_conn
@@ -253,7 +255,7 @@ class TestSQLiteIntegration:
                 import sqlite3
 
                 sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-                writer._conn = sqlite3.connect(sqlite_path)
+                writer._conn = sqlite3.connect(sqlite_path, check_same_thread=False)
                 writer._use_sqlite = True
                 writer._connected = True
 
@@ -294,7 +296,7 @@ class TestSQLiteIntegration:
                 import sqlite3
 
                 sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-                writer._conn = sqlite3.connect(sqlite_path)
+                writer._conn = sqlite3.connect(sqlite_path, check_same_thread=False)
                 writer._use_sqlite = True
                 writer._connected = True
 
