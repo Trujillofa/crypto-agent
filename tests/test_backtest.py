@@ -63,6 +63,7 @@ class TestBacktestEngine:
             end_date="2023-01-02",
             initial_capital=10000.0,
             fee_rate=0.0,
+            slippage_pct=0.0,
             strategy_classes=[AlwaysBuyStrategy],
             aggregator_config={"min_agreement": 1, "buy_threshold": 0.5},
         )
@@ -135,6 +136,7 @@ class TestBacktestEngine:
             end_date="2023-01-02",
             initial_capital=10000.0,
             fee_rate=0.0,
+            slippage_pct=0.0,
             stop_loss_pct=0.04,  # 4% SL => 96.0 trigger
             take_profit_pct=0.0,
             strategy_classes=[BuyOnceStrategy],
@@ -184,6 +186,7 @@ class TestBacktestEngine:
             end_date="2023-01-02",
             initial_capital=10000.0,
             fee_rate=0.0,
+            slippage_pct=0.0,
             stop_loss_pct=0.05,
             take_profit_pct=0.10,  # 10% TP => 110.0 trigger
             strategy_classes=[BuyOnceStrategy],

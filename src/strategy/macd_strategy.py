@@ -64,12 +64,18 @@ class MACDHistogramStrategy(BaseStrategy):
         confidence = 0.0
         reason = f"MACD Hist: {hist_current:.4f} (prev: {hist_previous:.4f})"
 
+        # Calculate confidence scaling factor based on histogram strength relative to price
+        # We assume a histogram value > 0.2% of price indicates strong momentum
+        hist_ratio = abs(hist_current) / close_price
+        strength_bonus = min(0.5, hist_ratio * 250)  # 0.002 * 250 = 0.5
+        base_confidence = 0.5
+
         if hist_previous < 0 and hist_current > 0:
             if abs(hist_current) >= self._min_hist_threshold:
                 if not is_low_volatility:
                     signal_type = SignalType.BUY
-                    confidence = 1.0
-                    reason = f"Bullish MACD Crossover (Hist: {hist_current:.4f})"
+                    confidence = base_confidence + strength_bonus
+                    reason = f"Bullish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
                 else:
                     reason += " - Low Volatility"
             else:
@@ -79,8 +85,8 @@ class MACDHistogramStrategy(BaseStrategy):
             if abs(hist_current) >= self._min_hist_threshold:
                 if not is_low_volatility:
                     signal_type = SignalType.SELL
-                    confidence = 1.0
-                    reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f})"
+                    confidence = base_confidence + strength_bonus
+                    reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
                 else:
                     reason += " - Low Volatility"
             else:

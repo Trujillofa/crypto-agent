@@ -52,7 +52,7 @@ class TestMomentumStrategy:
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.BUY
-        assert signal.confidence == 1.0
+        assert signal.confidence > 0.5
         assert "Trend UP" in signal.reason
         assert "Momentum UP" in signal.reason
 
@@ -87,7 +87,7 @@ class TestMomentumStrategy:
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.SELL
-        assert signal.confidence == 1.0
+        assert signal.confidence > 0.5
         assert "Trend DOWN" in signal.reason
         assert "Momentum DOWN" in signal.reason
 

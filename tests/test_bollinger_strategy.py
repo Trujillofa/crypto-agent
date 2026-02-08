@@ -54,7 +54,7 @@ class TestBollingerBounceStrategy:
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.BUY
-        assert signal.confidence == 1.0
+        assert signal.confidence > 0.5
         assert "Price at Lower Band" in signal.reason
         assert "RSI Oversold" in signal.reason
 
@@ -80,7 +80,7 @@ class TestBollingerBounceStrategy:
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.SELL
-        assert signal.confidence == 1.0
+        assert signal.confidence > 0.5
         assert "Price at Upper Band" in signal.reason
         assert "RSI Overbought" in signal.reason
 

@@ -53,10 +53,11 @@ class MomentumStrategy(BaseStrategy):
             if rsi > self._rsi_buy_threshold:
                 if rsi < self._rsi_max_entry:
                     signal_type = SignalType.BUY
-                    confidence = 1.0
-                    reason = (
-                        f"Trend UP (Price > EMA50) & Momentum UP (RSI {rsi:.2f} > {self._rsi_buy_threshold})"
-                    )
+                    # Confidence scaling: Base 0.5 + boost from trend strength (distance from EMA)
+                    # 2% distance gives max boost (0.5)
+                    ema_dist_pct = (close_price - ema_50) / close_price
+                    confidence = 0.5 + min(0.5, ema_dist_pct * 25)
+                    reason = f"Trend UP (Price > EMA50) & Momentum UP (RSI {rsi:.2f} > {self._rsi_buy_threshold}, Conf: {confidence:.2f})"
                 else:
                     reason += " - RSI too high for entry"
             else:
@@ -66,8 +67,11 @@ class MomentumStrategy(BaseStrategy):
             if rsi < self._rsi_sell_threshold:
                 if rsi > self._rsi_min_entry:
                     signal_type = SignalType.SELL
-                    confidence = 1.0
-                    reason = f"Trend DOWN (Price < EMA50) & Momentum DOWN (RSI {rsi:.2f} < {self._rsi_sell_threshold})"
+                    # Confidence scaling: Base 0.5 + boost from trend strength
+                    # 2% distance gives max boost (0.5)
+                    ema_dist_pct = (ema_50 - close_price) / close_price
+                    confidence = 0.5 + min(0.5, ema_dist_pct * 25)
+                    reason = f"Trend DOWN (Price < EMA50) & Momentum DOWN (RSI {rsi:.2f} < {self._rsi_sell_threshold}, Conf: {confidence:.2f})"
                 else:
                     reason += " - RSI too low for entry"
             else:

@@ -57,10 +57,13 @@ class BollingerBounceStrategy(BaseStrategy):
         if bb_lower_dist <= self._band_dist_threshold:
             if rsi < self._rsi_oversold:
                 signal_type = SignalType.BUY
-                confidence = 1.0
+                # Calculate confidence: Base 0.5 + boost from RSI depth
+                # RSI 10 points below threshold gives max boost (0.5)
+                rsi_diff = max(0.0, self._rsi_oversold - rsi)
+                confidence = 0.5 + min(0.5, rsi_diff * 0.05)
                 reason = (
                     f"Price at Lower Band (Dist: {bb_lower_dist:.4f}) "
-                    f"& RSI Oversold ({rsi:.2f})"
+                    f"& RSI Oversold ({rsi:.2f}, Conf: {confidence:.2f})"
                 )
             else:
                 reason += " - RSI not oversold"
@@ -68,10 +71,13 @@ class BollingerBounceStrategy(BaseStrategy):
         elif bb_upper_dist <= self._band_dist_threshold:
             if rsi > self._rsi_overbought:
                 signal_type = SignalType.SELL
-                confidence = 1.0
+                # Calculate confidence: Base 0.5 + boost from RSI depth
+                # RSI 10 points above threshold gives max boost (0.5)
+                rsi_diff = max(0.0, rsi - self._rsi_overbought)
+                confidence = 0.5 + min(0.5, rsi_diff * 0.05)
                 reason = (
                     f"Price at Upper Band (Dist: {bb_upper_dist:.4f}) "
-                    f"& RSI Overbought ({rsi:.2f})"
+                    f"& RSI Overbought ({rsi:.2f}, Conf: {confidence:.2f})"
                 )
             else:
                 reason += " - RSI not overbought"
