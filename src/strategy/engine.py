@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from src.features.reader import IndicatorReader
+from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -21,17 +22,11 @@ class EngineConfig:
     evaluation_interval_seconds: int = 60
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
+    aggregator_config: Mapping[str, object] = field(default_factory=dict)
 
 
 class StrategyEngine:
-    """Main strategy engine that runs multiple strategies and produces signals.
-
-    The engine:
-    1. Manages multiple strategy instances
-    2. Periodically fetches latest indicators
-    3. Evaluates each strategy
-    4. Produces trading signals for downstream execution
-    """
+    """Main strategy engine that runs multiple strategies and produces signals."""
 
     def __init__(
         self,
@@ -43,12 +38,11 @@ class StrategyEngine:
         self._logger = get_logger(self.__class__.__name__)
         self._strategies: dict[str, list[BaseStrategy]] = {}
         self._running = False
+        self._aggregator = SignalAggregator(config.aggregator_config)
 
-        # Initialize all strategies
         for symbol in config.symbols:
             self._strategies[symbol] = []
             for idx, strategy_class in enumerate(config.strategy_classes):
-                # Get config for this strategy (if available)
                 strategy_config = None
                 if idx < len(config.strategy_configs):
                     strategy_config = config.strategy_configs[idx]
@@ -56,9 +50,8 @@ class StrategyEngine:
                 strategy = strategy_class(strategy_config)
                 self._strategies[symbol].append(strategy)
 
-            self._logger.info(
-                f"Initialized strategy: {strategy.get_name()} for {symbol}"
-            )
+            strategy_names = [s.get_name() for s in self._strategies[symbol]]
+            self._logger.info(f"Initialized strategies for {symbol}: {strategy_names}")
 
     async def __aenter__(self) -> "StrategyEngine":
         self._running = True
@@ -71,14 +64,9 @@ class StrategyEngine:
 
     async def run(
         self,
-        on_signal: Callable[[Signal], Any] | None = None,
+        on_signal: Callable[[Signal], Awaitable[Any]] | None = None,
     ) -> None:
-        """Main evaluation loop.
-
-        Args:
-            on_signal: Callback function to receive generated signals.
-                Signature: (signal: Signal) -> None
-        """
+        """Main evaluation loop."""
         if not self._strategies:
             self._logger.warning("No strategies initialized")
             return
@@ -92,31 +80,32 @@ class StrategyEngine:
 
     async def _evaluate_all(
         self,
-        on_signal: Callable[[Signal], Any] | None = None,
+        on_signal: Callable[[Signal], Awaitable[Any]] | None = None,
     ) -> None:
-        """Evaluate all strategies for all symbols.
-
-        Args:
-            on_signal: Callback to receive signals
-        """
+        """Evaluate all strategies for all symbols and aggregate results."""
         for symbol in self._config.symbols:
-            # Fetch indicators from database
             indicators = await self._fetch_indicators(symbol)
             if indicators is None:
-                # Warmup period - not enough data yet
                 continue
 
+            generated_signals = []
             for strategy in self._strategies.get(symbol, []):
                 try:
                     signal = await strategy.evaluate(symbol, indicators)
-                    self._logger.info(f"{strategy.get_name()} generated {signal}")
-
-                    # Only forward BUY/SELL signals (skip HOLD)
-                    if signal.type != SignalType.HOLD and on_signal:
-                        await on_signal(signal)
-
+                    generated_signals.append(signal)
+                    self._logger.debug(f"{strategy.get_name()} generated {signal}")
                 except Exception as exc:  # noqa: BLE001
                     self._logger.error(f"Strategy {strategy.get_name()} failed: {exc}")
+
+            if generated_signals:
+                final_signal = self._aggregator.aggregate(symbol, generated_signals)
+
+                if final_signal.type != SignalType.HOLD:
+                    self._logger.info(f"Consensus Signal: {final_signal}")
+                    if on_signal:
+                        await on_signal(final_signal)
+                else:
+                    self._logger.debug(f"Consensus HOLD: {final_signal.reason}")
 
     async def _fetch_indicators(self, symbol: str) -> dict[str, float] | None:
         """Fetch latest indicators for symbol from database.

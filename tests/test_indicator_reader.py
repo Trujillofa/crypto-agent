@@ -117,6 +117,24 @@ class TestFetchLatest:
                     timeframe TEXT NOT NULL,
                     ema_12 REAL,
                     ema_26 REAL,
+                    rsi_14 REAL,
+                    rsi_7 REAL,
+                    macd REAL,
+                    macd_signal REAL,
+                    macd_hist REAL,
+                    bb_upper_dist REAL,
+                    bb_lower_dist REAL,
+                    atr_14 REAL,
+                    atr_pct REAL,
+                    ema_50 REAL,
+                    ema_200 REAL,
+                    sma_20 REAL,
+                    sma_50 REAL,
+                    sma_200 REAL,
+                    vwap REAL,
+                    stoch_k REAL,
+                    stoch_d REAL,
+                    cci REAL,
                     PRIMARY KEY (time, symbol, timeframe)
                 )
                 """
@@ -128,16 +146,40 @@ class TestFetchLatest:
                 ("2024-01-01T00:00:00Z", "BTCUSDT", "1m", 45000.0),
             )
             cursor.execute(
-                "INSERT INTO indicators (time, symbol, timeframe, ema_12, ema_26) VALUES (?, ?, ?, ?, ?)",
-                ("2024-01-01T00:00:00Z", "BTCUSDT", "1m", 45100.0, 45200.0),
+                """
+                INSERT INTO indicators (
+                    time, symbol, timeframe, ema_12, ema_26, rsi_14, macd
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "2024-01-01T00:00:00Z",
+                    "BTCUSDT",
+                    "1m",
+                    45100.0,
+                    45200.0,
+                    30.0,
+                    100.0,
+                ),
             )
             cursor.execute(
                 "INSERT INTO ohlcv (time, symbol, timeframe, close_price) VALUES (?, ?, ?, ?)",
                 ("2024-01-01T00:01:00Z", "BTCUSDT", "1m", 45100.0),
             )
             cursor.execute(
-                "INSERT INTO indicators (time, symbol, timeframe, ema_12, ema_26) VALUES (?, ?, ?, ?, ?)",
-                ("2024-01-01T00:01:00Z", "BTCUSDT", "1m", 45150.0, 45250.0),
+                """
+                INSERT INTO indicators (
+                    time, symbol, timeframe, ema_12, ema_26, rsi_14, macd
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "2024-01-01T00:01:00Z",
+                    "BTCUSDT",
+                    "1m",
+                    45150.0,
+                    45250.0,
+                    35.0,
+                    110.0,
+                ),
             )
             conn.commit()
             conn.close()
@@ -146,7 +188,7 @@ class TestFetchLatest:
             reader = IndicatorReader(db_config)
 
             def patched_connect() -> None:
-                reader._conn = sqlite3.connect(sqlite_path)
+                reader._conn = sqlite3.connect(sqlite_path, check_same_thread=False)
                 reader._use_sqlite = True
                 reader._connected = True
 
@@ -160,9 +202,14 @@ class TestFetchLatest:
             assert rows[0]["close_price"] == 45000.0
             assert rows[0]["ema_12"] == 45100.0
             assert rows[0]["ema_26"] == 45200.0
+            assert rows[0]["rsi_14"] == 30.0
+            assert rows[0]["macd"] == 100.0
+
             assert rows[1]["close_price"] == 45100.0
             assert rows[1]["ema_12"] == 45150.0
             assert rows[1]["ema_26"] == 45250.0
+            assert rows[1]["rsi_14"] == 35.0
+            assert rows[1]["macd"] == 110.0
 
     @pytest.mark.asyncio
     async def test_fetch_empty_table(self, db_config: dict[str, object]) -> None:
@@ -192,6 +239,24 @@ class TestFetchLatest:
                     timeframe TEXT NOT NULL,
                     ema_12 REAL,
                     ema_26 REAL,
+                    rsi_14 REAL,
+                    rsi_7 REAL,
+                    macd REAL,
+                    macd_signal REAL,
+                    macd_hist REAL,
+                    bb_upper_dist REAL,
+                    bb_lower_dist REAL,
+                    atr_14 REAL,
+                    atr_pct REAL,
+                    ema_50 REAL,
+                    ema_200 REAL,
+                    sma_20 REAL,
+                    sma_50 REAL,
+                    sma_200 REAL,
+                    vwap REAL,
+                    stoch_k REAL,
+                    stoch_d REAL,
+                    cci REAL,
                     PRIMARY KEY (time, symbol, timeframe)
                 )
                 """
@@ -202,7 +267,7 @@ class TestFetchLatest:
             reader = IndicatorReader(db_config)
 
             def patched_connect() -> None:
-                reader._conn = sqlite3.connect(sqlite_path)
+                reader._conn = sqlite3.connect(sqlite_path, check_same_thread=False)
                 reader._use_sqlite = True
                 reader._connected = True
 
@@ -241,6 +306,24 @@ class TestFetchLatest:
                     timeframe TEXT NOT NULL,
                     ema_12 REAL,
                     ema_26 REAL,
+                    rsi_14 REAL,
+                    rsi_7 REAL,
+                    macd REAL,
+                    macd_signal REAL,
+                    macd_hist REAL,
+                    bb_upper_dist REAL,
+                    bb_lower_dist REAL,
+                    atr_14 REAL,
+                    atr_pct REAL,
+                    ema_50 REAL,
+                    ema_200 REAL,
+                    sma_20 REAL,
+                    sma_50 REAL,
+                    sma_200 REAL,
+                    vwap REAL,
+                    stoch_k REAL,
+                    stoch_d REAL,
+                    cci REAL,
                     PRIMARY KEY (time, symbol, timeframe)
                 )
                 """
@@ -252,8 +335,12 @@ class TestFetchLatest:
                 ("2024-01-01T00:00:00Z", "BTCUSDT", "1m", 45000.0),
             )
             cursor.execute(
-                "INSERT INTO indicators (time, symbol, timeframe, ema_12, ema_26) VALUES (?, ?, ?, ?, ?)",
-                ("2024-01-01T00:00:00Z", "BTCUSDT", "1m", 45100.0, 45200.0),
+                """
+                INSERT INTO indicators (
+                    time, symbol, timeframe, ema_12, ema_26, rsi_14
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("2024-01-01T00:00:00Z", "BTCUSDT", "1m", 45100.0, 45200.0, 50.0),
             )
             conn.commit()
             conn.close()
@@ -261,7 +348,7 @@ class TestFetchLatest:
             reader = IndicatorReader(db_config)
 
             def patched_connect() -> None:
-                reader._conn = sqlite3.connect(sqlite_path)
+                reader._conn = sqlite3.connect(sqlite_path, check_same_thread=False)
                 reader._use_sqlite = True
                 reader._connected = True
 

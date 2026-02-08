@@ -21,7 +21,15 @@ from src.execution import TradingExecutor, TradingConfig
 from src.execution.metrics import ExecutionMetrics
 from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
-from src.strategy import StrategyEngine, EngineConfig, SimpleMACrossoverStrategy
+from src.strategy import (
+    StrategyEngine,
+    EngineConfig,
+    SimpleMACrossoverStrategy,
+    RSIReversalStrategy,
+    MACDHistogramStrategy,
+    BollingerBounceStrategy,
+    MomentumStrategy,
+)
 from src.utils.logger import configure_logger, get_logger
 
 
@@ -231,8 +239,25 @@ async def run() -> None:
         database=settings.database,
         timeframe=settings.timeframe,
         evaluation_interval_seconds=settings.strategy.evaluation_interval_seconds,
-        strategy_classes=[SimpleMACrossoverStrategy],
-        strategy_configs=[{"ema_short_period": 12, "ema_long_period": 26}],
+        strategy_classes=[
+            SimpleMACrossoverStrategy,
+            RSIReversalStrategy,
+            MACDHistogramStrategy,
+            BollingerBounceStrategy,
+            MomentumStrategy,
+        ],
+        strategy_configs=[
+            {"ema_short_period": 12, "ema_long_period": 26},
+            {"rsi_period": 14, "rsi_oversold": 30, "rsi_overbought": 70},
+            {"min_histogram_threshold": 0.0, "use_atr_filter": True},
+            {"band_distance_threshold": 0.0, "rsi_oversold": 30, "rsi_overbought": 70},
+            {"rsi_buy_threshold": 50, "rsi_sell_threshold": 50},
+        ],
+        aggregator_config={
+            "min_agreement": 2,
+            "buy_threshold": 1.5,
+            "sell_threshold": -1.5,
+        },
     )
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 

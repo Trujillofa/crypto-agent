@@ -4,6 +4,10 @@ from src.strategy.signals import Signal, SignalType
 from src.strategy.base import BaseStrategy
 from src.strategy.engine import StrategyEngine, EngineConfig
 from src.strategy.simple_ma import SimpleMACrossoverStrategy
+from src.strategy.rsi_reversal import RSIReversalStrategy
+from src.strategy.macd_strategy import MACDHistogramStrategy
+from src.strategy.bollinger_strategy import BollingerBounceStrategy
+from src.strategy.momentum_strategy import MomentumStrategy
 
 __all__ = [
     "Signal",
@@ -12,4 +16,8 @@ __all__ = [
     "StrategyEngine",
     "EngineConfig",
     "SimpleMACrossoverStrategy",
+    "RSIReversalStrategy",
+    "MACDHistogramStrategy",
+    "BollingerBounceStrategy",
+    "MomentumStrategy",
 ]
