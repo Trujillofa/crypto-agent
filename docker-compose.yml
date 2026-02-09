@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-marketdata}
       POSTGRES_USER: ${POSTGRES_USER:-trading}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - timescaledb-data:/var/lib/postgresql/data
     healthcheck:
@@ -47,7 +47,7 @@ services:
       # Pass DB credentials for datasource provisioning
       - POSTGRES_DB=${POSTGRES_DB:-marketdata}
       - POSTGRES_USER=${POSTGRES_USER:-trading}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     depends_on:
       timescaledb:
         condition: service_healthy

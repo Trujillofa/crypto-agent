@@ -28,7 +28,7 @@ def test_end_to_end():
         "port": int(os.getenv("POSTGRES_PORT", "5432")),
         "name": os.getenv("POSTGRES_DB", "marketdata"),
         "user": os.getenv("POSTGRES_USER", "trading"),
-        "password": os.getenv("POSTGRES_PASSWORD", "change_me"),
+        "password": os.getenv("POSTGRES_PASSWORD", ""),
     }
 
     metrics = IngestMetrics()

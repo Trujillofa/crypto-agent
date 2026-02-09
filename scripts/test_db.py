@@ -25,7 +25,7 @@ def test_timescaledb_connection():
     port = int(os.getenv("POSTGRES_PORT", "5432"))
     database = os.getenv("POSTGRES_DB", "marketdata")
     user = os.getenv("POSTGRES_USER", "trading")
-    password = os.getenv("POSTGRES_PASSWORD", "change_me")
+    password = os.getenv("POSTGRES_PASSWORD", "")
 
     print(f"1️⃣  Configuration:")
     print(f"   Host: {host}")

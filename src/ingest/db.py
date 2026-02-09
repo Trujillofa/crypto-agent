@@ -39,6 +39,10 @@ class TimescaleWriter:
     def count_rows(self, table: str) -> int:
         if self._conn is None:
             return 0
+        # Validate table name to prevent SQL injection
+        valid_tables = {"ohlcv"}
+        if table not in valid_tables:
+            raise ValueError(f"Invalid table name: {table}")
         cursor = self._conn.cursor()
         cursor.execute(f"SELECT COUNT(*) FROM {table}")
         return int(cursor.fetchone()[0])

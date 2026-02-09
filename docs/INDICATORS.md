@@ -243,7 +243,7 @@ For testing or one-time computation:
 from src.features import IndicatorComputer, IndicatorWriter, IndicatorMetrics
 from src.ingest.metrics import IngestMetrics
 
-config = {"host": "localhost", "port": 5432, "name": "marketdata", "user": "trading", "password": "change_me"}
+config = {"host": "localhost", "port": 5432, "name": "marketdata", "user": "trading", "password": ""}
 writer = IndicatorWriter(config)
 metrics = IndicatorMetrics()
 computer = IndicatorComputer(config, ["BTCUSDT", "ETHUSDT"], "1m", writer, metrics)
