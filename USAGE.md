@@ -60,7 +60,8 @@ Prometheus Metrics + Telegram Alerts
 
 1. **Clone and navigate to the repository:**
    ```bash
-   cd /home/yderf/TRADING/crypto-agent
+   git clone https://github.com/Trujillofa/crypto-trading-agent.git
+   cd crypto-trading-agent
    ```
 
 2. **Create Python virtual environment:**

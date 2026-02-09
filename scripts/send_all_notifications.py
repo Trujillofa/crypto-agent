@@ -2,6 +2,7 @@
 """Send all notification types for verification."""
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -12,12 +13,21 @@ from src.notifications.telegram import TelegramConfig, TelegramNotifier, AlertLe
 
 async def send_all_notifications():
     """Send all notification types."""
-    print("🚀 Sending all notification types to @trujillofa_trading_bot...")
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+    if not bot_token or not chat_id:
+        print("❌ TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env")
+        print("   1. Copy .env.example to .env")
+        print("   2. Fill in your Telegram credentials")
+        sys.exit(1)
+
+    print("🚀 Sending all notification types...")
     print()
 
     config = TelegramConfig(
-        bot_token="8538622562:AAEptM1aOLyl5G9qL6mPiOUdi5S5Vh5hUd4",
-        chat_id="1278127918",
+        bot_token=bot_token,
+        chat_id=chat_id,
         enabled=True,
         rate_limit_seconds=2,
     )

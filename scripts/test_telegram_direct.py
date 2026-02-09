@@ -13,16 +13,24 @@ from src.notifications.telegram import TelegramConfig, TelegramNotifier, AlertLe
 
 
 async def test_direct():
-    """Test with hardcoded credentials."""
-    print("🧪 Testing Telegram with provided credentials...")
+    """Test Telegram with credentials from environment."""
+    print("🧪 Testing Telegram with credentials from environment...")
     print()
 
-    # Use the provided credentials
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+    if not bot_token or not chat_id:
+        print("❌ TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env")
+        print("   1. Copy .env.example to .env")
+        print("   2. Fill in your Telegram credentials")
+        sys.exit(1)
+
     config = TelegramConfig(
-        bot_token="8538622562:AAEptM1aOLyl5G9qL6mPiOUdi5S5Vh5hUd4",
-        chat_id="1278127918",
+        bot_token=bot_token,
+        chat_id=chat_id,
         enabled=True,
-        rate_limit_seconds=1,  # Shorter for testing
+        rate_limit_seconds=1,
     )
 
     print(f"Token: {config.bot_token[:15]}...{config.bot_token[-5:]}")
