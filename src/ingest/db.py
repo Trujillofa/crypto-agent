@@ -33,6 +33,16 @@ class TimescaleWriter:
             await asyncio.to_thread(self._conn.close)
         self._connected = False
 
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def count_rows(self, table: str) -> int:
+        if self._conn is None:
+            return 0
+        cursor = self._conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM {table}")
+        return int(cursor.fetchone()[0])
+
     async def write_ohlcv(self, candle: Ohlcv) -> None:
         start_time = time.perf_counter()
         await asyncio.to_thread(self._insert_row, candle)

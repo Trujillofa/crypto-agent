@@ -57,6 +57,13 @@ class IndicatorWriter:
             await asyncio.to_thread(self._conn.close)
         self._connected = False
 
+    def count_rows(self, table: str) -> int:
+        if self._conn is None:
+            return 0
+        cursor = self._conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM {table}")
+        return int(cursor.fetchone()[0])
+
     async def write_indicators(self, indicator: StoredIndicator) -> None:
         if not self._connected:
             raise RuntimeError("IndicatorWriter connection not initialized")

@@ -36,8 +36,8 @@ class TestStrategyEngineIntegration:
         reader = IndicatorReader({})
         reader._connected = True
         reader._fetch_rows = lambda s, t, l: [
-            {"close_price": 100.0, "ema_12": 100.0},
-            {"close_price": 101.0, "ema_12": 101.0},
+            {"close_price": 100.0, "ema_12": 100.0, "ema_26": 99.0},
+            {"close_price": 101.0, "ema_12": 101.0, "ema_26": 100.0},
         ]
         return reader
 

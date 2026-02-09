@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import signal
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from typing import cast
@@ -26,6 +26,7 @@ from src.risk.manager import RiskManager
 from src.strategy import (
     StrategyEngine,
     EngineConfig,
+    BaseStrategy,
     SimpleMACrossoverStrategy,
     RSIReversalStrategy,
     MACDHistogramStrategy,
@@ -38,6 +39,8 @@ from src.utils.logger import configure_logger, get_logger
 @dataclass(frozen=True)
 class StrategySettings:
     evaluation_interval_seconds: int
+    strategies: list[Mapping[str, object]] = field(default_factory=list)
+    aggregator: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,10 @@ def load_settings(config_path: Path) -> Settings:
     if not api_secret:
         api_secret = _os.getenv("BINANCE_API_SECRET", "").strip()
 
+    db_password = _as_str(database.get("password"), "database.password", default="")
+    if not db_password:
+        db_password = _os.getenv("POSTGRES_PASSWORD", "").strip()
+
     trading_pairs = _as_str_list(trading.get("pairs"), "trading.pairs")
     if not trading_pairs:
         raise ValueError("No trading pairs configured in 'trading.pairs'")
@@ -110,7 +117,11 @@ def load_settings(config_path: Path) -> Settings:
             strategy.get("evaluation_interval_seconds"),
             "strategy.evaluation_interval_seconds",
             default=60,
-        )
+        ),
+        strategies=_as_list_of_mappings(
+            strategy.get("strategies"), "strategy.strategies"
+        ),
+        aggregator=_as_mapping(strategy.get("aggregator"), "strategy.aggregator"),
     )
 
     telegram_bot_token = _as_str(
@@ -119,9 +130,7 @@ def load_settings(config_path: Path) -> Settings:
     if not telegram_bot_token:
         telegram_bot_token = _os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
-    telegram_chat_id = _as_str(
-        telegram.get("chat_id"), "telegram.chat_id", default=""
-    )
+    telegram_chat_id = _as_str(telegram.get("chat_id"), "telegram.chat_id", default="")
     if not telegram_chat_id:
         telegram_chat_id = _os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
@@ -161,7 +170,10 @@ def load_settings(config_path: Path) -> Settings:
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
         trading_pairs=trading_pairs,
         timeframe=_as_str(trading.get("timeframe"), "trading.timeframe", default="1m"),
-        database=database,
+        database={
+            **database,
+            "password": db_password,
+        },
         prometheus_port=_as_int(
             prometheus.get("port"), "prometheus.port", default=8000
         ),
@@ -196,6 +208,14 @@ def _as_str_list(value: object, field: str) -> list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return value
     raise ValueError(f"Expected list of strings for {field}")
+
+
+def _as_list_of_mappings(value: object, field: str) -> list[Mapping[str, object]]:
+    if value is None:
+        return []
+    if isinstance(value, list) and all(isinstance(item, Mapping) for item in value):
+        return [cast(Mapping[str, object], item) for item in value]
+    raise ValueError(f"Expected list of mappings for {field}")
 
 
 def _as_int(value: object, field: str, default: int) -> int:
@@ -233,6 +253,65 @@ def _as_bool(value: object, field: str, default: bool) -> bool:
     if isinstance(value, int):
         return value != 0
     raise ValueError(f"Expected boolean for {field}")
+
+
+def _resolve_strategy_config(
+    strategy_settings: StrategySettings,
+) -> tuple[list[type[BaseStrategy]], list[Mapping[str, object]], Mapping[str, object]]:
+    default_strategy_classes = [
+        SimpleMACrossoverStrategy,
+        RSIReversalStrategy,
+        MACDHistogramStrategy,
+        BollingerBounceStrategy,
+        MomentumStrategy,
+    ]
+    default_strategy_configs = [
+        {"ema_short_period": 12, "ema_long_period": 26},
+        {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
+        {"min_histogram_threshold": 0.0, "use_atr_filter": True},
+        {"band_distance_threshold": 0.0, "rsi_oversold": 30, "rsi_overbought": 70},
+        {"rsi_buy_threshold": 50, "rsi_sell_threshold": 50},
+    ]
+    default_aggregator_config = {
+        "min_agreement": 2,
+        "buy_threshold": 1.5,
+        "sell_threshold": -1.5,
+    }
+
+    if not strategy_settings.strategies:
+        return (
+            default_strategy_classes,
+            default_strategy_configs,
+            default_aggregator_config,
+        )
+
+    strategy_registry: dict[str, type[BaseStrategy]] = {
+        "simple_ma": SimpleMACrossoverStrategy,
+        "rsi_reversal": RSIReversalStrategy,
+        "macd_histogram": MACDHistogramStrategy,
+        "bollinger_bounce": BollingerBounceStrategy,
+        "momentum": MomentumStrategy,
+    }
+
+    strategy_classes: list[type[BaseStrategy]] = []
+    strategy_configs: list[Mapping[str, object]] = []
+    for entry in strategy_settings.strategies:
+        name = _as_str(entry.get("name"), "strategy.strategies[].name", default="")
+        if not name:
+            raise ValueError("Strategy entry missing name")
+        strategy_class = strategy_registry.get(name)
+        if strategy_class is None:
+            raise ValueError(f"Unknown strategy name: {name}")
+        config = _as_mapping(entry.get("config"), f"strategy.strategies.{name}.config")
+        strategy_classes.append(strategy_class)
+        strategy_configs.append(config)
+
+    aggregator_config = (
+        strategy_settings.aggregator
+        if strategy_settings.aggregator
+        else default_aggregator_config
+    )
+    return strategy_classes, strategy_configs, aggregator_config
 
 
 async def run() -> None:
@@ -296,30 +375,17 @@ async def run() -> None:
 
     # Initialize indicator reader and strategy engine
     indicator_reader = IndicatorReader(settings.database)
+    strategy_classes, strategy_configs, aggregator_config = _resolve_strategy_config(
+        settings.strategy
+    )
     engine_config = EngineConfig(
         symbols=settings.trading_pairs,
         database=settings.database,
         timeframe=settings.timeframe,
         evaluation_interval_seconds=settings.strategy.evaluation_interval_seconds,
-        strategy_classes=[
-            SimpleMACrossoverStrategy,
-            RSIReversalStrategy,
-            MACDHistogramStrategy,
-            BollingerBounceStrategy,
-            MomentumStrategy,
-        ],
-        strategy_configs=[
-            {"ema_short_period": 12, "ema_long_period": 26},
-            {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
-            {"min_histogram_threshold": 0.0, "use_atr_filter": True},
-            {"band_distance_threshold": 0.0, "rsi_oversold": 30, "rsi_overbought": 70},
-            {"rsi_buy_threshold": 50, "rsi_sell_threshold": 50},
-        ],
-        aggregator_config={
-            "min_agreement": 2,
-            "buy_threshold": 1.5,
-            "sell_threshold": -1.5,
-        },
+        strategy_classes=strategy_classes,
+        strategy_configs=strategy_configs,
+        aggregator_config=aggregator_config,
     )
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 
@@ -364,6 +430,58 @@ async def run() -> None:
                                         on_signal=trading_executor.on_signal
                                     )
                                 )
+
+                                async def _log_startup_diagnostics() -> None:
+                                    logger = get_logger("startup")
+                                    try:
+                                        ohlcv_rows = await asyncio.to_thread(
+                                            writer.count_rows, "ohlcv"
+                                        )
+                                    except Exception:
+                                        ohlcv_rows = 0
+
+                                    try:
+                                        indicator_rows = await asyncio.to_thread(
+                                            indicator_writer.count_rows, "indicators"
+                                        )
+                                    except Exception:
+                                        indicator_rows = 0
+                                    latest_row = None
+                                    if settings.trading_pairs:
+                                        try:
+                                            rows = await indicator_reader.fetch_latest(
+                                                settings.trading_pairs[0],
+                                                settings.timeframe,
+                                                limit=1,
+                                            )
+                                            if rows:
+                                                latest_row = rows[-1]
+                                        except Exception:
+                                            latest_row = None
+
+                                    indicator_ready = False
+                                    if latest_row is not None:
+                                        indicator_ready = all(
+                                            key in latest_row
+                                            for key in (
+                                                "ema_12",
+                                                "ema_26",
+                                                "close_price",
+                                            )
+                                        )
+
+                                    risk_summary = risk_manager.get_risk_summary()
+                                    logger.info(
+                                        "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s",
+                                        writer.is_connected(),
+                                        ohlcv_rows,
+                                        indicator_rows,
+                                        indicator_ready,
+                                        risk_summary,
+                                        telegram_notifier.is_configured(),
+                                    )
+
+                                await _log_startup_diagnostics()
 
                                 await stop_event.wait()
 

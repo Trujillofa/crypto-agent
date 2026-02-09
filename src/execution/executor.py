@@ -511,7 +511,7 @@ class TradingExecutor:
                     pnl=None,
                 )
             elif signal.type == SignalType.SELL:
-                base_asset = signal.symbol.replace("USDT", "")
+                base_asset = signal.symbol.removesuffix("USDT")
                 balance = await self._client.get_asset_balance(base_asset)
                 if balance > 0:
                     order = await self.place_market_order(

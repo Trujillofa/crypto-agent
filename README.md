@@ -52,6 +52,9 @@ Prometheus Metrics + Logs
 # Clone repository (if not already cloned)
 cd /home/yderf/TRADING/crypto-agent
 
+# Local environment setup
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+
 # Create environment file
 cp .env.example .env
 ## Update .env with real secrets before running
@@ -202,7 +205,7 @@ For detailed API documentation, see `docs/TRADING_EXECUTION.md`.
 docker-compose exec agent pytest -v
 
 # Or locally (requires Python 3.11+)
-pytest -v
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && pytest
 ```
 
 ### Test Coverage

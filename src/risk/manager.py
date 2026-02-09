@@ -129,6 +129,31 @@ class RiskManager:
                 "circuit_breakers", self._circuit_breakers
             )
             self._last_reset = state.get("last_reset", time.time())
+            updated_at = state.get("updated_at")
+            if updated_at:
+                try:
+                    updated_timestamp = datetime.fromisoformat(updated_at)
+                    if updated_timestamp.tzinfo is None:
+                        updated_timestamp = updated_timestamp.replace(
+                            tzinfo=timezone.utc
+                        )
+                    age_seconds = (
+                        datetime.now(timezone.utc) - updated_timestamp
+                    ).total_seconds()
+                    if age_seconds >= 86400:
+                        self._logger.info(
+                            "Risk state older than 24h; resetting daily metrics"
+                        )
+                        self._daily_pnl = 0.0
+                        self._consecutive_losses = 0
+                        self._api_error_count = 0
+                        self._last_reset = time.time()
+                        self._save_state()
+                except ValueError as exc:
+                    self._logger.warning(
+                        "Invalid updated_at timestamp in risk state: %s",
+                        exc,
+                    )
 
             self._logger.info("Loaded risk state from disk")
 

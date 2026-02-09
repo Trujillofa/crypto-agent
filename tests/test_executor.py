@@ -16,6 +16,7 @@ class MockBinanceClient:
         self.get_order_status = AsyncMock()
         self.get_account_info = AsyncMock()
         self.get_open_orders = AsyncMock()
+        self.get_asset_balance = AsyncMock()
         self.place_limit_order = AsyncMock()
         self.cancel_order = AsyncMock()
         self.cancel_all_orders = AsyncMock()
@@ -207,3 +208,51 @@ async def test_duplicate_order_prevention():
 
     # Verify NO order placed
     executor._client.place_market_order.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_signal_sell_uses_removesuffix():
+    """SELL signal uses removesuffix for base asset parsing."""
+    config = TradingConfig(
+        api_key="key", api_secret="secret", enabled=True, symbols=["BUSDUSDT"]
+    )
+    risk_manager = MagicMock(spec=RiskManager)
+    metrics = MagicMock(spec=ExecutionMetrics)
+    notifier = MagicMock()
+    notifier.send_trade_alert = AsyncMock()
+    executor = TradingExecutor(config, risk_manager, metrics, notifier=notifier)
+
+    mock_client = MockBinanceClient()
+    mock_client.get_asset_balance.return_value = 1.5
+    executor._client = mock_client
+
+    from src.strategy.signals import Signal, SignalType
+    from src.execution.binance_client import OrderInfo
+
+    signal = Signal(
+        type=SignalType.SELL,
+        symbol="BUSDUSDT",
+        price=1.0,
+        confidence=1.0,
+        reason="Test",
+        indicators={},
+    )
+
+    executor.place_market_order = AsyncMock(
+        return_value=OrderInfo(
+            order_id="123",
+            symbol="BUSDUSDT",
+            side="SELL",
+            order_type="MARKET",
+            quantity=1.5,
+            price=1.0,
+            status="FILLED",
+            executed_quantity=1.5,
+            create_time=1000,
+        )
+    )
+
+    await executor.on_signal(signal)
+
+    mock_client.get_asset_balance.assert_called_once_with("BUSD")
+    executor.place_market_order.assert_called_once_with("BUSDUSDT", "SELL", 1.5)

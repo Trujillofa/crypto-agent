@@ -123,7 +123,17 @@ class StrategyEngine:
                 "Warming up %s: need 2 indicator rows, have %d", symbol, len(rows)
             )
             return None
-        return rows[-1]  # Return latest row (strategy handles crossover via state)
+        latest = rows[-1]
+        required_keys = ("ema_12", "ema_26", "close_price")
+        missing = [key for key in required_keys if key not in latest]
+        if missing:
+            self._logger.warning(
+                "Indicators missing keys for %s: %s",
+                symbol,
+                ", ".join(missing),
+            )
+            return None
+        return latest  # Return latest row (strategy handles crossover via state)
 
     def get_strategy_names(self) -> list[str]:
         """Get names of all active strategies."""
