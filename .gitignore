@@ -50,3 +50,6 @@ data/
 
 # Docker volumes / local state
 *.log
+
+# Database backups
+backups/
