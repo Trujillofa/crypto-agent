@@ -6,12 +6,11 @@ datasources:
     type: postgres
     access: proxy
     url: timescaledb:5432
-    database: $POSTGRES_DB
-    user: $POSTGRES_USER
+    database: ${POSTGRES_DB}
+    user: ${POSTGRES_USER}
     secureJsonData:
-      password: $POSTGRES_PASSWORD
+      password: ${POSTGRES_PASSWORD}
     jsonData:
-      database: $POSTGRES_DB
       sslmode: disable
       maxOpenConns: 10
       maxIdleConns: 10
@@ -28,6 +27,10 @@ datasources:
     url: http://prometheus:9090
     isDefault: false
     editable: false
+    basicAuth: true
+    basicAuthUser: admin
+    secureJsonData:
+      basicAuthPassword: ${PROMETHEUS_PASSWORD}
     jsonData:
       timeInterval: "15s"
       httpMethod: POST

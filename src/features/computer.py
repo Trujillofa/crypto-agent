@@ -128,10 +128,15 @@ class IndicatorComputer:
             return
 
         # Get the latest timestamp from OHLCV data
-        latest_time_str = next(
-            (t for t in ohlcv_data.get("time", [])),
-            datetime.now(timezone.utc).isoformat(),
-        )
+        time_values = list(ohlcv_data.get("time", []))
+        if time_values:
+            latest_time_value = time_values[-1]
+            if isinstance(latest_time_value, datetime):
+                latest_time_str = latest_time_value.isoformat()
+            else:
+                latest_time_str = str(latest_time_value)
+        else:
+            latest_time_str = datetime.now(timezone.utc).isoformat()
 
         # Update Prometheus metrics
         self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)

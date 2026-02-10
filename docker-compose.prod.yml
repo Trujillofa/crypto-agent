@@ -76,10 +76,18 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
       - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      # Pass DB credentials for datasource provisioning
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PROMETHEUS_PASSWORD=${PROMETHEUS_PASSWORD}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
     depends_on:
+      timescaledb:
+        condition: service_healthy
       prometheus:
         condition: service_healthy
     healthcheck:
