@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import sqlite3
 from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Any
 
-import pg8000
+import asyncpg
 
-from src.portfolio.models import Position, PositionStatus, Trade, PortfolioSummary
+from src.portfolio.models import Position, PositionStatus, PortfolioSummary
 from src.utils.logger import get_logger
 
 
@@ -20,173 +17,102 @@ class PortfolioManager:
     def __init__(self, config: Mapping[str, object]) -> None:
         self._config = config
         self._logger = get_logger(self.__class__.__name__)
-        self._conn: Any | None = None
-        self._use_sqlite = False
+        self._conn: asyncpg.Connection | None = None
         self._connected = False
         self._positions: dict[str, Position] = {}  # Cache of open positions by symbol
 
     async def __aenter__(self) -> "PortfolioManager":
-        await asyncio.to_thread(self._connect)
-        await asyncio.to_thread(self._ensure_schema)
+        await self._connect()
+        await self._ensure_schema()
         await self._load_open_positions()
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
+            await self._conn.close()
         self._connected = False
 
-    def _connect(self) -> None:
+    async def _connect(self) -> None:
         host = str(self._config.get("host", "localhost"))
         port = int(self._config.get("port", 5432))
         database = str(self._config.get("name", "marketdata"))
         user = str(self._config.get("user", "trading"))
         password = str(self._config.get("password", ""))
 
-        try:
-            self._conn = pg8000.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-            )
-            self._use_sqlite = False
-            self._connected = True
-            self._logger.info("PortfolioManager: Connected to TimescaleDB")
-        except Exception:
-            self._logger.warning("PortfolioManager: Falling back to SQLite")
-            sqlite_path = "data/portfolio.sqlite"
-            import os
+        self._conn = await asyncpg.connect(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+        )
+        self._connected = True
+        self._logger.info("PortfolioManager: Connected to TimescaleDB via asyncpg")
 
-            os.makedirs("data", exist_ok=True)
-            self._conn = sqlite3.connect(sqlite_path)
-            self._use_sqlite = True
-            self._connected = True
-            self._logger.info("PortfolioManager: Connected to SQLite")
-
-    def _ensure_schema(self) -> None:
+    async def _ensure_schema(self) -> None:
         if not self._connected or self._conn is None:
             raise RuntimeError("Database not connected")
 
-        cursor = self._conn.cursor()
-
-        if self._use_sqlite:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS positions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL,
-                    entry_time TEXT NOT NULL,
-                    entry_price REAL NOT NULL,
-                    quantity REAL NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'open',
-                    exit_time TEXT,
-                    exit_price REAL,
-                    realized_pnl REAL
-                )
+        await self._conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS positions (
+                id SERIAL PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                entry_time TIMESTAMPTZ NOT NULL,
+                entry_price DOUBLE PRECISION NOT NULL,
+                quantity DOUBLE PRECISION NOT NULL,
+                status TEXT NOT NULL DEFAULT 'open',
+                exit_time TIMESTAMPTZ,
+                exit_price DOUBLE PRECISION,
+                realized_pnl DOUBLE PRECISION
             )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS trades (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    time TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    side TEXT NOT NULL,
-                    quantity REAL NOT NULL,
-                    price REAL NOT NULL,
-                    order_id TEXT,
-                    pnl REAL,
-                    position_id INTEGER,
-                    FOREIGN KEY (position_id) REFERENCES positions (id)
-                )
             """
-            )
-        else:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS positions (
-                    id SERIAL PRIMARY KEY,
-                    symbol TEXT NOT NULL,
-                    entry_time TIMESTAMPTZ NOT NULL,
-                    entry_price DOUBLE PRECISION NOT NULL,
-                    quantity DOUBLE PRECISION NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'open',
-                    exit_time TIMESTAMPTZ,
-                    exit_price DOUBLE PRECISION,
-                    realized_pnl DOUBLE PRECISION
-                )
+        )
+        await self._conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS trades (
+                id SERIAL PRIMARY KEY,
+                time TIMESTAMPTZ NOT NULL,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                quantity DOUBLE PRECISION NOT NULL,
+                price DOUBLE PRECISION NOT NULL,
+                order_id TEXT,
+                pnl DOUBLE PRECISION,
+                position_id INTEGER REFERENCES positions(id)
             )
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS trades (
-                    id SERIAL PRIMARY KEY,
-                    time TIMESTAMPTZ NOT NULL,
-                    symbol TEXT NOT NULL,
-                    side TEXT NOT NULL,
-                    quantity DOUBLE PRECISION NOT NULL,
-                    price DOUBLE PRECISION NOT NULL,
-                    order_id TEXT,
-                    pnl DOUBLE PRECISION,
-                    position_id INTEGER REFERENCES positions(id)
-                )
             """
-            )
-
-        self._conn.commit()
+        )
 
     async def _load_open_positions(self) -> None:
         """Load open positions from database into cache."""
-        rows = await asyncio.to_thread(self._fetch_open_positions)
+        rows = await self._fetch_open_positions()
         for row in rows:
             position = self._row_to_position(row)
             self._positions[position.symbol] = position
         self._logger.info(f"Loaded {len(self._positions)} open positions")
 
-    def _fetch_open_positions(self) -> list[tuple]:
+    async def _fetch_open_positions(self) -> list[asyncpg.Record]:
         if self._conn is None:
             return []
-        cursor = self._conn.cursor()
-        if self._use_sqlite:
-            cursor.execute(
-                "SELECT * FROM positions WHERE status = ? ORDER BY entry_time DESC",
-                ("open",),
-            )
-        else:
-            cursor.execute(
-                "SELECT * FROM positions WHERE status = %s ORDER BY entry_time DESC",
-                ("open",),
-            )
-        return cursor.fetchall()
+        return await self._conn.fetch(
+            "SELECT * FROM positions WHERE status = $1 ORDER BY entry_time DESC",
+            "open",
+        )
 
-    def _row_to_position(self, row: tuple) -> Position:
+    def _row_to_position(self, row: asyncpg.Record) -> Position:
         """Convert database row to Position object."""
-        if self._use_sqlite:
-            return Position(
-                id=row[0],
-                symbol=row[1],
-                entry_time=datetime.fromisoformat(row[2]),
-                entry_price=float(row[3]),
-                quantity=float(row[4]),
-                status=PositionStatus(row[5]),
-                exit_time=datetime.fromisoformat(row[6]) if row[6] else None,
-                exit_price=float(row[7]) if row[7] else None,
-                realized_pnl=float(row[8]) if row[8] else None,
-            )
-        else:
-            return Position(
-                id=row[0],
-                symbol=row[1],
-                entry_time=row[2],
-                entry_price=float(row[3]),
-                quantity=float(row[4]),
-                status=PositionStatus(row[5]),
-                exit_time=row[6],
-                exit_price=float(row[7]) if row[7] else None,
-                realized_pnl=float(row[8]) if row[8] else None,
-            )
+        return Position(
+            id=row["id"],
+            symbol=row["symbol"],
+            entry_time=row["entry_time"],
+            entry_price=float(row["entry_price"]),
+            quantity=float(row["quantity"]),
+            status=PositionStatus(row["status"]),
+            exit_time=row["exit_time"],
+            exit_price=float(row["exit_price"]) if row["exit_price"] else None,
+            realized_pnl=float(row["realized_pnl"]) if row["realized_pnl"] else None,
+        )
 
     async def open_position(
         self, symbol: str, quantity: float, price: float, order_id: str | None = None
@@ -203,61 +129,36 @@ class PortfolioManager:
             The created Position
         """
         entry_time = datetime.now(timezone.utc)
+        if self._conn is None:
+            raise RuntimeError("Database connection missing")
 
-        if self._use_sqlite:
-            insert_query = """
+        async with self._conn.transaction():
+            position_id = await self._conn.fetchval(
+                """
                 INSERT INTO positions (symbol, entry_time, entry_price, quantity, status)
-                VALUES (?, ?, ?, ?, ?)
-            """
-            trade_query = """
-                INSERT INTO trades (time, symbol, side, quantity, price, order_id, position_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """
-        else:
-            insert_query = """
-                INSERT INTO positions (symbol, entry_time, entry_price, quantity, status)
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING id
-            """
-            trade_query = """
+                """,
+                symbol,
+                entry_time,
+                price,
+                quantity,
+                "open",
+            )
+
+            await self._conn.execute(
+                """
                 INSERT INTO trades (time, symbol, side, quantity, price, order_id, position_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-
-        def _insert():
-            cursor = self._conn.cursor()
-            cursor.execute(
-                insert_query,
-                (
-                    symbol,
-                    entry_time.isoformat() if self._use_sqlite else entry_time,
-                    price,
-                    quantity,
-                    "open",
-                ),
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                entry_time,
+                symbol,
+                "BUY",
+                quantity,
+                price,
+                order_id,
+                position_id,
             )
-
-            if self._use_sqlite:
-                position_id = cursor.lastrowid
-            else:
-                position_id = cursor.fetchone()[0]
-
-            cursor.execute(
-                trade_query,
-                (
-                    entry_time.isoformat() if self._use_sqlite else entry_time,
-                    symbol,
-                    "BUY",
-                    quantity,
-                    price,
-                    order_id,
-                    position_id,
-                ),
-            )
-            self._conn.commit()
-            return position_id
-
-        position_id = await asyncio.to_thread(_insert)
 
         position = Position(
             id=position_id,
@@ -295,56 +196,36 @@ class PortfolioManager:
         position = self._positions[symbol]
         exit_time = datetime.now(timezone.utc)
         realized_pnl = position.close(price, exit_time)
+        if self._conn is None:
+            raise RuntimeError("Database connection missing")
 
-        if self._use_sqlite:
-            update_query = """
+        async with self._conn.transaction():
+            await self._conn.execute(
+                """
                 UPDATE positions
-                SET status = ?, exit_time = ?, exit_price = ?, realized_pnl = ?
-                WHERE id = ?
-            """
-            trade_query = """
-                INSERT INTO trades (time, symbol, side, quantity, price, order_id, pnl, position_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """
-        else:
-            update_query = """
-                UPDATE positions
-                SET status = %s, exit_time = %s, exit_price = %s, realized_pnl = %s
-                WHERE id = %s
-            """
-            trade_query = """
-                INSERT INTO trades (time, symbol, side, quantity, price, order_id, pnl, position_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """
-
-        def _update():
-            cursor = self._conn.cursor()
-            cursor.execute(
-                update_query,
-                (
-                    "closed",
-                    exit_time.isoformat() if self._use_sqlite else exit_time,
-                    price,
-                    realized_pnl,
-                    position.id,
-                ),
+                SET status = $1, exit_time = $2, exit_price = $3, realized_pnl = $4
+                WHERE id = $5
+                """,
+                "closed",
+                exit_time,
+                price,
+                realized_pnl,
+                position.id,
             )
-            cursor.execute(
-                trade_query,
-                (
-                    exit_time.isoformat() if self._use_sqlite else exit_time,
-                    symbol,
-                    "SELL",
-                    position.quantity,
-                    price,
-                    order_id,
-                    realized_pnl,
-                    position.id,
-                ),
+            await self._conn.execute(
+                """
+                INSERT INTO trades (time, symbol, side, quantity, price, order_id, pnl, position_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                exit_time,
+                symbol,
+                "SELL",
+                position.quantity,
+                price,
+                order_id,
+                realized_pnl,
+                position.id,
             )
-            self._conn.commit()
-
-        await asyncio.to_thread(_update)
         del self._positions[symbol]
 
         self._logger.info(
@@ -374,63 +255,37 @@ class PortfolioManager:
 
     async def get_portfolio_summary(self) -> PortfolioSummary:
         """Get portfolio summary statistics."""
+        if self._conn is None:
+            raise RuntimeError("Database connection missing")
 
-        def _query():
-            cursor = self._conn.cursor()
-
-            # Count positions
-            cursor.execute("SELECT COUNT(*) FROM positions")
-            total_positions = cursor.fetchone()[0]
-
-            cursor.execute("SELECT COUNT(*) FROM positions WHERE status = 'open'")
-            open_positions = cursor.fetchone()[0]
-
-            cursor.execute("SELECT COUNT(*) FROM positions WHERE status = 'closed'")
-            closed_positions = cursor.fetchone()[0]
-
-            # Count trades
-            cursor.execute("SELECT COUNT(*) FROM trades")
-            total_trades = cursor.fetchone()[0]
-
-            # Sum realized PnL
-            cursor.execute(
-                "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed'"
-            )
-            total_realized_pnl = float(cursor.fetchone()[0] or 0)
-
-            # Count wins/losses
-            cursor.execute(
-                "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0"
-            )
-            win_count = cursor.fetchone()[0]
-
-            cursor.execute(
-                "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0"
-            )
-            loss_count = cursor.fetchone()[0]
-
-            return {
-                "total_positions": total_positions,
-                "open_positions": open_positions,
-                "closed_positions": closed_positions,
-                "total_trades": total_trades,
-                "total_realized_pnl": total_realized_pnl,
-                "win_count": win_count,
-                "loss_count": loss_count,
-            }
-
-        stats = await asyncio.to_thread(_query)
+        total_positions = await self._conn.fetchval("SELECT COUNT(*) FROM positions")
+        open_positions = await self._conn.fetchval(
+            "SELECT COUNT(*) FROM positions WHERE status = 'open'"
+        )
+        closed_positions = await self._conn.fetchval(
+            "SELECT COUNT(*) FROM positions WHERE status = 'closed'"
+        )
+        total_trades = await self._conn.fetchval("SELECT COUNT(*) FROM trades")
+        total_realized_pnl = await self._conn.fetchval(
+            "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed'"
+        )
+        win_count = await self._conn.fetchval(
+            "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0"
+        )
+        loss_count = await self._conn.fetchval(
+            "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0"
+        )
 
         # Calculate unrealized PnL for open positions
         total_unrealized = 0.0
 
         return PortfolioSummary(
-            total_positions=stats["total_positions"],
-            open_positions=stats["open_positions"],
-            closed_positions=stats["closed_positions"],
-            total_trades=stats["total_trades"],
-            total_realized_pnl=stats["total_realized_pnl"],
+            total_positions=int(total_positions or 0),
+            open_positions=int(open_positions or 0),
+            closed_positions=int(closed_positions or 0),
+            total_trades=int(total_trades or 0),
+            total_realized_pnl=float(total_realized_pnl or 0),
             total_unrealized_pnl=total_unrealized,
-            win_count=stats["win_count"],
-            loss_count=stats["loss_count"],
+            win_count=int(win_count or 0),
+            loss_count=int(loss_count or 0),
         )

@@ -35,10 +35,14 @@ class TestStrategyEngineIntegration:
     def mock_reader(self):
         reader = IndicatorReader({})
         reader._connected = True
-        reader._fetch_rows = lambda s, t, l: [
-            {"close_price": 100.0, "ema_12": 100.0, "ema_26": 99.0},
-            {"close_price": 101.0, "ema_12": 101.0, "ema_26": 100.0},
-        ]
+
+        async def _mock_fetch_rows(s, t, l):
+            return [
+                {"close_price": 100.0, "ema_12": 100.0, "ema_26": 99.0},
+                {"close_price": 101.0, "ema_12": 101.0, "ema_26": 100.0},
+            ]
+
+        reader._fetch_rows = _mock_fetch_rows
         return reader
 
     @pytest.mark.asyncio

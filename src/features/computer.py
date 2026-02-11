@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
-import pg8000
+import asyncpg
 
 from src.features.technical import compute_indicators
 from src.features.writer import IndicatorWriter, StoredIndicator
@@ -32,7 +31,7 @@ class IndicatorComputer:
         self._metrics = metrics
         self._compute_interval = compute_interval
         self._logger = get_logger(self.__class__.__name__)
-        self._conn: pg8000.Connection | None = None
+        self._conn: asyncpg.Connection | None = None
         self._running = False
 
     async def run(self) -> None:
@@ -53,7 +52,7 @@ class IndicatorComputer:
         finally:
             self._metrics.stop_computation_loop()
             if self._conn is not None:
-                await asyncio.to_thread(self._conn.close)
+                await self._conn.close()
             self._logger.info("Indicator computation loop stopped")
 
     async def _connect(self) -> None:
@@ -65,15 +64,14 @@ class IndicatorComputer:
         password = str(self._config.get("password", ""))
 
         try:
-            self._conn = await asyncio.to_thread(
-                pg8000.connect,
+            self._conn = await asyncpg.connect(
                 host=host,
                 port=port,
                 database=database,
                 user=user,
                 password=password,
             )
-            self._logger.info("IndicatorComputer: Connected to TimescaleDB")
+            self._logger.info("IndicatorComputer: Connected to TimescaleDB via asyncpg")
         except Exception as exc:  # noqa: BLE001
             self._logger.error("Failed to connect to TimescaleDB: %s", exc)
             raise
@@ -105,11 +103,7 @@ class IndicatorComputer:
         computation_start = time.perf_counter()
 
         # Read OHLCV data (need at least 200 periods for long-term indicators)
-        ohlcv_data = await asyncio.to_thread(
-            self._read_ohlcv,
-            symbol,
-            limit=200,
-        )
+        ohlcv_data = await self._read_ohlcv(symbol, limit=200)
 
         if not ohlcv_data:
             self._logger.warning("No OHLCV data found for %s", symbol)
@@ -185,23 +179,20 @@ class IndicatorComputer:
         self._metrics.computations_total.labels(symbol=symbol, status="success").inc()
         self._metrics.last_computation_time.labels(symbol=symbol).set(time.time())
 
-    def _read_ohlcv(self, symbol: str, limit: int) -> dict[str, list]:
+    async def _read_ohlcv(self, symbol: str, limit: int) -> dict[str, list]:
         """Read OHLCV data from TimescaleDB."""
         if self._conn is None:
             raise RuntimeError("Database connection not initialized")
 
-        cursor = self._conn.cursor()
-
         query = """
             SELECT time, open_price, high_price, low_price, close_price, volume
             FROM ohlcv
-            WHERE symbol = %s AND timeframe = %s
+            WHERE symbol = $1 AND timeframe = $2
             ORDER BY time DESC
-            LIMIT %s
+            LIMIT $3
         """
 
-        cursor.execute(query, (symbol, self._timeframe, limit))
-        rows = cursor.fetchall()
+        rows = await self._conn.fetch(query, symbol, self._timeframe, limit)
 
         if not rows:
             return {}
@@ -210,12 +201,12 @@ class IndicatorComputer:
         rows = list(reversed(rows))
 
         return {
-            "time": [row[0] for row in rows],
-            "open": [row[1] for row in rows],
-            "high": [row[2] for row in rows],
-            "low": [row[3] for row in rows],
-            "close": [row[4] for row in rows],
-            "volume": [row[5] for row in rows],
+            "time": [row["time"] for row in rows],
+            "open": [row["open_price"] for row in rows],
+            "high": [row["high_price"] for row in rows],
+            "low": [row["low_price"] for row in rows],
+            "close": [row["close_price"] for row in rows],
+            "volume": [row["volume"] for row in rows],
         }
 
     def stop(self) -> None:

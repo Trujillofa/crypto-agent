@@ -318,6 +318,12 @@ async def run() -> None:
     settings = load_settings(Path("config/settings.yaml"))
     configure_logger(settings.log_level)
 
+    auto_migrate = _as_bool(
+        settings.database.get("auto_migrate"),
+        "database.auto_migrate",
+        default=False,
+    )
+
     # Initialize risk manager
     risk_manager = RiskManager(Path("config/risk.yaml"))
 
@@ -332,6 +338,18 @@ async def run() -> None:
     ingest_metrics = IngestMetrics()
     indicator_metrics = IndicatorMetrics()
     execution_metrics = ExecutionMetrics()
+
+    if auto_migrate:
+        from scripts import migrate
+
+        logger = get_logger("migrations")
+        try:
+            result = await asyncio.to_thread(migrate.run_migrations)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Auto-migration failed: %s", exc)
+            raise
+        if result != 0:
+            raise RuntimeError("Auto-migration failed. See logs for details.")
 
     # Start Prometheus metrics server
     MetricsServer(ingest_metrics.registry).start(settings.prometheus_port)

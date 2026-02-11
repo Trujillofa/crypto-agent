@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-import sqlite3
 from collections.abc import Mapping
-from typing import Any
 
-import pg8000
+import asyncpg
 
 from src.utils.logger import get_logger
 
@@ -13,24 +10,22 @@ from src.utils.logger import get_logger
 class IndicatorReader:
     """Read latest indicators from database for strategy evaluation.
 
-    Follows the same pg8000 + asyncio.to_thread + SQLite fallback pattern
-    as IndicatorWriter for consistency.
+    Uses asyncpg for async database access.
     """
 
     def __init__(self, config: Mapping[str, object]) -> None:
         self._config = config
         self._logger = get_logger(self.__class__.__name__)
         self._connected = False
-        self._conn: Any | None = None
-        self._use_sqlite = False
+        self._conn: asyncpg.Connection | None = None
 
     async def __aenter__(self) -> "IndicatorReader":
-        await asyncio.to_thread(self._connect)
+        await self._connect()
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
+            await self._conn.close()
         self._connected = False
 
     async def fetch_latest(
@@ -53,7 +48,7 @@ class IndicatorReader:
         """
         if not self._connected:
             raise RuntimeError("IndicatorReader connection not initialized")
-        return await asyncio.to_thread(self._fetch_rows, symbol, timeframe, limit)
+        return await self._fetch_rows(symbol, timeframe, limit)
 
     async def fetch_range(
         self,
@@ -75,47 +70,32 @@ class IndicatorReader:
         """
         if not self._connected:
             raise RuntimeError("IndicatorReader connection not initialized")
-        return await asyncio.to_thread(
-            self._fetch_range_rows, symbol, timeframe, start_time, end_time
-        )
+        return await self._fetch_range_rows(symbol, timeframe, start_time, end_time)
 
-    def _connect(self) -> None:
-        """Connect to TimescaleDB via pg8000, fallback to SQLite."""
+    async def _connect(self) -> None:
+        """Connect to TimescaleDB via asyncpg."""
         host = str(self._config.get("host", "localhost"))
         port = int(self._config.get("port", 5432))
         database = str(self._config.get("name", "marketdata"))
         user = str(self._config.get("user", "trading"))
         password = str(self._config.get("password", ""))
 
-        try:
-            self._conn = pg8000.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-            )
-            self._use_sqlite = False
-            self._connected = True
-            self._logger.info("IndicatorReader: Connected to TimescaleDB via pg8000")
-        except Exception as exc:  # noqa: BLE001
-            self._logger.warning("IndicatorReader: Falling back to SQLite: %s", exc)
-            sqlite_path = "/tmp/indicators.sqlite"
-            self._conn = sqlite3.connect(sqlite_path, check_same_thread=False)
-            self._use_sqlite = True
-            self._connected = True
-            self._logger.info(
-                "IndicatorReader: Connected to SQLite for local persistence"
-            )
+        self._conn = await asyncpg.connect(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+        )
+        self._connected = True
+        self._logger.info("IndicatorReader: Connected to TimescaleDB via asyncpg")
 
-    def _fetch_range_rows(
+    async def _fetch_range_rows(
         self, symbol: str, timeframe: str, start_time: str, end_time: str
     ) -> list[dict[str, float]]:
-        """Fetch rows from database for a specific time range (blocking I/O)."""
+        """Fetch rows from database for a specific time range."""
         if self._conn is None:
             raise RuntimeError("Database connection missing")
-
-        cursor = self._conn.cursor()
 
         query = """
             SELECT
@@ -148,16 +128,12 @@ class IndicatorReader:
                 ON i.time = o.time
                 AND i.symbol = o.symbol
                 AND i.timeframe = o.timeframe
-            WHERE i.symbol = %s AND i.timeframe = %s
-            AND i.time >= %s AND i.time <= %s
+            WHERE i.symbol = $1 AND i.timeframe = $2
+            AND i.time >= $3 AND i.time <= $4
             ORDER BY i.time ASC
         """
 
-        if self._use_sqlite:
-            query = query.replace("%s", "?")
-
-        cursor.execute(query, (symbol, timeframe, start_time, end_time))
-        rows = cursor.fetchall()
+        rows = await self._conn.fetch(query, symbol, timeframe, start_time, end_time)
 
         if not rows:
             return []
@@ -166,47 +142,77 @@ class IndicatorReader:
         for row in rows:
             results.append(
                 {
-                    "time": row[0],  # Include time for backtesting
-                    "ema_12": float(row[1]) if row[1] is not None else 0.0,
-                    "ema_26": float(row[2]) if row[2] is not None else 0.0,
-                    "close_price": float(row[3]),
-                    "rsi_14": float(row[4]) if row[4] is not None else None,
-                    "rsi_7": float(row[5]) if row[5] is not None else None,
-                    "macd": float(row[6]) if row[6] is not None else None,
-                    "macd_signal": float(row[7]) if row[7] is not None else None,
-                    "macd_hist": float(row[8]) if row[8] is not None else None,
-                    "bb_upper_dist": float(row[9]) if row[9] is not None else None,
-                    "bb_lower_dist": float(row[10]) if row[10] is not None else None,
-                    "atr_14": float(row[11]) if row[11] is not None else None,
-                    "atr_pct": float(row[12]) if row[12] is not None else None,
-                    "ema_50": float(row[13]) if row[13] is not None else None,
-                    "ema_200": float(row[14]) if row[14] is not None else None,
-                    "sma_20": float(row[15]) if row[15] is not None else None,
-                    "sma_50": float(row[16]) if row[16] is not None else None,
-                    "sma_200": float(row[17]) if row[17] is not None else None,
-                    "vwap": float(row[18]) if row[18] is not None else None,
-                    "stoch_k": float(row[19]) if row[19] is not None else None,
-                    "stoch_d": float(row[20]) if row[20] is not None else None,
-                    "cci": float(row[21]) if row[21] is not None else None,
-                    "high_price": float(row[22])
-                    if row[22] is not None
-                    else float(row[3]),
-                    "low_price": float(row[23])
-                    if row[23] is not None
-                    else float(row[3]),
+                    "time": row["time"],  # Include time for backtesting
+                    "ema_12": float(row["ema_12"])
+                    if row["ema_12"] is not None
+                    else 0.0,
+                    "ema_26": float(row["ema_26"])
+                    if row["ema_26"] is not None
+                    else 0.0,
+                    "close_price": float(row["close_price"]),
+                    "rsi_14": float(row["rsi_14"])
+                    if row["rsi_14"] is not None
+                    else None,
+                    "rsi_7": float(row["rsi_7"]) if row["rsi_7"] is not None else None,
+                    "macd": float(row["macd"]) if row["macd"] is not None else None,
+                    "macd_signal": float(row["macd_signal"])
+                    if row["macd_signal"] is not None
+                    else None,
+                    "macd_hist": float(row["macd_hist"])
+                    if row["macd_hist"] is not None
+                    else None,
+                    "bb_upper_dist": float(row["bb_upper_dist"])
+                    if row["bb_upper_dist"] is not None
+                    else None,
+                    "bb_lower_dist": float(row["bb_lower_dist"])
+                    if row["bb_lower_dist"] is not None
+                    else None,
+                    "atr_14": float(row["atr_14"])
+                    if row["atr_14"] is not None
+                    else None,
+                    "atr_pct": float(row["atr_pct"])
+                    if row["atr_pct"] is not None
+                    else None,
+                    "ema_50": float(row["ema_50"])
+                    if row["ema_50"] is not None
+                    else None,
+                    "ema_200": float(row["ema_200"])
+                    if row["ema_200"] is not None
+                    else None,
+                    "sma_20": float(row["sma_20"])
+                    if row["sma_20"] is not None
+                    else None,
+                    "sma_50": float(row["sma_50"])
+                    if row["sma_50"] is not None
+                    else None,
+                    "sma_200": float(row["sma_200"])
+                    if row["sma_200"] is not None
+                    else None,
+                    "vwap": float(row["vwap"]) if row["vwap"] is not None else None,
+                    "stoch_k": float(row["stoch_k"])
+                    if row["stoch_k"] is not None
+                    else None,
+                    "stoch_d": float(row["stoch_d"])
+                    if row["stoch_d"] is not None
+                    else None,
+                    "cci": float(row["cci"]) if row["cci"] is not None else None,
+                    "high_price": float(row["high_price"])
+                    if row["high_price"] is not None
+                    else float(row["close_price"]),
+                    "low_price": float(row["low_price"])
+                    if row["low_price"] is not None
+                    else float(row["close_price"]),
                 }
             )
 
         return results
 
-    def _fetch_rows(
+    async def _fetch_rows(
         self, symbol: str, timeframe: str, limit: int
     ) -> list[dict[str, float]]:
-        """Fetch rows from database (blocking I/O)."""
+        """Fetch rows from database."""
         if self._conn is None:
             raise RuntimeError("Database connection missing")
-
-        cursor = self._conn.cursor()
 
         # JOIN with ohlcv table to get close_price
         # Use DESC ordering and reverse to get oldest-first
@@ -239,17 +245,12 @@ class IndicatorReader:
                 ON i.time = o.time
                 AND i.symbol = o.symbol
                 AND i.timeframe = o.timeframe
-            WHERE i.symbol = %s AND i.timeframe = %s
+            WHERE i.symbol = $1 AND i.timeframe = $2
             ORDER BY i.time DESC
-            LIMIT %s
+            LIMIT $3
         """
 
-        if self._use_sqlite:
-            # SQLite uses ? placeholders
-            query = query.replace("%s", "?")
-
-        cursor.execute(query, (symbol, timeframe, limit))
-        rows = cursor.fetchall()
+        rows = await self._conn.fetch(query, symbol, timeframe, limit)
 
         if not rows:
             return []
@@ -261,27 +262,59 @@ class IndicatorReader:
         for row in rows:
             results.append(
                 {
-                    "ema_12": float(row[1]) if row[1] is not None else 0.0,
-                    "ema_26": float(row[2]) if row[2] is not None else 0.0,
-                    "close_price": float(row[3]),
-                    "rsi_14": float(row[4]) if row[4] is not None else None,
-                    "rsi_7": float(row[5]) if row[5] is not None else None,
-                    "macd": float(row[6]) if row[6] is not None else None,
-                    "macd_signal": float(row[7]) if row[7] is not None else None,
-                    "macd_hist": float(row[8]) if row[8] is not None else None,
-                    "bb_upper_dist": float(row[9]) if row[9] is not None else None,
-                    "bb_lower_dist": float(row[10]) if row[10] is not None else None,
-                    "atr_14": float(row[11]) if row[11] is not None else None,
-                    "atr_pct": float(row[12]) if row[12] is not None else None,
-                    "ema_50": float(row[13]) if row[13] is not None else None,
-                    "ema_200": float(row[14]) if row[14] is not None else None,
-                    "sma_20": float(row[15]) if row[15] is not None else None,
-                    "sma_50": float(row[16]) if row[16] is not None else None,
-                    "sma_200": float(row[17]) if row[17] is not None else None,
-                    "vwap": float(row[18]) if row[18] is not None else None,
-                    "stoch_k": float(row[19]) if row[19] is not None else None,
-                    "stoch_d": float(row[20]) if row[20] is not None else None,
-                    "cci": float(row[21]) if row[21] is not None else None,
+                    "ema_12": float(row["ema_12"])
+                    if row["ema_12"] is not None
+                    else 0.0,
+                    "ema_26": float(row["ema_26"])
+                    if row["ema_26"] is not None
+                    else 0.0,
+                    "close_price": float(row["close_price"]),
+                    "rsi_14": float(row["rsi_14"])
+                    if row["rsi_14"] is not None
+                    else None,
+                    "rsi_7": float(row["rsi_7"]) if row["rsi_7"] is not None else None,
+                    "macd": float(row["macd"]) if row["macd"] is not None else None,
+                    "macd_signal": float(row["macd_signal"])
+                    if row["macd_signal"] is not None
+                    else None,
+                    "macd_hist": float(row["macd_hist"])
+                    if row["macd_hist"] is not None
+                    else None,
+                    "bb_upper_dist": float(row["bb_upper_dist"])
+                    if row["bb_upper_dist"] is not None
+                    else None,
+                    "bb_lower_dist": float(row["bb_lower_dist"])
+                    if row["bb_lower_dist"] is not None
+                    else None,
+                    "atr_14": float(row["atr_14"])
+                    if row["atr_14"] is not None
+                    else None,
+                    "atr_pct": float(row["atr_pct"])
+                    if row["atr_pct"] is not None
+                    else None,
+                    "ema_50": float(row["ema_50"])
+                    if row["ema_50"] is not None
+                    else None,
+                    "ema_200": float(row["ema_200"])
+                    if row["ema_200"] is not None
+                    else None,
+                    "sma_20": float(row["sma_20"])
+                    if row["sma_20"] is not None
+                    else None,
+                    "sma_50": float(row["sma_50"])
+                    if row["sma_50"] is not None
+                    else None,
+                    "sma_200": float(row["sma_200"])
+                    if row["sma_200"] is not None
+                    else None,
+                    "vwap": float(row["vwap"]) if row["vwap"] is not None else None,
+                    "stoch_k": float(row["stoch_k"])
+                    if row["stoch_k"] is not None
+                    else None,
+                    "stoch_d": float(row["stoch_d"])
+                    if row["stoch_d"] is not None
+                    else None,
+                    "cci": float(row["cci"]) if row["cci"] is not None else None,
                 }
             )
 
