@@ -10,7 +10,6 @@ from typing import Any
 from src.execution.futures_client import (
     BinanceFuturesClient,
     FuturesOrderInfo,
-    FuturesPositionInfo,
 )
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramNotifier

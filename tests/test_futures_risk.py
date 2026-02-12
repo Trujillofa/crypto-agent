@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.risk.manager import RiskManager, RiskConfig, FuturesLimits
+from src.risk.manager import RiskManager
 
 
 class TestFuturesRiskMethods:

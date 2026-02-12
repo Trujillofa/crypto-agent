@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from dataclasses import dataclass, field
 
 import pytest
 from src.features.reader import IndicatorReader
@@ -36,7 +34,7 @@ class TestStrategyEngineIntegration:
         reader = IndicatorReader({})
         reader._connected = True
 
-        async def _mock_fetch_rows(s, t, l):
+        async def _mock_fetch_rows(s, t, limit):
             return [
                 {"close_price": 100.0, "ema_12": 100.0, "ema_26": 99.0},
                 {"close_price": 101.0, "ema_12": 101.0, "ema_26": 100.0},

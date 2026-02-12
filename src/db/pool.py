@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
-from typing import Any
 
 import asyncpg
 

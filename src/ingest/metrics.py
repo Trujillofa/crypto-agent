@@ -4,7 +4,6 @@ import re
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import Any
 
 from prometheus_client import generate_latest
 

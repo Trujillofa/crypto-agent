@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.execution.binance_client import AccountInfo, OrderInfo
+from src.execution.binance_client import OrderInfo
 from src.execution.executor import TradingConfig, TradingExecutor
 from src.execution.metrics import ExecutionMetrics
 from src.features.reader import IndicatorReader
