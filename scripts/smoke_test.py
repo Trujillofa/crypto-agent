@@ -2,6 +2,7 @@
 """End-to-end smoke test for the trading agent pipeline."""
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -286,11 +287,18 @@ async def run_smoke_test():
 
     configure_logger("INFO")
 
+    is_ci = os.environ.get("CI") == "true"
     results = []
+    # OHLCV ingestion requires live Binance access; skip in CI
+    network_results = []
 
     try:
-        # Run each test
-        results.append(("OHLCV Ingestion", await test_ingestion()))
+        if is_ci:
+            print("\n⏭️  SKIP: OHLCV Ingestion (requires live Binance API, not available in CI)")
+            network_results.append(("OHLCV Ingestion", None))
+        else:
+            results.append(("OHLCV Ingestion", await test_ingestion()))
+
         results.append(("Indicator Computation", await test_indicator_computation()))
         results.append(("Strategy Signals", await test_strategy_signals()))
         results.append(("Position Tracking (NEW)", await test_position_tracking()))
@@ -311,28 +319,24 @@ async def run_smoke_test():
     print("📊 SMOKE TEST SUMMARY")
     print("=" * 60)
 
+    all_entries = network_results + results
     passed = sum(1 for _, result in results if result)
     total = len(results)
 
-    for name, result in results:
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"  {status}: {name}")
+    for name, result in all_entries:
+        if result is None:
+            print(f"  ⏭️  SKIP: {name}")
+        else:
+            status = "✅ PASS" if result else "❌ FAIL"
+            print(f"  {status}: {name}")
 
     print("-" * 60)
-    print(f"Results: {passed}/{total} tests passed")
+    skipped = len(network_results)
+    skip_msg = f" ({skipped} skipped)" if skipped else ""
+    print(f"Results: {passed}/{total} tests passed{skip_msg}")
 
     if passed == total:
         print("\n🎉 ALL SMOKE TESTS PASSED!")
-        print("\nThe full pipeline is working:")
-        print("  ✅ Market data ingestion")
-        print("  ✅ Technical indicator computation")
-        print("  ✅ Strategy signal generation")
-        print("  ✅ Position tracking with PnL")
-        print("  ✅ Telegram notifications ready")
-        print("\nYou can now:")
-        print("  1. Start the agent with: docker-compose up")
-        print("  2. Monitor signals with: curl http://localhost:18000/metrics")
-        print("  3. View Grafana dashboard: http://localhost:13001")
         return True
     else:
         print(f"\n⚠️  {total - passed} tests failed")
