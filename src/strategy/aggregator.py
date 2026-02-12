@@ -9,8 +9,13 @@ from src.utils.logger import get_logger
 class SignalAggregator:
     """Aggregates multiple trading signals into a single consensus signal."""
 
-    def __init__(self, config: Mapping[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        config: Mapping[str, object] | None = None,
+        default_trading_mode: str = "spot",
+    ) -> None:
         self._config = config or {}
+        self._default_trading_mode = default_trading_mode
         self._logger = get_logger(self.__class__.__name__)
 
         self._buy_threshold = float(self._config.get("buy_threshold", 0.5))
@@ -74,6 +79,7 @@ class SignalAggregator:
             confidence=final_confidence,
             reason=final_reason,
             indicators=all_indicators,
+            trading_mode=self._default_trading_mode,
         )
 
     def _create_hold(self, symbol: str, price: float, reason: str) -> Signal:
@@ -84,4 +90,5 @@ class SignalAggregator:
             confidence=0.0,
             reason=reason,
             indicators={},
+            trading_mode=self._default_trading_mode,
         )
