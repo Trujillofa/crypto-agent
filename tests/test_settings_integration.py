@@ -13,17 +13,18 @@ from src.strategy import Signal, SignalType
 
 
 def test_settings_default_safe():
-    """Verify settings.yaml loads with safe defaults (disabled, test mode)."""
+    """Verify settings.yaml loads with safe defaults (paper mode with test mode)."""
     settings = load_settings(Path("config/settings.yaml"))
 
-    # Trading execution should be disabled by default
-    assert settings.trading_execution.enabled is False, (
-        "Trading should be disabled by default"
+    # Paper trading is enabled by default for full pipeline testing
+    # Safety is ensured by test_mode=True (uses Binance testnet, not real funds)
+    assert settings.trading_execution.enabled is True, (
+        "Paper trading should be enabled by default for pipeline testing"
     )
 
-    # Test mode should be enabled by default
+    # Test mode should be enabled by default (crucial safety check)
     assert settings.trading_execution.test_mode is True, (
-        "Test mode should be enabled by default"
+        "Test mode must be enabled by default for safety"
     )
 
     # Strategy config should load with default interval
