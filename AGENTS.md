@@ -18,6 +18,7 @@ All agents MUST read and follow **`CLAUDE.md`** in this project root. It contain
 | OpenCode / Codex | `opencode` | `codex-instructions.md` | `OpenCode <noreply@openai.com>` |
 | GitHub Copilot | `gh copilot` | `copilot-instructions.md` | `GitHub Copilot <noreply@github.com>` |
 | Gemini CLI | `gemini` | `gemini-instructions.md` | `Gemini CLI <noreply@google.com>` |
+| Sisyphus | `sisyphus` | `sisyphus-instructions.md` | `Sisyphus <noreply@opencode.com>` |
 | Human | editor | `CLAUDE.md` | (normal git identity) |
 
 ## Coordination Summary
