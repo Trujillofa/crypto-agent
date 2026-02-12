@@ -27,11 +27,19 @@ class Position:
         symbol: Trading pair symbol (e.g., BTCUSDT)
         entry_time: When position was opened
         entry_price: Price at entry
-        quantity: Amount held (base asset units)
+        quantity: Amount held (base asset units, always positive for spot)
         status: Current status (open/closed)
         exit_time: When position was closed
         exit_price: Price at exit
         realized_pnl: Realized profit/loss when closed
+
+        # Futures-specific fields (None/0 for spot positions):
+        position_side: LONG or SHORT for futures, None for spot
+        leverage: Leverage level (1-20), None for spot
+        margin_type: Isolated or cross, None for spot
+        liquidation_price: Price at which position liquidates, None for spot
+        mark_price: Last mark price (for liq monitoring), None for spot
+        funding_fees: Accumulated funding fees, 0 for spot
     """
 
     id: int | None = None
@@ -43,6 +51,14 @@ class Position:
     exit_time: datetime | None = None
     exit_price: float | None = None
     realized_pnl: float | None = None
+
+    # Futures-specific fields (nullable for backward compatibility with spot)
+    position_side: str | None = None  # "LONG" or "SHORT", None for spot
+    leverage: int | None = None  # 1-20x, None for spot
+    margin_type: str | None = None  # "isolated", None for spot
+    liquidation_price: float | None = None  # Calculated, None for spot
+    mark_price: float | None = None  # Last mark price update, None for spot
+    funding_fees: float = 0.0  # Accumulated funding, 0 for spot
 
     @property
     def is_open(self) -> bool:
@@ -62,6 +78,15 @@ class Position:
     def calculate_unrealized_pnl(self, current_price: float) -> float:
         """Calculate unrealized PnL at current price.
 
+        For spot positions (position_side is None):
+            PnL = (current - entry) * quantity
+
+        For futures LONG positions:
+            PnL = (current - entry) * quantity
+
+        For futures SHORT positions:
+            PnL = (entry - current) * quantity
+
         Args:
             current_price: Current market price
 
@@ -70,10 +95,22 @@ class Position:
         """
         if not self.is_open:
             return 0.0
+
+        # Futures SHORT positions have inverse PnL calculation
+        if self.position_side == "SHORT":
+            return (self.entry_price - current_price) * self.quantity
+
+        # Spot and futures LONG use same calculation
         return (current_price - self.entry_price) * self.quantity
 
     def close(self, exit_price: float, exit_time: datetime | None = None) -> float:
         """Close the position and calculate realized PnL.
+
+        For spot and futures LONG:
+            PnL = (exit - entry) * quantity
+
+        For futures SHORT:
+            PnL = (entry - exit) * quantity
 
         Args:
             exit_price: Price at which position is closed
@@ -85,8 +122,92 @@ class Position:
         self.exit_price = exit_price
         self.exit_time = exit_time or datetime.now(timezone.utc)
         self.status = PositionStatus.CLOSED
-        self.realized_pnl = (exit_price - self.entry_price) * self.quantity
+
+        # Futures SHORT positions have inverse PnL calculation
+        if self.position_side == "SHORT":
+            self.realized_pnl = (self.entry_price - exit_price) * self.quantity
+        else:
+            # Spot and futures LONG use same calculation
+            self.realized_pnl = (exit_price - self.entry_price) * self.quantity
+
         return self.realized_pnl
+
+    def calculate_liquidation_price(
+        self, maintenance_margin_rate: float = 0.005
+    ) -> float:
+        """Calculate the liquidation price for a futures position.
+
+        Formula (isolated margin, one-way mode):
+            For LONG: liq = entry * (1 - 1/leverage + maintenance_margin)
+            For SHORT: liq = entry * (1 + 1/leverage - maintenance_margin)
+
+        Args:
+            maintenance_margin_rate: Maintenance margin requirement (default 0.5%)
+
+        Returns:
+            Liquidation price
+
+        Raises:
+            ValueError: If position is not a futures position or leverage is invalid
+        """
+        if self.leverage is None or self.leverage < 1:
+            raise ValueError("Leverage must be >= 1 for futures position")
+
+        if self.position_side not in ("LONG", "SHORT"):
+            raise ValueError(
+                "Liquidation price only applies to futures LONG/SHORT positions"
+            )
+
+        leverage_factor = 1 / self.leverage
+
+        if self.position_side == "LONG":
+            # For LONG: liq = entry * (1 - 1/leverage + maintenance_margin)
+            liq_price = self.entry_price * (
+                1 - leverage_factor + maintenance_margin_rate
+            )
+        else:  # SHORT
+            # For SHORT: liq = entry * (1 + 1/leverage - maintenance_margin)
+            liq_price = self.entry_price * (
+                1 + leverage_factor - maintenance_margin_rate
+            )
+
+        self.liquidation_price = liq_price
+        return liq_price
+
+    def update_mark_price(self, mark_price: float) -> float:
+        """Update the mark price and return unrealized PnL.
+
+        Args:
+            mark_price: Current mark price from exchange
+
+        Returns:
+            Unrealized PnL at mark price
+        """
+        self.mark_price = mark_price
+        return self.calculate_unrealized_pnl(mark_price)
+
+    def is_near_liquidation(self, buffer_pct: float = 5.0) -> bool:
+        """Check if position is within X% of liquidation price.
+
+        Args:
+            buffer_pct: Percentage buffer (default 5%)
+
+        Returns:
+            True if within buffer of liquidation
+        """
+        if self.liquidation_price is None or self.mark_price is None:
+            return False
+
+        buffer = buffer_pct / 100
+
+        if self.position_side == "LONG":
+            # For LONG: mark approaching liq from above
+            # Danger zone: mark <= liq * (1 + buffer)
+            return self.mark_price <= self.liquidation_price * (1 + buffer)
+        else:  # SHORT
+            # For SHORT: mark approaching liq from below
+            # Danger zone: mark >= liq * (1 - buffer)
+            return self.mark_price >= self.liquidation_price * (1 - buffer)
 
 
 @dataclass

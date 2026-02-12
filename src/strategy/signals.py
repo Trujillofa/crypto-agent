@@ -23,6 +23,7 @@ class Signal:
         confidence: Signal confidence (0.0 to 1.0)
         reason: Human-readable reason for the signal
         indicators: Dictionary of indicator values that led to this signal
+        trading_mode: "spot" or "futures" - determines how executor interprets signal
     """
 
     type: SignalType
@@ -31,6 +32,7 @@ class Signal:
     confidence: float
     reason: str
     indicators: dict[str, float]
+    trading_mode: str = "spot"  # "spot" or "futures"
 
     def __str__(self) -> str:
-        return f"Signal({self.type.value}): {self.symbol} @ {self.price:.2f} - {self.reason}"
+        return f"Signal({self.type.value}): {self.symbol} @ {self.price:.2f} ({self.trading_mode}) - {self.reason}"

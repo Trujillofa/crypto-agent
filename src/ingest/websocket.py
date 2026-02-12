@@ -18,19 +18,27 @@ WriteCallback = Callable[[Ohlcv], Awaitable[None]]
 class BinanceWebSocketIngestor:
     """Async Binance Spot data ingestor using WebSockets."""
 
+    SPOT_WS_URL = "wss://stream.binance.com:9443/ws"
+    FUTURES_WS_URL = "wss://fstream.binance.com/ws"
+    FUTURES_DEMO_WS_URL = "wss://demo.binance.com/ws-fapi/v1"
+
     def __init__(
         self,
         symbols: Iterable[str],
         timeframe: str,
         metrics: IngestMetrics,
+        base_url: str | None = None,
+        stream_type: str = "kline",
     ) -> None:
         self._symbols: list[str] = list(symbols)
         self._timeframe: str = timeframe
         self._metrics: IngestMetrics = metrics
         self._logger = get_logger(self.__class__.__name__)
-        self._base_url: str = "wss://stream.binance.com:9443/ws"
+        self._base_url: str = base_url or self.SPOT_WS_URL
+        self._stream_type: str = stream_type
         self._session: aiohttp.ClientSession | None = None
         self._running: bool = False
+        self._mark_price_callback: Callable[[str, float], Awaitable[None]] | None = None
 
     async def __aenter__(self) -> "BinanceWebSocketIngestor":
         """Initialize aiohttp session."""
@@ -57,9 +65,19 @@ class BinanceWebSocketIngestor:
 
         self._running = True
 
-        # Construct combined stream URL
-        # Format: <symbol>@kline_<interval>/<symbol>@kline_<interval>...
-        streams = [f"{s.lower()}@kline_{self._timeframe}" for s in self._symbols]
+        # Construct combined stream URL based on stream type
+        if self._stream_type == "kline":
+            # Format: <symbol>@kline_<interval>/<symbol>@kline_<interval>...
+            streams = [f"{s.lower()}@kline_{self._timeframe}" for s in self._symbols]
+        elif self._stream_type == "mark_price":
+            # Format: <symbol>@markPrice or !markPrice@arr for all
+            if len(self._symbols) > 1:
+                streams = ["!markPrice@arr"]  # All symbols at once
+            else:
+                streams = [f"{s.lower()}@markPrice" for s in self._symbols]
+        else:
+            raise ValueError(f"Unsupported stream type: {self._stream_type}")
+
         stream_path = "/".join(streams)
         url = f"{self._base_url}/{stream_path}"
 
@@ -96,6 +114,18 @@ class BinanceWebSocketIngestor:
         try:
             data = json.loads(raw_data)
 
+            # Handle mark price updates (for futures)
+            if data.get("e") == "markPriceUpdate":
+                await self._handle_mark_price(data)
+                return
+
+            # Handle all-markets array (for futures mark price)
+            if isinstance(data, list):
+                for item in data:
+                    if item.get("e") == "markPriceUpdate":
+                        await self._handle_mark_price(item)
+                return
+
             # Check for kline event
             if data.get("e") != "kline":
                 return
@@ -123,6 +153,31 @@ class BinanceWebSocketIngestor:
         except Exception as exc:
             self._logger.error(f"Error handling message: {exc}")
             self._metrics.errors_total.inc(labels={"error_type": "message_processing"})
+
+    async def _handle_mark_price(self, data: dict[str, Any]) -> None:
+        """Handle mark price update for futures positions.
+
+        Args:
+            data: Mark price update event data
+        """
+        symbol = data.get("s")
+        mark_price = float(data.get("p", 0))
+        funding_rate = float(data.get("r", 0))
+
+        self._metrics.messages_total.inc(
+            labels={"symbol": symbol, "stream": "mark_price"}
+        )
+
+        # Callback for liquidation monitoring
+        if self._mark_price_callback:
+            await self._mark_price_callback(symbol, mark_price)
+
+        self._logger.debug(
+            "Mark price update: %s @ %.2f (funding: %.4f%%)",
+            symbol,
+            mark_price,
+            funding_rate * 100,
+        )
 
     def _parse_kline(self, symbol: str, k: dict[str, Any]) -> Ohlcv:
         """Parse WebSocket kline data into Ohlcv model."""

@@ -15,3 +15,11 @@ circuit_breakers:
 kill_switch:
   enabled: true
   telegram_confirm: true
+
+futures_limits:
+  max_leverage: 10  # Maximum allowed leverage (1-20, hard cap at 20)
+  liquidation_buffer_pct: 5.0  # Block orders if within X% of liquidation
+  max_daily_loss_pct: 5.0  # Separate futures daily loss limit
+  max_margin_usage_pct: 50.0  # Warn if margin usage exceeds this threshold
+  margin_mode: isolated  # isolated only for MVP (cross margin excluded)
+  position_mode: one-way  # one-way only for MVP (hedge mode excluded)

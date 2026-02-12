@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from contextlib import AsyncExitStack
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -18,7 +19,12 @@ from src.ingest.metrics import IngestMetrics, MetricsServer
 from src.features import IndicatorComputer, IndicatorWriter
 from src.features.reader import IndicatorReader
 from src.features.metrics import IndicatorMetrics
-from src.execution import TradingExecutor, TradingConfig
+from src.execution import (
+    TradingExecutor,
+    TradingConfig,
+    FuturesTradingExecutor,
+    FuturesTradingConfig,
+)
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.portfolio import PortfolioManager
@@ -44,6 +50,20 @@ class StrategySettings:
 
 
 @dataclass(frozen=True)
+class FuturesSettings:
+    """Futures trading configuration."""
+
+    enabled: bool
+    symbols: list[str]
+    default_leverage: int
+    max_leverage: int
+    margin_mode: str
+    position_mode: str
+    test_mode: bool
+    liquidation_buffer_pct: float
+
+
+@dataclass(frozen=True)
 class Settings:
     mode: str
     log_level: str
@@ -55,6 +75,7 @@ class Settings:
     strategy: StrategySettings
     telegram: TelegramConfig
     use_websocket: bool
+    futures: FuturesSettings | None = None
 
 
 def load_settings(config_path: Path) -> Settings:
@@ -162,6 +183,47 @@ def load_settings(config_path: Path) -> Settings:
         ),
     )
 
+    # Parse and validate futures configuration
+    futures = _as_mapping(root.get("futures"), "futures section")
+    if futures:
+        futures_enabled = _as_bool(
+            futures.get("enabled"), "futures.enabled", default=False
+        )
+        if futures_enabled:
+            # Validate leverage limits (hard cap at 20x)
+            leverage = _as_int(
+                futures.get("max_leverage"), "futures.max_leverage", default=10
+            )
+            if leverage > 20:
+                raise ValueError(
+                    f"futures.max_leverage={leverage} exceeds hard safety cap of 20x"
+                )
+
+            # Validate margin mode (isolated only for MVP)
+            margin_mode = _as_str(
+                futures.get("margin_mode"), "futures.margin_mode", default="isolated"
+            )
+            if margin_mode != "isolated":
+                raise ValueError(
+                    f"futures.margin_mode='{margin_mode}' not supported. MVP requires 'isolated' margin."
+                )
+
+            # Validate position mode (one-way only for MVP)
+            position_mode = _as_str(
+                futures.get("position_mode"), "futures.position_mode", default="one-way"
+            )
+            if position_mode != "one-way":
+                raise ValueError(
+                    f"futures.position_mode='{position_mode}' not supported. MVP requires 'one-way' mode."
+                )
+
+            # Log futures configuration
+            _logger = get_logger("load_settings")
+            _logger.info(
+                f"Futures trading enabled: symbols={_as_str_list(futures.get('symbols'), 'futures.symbols')}, "
+                f"leverage={leverage}x, margin={margin_mode}, mode={position_mode}"
+            )
+
     # BLOCKER R-1 FIX: Enforce mode: paper safety
     global_mode = _as_str(root.get("mode"), "mode", default="paper")
     if global_mode == "paper":
@@ -182,6 +244,35 @@ def load_settings(config_path: Path) -> Settings:
                 order_size_usdt=trading_config.order_size_usdt,
             )
 
+    # Parse futures configuration
+    futures_enabled = _as_bool(futures.get("enabled"), "futures.enabled", default=False)
+    futures_config = None
+    if futures_enabled:
+        futures_config = FuturesSettings(
+            enabled=True,
+            symbols=_as_str_list(futures.get("symbols"), "futures.symbols"),
+            default_leverage=_as_int(
+                futures.get("default_leverage"), "futures.default_leverage", default=5
+            ),
+            max_leverage=_as_int(
+                futures.get("max_leverage"), "futures.max_leverage", default=10
+            ),
+            margin_mode=_as_str(
+                futures.get("margin_mode"), "futures.margin_mode", default="isolated"
+            ),
+            position_mode=_as_str(
+                futures.get("position_mode"), "futures.position_mode", default="one-way"
+            ),
+            test_mode=_as_bool(
+                futures.get("test_mode"), "futures.test_mode", default=True
+            ),
+            liquidation_buffer_pct=_as_float(
+                futures.get("liquidation_buffer_pct"),
+                "futures.liquidation_buffer_pct",
+                default=5.0,
+            ),
+        )
+
     return Settings(
         mode=global_mode,
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
@@ -200,6 +291,7 @@ def load_settings(config_path: Path) -> Settings:
         use_websocket=_as_bool(
             ingest.get("use_websocket"), "ingest.use_websocket", default=False
         ),
+        futures=futures_config,
     )
 
 
@@ -399,7 +491,7 @@ async def run() -> None:
 
     telegram_notifier = TelegramNotifier(settings.telegram)
 
-    # Initialize trading executor
+    # Initialize trading executor (spot)
     trading_executor = TradingExecutor(
         config=settings.trading_execution,
         risk_manager=risk_manager,
@@ -407,6 +499,46 @@ async def run() -> None:
         portfolio_manager=portfolio_manager,
         notifier=telegram_notifier,
     )
+
+    # Initialize futures executor if enabled
+    futures_executor = None
+    futures_ingestor = None
+    if settings.futures and settings.futures.enabled:
+        logger = get_logger("main")
+        logger.info("Futures trading enabled - initializing futures executor")
+
+        futures_config = FuturesTradingConfig(
+            api_key=settings.trading_execution.api_key,
+            api_secret=settings.trading_execution.api_secret,
+            test_mode=settings.futures.test_mode,
+            enabled=True,
+            symbols=settings.futures.symbols,
+            default_leverage=settings.futures.default_leverage,
+            max_leverage=settings.futures.max_leverage,
+            margin_mode=settings.futures.margin_mode,
+            position_mode=settings.futures.position_mode,
+            order_size_usdt=settings.trading_execution.order_size_usdt,
+            liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+        )
+
+        futures_executor = FuturesTradingExecutor(
+            config=futures_config,
+            risk_manager=risk_manager,
+            metrics=execution_metrics,
+            portfolio_manager=portfolio_manager,
+            notifier=telegram_notifier,
+        )
+
+        # Initialize futures mark price WebSocket
+        futures_ingestor = BinanceWebSocketIngestor(
+            symbols=settings.futures.symbols,
+            timeframe=settings.timeframe,
+            metrics=ingest_metrics,
+            base_url=BinanceWebSocketIngestor.FUTURES_WS_URL
+            if not settings.futures.test_mode
+            else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL,
+            stream_type="mark_price",
+        )
 
     # Initialize indicator reader and strategy engine
     indicator_reader = IndicatorReader(settings.database)
@@ -432,110 +564,142 @@ async def run() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda _signum, _frame: _handle_signal())
 
-    async with writer:
-        async with indicator_writer:
-            async with indicator_reader:
-                async with portfolio_manager:
-                    async with ingestor:
-                        async with trading_executor:
-                            async with strategy_engine:
-                                # Start risk monitoring in background
-                                risk_task = asyncio.create_task(
-                                    risk_manager.monitor_loop()
-                                )
+    # Prepare async context managers - conditionally add futures if enabled
+    context_managers = [
+        writer,
+        indicator_writer,
+        indicator_reader,
+        portfolio_manager,
+        ingestor,
+        trading_executor,
+        strategy_engine,
+    ]
 
-                                # Start OHLCV ingestion
-                                ingest_task = asyncio.create_task(
-                                    ingestor.run(writer.write_ohlcv)
-                                )
+    if futures_executor:
+        context_managers.extend([futures_executor, futures_ingestor])
 
-                                # Start indicator computation
-                                indicator_task = asyncio.create_task(
-                                    indicator_computer.run()
-                                )
+    # Nested async context managers
+    async with contextlib.AsyncExitStack() as stack:
+        for cm in context_managers:
+            await stack.enter_async_context(cm)
 
-                                # Start trading executor
-                                trading_task = asyncio.create_task(
-                                    trading_executor.run()
-                                )
+        # Start risk monitoring in background
+        risk_task = asyncio.create_task(risk_manager.monitor_loop())
 
-                                # Start strategy engine
-                                strategy_task = asyncio.create_task(
-                                    strategy_engine.run(
-                                        on_signal=trading_executor.on_signal
-                                    )
-                                )
+        # Start OHLCV ingestion
+        ingest_task = asyncio.create_task(ingestor.run(writer.write_ohlcv))
 
-                                async def _log_startup_diagnostics() -> None:
-                                    logger = get_logger("startup")
-                                    try:
-                                        ohlcv_rows = await asyncio.to_thread(
-                                            writer.count_rows, "ohlcv"
-                                        )
-                                    except Exception:
-                                        ohlcv_rows = 0
+        # Start indicator computation
+        indicator_task = asyncio.create_task(indicator_computer.run())
 
-                                    try:
-                                        indicator_rows = await asyncio.to_thread(
-                                            indicator_writer.count_rows, "indicators"
-                                        )
-                                    except Exception:
-                                        indicator_rows = 0
-                                    latest_row = None
-                                    if settings.trading_pairs:
-                                        try:
-                                            rows = await indicator_reader.fetch_latest(
-                                                settings.trading_pairs[0],
-                                                settings.timeframe,
-                                                limit=1,
-                                            )
-                                            if rows:
-                                                latest_row = rows[-1]
-                                        except Exception:
-                                            latest_row = None
+        # Start trading executor (spot)
+        trading_task = asyncio.create_task(trading_executor.run())
 
-                                    indicator_ready = False
-                                    if latest_row is not None:
-                                        indicator_ready = all(
-                                            key in latest_row
-                                            for key in (
-                                                "ema_12",
-                                                "ema_26",
-                                                "close_price",
-                                            )
-                                        )
+        # Start strategy engine - route signals to appropriate executor
+        if futures_executor:
+            # Strategy signals go to both spot and futures executors
+            # Executor decides based on signal.trading_mode
+            async def on_signal_router(signal):
+                if signal.trading_mode == "futures":
+                    await futures_executor.on_signal(signal)
+                else:
+                    await trading_executor.on_signal(signal)
 
-                                    risk_summary = risk_manager.get_risk_summary()
-                                    logger.info(
-                                        "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s",
-                                        writer.is_connected(),
-                                        ohlcv_rows,
-                                        indicator_rows,
-                                        indicator_ready,
-                                        risk_summary,
-                                        telegram_notifier.is_configured(),
-                                    )
+            strategy_task = asyncio.create_task(
+                strategy_engine.run(on_signal=on_signal_router)
+            )
 
-                                await _log_startup_diagnostics()
+            # Start futures executor and mark price monitoring
+            futures_task = asyncio.create_task(futures_executor.run())
+            futures_ingest_task = asyncio.create_task(
+                futures_ingestor.run(lambda x: None)  # Mark price handled internally
+            )
+        else:
+            strategy_task = asyncio.create_task(
+                strategy_engine.run(on_signal=trading_executor.on_signal)
+            )
+            futures_task = None
+            futures_ingest_task = None
 
-                                await stop_event.wait()
+        async def _log_startup_diagnostics() -> None:
+            logger = get_logger("startup")
+            try:
+                ohlcv_rows = await asyncio.to_thread(writer.count_rows, "ohlcv")
+            except Exception:
+                ohlcv_rows = 0
 
-                                # Cancel all tasks
-                                ingest_task.cancel()
-                                risk_task.cancel()
-                                indicator_task.cancel()
-                                trading_task.cancel()
-                                strategy_task.cancel()
+            try:
+                indicator_rows = await asyncio.to_thread(
+                    indicator_writer.count_rows, "indicators"
+                )
+            except Exception:
+                indicator_rows = 0
+            latest_row = None
+            if settings.trading_pairs:
+                try:
+                    rows = await indicator_reader.fetch_latest(
+                        settings.trading_pairs[0],
+                        settings.timeframe,
+                        limit=1,
+                    )
+                    if rows:
+                        latest_row = rows[-1]
+                except Exception:
+                    latest_row = None
 
-                                indicator_computer.stop()
-                                trading_executor.stop()
+            indicator_ready = False
+            if latest_row is not None:
+                indicator_ready = all(
+                    key in latest_row
+                    for key in (
+                        "ema_12",
+                        "ema_26",
+                        "close_price",
+                    )
+                )
 
-                                with contextlib.suppress(asyncio.CancelledError):
-                                    await ingest_task
-                                    await risk_task
-                                    await indicator_task
-                                    await trading_task
-                                    await strategy_task
+            risk_summary = risk_manager.get_risk_summary()
+            logger.info(
+                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s futures=%s",
+                writer.is_connected(),
+                ohlcv_rows,
+                indicator_rows,
+                indicator_ready,
+                risk_summary,
+                telegram_notifier.is_configured(),
+                "enabled" if futures_executor else "disabled",
+            )
+
+        await _log_startup_diagnostics()
+
+        await stop_event.wait()
+
+        # Cancel all tasks
+        ingest_task.cancel()
+        risk_task.cancel()
+        indicator_task.cancel()
+        trading_task.cancel()
+        strategy_task.cancel()
+        if futures_task:
+            futures_task.cancel()
+        if futures_ingest_task:
+            futures_ingest_task.cancel()
+
+        indicator_computer.stop()
+        trading_executor.stop()
+        if futures_executor:
+            futures_executor.stop()
+
+        with contextlib.suppress(asyncio.CancelledError):
+            await ingest_task
+            await risk_task
+            await indicator_task
+            await trading_task
+            await strategy_task
+            if futures_task:
+                await futures_task
+            if futures_ingest_task:
+                await futures_ingest_task
 
 
 def main() -> None:

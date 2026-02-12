@@ -42,11 +42,24 @@ class KillSwitch:
 
 
 @dataclass
+class FuturesLimits:
+    """Futures-specific risk limits."""
+
+    max_leverage: int = 10  # Max allowed leverage (hard cap 20 in code)
+    liquidation_buffer_pct: float = 5.0  # Block orders if within X% of liq
+    max_daily_loss_pct: float = 5.0  # Separate futures daily loss limit
+    max_margin_usage_pct: float = 50.0  # Warn if margin usage exceeds this
+    margin_mode: str = "isolated"  # isolated only for MVP
+    position_mode: str = "one-way"  # one-way only for MVP
+
+
+@dataclass
 class RiskConfig:
     position_limits: PositionLimits = field(default_factory=PositionLimits)
     loss_limits: LossLimits = field(default_factory=LossLimits)
     circuit_breakers: CircuitBreakers = field(default_factory=CircuitBreakers)
     kill_switch: KillSwitch = field(default_factory=KillSwitch)
+    futures_limits: FuturesLimits = field(default_factory=FuturesLimits)
 
 
 class RiskManager:
@@ -396,3 +409,171 @@ class RiskManager:
                 break
             except Exception as exc:
                 self._logger.error(f"Failed to send notification: {exc}")
+
+    # =========================================================================
+    # FUTURES-SPECIFIC RISK METHODS
+    # =========================================================================
+
+    def check_liquidation_buffer(
+        self,
+        mark_price: float,
+        liquidation_price: float,
+        position_side: str,
+        buffer_pct: float | None = None,
+    ) -> tuple[bool, str]:
+        """Check if position is within liquidation buffer zone.
+
+        Blocks orders if position is within X% of liquidation price.
+
+        Args:
+            mark_price: Current mark price
+            liquidation_price: Liquidation price for the position
+            position_side: "LONG" or "SHORT"
+            buffer_pct: Buffer percentage (uses config default if None)
+
+        Returns:
+            tuple[bool, str]: (Allowed, Reason)
+        """
+        if buffer_pct is None:
+            buffer_pct = self._config.futures_limits.liquidation_buffer_pct
+
+        buffer = buffer_pct / 100
+
+        if position_side == "LONG":
+            # For LONG: mark approaching liq from above
+            # Danger zone: mark <= liq * (1 + buffer)
+            threshold = liquidation_price * (1 + buffer)
+            if mark_price <= threshold:
+                return (
+                    False,
+                    f"LONG position within {buffer_pct}% of liquidation: "
+                    f"mark={mark_price:.2f}, liq={liquidation_price:.2f}, "
+                    f"threshold={threshold:.2f}",
+                )
+        else:  # SHORT
+            # For SHORT: mark approaching liq from below
+            # Danger zone: mark >= liq * (1 - buffer)
+            threshold = liquidation_price * (1 - buffer)
+            if mark_price >= threshold:
+                return (
+                    False,
+                    f"SHORT position within {buffer_pct}% of liquidation: "
+                    f"mark={mark_price:.2f}, liq={liquidation_price:.2f}, "
+                    f"threshold={threshold:.2f}",
+                )
+
+        return True, "OK"
+
+    def check_max_leverage(self, requested_leverage: int) -> tuple[bool, str]:
+        """Check if requested leverage is within limits.
+
+        Hard cap at 20x, configurable max at 10x by default.
+
+        Args:
+            requested_leverage: Requested leverage level
+
+        Returns:
+            tuple[bool, str]: (Allowed, Reason)
+        """
+        # Hard safety cap - never allow >20x
+        if requested_leverage > 20:
+            return (
+                False,
+                f"Leverage {requested_leverage}x exceeds hard safety cap of 20x",
+            )
+
+        # Configurable limit
+        max_allowed = self._config.futures_limits.max_leverage
+        if requested_leverage > max_allowed:
+            return (
+                False,
+                f"Leverage {requested_leverage}x exceeds configured max {max_allowed}x",
+            )
+
+        return True, "OK"
+
+    def check_margin_usage(
+        self, used_margin: float, available_balance: float
+    ) -> tuple[bool, str]:
+        """Check if margin usage is within safe limits.
+
+        Warns if margin usage exceeds configured threshold.
+
+        Args:
+            used_margin: Currently used margin
+            available_balance: Available balance for trading
+
+        Returns:
+            tuple[bool, str]: (Allowed, Reason)
+        """
+        if available_balance <= 0:
+            return False, "No available balance for trading"
+
+        margin_usage_pct = (used_margin / (used_margin + available_balance)) * 100
+        max_usage = self._config.futures_limits.max_margin_usage_pct
+
+        if margin_usage_pct > max_usage:
+            return (
+                False,
+                f"Margin usage {margin_usage_pct:.1f}% exceeds safe threshold {max_usage}%",
+            )
+
+        return True, f"Margin usage: {margin_usage_pct:.1f}%"
+
+    def check_futures_daily_loss(
+        self, daily_pnl: float, account_value: float
+    ) -> tuple[bool, str]:
+        """Check if futures daily loss is within limits.
+
+        Separate from spot daily loss tracking.
+
+        Args:
+            daily_pnl: Daily profit/loss for futures positions
+            account_value: Total futures account value
+
+        Returns:
+            tuple[bool, str]: (Allowed, Reason)
+        """
+        if account_value <= 0:
+            return False, "Invalid account value"
+
+        loss_pct = abs(min(0, daily_pnl)) / account_value * 100
+        max_loss = self._config.futures_limits.max_daily_loss_pct
+
+        if loss_pct > max_loss:
+            return (
+                False,
+                f"Futures daily loss {loss_pct:.2f}% exceeds limit {max_loss}%",
+            )
+
+        return True, f"Futures daily PnL: {daily_pnl:.2f} USDT ({loss_pct:.2f}%)"
+
+    def calculate_position_size_with_leverage(
+        self, notional_value_usdt: float, leverage: int, available_balance: float
+    ) -> tuple[bool, float, str]:
+        """Calculate actual position size considering leverage and margin.
+
+        Args:
+            notional_value_usdt: Desired position notional value
+            leverage: Leverage level to use
+            available_balance: Available margin balance
+
+        Returns:
+            tuple[bool, float, str]: (Allowed, Margin Required, Reason)
+        """
+        # Check leverage limit first
+        allowed, reason = self.check_max_leverage(leverage)
+        if not allowed:
+            return False, 0.0, reason
+
+        # Calculate required margin
+        required_margin = notional_value_usdt / leverage
+
+        if required_margin > available_balance:
+            return (
+                False,
+                required_margin,
+                f"Insufficient margin: need {required_margin:.2f} USDT, have {available_balance:.2f} USDT",
+            )
+
+        return True, required_margin, f"Margin required: {required_margin:.2f} USDT"
