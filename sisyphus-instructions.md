@@ -6,7 +6,7 @@
 
 When committing, use this Co-Authored-By line:
 ```
-Co-Authored-By: Sisyphus <noreply@opencode.com>
+Co-Authored-By: Sisyphus <clio-agent@sisyphuslabs.ai>
 ```
 
 ## Quick reference
