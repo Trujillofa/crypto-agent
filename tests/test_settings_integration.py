@@ -18,19 +18,19 @@ def test_settings_default_safe():
 
     # Paper trading is enabled by default for full pipeline testing
     # Safety is ensured by test_mode=True (uses Binance testnet, not real funds)
-    assert settings.trading_execution.enabled is True, (
-        "Paper trading should be enabled by default for pipeline testing"
-    )
+    assert (
+        settings.trading_execution.enabled is True
+    ), "Paper trading should be enabled by default for pipeline testing"
 
     # Test mode should be enabled by default (crucial safety check)
-    assert settings.trading_execution.test_mode is True, (
-        "Test mode must be enabled by default for safety"
-    )
+    assert (
+        settings.trading_execution.test_mode is True
+    ), "Test mode must be enabled by default for safety"
 
     # Strategy config should load with default interval
-    assert settings.strategy.evaluation_interval_seconds == 60, (
-        "Default evaluation interval should be 60 seconds"
-    )
+    assert (
+        settings.strategy.evaluation_interval_seconds == 60
+    ), "Default evaluation interval should be 60 seconds"
 
 
 def test_settings_has_strategy_section():
@@ -39,9 +39,9 @@ def test_settings_has_strategy_section():
         raw = yaml.safe_load(f)
 
     assert "strategy" in raw, "settings.yaml must contain 'strategy' section"
-    assert "evaluation_interval_seconds" in raw["strategy"], (
-        "strategy section must have 'evaluation_interval_seconds'"
-    )
+    assert (
+        "evaluation_interval_seconds" in raw["strategy"]
+    ), "strategy section must have 'evaluation_interval_seconds'"
 
 
 def test_settings_all_required_sections():
@@ -50,9 +50,12 @@ def test_settings_all_required_sections():
 
     # All sections should be present
     assert settings.mode in ("paper", "live"), "mode must be 'paper' or 'live'"
-    assert settings.log_level in ("DEBUG", "INFO", "WARNING", "ERROR"), (
-        "Invalid log level"
-    )
+    assert settings.log_level in (
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+    ), "Invalid log level"
     assert len(settings.trading_pairs) > 0, "Must have at least one trading pair"
     assert settings.timeframe in ("1m", "5m", "15m", "1h"), "Invalid timeframe"
     assert settings.database is not None, "Database config required"
@@ -144,6 +147,6 @@ async def test_full_flow_engine_to_executor():
     # Verify signal was generated and passed to handler
     assert len(received_signals) == 1, "Should receive exactly one signal"
     assert received_signals[0].symbol == "BTCUSDT", "Signal should be for BTCUSDT"
-    assert received_signals[0].type == SignalType.BUY, (
-        "Should be BUY signal (ema_12 > ema_26)"
-    )
+    assert (
+        received_signals[0].type == SignalType.BUY
+    ), "Should be BUY signal (ema_12 > ema_26)"

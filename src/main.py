@@ -548,9 +548,11 @@ async def run() -> None:
             symbols=settings.futures.symbols,
             timeframe=settings.timeframe,
             metrics=ingest_metrics,
-            base_url=BinanceWebSocketIngestor.FUTURES_WS_URL
-            if not settings.futures.test_mode
-            else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL,
+            base_url=(
+                BinanceWebSocketIngestor.FUTURES_WS_URL
+                if not settings.futures.test_mode
+                else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL
+            ),
             stream_type="mark_price",
         )
 

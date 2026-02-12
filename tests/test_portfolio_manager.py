@@ -26,7 +26,11 @@ async def test_portfolio_manager_open_close():
 
     mock_conn.transaction = _mock_transaction
 
-    with patch("src.portfolio.manager.asyncpg.connect", new_callable=AsyncMock, return_value=mock_conn):
+    with patch(
+        "src.portfolio.manager.asyncpg.connect",
+        new_callable=AsyncMock,
+        return_value=mock_conn,
+    ):
         async with manager:
             assert manager.has_position("BTCUSDT") is False
 

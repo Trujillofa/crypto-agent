@@ -148,7 +148,7 @@ class TestParseKline:
 
     def test_parse_kline_missing_fields_raises(self, ingestor: BinanceIngestor) -> None:
         """Test parsing kline with missing fields raises error."""
-        raw = [1704067200000, "45000.00"] # Missing high, low, etc.
+        raw = [1704067200000, "45000.00"]  # Missing high, low, etc.
         with pytest.raises(IndexError):
             ingestor._parse_kline("BTCUSDT", raw)
 
@@ -246,9 +246,7 @@ class TestFetchKlines:
         mock_response.__aexit__ = AsyncMock()
 
         async with ingestor:
-            with patch.object(
-                ingestor._session, "get", return_value=mock_response
-            ):
+            with patch.object(ingestor._session, "get", return_value=mock_response):
                 result = await ingestor._fetch_klines("BTCUSDT")
 
         assert len(result) == 1
@@ -267,9 +265,7 @@ class TestPollLatest:
             await ingestor._poll_latest(AsyncMock())
 
     @pytest.mark.asyncio
-    async def test_poll_latest_calls_callback(
-        self, ingestor: BinanceIngestor
-    ) -> None:
+    async def test_poll_latest_calls_callback(self, ingestor: BinanceIngestor) -> None:
         """Test poll latest calls callback for each symbol."""
         callback = AsyncMock()
         mock_klines = [
@@ -303,9 +299,7 @@ class TestRunLoop:
     """Test suite for main run loop."""
 
     @pytest.mark.asyncio
-    async def test_run_empty_symbols_returns(
-        self, metrics: IngestMetrics
-    ) -> None:
+    async def test_run_empty_symbols_returns(self, metrics: IngestMetrics) -> None:
         """Test run returns immediately with no symbols."""
         ingestor = BinanceIngestor(
             symbols=[],

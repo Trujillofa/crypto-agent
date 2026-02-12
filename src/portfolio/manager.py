@@ -53,8 +53,7 @@ class PortfolioManager:
         if not self._connected or self._conn is None:
             raise RuntimeError("Database not connected")
 
-        await self._conn.execute(
-            """
+        await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS positions (
                 id SERIAL PRIMARY KEY,
                 symbol TEXT NOT NULL,
@@ -66,10 +65,8 @@ class PortfolioManager:
                 exit_price DOUBLE PRECISION,
                 realized_pnl DOUBLE PRECISION
             )
-            """
-        )
-        await self._conn.execute(
-            """
+            """)
+        await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS trades (
                 id SERIAL PRIMARY KEY,
                 time TIMESTAMPTZ NOT NULL,
@@ -81,8 +78,7 @@ class PortfolioManager:
                 pnl DOUBLE PRECISION,
                 position_id INTEGER REFERENCES positions(id)
             )
-            """
-        )
+            """)
 
     async def _load_open_positions(self) -> None:
         """Load open positions from database into cache."""

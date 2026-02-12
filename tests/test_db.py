@@ -66,7 +66,11 @@ class TestTimescaleWriter:
         writer = TimescaleWriter(db_config, metrics)
 
         mock_conn = AsyncMock()
-        with patch("src.ingest.db.asyncpg.connect", new_callable=AsyncMock, return_value=mock_conn):
+        with patch(
+            "src.ingest.db.asyncpg.connect",
+            new_callable=AsyncMock,
+            return_value=mock_conn,
+        ):
             await writer._connect()
 
             assert writer._conn is mock_conn
@@ -78,7 +82,9 @@ class TestTimescaleWriter:
         """Test connection failure raises exception."""
         writer = TimescaleWriter(db_config, metrics)
 
-        with patch("src.ingest.db.asyncpg.connect", side_effect=Exception("Connection failed")):
+        with patch(
+            "src.ingest.db.asyncpg.connect", side_effect=Exception("Connection failed")
+        ):
             with pytest.raises(Exception, match="Connection failed"):
                 await writer._connect()
 
@@ -89,7 +95,11 @@ class TestTimescaleWriter:
         writer = TimescaleWriter(db_config, metrics)
 
         mock_conn = AsyncMock()
-        with patch("src.ingest.db.asyncpg.connect", new_callable=AsyncMock, return_value=mock_conn):
+        with patch(
+            "src.ingest.db.asyncpg.connect",
+            new_callable=AsyncMock,
+            return_value=mock_conn,
+        ):
             with patch.object(writer, "_ensure_schema", new_callable=AsyncMock):
                 async with writer as w:
                     assert w is writer

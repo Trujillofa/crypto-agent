@@ -193,9 +193,7 @@ class RateLimiter:
             True if retry is allowed, False if max retries exceeded
         """
         if self._consecutive_errors > self._config.max_retries:
-            self._logger.error(
-                f"Max retries ({self._config.max_retries}) exceeded"
-            )
+            self._logger.error(f"Max retries ({self._config.max_retries}) exceeded")
             return False
 
         backoff_time = self.get_backoff_time()
@@ -211,9 +209,7 @@ class RateLimiter:
     def get_stats(self) -> dict[str, Any]:
         """Get rate limiter statistics."""
         now = time.monotonic()
-        recent_requests = sum(
-            1 for t in self._request_times if now - t < 60
-        )
+        recent_requests = sum(1 for t in self._request_times if now - t < 60)
         return {
             "requests_per_minute": recent_requests,
             "available_tokens": self._bucket.available_tokens,

@@ -42,16 +42,16 @@ class TestLoadSettings:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(config, f)
             path = Path(f.name)
-        
+
         yield path
-        
+
         if path.exists():
             path.unlink()
 
     def test_load_valid_config(self, config_file: Path) -> None:
         """Test loading a valid configuration file."""
         settings = load_settings(config_file)
-        
+
         assert settings.mode == "paper"
         assert settings.log_level == "DEBUG"
         assert settings.trading_pairs == ["BTCUSDT", "ETHUSDT"]
@@ -71,12 +71,12 @@ class TestLoadSettings:
             config_path = Path(f.name)
 
         settings = load_settings(config_path)
-        
+
         assert settings.mode == "paper"  # Default
         assert settings.log_level == "INFO"  # Default
         assert settings.prometheus_port == 8000  # Default
         assert settings.trading_execution.enabled is False  # Default
-        
+
         config_path.unlink()
 
     def test_env_var_override(self, config_file: Path) -> None:
@@ -84,10 +84,13 @@ class TestLoadSettings:
 
         Default config has test_mode=true, so testnet env vars are used.
         """
-        with patch.dict(os.environ, {
-            "BINANCE_TESTNET_API_KEY": "env_key",
-            "BINANCE_TESTNET_API_SECRET": "env_secret"
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "BINANCE_TESTNET_API_KEY": "env_key",
+                "BINANCE_TESTNET_API_SECRET": "env_secret",
+            },
+        ):
             settings = load_settings(config_file)
             assert settings.trading_execution.api_key == "env_key"
             assert settings.trading_execution.api_secret == "env_secret"
@@ -103,7 +106,7 @@ class TestLoadSettings:
 
         with pytest.raises(ValueError, match="Expected list of strings"):
             load_settings(config_path)
-            
+
         config_path.unlink()
 
     def test_missing_pairs_raises_error(self) -> None:
@@ -118,5 +121,5 @@ class TestLoadSettings:
 
         with pytest.raises(ValueError, match="No trading pairs configured"):
             load_settings(config_path)
-            
+
         config_path.unlink()

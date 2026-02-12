@@ -143,65 +143,77 @@ class IndicatorReader:
             results.append(
                 {
                     "time": row["time"],  # Include time for backtesting
-                    "ema_12": float(row["ema_12"])
-                    if row["ema_12"] is not None
-                    else 0.0,
-                    "ema_26": float(row["ema_26"])
-                    if row["ema_26"] is not None
-                    else 0.0,
+                    "ema_12": (
+                        float(row["ema_12"]) if row["ema_12"] is not None else 0.0
+                    ),
+                    "ema_26": (
+                        float(row["ema_26"]) if row["ema_26"] is not None else 0.0
+                    ),
                     "close_price": float(row["close_price"]),
-                    "rsi_14": float(row["rsi_14"])
-                    if row["rsi_14"] is not None
-                    else None,
+                    "rsi_14": (
+                        float(row["rsi_14"]) if row["rsi_14"] is not None else None
+                    ),
                     "rsi_7": float(row["rsi_7"]) if row["rsi_7"] is not None else None,
                     "macd": float(row["macd"]) if row["macd"] is not None else None,
-                    "macd_signal": float(row["macd_signal"])
-                    if row["macd_signal"] is not None
-                    else None,
-                    "macd_hist": float(row["macd_hist"])
-                    if row["macd_hist"] is not None
-                    else None,
-                    "bb_upper_dist": float(row["bb_upper_dist"])
-                    if row["bb_upper_dist"] is not None
-                    else None,
-                    "bb_lower_dist": float(row["bb_lower_dist"])
-                    if row["bb_lower_dist"] is not None
-                    else None,
-                    "atr_14": float(row["atr_14"])
-                    if row["atr_14"] is not None
-                    else None,
-                    "atr_pct": float(row["atr_pct"])
-                    if row["atr_pct"] is not None
-                    else None,
-                    "ema_50": float(row["ema_50"])
-                    if row["ema_50"] is not None
-                    else None,
-                    "ema_200": float(row["ema_200"])
-                    if row["ema_200"] is not None
-                    else None,
-                    "sma_20": float(row["sma_20"])
-                    if row["sma_20"] is not None
-                    else None,
-                    "sma_50": float(row["sma_50"])
-                    if row["sma_50"] is not None
-                    else None,
-                    "sma_200": float(row["sma_200"])
-                    if row["sma_200"] is not None
-                    else None,
+                    "macd_signal": (
+                        float(row["macd_signal"])
+                        if row["macd_signal"] is not None
+                        else None
+                    ),
+                    "macd_hist": (
+                        float(row["macd_hist"])
+                        if row["macd_hist"] is not None
+                        else None
+                    ),
+                    "bb_upper_dist": (
+                        float(row["bb_upper_dist"])
+                        if row["bb_upper_dist"] is not None
+                        else None
+                    ),
+                    "bb_lower_dist": (
+                        float(row["bb_lower_dist"])
+                        if row["bb_lower_dist"] is not None
+                        else None
+                    ),
+                    "atr_14": (
+                        float(row["atr_14"]) if row["atr_14"] is not None else None
+                    ),
+                    "atr_pct": (
+                        float(row["atr_pct"]) if row["atr_pct"] is not None else None
+                    ),
+                    "ema_50": (
+                        float(row["ema_50"]) if row["ema_50"] is not None else None
+                    ),
+                    "ema_200": (
+                        float(row["ema_200"]) if row["ema_200"] is not None else None
+                    ),
+                    "sma_20": (
+                        float(row["sma_20"]) if row["sma_20"] is not None else None
+                    ),
+                    "sma_50": (
+                        float(row["sma_50"]) if row["sma_50"] is not None else None
+                    ),
+                    "sma_200": (
+                        float(row["sma_200"]) if row["sma_200"] is not None else None
+                    ),
                     "vwap": float(row["vwap"]) if row["vwap"] is not None else None,
-                    "stoch_k": float(row["stoch_k"])
-                    if row["stoch_k"] is not None
-                    else None,
-                    "stoch_d": float(row["stoch_d"])
-                    if row["stoch_d"] is not None
-                    else None,
+                    "stoch_k": (
+                        float(row["stoch_k"]) if row["stoch_k"] is not None else None
+                    ),
+                    "stoch_d": (
+                        float(row["stoch_d"]) if row["stoch_d"] is not None else None
+                    ),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
-                    "high_price": float(row["high_price"])
-                    if row["high_price"] is not None
-                    else float(row["close_price"]),
-                    "low_price": float(row["low_price"])
-                    if row["low_price"] is not None
-                    else float(row["close_price"]),
+                    "high_price": (
+                        float(row["high_price"])
+                        if row["high_price"] is not None
+                        else float(row["close_price"])
+                    ),
+                    "low_price": (
+                        float(row["low_price"])
+                        if row["low_price"] is not None
+                        else float(row["close_price"])
+                    ),
                 }
             )
 
@@ -262,58 +274,66 @@ class IndicatorReader:
         for row in rows:
             results.append(
                 {
-                    "ema_12": float(row["ema_12"])
-                    if row["ema_12"] is not None
-                    else 0.0,
-                    "ema_26": float(row["ema_26"])
-                    if row["ema_26"] is not None
-                    else 0.0,
+                    "ema_12": (
+                        float(row["ema_12"]) if row["ema_12"] is not None else 0.0
+                    ),
+                    "ema_26": (
+                        float(row["ema_26"]) if row["ema_26"] is not None else 0.0
+                    ),
                     "close_price": float(row["close_price"]),
-                    "rsi_14": float(row["rsi_14"])
-                    if row["rsi_14"] is not None
-                    else None,
+                    "rsi_14": (
+                        float(row["rsi_14"]) if row["rsi_14"] is not None else None
+                    ),
                     "rsi_7": float(row["rsi_7"]) if row["rsi_7"] is not None else None,
                     "macd": float(row["macd"]) if row["macd"] is not None else None,
-                    "macd_signal": float(row["macd_signal"])
-                    if row["macd_signal"] is not None
-                    else None,
-                    "macd_hist": float(row["macd_hist"])
-                    if row["macd_hist"] is not None
-                    else None,
-                    "bb_upper_dist": float(row["bb_upper_dist"])
-                    if row["bb_upper_dist"] is not None
-                    else None,
-                    "bb_lower_dist": float(row["bb_lower_dist"])
-                    if row["bb_lower_dist"] is not None
-                    else None,
-                    "atr_14": float(row["atr_14"])
-                    if row["atr_14"] is not None
-                    else None,
-                    "atr_pct": float(row["atr_pct"])
-                    if row["atr_pct"] is not None
-                    else None,
-                    "ema_50": float(row["ema_50"])
-                    if row["ema_50"] is not None
-                    else None,
-                    "ema_200": float(row["ema_200"])
-                    if row["ema_200"] is not None
-                    else None,
-                    "sma_20": float(row["sma_20"])
-                    if row["sma_20"] is not None
-                    else None,
-                    "sma_50": float(row["sma_50"])
-                    if row["sma_50"] is not None
-                    else None,
-                    "sma_200": float(row["sma_200"])
-                    if row["sma_200"] is not None
-                    else None,
+                    "macd_signal": (
+                        float(row["macd_signal"])
+                        if row["macd_signal"] is not None
+                        else None
+                    ),
+                    "macd_hist": (
+                        float(row["macd_hist"])
+                        if row["macd_hist"] is not None
+                        else None
+                    ),
+                    "bb_upper_dist": (
+                        float(row["bb_upper_dist"])
+                        if row["bb_upper_dist"] is not None
+                        else None
+                    ),
+                    "bb_lower_dist": (
+                        float(row["bb_lower_dist"])
+                        if row["bb_lower_dist"] is not None
+                        else None
+                    ),
+                    "atr_14": (
+                        float(row["atr_14"]) if row["atr_14"] is not None else None
+                    ),
+                    "atr_pct": (
+                        float(row["atr_pct"]) if row["atr_pct"] is not None else None
+                    ),
+                    "ema_50": (
+                        float(row["ema_50"]) if row["ema_50"] is not None else None
+                    ),
+                    "ema_200": (
+                        float(row["ema_200"]) if row["ema_200"] is not None else None
+                    ),
+                    "sma_20": (
+                        float(row["sma_20"]) if row["sma_20"] is not None else None
+                    ),
+                    "sma_50": (
+                        float(row["sma_50"]) if row["sma_50"] is not None else None
+                    ),
+                    "sma_200": (
+                        float(row["sma_200"]) if row["sma_200"] is not None else None
+                    ),
                     "vwap": float(row["vwap"]) if row["vwap"] is not None else None,
-                    "stoch_k": float(row["stoch_k"])
-                    if row["stoch_k"] is not None
-                    else None,
-                    "stoch_d": float(row["stoch_d"])
-                    if row["stoch_d"] is not None
-                    else None,
+                    "stoch_k": (
+                        float(row["stoch_k"]) if row["stoch_k"] is not None else None
+                    ),
+                    "stoch_d": (
+                        float(row["stoch_d"]) if row["stoch_d"] is not None else None
+                    ),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
                 }
             )

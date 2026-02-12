@@ -12,7 +12,6 @@ from src.ingest.models import Ohlcv
 from src.utils.logger import get_logger
 from src.utils.rate_limiter import RateLimiter
 
-
 WriteCallback = Callable[[Ohlcv], Awaitable[None]]
 
 

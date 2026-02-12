@@ -91,8 +91,7 @@ class IndicatorWriter:
             raise RuntimeError("IndicatorWriter connection not initialized")
         if self._conn is None:
             raise RuntimeError("Database connection missing")
-        await self._conn.execute(
-            """
+        await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS indicators (
                 time TIMESTAMPTZ NOT NULL,
                 symbol TEXT NOT NULL,
@@ -119,13 +118,10 @@ class IndicatorWriter:
                 cci DOUBLE PRECISION,
                 PRIMARY KEY (time, symbol, timeframe)
             );
-            """
-        )
-        await self._conn.execute(
-            """
+            """)
+        await self._conn.execute("""
             SELECT create_hypertable('indicators', 'time', if_not_exists => TRUE);
-            """
-        )
+            """)
 
     async def _insert_row(self, indicator: StoredIndicator) -> None:
         if not self._connected:
