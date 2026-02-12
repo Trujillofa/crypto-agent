@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -126,11 +127,11 @@ class IndicatorComputer:
         if time_values:
             latest_time_value = time_values[-1]
             if isinstance(latest_time_value, datetime):
-                latest_time_str = latest_time_value.isoformat()
+                latest_time = latest_time_value
             else:
-                latest_time_str = str(latest_time_value)
+                latest_time = datetime.now(timezone.utc)
         else:
-            latest_time_str = datetime.now(timezone.utc).isoformat()
+            latest_time = datetime.now(timezone.utc)
 
         # Update Prometheus metrics
         self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)
@@ -146,7 +147,7 @@ class IndicatorComputer:
 
         # Store indicators
         stored = StoredIndicator(
-            time=latest_time_str,
+            time=latest_time,
             symbol=symbol,
             timeframe=self._timeframe,
             rsi_14=indicators.rsi_14,

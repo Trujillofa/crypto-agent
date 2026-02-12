@@ -39,6 +39,8 @@ class BinancePrivateClient:
     """Async Binance Spot private API client."""
 
     BASE_URL = "https://api.binance.com"
+    TESTNET_URL = "https://testnet.binance.vision"
+    DEMO_URL = "https://demo-api.binance.com"
 
     def __init__(
         self,
@@ -51,6 +53,8 @@ class BinancePrivateClient:
         self._test_mode = test_mode
         self._logger = get_logger(self.__class__.__name__)
         self._session: aiohttp.ClientSession | None = None
+        # Use demo URL when in test mode (demo.binance.com, not testnet)
+        self._base_url = self.DEMO_URL if test_mode else self.BASE_URL
 
     async def __aenter__(self) -> BinancePrivateClient:
         self._session = aiohttp.ClientSession()
@@ -80,7 +84,7 @@ class BinancePrivateClient:
             raise RuntimeError("Session not initialized. Use async context manager.")
 
         params = dict(params) if params else {}
-        url = f"{self.BASE_URL}{endpoint}"
+        url = f"{self._base_url}{endpoint}"
 
         headers = {
             "X-MBX-APIKEY": self._api_key,
@@ -166,10 +170,6 @@ class BinancePrivateClient:
         Returns:
             float: Available balance for the asset
         """
-        if self._test_mode:
-            self._logger.info("TEST MODE: Returning mock balance for %s", asset)
-            return 1.0
-
         data = await self._request("GET", "/api/v3/account", signed=True)
         balances = data.get("balances", [])
         asset_balance = next(
@@ -242,21 +242,6 @@ class BinancePrivateClient:
         else:
             params["quantity"] = str(quantity)
 
-        if self._test_mode:
-            self._logger.info("TEST MODE: Would place market order: %s", params)
-            # Return a mock order for testing
-            return OrderInfo(
-                order_id="test_order_id",
-                symbol=symbol,
-                side=side,
-                order_type="MARKET",
-                quantity=quantity,
-                price=None,
-                status="FILLED",
-                executed_quantity=quantity,
-                create_time=int(time.time() * 1000),
-            )
-
         data = await self._request("POST", "/api/v3/order", params, signed=True)
 
         return OrderInfo(
@@ -300,20 +285,6 @@ class BinancePrivateClient:
             "timeInForce": "GTC",  # Good Till Cancelled
         }
 
-        if self._test_mode:
-            self._logger.info("TEST MODE: Would place limit order: %s", params)
-            return OrderInfo(
-                order_id="test_order_id",
-                symbol=symbol,
-                side=side,
-                order_type="LIMIT",
-                quantity=quantity,
-                price=price,
-                status="NEW",
-                executed_quantity=0,
-                create_time=int(time.time() * 1000),
-            )
-
         data = await self._request("POST", "/api/v3/order", params, signed=True)
 
         return OrderInfo(
@@ -345,10 +316,6 @@ class BinancePrivateClient:
             "orderId": str(order_id),
         }
 
-        if self._test_mode:
-            self._logger.info("TEST MODE: Would cancel order: %s", params)
-            return {"symbol": symbol, "orderId": str(order_id), "status": "CANCELED"}
-
         return await self._request("DELETE", "/api/v3/order", params, signed=True)
 
     async def cancel_all_orders(self, symbol: str) -> int:
@@ -363,10 +330,6 @@ class BinancePrivateClient:
             int: Number of orders cancelled
         """
         params = {"symbol": symbol}
-
-        if self._test_mode:
-            self._logger.info("TEST MODE: Would cancel all orders for: %s", symbol)
-            return 0
 
         data = await self._request("DELETE", "/api/v3/openOrders", params, signed=True)
         if isinstance(data, list):

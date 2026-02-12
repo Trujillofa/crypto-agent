@@ -75,17 +75,36 @@ def load_settings(config_path: Path) -> Settings:
     # Get API key from environment if not in config
     import os as _os
 
-    api_key = _as_str(
-        trading_exec.get("api_key"), "trading_execution.api_key", default=""
+    # Check if test_mode is enabled first
+    test_mode = _as_bool(
+        trading_exec.get("test_mode"), "trading_execution.test_mode", default=True
     )
-    if not api_key:
-        api_key = _os.getenv("BINANCE_API_KEY", "").strip()
 
-    api_secret = _as_str(
-        trading_exec.get("api_secret"), "trading_execution.api_secret", default=""
-    )
-    if not api_secret:
-        api_secret = _os.getenv("BINANCE_API_SECRET", "").strip()
+    # Use testnet API keys when in test mode, otherwise use production keys
+    if test_mode:
+        api_key = _as_str(
+            trading_exec.get("api_key"), "trading_execution.api_key", default=""
+        )
+        if not api_key:
+            api_key = _os.getenv("BINANCE_TESTNET_API_KEY", "").strip()
+
+        api_secret = _as_str(
+            trading_exec.get("api_secret"), "trading_execution.api_secret", default=""
+        )
+        if not api_secret:
+            api_secret = _os.getenv("BINANCE_TESTNET_API_SECRET", "").strip()
+    else:
+        api_key = _as_str(
+            trading_exec.get("api_key"), "trading_execution.api_key", default=""
+        )
+        if not api_key:
+            api_key = _os.getenv("BINANCE_API_KEY", "").strip()
+
+        api_secret = _as_str(
+            trading_exec.get("api_secret"), "trading_execution.api_secret", default=""
+        )
+        if not api_secret:
+            api_secret = _os.getenv("BINANCE_API_SECRET", "").strip()
 
     db_password = _as_str(database.get("password"), "database.password", default="")
     if not db_password:
@@ -98,9 +117,7 @@ def load_settings(config_path: Path) -> Settings:
     trading_config = TradingConfig(
         api_key=api_key,
         api_secret=api_secret,
-        test_mode=_as_bool(
-            trading_exec.get("test_mode"), "trading_execution.test_mode", default=True
-        ),
+        test_mode=test_mode,
         enabled=_as_bool(
             trading_exec.get("enabled"), "trading_execution.enabled", default=False
         ),

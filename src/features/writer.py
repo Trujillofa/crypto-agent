@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 
 import asyncpg
 
@@ -10,7 +11,7 @@ from src.utils.logger import get_logger
 
 @dataclass(frozen=True)
 class StoredIndicator:
-    time: str
+    time: datetime
     symbol: str
     timeframe: str
     rsi_14: float | None

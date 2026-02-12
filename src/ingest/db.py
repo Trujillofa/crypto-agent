@@ -98,8 +98,8 @@ class TimescaleWriter:
         if self._conn is None:
             raise RuntimeError("Database connection missing")
         values = (
-            candle.open_time_utc.isoformat(),
-            candle.close_time_utc.isoformat(),
+            candle.open_time_utc,
+            candle.close_time_utc,
             candle.symbol,
             candle.timeframe,
             candle.open_price,
