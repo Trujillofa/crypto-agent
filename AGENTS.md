@@ -28,3 +28,4 @@ All agents MUST read and follow **`CLAUDE.md`** in this project root. It contain
 4. **Conventional commits** — Use the format in `CLAUDE.md` with your `Co-Authored-By`.
 5. **Branch for non-trivial work** — Use `feat/<description>` branches off `main`.
 6. **No secrets in code** — Use `.env` for secrets, `.env.example` for templates.
+7. **5-Step Engineering Framework** — Apply the framework in `CLAUDE.md` before designing, reviewing, or modifying any component. Challenge requirements, delete first, simplify second, accelerate third, automate last.

@@ -71,6 +71,64 @@ git add <specific-files>  # Stage only your changes
 | `config/` | Settings, risk params, infra config | `settings.yaml`, `risk.yaml` |
 | `tests/` | Pytest suite (asyncio auto mode) | `conftest.py`, `test_*.py` |
 
+## 5-Step Engineering Framework (MANDATORY)
+
+Every agent MUST apply this framework when designing, reviewing, or modifying any component, feature, or process in this codebase. Run through all 5 steps in order before implementing.
+
+### Step 1: Make Requirements Less Dumb
+
+Challenge every requirement before accepting it. Ask:
+
+- **Who specified this?** A human with domain knowledge, or an AI making assumptions?
+- **Is it based on first principles or analogy?** "Other trading bots do X" is not a valid reason. "The Binance API requires X" is.
+- **What assumptions are embedded?** Surface them explicitly. If an assumption can't be validated, flag it.
+- **Is this requirement actually necessary?** Delete requirements that exist out of caution rather than evidence. Example: don't add a config option "just in case someone needs it" — add it when someone actually needs it.
+
+### Step 2: Delete Parts or Processes
+
+Before adding anything, look for what can be removed entirely:
+
+- **Dead code**: Unused imports, unreachable branches, commented-out blocks — delete them, don't preserve them.
+- **Redundant layers**: If a wrapper adds no logic, remove it. If an abstraction has one implementation, inline it.
+- **"Just in case" code**: Feature flags nobody toggles, fallback paths never triggered, config options nobody changes.
+- **Process overhead**: If a step in the pipeline (build, test, deploy) doesn't catch real bugs or add real value, question it.
+- **Litmus test**: If you haven't added back something you previously deleted, you're not deleting enough.
+
+### Step 3: Simplify or Optimize
+
+Only after deletion, streamline what remains:
+
+- **Never optimize something that shouldn't exist.** If Step 2 should have removed it, go back.
+- **Prefer holistic over local optimization.** Don't micro-optimize one function if the bottleneck is architecture.
+- **Reduce moving parts**: Fewer dependencies, fewer config knobs, fewer layers of indirection.
+- **Make the common path obvious**: The happy path should read top-to-bottom without jumping between files.
+
+### Step 4: Accelerate Cycle Time
+
+Speed up iteration loops, but only after simplification:
+
+- **Shorten feedback loops**: Tests should run fast. Deployments should be quick. Logs should be immediately useful.
+- **Eliminate bottlenecks**: If a test takes 30s because it polls an API, mock it. If Docker builds are slow, cache layers.
+- **Are we moving fast in the right direction?** Speed without clarity is waste. Validate direction before accelerating.
+
+### Step 5: Automate
+
+Automate only after the process is refined and proven:
+
+- **Don't automate a broken process.** Fix it first (Steps 1-4), then automate.
+- **Will automation lock in inefficiencies?** If the process might change soon, defer automation.
+- **Automate the boring, error-prone parts**: DB migrations, linting, test runs, deployment — not architectural decisions.
+
+### Applying the Framework
+
+| Context | How to Apply |
+|---------|-------------|
+| **New feature** | Steps 1-2 before writing any code. Do we actually need this? Can we achieve it by deleting something instead? |
+| **Bug fix** | Step 1: Why does this bug exist? Is the requirement wrong? Step 2: Can we delete the code path entirely? |
+| **Code review** | Steps 2-3: What can be removed? What's unnecessarily complex? |
+| **Plan review** | All 5 steps: Challenge requirements, delete unnecessary tasks, simplify the remaining plan, then accelerate. |
+| **Refactor** | Steps 2-3 only. Delete first, simplify second. Never refactor something that should be deleted. |
+
 ## Python Coding Standards
 
 ### Type Hints
