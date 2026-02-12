@@ -37,7 +37,7 @@ Make your changes following the project's coding standards. See `CLAUDE.md` for 
 Use conventional commit format:
 
 ```bash
-git add .
+git add <specific-files>
 git commit -m "feat: add new trading strategy"
 ```
 
