@@ -80,10 +80,13 @@ class TestLoadSettings:
         config_path.unlink()
 
     def test_env_var_override(self, config_file: Path) -> None:
-        """Test environment variables override empty config values."""
+        """Test environment variables override empty config values.
+
+        Default config has test_mode=true, so testnet env vars are used.
+        """
         with patch.dict(os.environ, {
-            "BINANCE_API_KEY": "env_key",
-            "BINANCE_API_SECRET": "env_secret"
+            "BINANCE_TESTNET_API_KEY": "env_key",
+            "BINANCE_TESTNET_API_SECRET": "env_secret"
         }):
             settings = load_settings(config_file)
             assert settings.trading_execution.api_key == "env_key"
