@@ -42,7 +42,7 @@ trading_execution:
   order_size_usdt: 100.0  # Default order size in USDT
 
 futures:
-  enabled: false  # Default to spot trading
+  enabled: true  # Futures demo trading enabled
   symbols:
     - BTCUSDT
     - ETHUSDT

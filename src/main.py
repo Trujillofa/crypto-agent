@@ -624,14 +624,12 @@ async def run() -> None:
         async def _log_startup_diagnostics() -> None:
             logger = get_logger("startup")
             try:
-                ohlcv_rows = await asyncio.to_thread(writer.count_rows, "ohlcv")
+                ohlcv_rows = await writer.count_rows("ohlcv")
             except Exception:
                 ohlcv_rows = 0
 
             try:
-                indicator_rows = await asyncio.to_thread(
-                    indicator_writer.count_rows, "indicators"
-                )
+                indicator_rows = await indicator_writer.count_rows("indicators")
             except Exception:
                 indicator_rows = 0
             latest_row = None

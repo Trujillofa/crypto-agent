@@ -70,11 +70,11 @@ class BinanceFuturesClient:
     """Async Binance USDⓈ-M Futures API client.
 
     This client connects to fapi.binance.com for futures trading.
-    On demo.binance.com, the same API keys work for both spot and futures.
+    Demo/testnet uses demo-fapi.binance.com.
     """
 
     BASE_URL = "https://fapi.binance.com"
-    DEMO_URL = "https://demo.binance.com"
+    DEMO_URL = "https://demo-fapi.binance.com"
 
     def __init__(
         self,
@@ -113,17 +113,18 @@ class BinanceFuturesClient:
         params: Mapping[str, Any] | None = None,
         signed: bool = False,
     ) -> dict[str, Any]:
-        """Make a request to Binance Futures API."""
+        """Make a request to Binance Futures API.
+
+        Binance Futures API expects all signed parameters in the query string,
+        even for POST/DELETE requests (unlike the Spot API which accepts form body).
+        """
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
 
         params = dict(params) if params else {}
         url = f"{self._base_url}{endpoint}"
 
-        headers = {
-            "X-MBX-APIKEY": self._api_key,
-            "Content-Type": "application/json",
-        }
+        headers = {"X-MBX-APIKEY": self._api_key}
 
         if signed:
             params["timestamp"] = int(time.time() * 1000)
@@ -134,41 +135,28 @@ class BinanceFuturesClient:
             signature = self._generate_signature(query_string)
             params["signature"] = signature
 
-        # For GET requests, params in query string
+        # All Futures API requests use query string params (not body)
+        query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+        full_url = f"{url}?{query_string}" if query_string else url
+
+        self._logger.debug(
+            "Making %s request to %s with params: %s",
+            method,
+            endpoint,
+            {k: "***" if k == "signature" else v for k, v in params.items()},
+        )
+
         if method == "GET":
-            query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-            url = f"{url}?{query_string}"
-
-            self._logger.debug(
-                "Making GET request to %s with params: %s",
-                endpoint,
-                {k: "***" if k == "signature" else v for k, v in params.items()},
-            )
-
-            async with self._session.get(url, headers=headers) as response:
+            async with self._session.get(full_url, headers=headers) as response:
                 return await self._handle_response(response)
-
-        # For POST/DELETE requests, params in body
+        elif method == "POST":
+            async with self._session.post(full_url, headers=headers) as response:
+                return await self._handle_response(response)
+        elif method == "DELETE":
+            async with self._session.delete(full_url, headers=headers) as response:
+                return await self._handle_response(response)
         else:
-            self._logger.debug(
-                "Making %s request to %s with params: %s",
-                method,
-                endpoint,
-                {k: "***" if k == "signature" else v for k, v in params.items()},
-            )
-
-            if method == "POST":
-                async with self._session.post(
-                    url, headers=headers, data=params
-                ) as response:
-                    return await self._handle_response(response)
-            elif method == "DELETE":
-                async with self._session.delete(
-                    url, headers=headers, data=params
-                ) as response:
-                    return await self._handle_response(response)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+            raise ValueError(f"Unsupported HTTP method: {method}")
 
     async def _handle_response(
         self, response: aiohttp.ClientResponse

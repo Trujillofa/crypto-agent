@@ -20,7 +20,7 @@ class BinanceWebSocketIngestor:
 
     SPOT_WS_URL = "wss://stream.binance.com:9443/ws"
     FUTURES_WS_URL = "wss://fstream.binance.com/ws"
-    FUTURES_DEMO_WS_URL = "wss://demo.binance.com/ws-fapi/v1"
+    FUTURES_DEMO_WS_URL = "wss://fstream.binancefuture.com/ws"
 
     def __init__(
         self,
@@ -114,16 +114,16 @@ class BinanceWebSocketIngestor:
         try:
             data = json.loads(raw_data)
 
-            # Handle mark price updates (for futures)
-            if data.get("e") == "markPriceUpdate":
-                await self._handle_mark_price(data)
-                return
-
             # Handle all-markets array (for futures mark price)
             if isinstance(data, list):
                 for item in data:
-                    if item.get("e") == "markPriceUpdate":
+                    if isinstance(item, dict) and item.get("e") == "markPriceUpdate":
                         await self._handle_mark_price(item)
+                return
+
+            # Handle single mark price update (for futures)
+            if data.get("e") == "markPriceUpdate":
+                await self._handle_mark_price(data)
                 return
 
             # Check for kline event
