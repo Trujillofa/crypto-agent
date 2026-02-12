@@ -15,6 +15,7 @@ class TestSignalAggregator:
         signal_type: SignalType,
         confidence: float = 1.0,
         reason: str = "Test",
+        trading_mode: str = "spot",
     ) -> Signal:
         return Signal(
             type=signal_type,
@@ -23,6 +24,7 @@ class TestSignalAggregator:
             confidence=confidence,
             reason=reason,
             indicators={},
+            trading_mode=trading_mode,
         )
 
     def test_empty_input(self, aggregator):
@@ -67,3 +69,21 @@ class TestSignalAggregator:
         signals.append(self._create_signal(SignalType.BUY, 1.0))
         result = agg.aggregate("BTCUSDT", signals)
         assert result.type == SignalType.BUY
+
+    def test_trading_mode_respects_uniform_signals(self):
+        agg = SignalAggregator()
+        signals = [
+            self._create_signal(SignalType.BUY, trading_mode="futures"),
+            self._create_signal(SignalType.SELL, trading_mode="futures"),
+        ]
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.trading_mode == "futures"
+
+    def test_trading_mode_defaults_on_mixed_signals(self):
+        agg = SignalAggregator(default_trading_mode="spot")
+        signals = [
+            self._create_signal(SignalType.BUY, trading_mode="spot"),
+            self._create_signal(SignalType.SELL, trading_mode="futures"),
+        ]
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.trading_mode == "spot"
