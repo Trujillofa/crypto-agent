@@ -33,6 +33,8 @@ ENV/
 .claude/
 .gemini/
 .copilot/
+.cleo/
+claudedocs/
 
 # OS
 .DS_Store
