@@ -59,8 +59,8 @@ strategy:
   strategies:
     - name: simple_ma
       config:
-        ema_short_period: 5
-        ema_long_period: 13
+        ema_short_period: 12
+        ema_long_period: 26
     - name: rsi_reversal
       config:
         rsi_period: 14
