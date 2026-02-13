@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -20,11 +21,15 @@ class TestBinanceFuturesClient:
     @pytest.fixture
     def client(self):
         """Create a test client."""
-        return BinanceFuturesClient(
+        client = BinanceFuturesClient(
             api_key="test_key",
             api_secret="test_secret",
             test_mode=True,
         )
+        # Avoid time sync network calls in unit tests.
+        client._last_time_sync = time.time()
+        client._time_sync_interval_seconds = 3600.0
+        return client
 
     def _mock_response(self, status: int, json_data):
         """Create a mock aiohttp response as an async context manager."""
