@@ -35,6 +35,15 @@ class AccountInfo:
     available_balance: float  # Free USDT available for trading
 
 
+class BinanceApiError(RuntimeError):
+    """Binance API error with code for retry handling."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(f"Binance API error [{code}]: {message}")
+        self.code = code
+        self.message = message
+
+
 class BinancePrivateClient:
     """Async Binance Spot private API client."""
 
@@ -55,6 +64,9 @@ class BinancePrivateClient:
         self._session: aiohttp.ClientSession | None = None
         # Use demo URL when in test mode (demo.binance.com, not testnet)
         self._base_url = self.DEMO_URL if test_mode else self.BASE_URL
+        self._time_offset_ms = 0
+        self._last_time_sync = 0.0
+        self._time_sync_interval_seconds = 60.0
 
     async def __aenter__(self) -> BinancePrivateClient:
         self._session = aiohttp.ClientSession()
@@ -78,12 +90,14 @@ class BinancePrivateClient:
         endpoint: str,
         params: Mapping[str, Any] | None = None,
         signed: bool = False,
+        _retry: bool = True,
     ) -> dict[str, Any]:
         """Make a request to Binance API."""
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
 
-        params = dict(params) if params else {}
+        base_params = dict(params) if params else {}
+        params = dict(base_params)
         url = f"{self._base_url}{endpoint}"
 
         headers = {
@@ -92,7 +106,8 @@ class BinancePrivateClient:
         }
 
         if signed:
-            params["timestamp"] = int(time.time() * 1000)
+            await self._ensure_time_sync()
+            params["timestamp"] = self._current_timestamp_ms()
             params["recvWindow"] = 5000
 
             # Create query string for signature
@@ -100,22 +115,22 @@ class BinancePrivateClient:
             signature = self._generate_signature(query_string)
             params["signature"] = signature
 
-        # For GET requests, params in query string
-        if method == "GET":
-            query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-            url = f"{url}?{query_string}"
+        try:
+            # For GET requests, params in query string
+            if method == "GET":
+                query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+                url = f"{url}?{query_string}"
 
-            self._logger.debug(
-                "Making GET request to %s with params: %s",
-                endpoint,
-                {k: "***" if k == "signature" else v for k, v in params.items()},
-            )
+                self._logger.debug(
+                    "Making GET request to %s with params: %s",
+                    endpoint,
+                    {k: "***" if k == "signature" else v for k, v in params.items()},
+                )
 
-            async with self._session.get(url, headers=headers) as response:
-                return await self._handle_response(response)
+                async with self._session.get(url, headers=headers) as response:
+                    return await self._handle_response(response)
 
-        # For POST requests, params in body
-        else:
+            # For POST requests, params in body
             self._logger.debug(
                 "Making %s request to %s with params: %s",
                 method,
@@ -127,6 +142,20 @@ class BinancePrivateClient:
                 url, headers=headers, data=params
             ) as response:
                 return await self._handle_response(response)
+        except BinanceApiError as exc:
+            if signed and _retry and exc.code == -1021:
+                self._logger.warning(
+                    "Binance timestamp rejected. Resyncing time and retrying."
+                )
+                await self._sync_time(force=True)
+                return await self._request(
+                    method,
+                    endpoint,
+                    base_params,
+                    signed=signed,
+                    _retry=False,
+                )
+            raise
 
     async def _handle_response(
         self, response: aiohttp.ClientResponse
@@ -136,10 +165,38 @@ class BinancePrivateClient:
 
         if response.status >= 400:
             error_msg = data.get("msg", "Unknown error")
-            error_code = data.get("code", response.status)
-            raise RuntimeError(f"Binance API error [{error_code}]: {error_msg}")
+            error_code = int(data.get("code", response.status))
+            raise BinanceApiError(error_code, error_msg)
 
         return data
+
+    def _current_timestamp_ms(self) -> int:
+        return int(time.time() * 1000) + self._time_offset_ms
+
+    async def _ensure_time_sync(self) -> None:
+        if (time.time() - self._last_time_sync) < self._time_sync_interval_seconds:
+            return
+        await self._sync_time(force=False)
+
+    async def _sync_time(self, force: bool) -> None:
+        if self._session is None:
+            raise RuntimeError("Session not initialized. Use async context manager.")
+        if not force and (
+            time.time() - self._last_time_sync
+        ) < self._time_sync_interval_seconds:
+            return
+
+        url = f"{self._base_url}/api/v3/time"
+        async with self._session.get(url) as response:
+            data = await response.json()
+            server_time = int(data.get("serverTime", 0))
+            if server_time:
+                local_time = int(time.time() * 1000)
+                self._time_offset_ms = server_time - local_time
+                self._last_time_sync = time.time()
+                self._logger.debug(
+                    "Synced Binance server time. Offset=%sms", self._time_offset_ms
+                )
 
     async def get_account_info(self) -> AccountInfo:
         """Get current spot account information.
