@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
 from collections.abc import Mapping
 
 from src.features.reader import IndicatorReader
@@ -256,9 +254,7 @@ class BacktestEngine:
         profit_factor = (
             (gross_profit / gross_loss)
             if gross_loss > 0
-            else float("inf")
-            if gross_profit > 0
-            else 0.0
+            else float("inf") if gross_profit > 0 else 0.0
         )
 
         avg_win = (gross_profit / len(wins)) if wins else 0.0
@@ -266,9 +262,7 @@ class BacktestEngine:
         avg_win_loss_ratio = (
             (avg_win / avg_loss)
             if avg_loss > 0
-            else float("inf")
-            if avg_win > 0
-            else 0.0
+            else float("inf") if avg_win > 0 else 0.0
         )
 
         # Drawdown

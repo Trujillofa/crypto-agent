@@ -85,9 +85,7 @@ class TelegramNotifier:
     def is_configured(self) -> bool:
         """Check if Telegram is properly configured."""
         return bool(
-            self._config.enabled
-            and self._config.bot_token
-            and self._config.chat_id
+            self._config.enabled and self._config.bot_token and self._config.chat_id
         )
 
     async def send_alert(
@@ -275,7 +273,5 @@ Trading may be paused until conditions normalize.
                 return True
 
             error_text = await response.text()
-            self._logger.error(
-                f"Telegram API error: {response.status} - {error_text}"
-            )
+            self._logger.error(f"Telegram API error: {response.status} - {error_text}")
             return False

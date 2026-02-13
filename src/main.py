@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from contextlib import AsyncExitStack
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -45,6 +44,7 @@ from src.utils.logger import configure_logger, get_logger
 @dataclass(frozen=True)
 class StrategySettings:
     evaluation_interval_seconds: int
+    default_trading_mode: str = "spot"
     strategies: list[Mapping[str, object]] = field(default_factory=list)
     aggregator: Mapping[str, object] = field(default_factory=dict)
 
@@ -150,12 +150,25 @@ def load_settings(config_path: Path) -> Settings:
         ),
     )
 
+    # Parse default trading mode (spot or futures)
+    default_trading_mode = _as_str(
+        strategy.get("default_trading_mode"),
+        "strategy.default_trading_mode",
+        default="spot",
+    )
+    if default_trading_mode not in ("spot", "futures"):
+        raise ValueError(
+            f"strategy.default_trading_mode='{default_trading_mode}' is invalid. "
+            "Must be 'spot' or 'futures'."
+        )
+
     strategy_config = StrategySettings(
         evaluation_interval_seconds=_as_int(
             strategy.get("evaluation_interval_seconds"),
             "strategy.evaluation_interval_seconds",
             default=60,
         ),
+        default_trading_mode=default_trading_mode,
         strategies=_as_list_of_mappings(
             strategy.get("strategies"), "strategy.strategies"
         ),
@@ -534,9 +547,11 @@ async def run() -> None:
             symbols=settings.futures.symbols,
             timeframe=settings.timeframe,
             metrics=ingest_metrics,
-            base_url=BinanceWebSocketIngestor.FUTURES_WS_URL
-            if not settings.futures.test_mode
-            else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL,
+            base_url=(
+                BinanceWebSocketIngestor.FUTURES_WS_URL
+                if not settings.futures.test_mode
+                else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL
+            ),
             stream_type="mark_price",
         )
 
@@ -550,6 +565,7 @@ async def run() -> None:
         database=settings.database,
         timeframe=settings.timeframe,
         evaluation_interval_seconds=settings.strategy.evaluation_interval_seconds,
+        default_trading_mode=settings.strategy.default_trading_mode,
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,

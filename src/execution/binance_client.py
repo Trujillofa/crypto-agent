@@ -201,9 +201,11 @@ class BinancePrivateClient:
                     side=order_data.get("side", ""),
                     order_type=order_data.get("type", ""),
                     quantity=float(order_data.get("origQty", 0)),
-                    price=float(order_data.get("price", 0))
-                    if order_data.get("price")
-                    else None,
+                    price=(
+                        float(order_data.get("price", 0))
+                        if order_data.get("price")
+                        else None
+                    ),
                     status=order_data.get("status", ""),
                     executed_quantity=float(order_data.get("executedQty", 0)),
                     create_time=int(order_data.get("time", 0)),

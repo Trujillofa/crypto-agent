@@ -9,8 +9,13 @@ from src.utils.logger import get_logger
 class SignalAggregator:
     """Aggregates multiple trading signals into a single consensus signal."""
 
-    def __init__(self, config: Mapping[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        config: Mapping[str, object] | None = None,
+        default_trading_mode: str = "spot",
+    ) -> None:
         self._config = config or {}
+        self._default_trading_mode = default_trading_mode
         self._logger = get_logger(self.__class__.__name__)
 
         self._buy_threshold = float(self._config.get("buy_threshold", 0.5))
@@ -24,6 +29,7 @@ class SignalAggregator:
 
         reference_signal = signals[0]
         current_price = reference_signal.price
+        trading_mode = self._resolve_trading_mode(signals)
 
         total_score = 0.0
         active_signals = 0
@@ -74,6 +80,7 @@ class SignalAggregator:
             confidence=final_confidence,
             reason=final_reason,
             indicators=all_indicators,
+            trading_mode=trading_mode,
         )
 
     def _create_hold(self, symbol: str, price: float, reason: str) -> Signal:
@@ -84,4 +91,17 @@ class SignalAggregator:
             confidence=0.0,
             reason=reason,
             indicators={},
+            trading_mode=self._default_trading_mode,
         )
+
+    def _resolve_trading_mode(self, signals: list[Signal]) -> str:
+        modes = {signal.trading_mode for signal in signals}
+        if len(modes) == 1:
+            return next(iter(modes))
+        if len(modes) > 1:
+            self._logger.warning(
+                "Mixed trading_mode values detected (%s). Falling back to default '%s'.",
+                ", ".join(sorted(modes)),
+                self._default_trading_mode,
+            )
+        return self._default_trading_mode

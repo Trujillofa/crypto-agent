@@ -20,6 +20,7 @@ class EngineConfig:
     database: Mapping[str, object] = field(default_factory=dict)
     timeframe: str = "1m"
     evaluation_interval_seconds: int = 60
+    default_trading_mode: str = "spot"
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
@@ -38,7 +39,9 @@ class StrategyEngine:
         self._logger = get_logger(self.__class__.__name__)
         self._strategies: dict[str, list[BaseStrategy]] = {}
         self._running = False
-        self._aggregator = SignalAggregator(config.aggregator_config)
+        self._aggregator = SignalAggregator(
+            config.aggregator_config, config.default_trading_mode
+        )
 
         for symbol in config.symbols:
             self._strategies[symbol] = []

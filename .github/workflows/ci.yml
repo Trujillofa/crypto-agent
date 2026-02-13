@@ -13,7 +13,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.11', '3.12']
 
     steps:
     - uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.12'
 
     - name: Install linting tools
       run: |

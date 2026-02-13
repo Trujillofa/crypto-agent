@@ -1,7 +1,6 @@
-import asyncio
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from src.ingest.metrics import IngestMetrics
 from src.ingest.websocket import BinanceWebSocketIngestor

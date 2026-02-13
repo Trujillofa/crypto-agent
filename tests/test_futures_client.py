@@ -9,7 +9,6 @@ import pytest
 from src.execution.futures_client import (
     BinanceFuturesClient,
     FuturesOrderInfo,
-    FuturesPositionInfo,
     FuturesAccountInfo,
     FundingRateInfo,
 )
@@ -51,11 +50,14 @@ class TestBinanceFuturesClient:
         """Test setting leverage."""
         mock_session = MagicMock()
         mock_session.post = MagicMock(
-            return_value=self._mock_response(200, {
-                "symbol": "BTCUSDT",
-                "leverage": 10,
-                "maxNotionalValue": "1000000",
-            })
+            return_value=self._mock_response(
+                200,
+                {
+                    "symbol": "BTCUSDT",
+                    "leverage": 10,
+                    "maxNotionalValue": "1000000",
+                },
+            )
         )
         client._session = mock_session
 
@@ -85,20 +87,23 @@ class TestBinanceFuturesClient:
         """Test getting position risk with liquidation price."""
         mock_session = MagicMock()
         mock_session.get = MagicMock(
-            return_value=self._mock_response(200, [
-                {
-                    "symbol": "BTCUSDT",
-                    "positionSide": "LONG",
-                    "positionAmt": "0.1",
-                    "entryPrice": "50000.00",
-                    "markPrice": "51000.00",
-                    "liquidationPrice": "45000.00",
-                    "leverage": "10",
-                    "isolatedMargin": "500.00",
-                    "unRealizedProfit": "100.00",
-                    "notional": "5100.00",
-                }
-            ])
+            return_value=self._mock_response(
+                200,
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "positionSide": "LONG",
+                        "positionAmt": "0.1",
+                        "entryPrice": "50000.00",
+                        "markPrice": "51000.00",
+                        "liquidationPrice": "45000.00",
+                        "leverage": "10",
+                        "isolatedMargin": "500.00",
+                        "unRealizedProfit": "100.00",
+                        "notional": "5100.00",
+                    }
+                ],
+            )
         )
         client._session = mock_session
 
@@ -118,14 +123,17 @@ class TestBinanceFuturesClient:
         """Test getting position risk with no open positions."""
         mock_session = MagicMock()
         mock_session.get = MagicMock(
-            return_value=self._mock_response(200, [
-                {
-                    "symbol": "BTCUSDT",
-                    "positionSide": "LONG",
-                    "positionAmt": "0",
-                    "entryPrice": "0.00",
-                }
-            ])
+            return_value=self._mock_response(
+                200,
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "positionSide": "LONG",
+                        "positionAmt": "0",
+                        "entryPrice": "0.00",
+                    }
+                ],
+            )
         )
         client._session = mock_session
 
@@ -138,18 +146,21 @@ class TestBinanceFuturesClient:
         """Test placing a market order."""
         mock_session = MagicMock()
         mock_session.post = MagicMock(
-            return_value=self._mock_response(200, {
-                "orderId": 12345,
-                "symbol": "BTCUSDT",
-                "side": "BUY",
-                "positionSide": "LONG",
-                "type": "MARKET",
-                "origQty": "0.1",
-                "price": "0",
-                "status": "FILLED",
-                "executedQty": "0.1",
-                "time": 1234567890,
-            })
+            return_value=self._mock_response(
+                200,
+                {
+                    "orderId": 12345,
+                    "symbol": "BTCUSDT",
+                    "side": "BUY",
+                    "positionSide": "LONG",
+                    "type": "MARKET",
+                    "origQty": "0.1",
+                    "price": "0",
+                    "status": "FILLED",
+                    "executedQty": "0.1",
+                    "time": 1234567890,
+                },
+            )
         )
         client._session = mock_session
 
@@ -176,17 +187,20 @@ class TestBinanceFuturesClient:
         """Test placing a reduce-only order (for closing positions)."""
         mock_session = MagicMock()
         mock_session.post = MagicMock(
-            return_value=self._mock_response(200, {
-                "orderId": 12346,
-                "symbol": "BTCUSDT",
-                "side": "SELL",
-                "positionSide": "LONG",
-                "type": "MARKET",
-                "origQty": "0.1",
-                "status": "FILLED",
-                "executedQty": "0.1",
-                "time": 1234567890,
-            })
+            return_value=self._mock_response(
+                200,
+                {
+                    "orderId": 12346,
+                    "symbol": "BTCUSDT",
+                    "side": "SELL",
+                    "positionSide": "LONG",
+                    "type": "MARKET",
+                    "origQty": "0.1",
+                    "status": "FILLED",
+                    "executedQty": "0.1",
+                    "time": 1234567890,
+                },
+            )
         )
         client._session = mock_session
 
@@ -207,13 +221,16 @@ class TestBinanceFuturesClient:
         """Test getting current funding rate."""
         mock_session = MagicMock()
         mock_session.get = MagicMock(
-            return_value=self._mock_response(200, [
-                {
-                    "symbol": "BTCUSDT",
-                    "fundingRate": "0.00010000",
-                    "fundingTime": 1234567890000,
-                }
-            ])
+            return_value=self._mock_response(
+                200,
+                [
+                    {
+                        "symbol": "BTCUSDT",
+                        "fundingRate": "0.00010000",
+                        "fundingTime": 1234567890000,
+                    }
+                ],
+            )
         )
         client._session = mock_session
 
@@ -229,12 +246,15 @@ class TestBinanceFuturesClient:
         """Test getting futures account information."""
         mock_session = MagicMock()
         mock_session.get = MagicMock(
-            return_value=self._mock_response(200, {
-                "totalMarginBalance": "10000.00",
-                "availableBalance": "5000.00",
-                "totalUnrealizedProfit": "100.00",
-                "marginRatio": "0.05",
-            })
+            return_value=self._mock_response(
+                200,
+                {
+                    "totalMarginBalance": "10000.00",
+                    "availableBalance": "5000.00",
+                    "totalUnrealizedProfit": "100.00",
+                    "marginRatio": "0.05",
+                },
+            )
         )
         client._session = mock_session
 
@@ -251,10 +271,13 @@ class TestBinanceFuturesClient:
         """Test handling of API errors."""
         mock_session = MagicMock()
         mock_session.get = MagicMock(
-            return_value=self._mock_response(400, {
-                "code": -2015,
-                "msg": "Invalid API-key, IP, or permissions for action",
-            })
+            return_value=self._mock_response(
+                400,
+                {
+                    "code": -2015,
+                    "msg": "Invalid API-key, IP, or permissions for action",
+                },
+            )
         )
         client._session = mock_session
 

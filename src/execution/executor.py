@@ -500,7 +500,7 @@ class TradingExecutor:
                     )
                     return
 
-                order = await self.place_market_order(
+                await self.place_market_order(
                     signal.symbol, "BUY", self._config.order_size_usdt
                 )
                 await self._notifier.send_trade_alert(
@@ -514,9 +514,7 @@ class TradingExecutor:
                 base_asset = signal.symbol.removesuffix("USDT")
                 balance = await self._client.get_asset_balance(base_asset)
                 if balance > 0:
-                    order = await self.place_market_order(
-                        signal.symbol, "SELL", balance
-                    )
+                    await self.place_market_order(signal.symbol, "SELL", balance)
                     pnl = None
                     if self._portfolio_manager is not None:
                         position = self._portfolio_manager.get_position(signal.symbol)

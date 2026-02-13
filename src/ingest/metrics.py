@@ -4,12 +4,10 @@ import re
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import Any
 
 from prometheus_client import generate_latest
 
 from src.utils.logger import get_logger
-
 
 # Maximum allowed cardinality per metric
 MAX_CARDINALITY = 100
@@ -294,7 +292,7 @@ class MetricsServer:
                     custom_metrics = registry.render().encode("utf-8")
                     standard_metrics = generate_latest()
                     payload = custom_metrics + b"\n" + standard_metrics
-                    
+
                     self.send_response(200)
                     self.send_header("Content-Type", "text/plain; version=0.0.4")
                     self.send_header("Content-Length", str(len(payload)))

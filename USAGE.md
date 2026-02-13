@@ -40,11 +40,13 @@ Prometheus Metrics + Telegram Alerts
 
 ### Trading Capabilities
 
-- **Spot Trading Only**: BUY/SELL market orders (no futures, margin, or leverage)
+- **Spot Trading**: BUY/SELL market orders (no leverage)
+- **Futures Trading**: USDⓈ-M perpetuals with 1-20x leverage (isolated margin, LONG-only for MVP)
 - **Paper Trading Mode**: Test strategies without real capital (default)
 - **Multiple Pairs**: Simultaneous trading across 10+ cryptocurrency pairs
 - **Strategy Framework**: Extensible strategy architecture with 5 built-in strategies
 - **Signal Aggregation**: Multi-strategy consensus before executing trades
+- **Trading Mode Routing**: Route signals to spot or futures based on configuration
 
 ---
 
@@ -297,6 +299,163 @@ trading_execution:
 ```
 
 **⚠️ WARNING:** Start with small order sizes and monitor closely.
+
+---
+
+## Futures Trading
+
+**⚠️ EXTREME RISK WARNING ⚠️**
+
+Futures trading involves leverage and carries a high risk of liquidation. You can lose your entire margin balance. Only trade with funds you can afford to lose. This is for advanced traders only.
+
+### Overview
+
+The agent now supports Binance USDⓈ-M perpetual futures trading with leverage. Key features:
+
+- **Leverage**: Configurable 1-20x (default 5x, max 10x)
+- **Isolated Margin**: MVP uses isolated margin only (safer than cross margin)
+- **One-Way Positions**: LONG-only for MVP (SHORT positions in v2)
+- **Liquidation Protection**: 5% buffer prevents orders near liquidation
+- **Mark Price Monitoring**: Real-time liquidation risk alerts
+
+### Configuration
+
+Enable futures trading in `config/settings.yaml`:
+
+```yaml
+futures:
+  enabled: true  # Enable futures trading
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+  default_leverage: 5      # Conservative default (1-20x allowed)
+  max_leverage: 10         # Maximum leverage for this account
+  margin_mode: isolated      # isolated only (cross margin excluded for safety)
+  position_mode: one-way   # one-way only (hedge mode excluded)
+  test_mode: true          # Use demo.binance.com for paper trading
+  liquidation_buffer_pct: 5.0  # Block orders within 5% of liquidation
+```
+
+Add futures risk limits in `config/risk.yaml`:
+
+```yaml
+futures_limits:
+  max_leverage: 10              # Max leverage allowed (hard cap 20x)
+  liquidation_buffer_pct: 5.0   # Block orders near liquidation
+  max_daily_loss_pct: 5.0       # Separate futures daily loss limit
+  max_margin_usage_pct: 50.0    # Warn if using >50% of margin
+  margin_mode: isolated         # isolated only
+  position_mode: one-way        # one-way only
+```
+
+### Signal Routing
+
+Strategy signals are routed based on `trading_mode`:
+
+```python
+# Spot trading (default)
+signal = Signal(
+    type=SignalType.BUY,
+    symbol="BTCUSDT",
+    trading_mode="spot",  # Routes to spot executor
+    ...
+)
+
+# Futures trading
+signal = Signal(
+    type=SignalType.BUY,
+    symbol="BTCUSDT",
+    trading_mode="futures",  # Routes to futures executor
+    ...
+)
+```
+
+### LONG-Only MVP
+
+The futures MVP is **LONG-only**:
+
+- **BUY signal**: Opens or adds to LONG position
+- **SELL signal**: Closes LONG position with `reduceOnly`
+
+SHORT positions will be added in v2 after validating the LONG-only pipeline.
+
+### Liquidation Protection
+
+The system enforces multiple safety layers:
+
+1. **20x Hard Cap**: Code-enforced maximum leverage
+2. **Liquidation Buffer**: Blocks orders within 5% of liquidation price
+3. **Isolated Margin**: Limits loss to position margin (not entire account)
+4. **Real-time Monitoring**: Mark price stream tracks liquidation proximity
+5. **Automatic Alerts**: Telegram notifications for liquidation risks
+
+### Paper Trading (Testnet)
+
+Test futures trading on demo.binance.com:
+
+```yaml
+futures:
+  enabled: true
+  test_mode: true  # Uses demo.binance.com (same keys as spot)
+```
+
+**Note**: On demo.binance.com, the same API keys work for both spot and futures.
+
+### Going Live (Production)
+
+**⚠️ EXTREME CAUTION REQUIRED ⚠️**
+
+Before enabling live futures trading:
+
+1. **Validate on testnet for 1-2 weeks minimum**
+2. **Start with minimum leverage (2-3x)**
+3. **Use small position sizes (reduce order_size_usdt)**
+4. **Set conservative liquidation_buffer_pct (10%+)**
+5. **Monitor 24/7 for first week**
+6. **Have stop-loss / exit plan ready**
+
+```yaml
+futures:
+  enabled: true
+  test_mode: false  # ⚠️ LIVE TRADING - REAL MONEY
+  default_leverage: 2  # Start conservative
+  liquidation_buffer_pct: 10.0  # Extra safety buffer
+```
+
+### Funding Rates
+
+Perpetual futures have funding payments every 8 hours:
+
+- **Positive rate**: Longs pay shorts (bearish sentiment)
+- **Negative rate**: Shorts pay longs (bullish sentiment)
+
+The system tracks funding costs in position PnL. High funding costs can erode profits over time.
+
+### Troubleshooting
+
+**"Leverage exceeds hard cap"**
+- Reduce `max_leverage` in config (max 20x hard coded)
+
+**"Within X% of liquidation"**
+- Position is too close to liquidation - add margin or reduce size
+
+**"Insufficient margin"**
+- Need more USDT in futures wallet or reduce leverage
+
+**No futures orders executing**
+- Check `futures.enabled: true` in settings.yaml
+- Verify API keys have futures permissions
+- Ensure `trading_mode: "futures"` in signals
+
+### Differences from Spot Trading
+
+| Feature | Spot | Futures |
+|---------|------|---------|
+| Leverage | 1x only | 1-20x |
+| Liquidation | None | Yes, if margin < maintenance |
+| Funding fees | None | Every 8 hours |
+| Margin type | Full payment | Isolated (MVP) |
+| Short selling | No | LONG-only for MVP |
 
 ---
 

@@ -355,6 +355,17 @@ Parallel Speedup: ~40% faster than sequential (Tasks 2 & 3 run parallel to Task 
     liquidation_buffer_pct: 5.0  # Block orders if within 5% of liq
   ```
 
+  **API Key Management**:
+  On demo.binance.com, the same API keys work for both spot and futures trading:
+  - Spot API: `https://demo-api.binance.com` (existing)
+  - Futures API: `https://demo.binance.com` (fapi endpoints on same domain)
+  
+  No separate API keys needed for demo trading. The existing `BINANCE_API_KEY` and `BINANCE_API_SECRET` work for both.
+  
+  For production:
+  - Spot: `https://api.binance.com`
+  - Futures: `https://fapi.binance.com` (different domain, may require separate API key)
+
   **Must NOT do**:
   - ❌ Allow cross margin mode
   - ❌ Allow >20x leverage

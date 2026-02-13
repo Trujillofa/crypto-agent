@@ -70,8 +70,7 @@ class TimescaleWriter:
             raise RuntimeError("TimescaleDB connection not initialized")
         if self._conn is None:
             raise RuntimeError("Database connection missing")
-        await self._conn.execute(
-            """
+        await self._conn.execute("""
             CREATE TABLE IF NOT EXISTS ohlcv (
                 time TIMESTAMPTZ NOT NULL,
                 close_time TIMESTAMPTZ NOT NULL,
@@ -84,13 +83,10 @@ class TimescaleWriter:
                 volume DOUBLE PRECISION NOT NULL,
                 PRIMARY KEY (time, symbol, timeframe)
             );
-            """
-        )
-        await self._conn.execute(
-            """
+            """)
+        await self._conn.execute("""
             SELECT create_hypertable('ohlcv', 'time', if_not_exists => TRUE);
-            """
-        )
+            """)
 
     async def _insert_row(self, candle: Ohlcv) -> None:
         if not self._connected:

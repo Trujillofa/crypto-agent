@@ -371,9 +371,11 @@ class RiskManager:
             "consecutive_losses": self._consecutive_losses,
             "api_errors": self._api_error_count,
             "open_positions": len(self._positions),
-            "avg_latency_ms": sum(self._latency_readings) / len(self._latency_readings)
-            if self._latency_readings
-            else 0,
+            "avg_latency_ms": (
+                sum(self._latency_readings) / len(self._latency_readings)
+                if self._latency_readings
+                else 0
+            ),
         }
 
     async def monitor_loop(self) -> None:

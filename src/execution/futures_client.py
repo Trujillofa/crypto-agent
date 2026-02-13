@@ -188,7 +188,7 @@ class BinanceFuturesClient:
             raise ValueError(f"Leverage {leverage}x exceeds hard safety cap of 20x")
 
         if leverage < 1:
-            raise ValueError(f"Leverage must be at least 1x")
+            raise ValueError("Leverage must be at least 1x")
 
         return await self._request(
             "POST",

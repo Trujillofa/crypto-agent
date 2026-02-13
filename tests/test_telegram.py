@@ -94,18 +94,14 @@ class TestAsyncContextManager:
     """Test suite for async context manager."""
 
     @pytest.mark.asyncio
-    async def test_aenter_creates_session(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_aenter_creates_session(self, notifier: TelegramNotifier) -> None:
         """Test __aenter__ creates aiohttp session."""
         assert notifier._session is None
         async with notifier:
             assert notifier._session is not None
 
     @pytest.mark.asyncio
-    async def test_aexit_closes_session(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_aexit_closes_session(self, notifier: TelegramNotifier) -> None:
         """Test __aexit__ closes aiohttp session."""
         async with notifier:
             assert notifier._session is not None
@@ -124,9 +120,7 @@ class TestSendAlert:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_send_alert_success(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_send_alert_success(self, notifier: TelegramNotifier) -> None:
         """Test successful alert sending."""
         mock_response = MagicMock()
         mock_response.status = 200
@@ -134,17 +128,13 @@ class TestSendAlert:
         mock_response.__aexit__ = AsyncMock()
 
         async with notifier:
-            with patch.object(
-                notifier._session, "post", return_value=mock_response
-            ):
+            with patch.object(notifier._session, "post", return_value=mock_response):
                 result = await notifier.send_alert("test message")
 
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_send_alert_failure(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_send_alert_failure(self, notifier: TelegramNotifier) -> None:
         """Test failed alert sending."""
         mock_response = MagicMock()
         mock_response.status = 400
@@ -153,9 +143,7 @@ class TestSendAlert:
         mock_response.__aexit__ = AsyncMock()
 
         async with notifier:
-            with patch.object(
-                notifier._session, "post", return_value=mock_response
-            ):
+            with patch.object(notifier._session, "post", return_value=mock_response):
                 result = await notifier.send_alert("test message")
 
         assert result is False
@@ -165,9 +153,7 @@ class TestSpecializedAlerts:
     """Test suite for specialized alert methods."""
 
     @pytest.mark.asyncio
-    async def test_send_kill_switch_alert(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_send_kill_switch_alert(self, notifier: TelegramNotifier) -> None:
         """Test kill switch alert format."""
         with patch.object(
             notifier, "send_alert", new=AsyncMock(return_value=True)
@@ -180,9 +166,7 @@ class TestSpecializedAlerts:
             assert args[1] == AlertLevel.CRITICAL
 
     @pytest.mark.asyncio
-    async def test_send_circuit_breaker_alert(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_send_circuit_breaker_alert(self, notifier: TelegramNotifier) -> None:
         """Test circuit breaker alert format."""
         with patch.object(
             notifier, "send_alert", new=AsyncMock(return_value=True)
@@ -195,9 +179,7 @@ class TestSpecializedAlerts:
             assert args[1] == AlertLevel.WARNING
 
     @pytest.mark.asyncio
-    async def test_send_trade_alert(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_send_trade_alert(self, notifier: TelegramNotifier) -> None:
         """Test trade alert format."""
         with patch.object(
             notifier, "send_alert", new=AsyncMock(return_value=True)
@@ -217,9 +199,7 @@ class TestSpecializedAlerts:
             assert "+100.00" in call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_send_daily_summary(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_send_daily_summary(self, notifier: TelegramNotifier) -> None:
         """Test daily summary alert format."""
         with patch.object(
             notifier, "send_alert", new=AsyncMock(return_value=True)
