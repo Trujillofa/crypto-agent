@@ -34,6 +34,7 @@ ENV/
 .gemini/
 .copilot/
 .cleo/
+.sisyphus/
 claudedocs/
 
 # OS

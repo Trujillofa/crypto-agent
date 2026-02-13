@@ -27,10 +27,10 @@ def test_settings_default_safe():
         settings.trading_execution.test_mode is True
     ), "Test mode must be enabled by default for safety"
 
-    # Strategy config should load with default interval
+    # Strategy config should load with configured interval
     assert (
-        settings.strategy.evaluation_interval_seconds == 60
-    ), "Default evaluation interval should be 60 seconds"
+        settings.strategy.evaluation_interval_seconds == 30
+    ), "Default evaluation interval should be 30 seconds"
 
 
 def test_settings_has_strategy_section():

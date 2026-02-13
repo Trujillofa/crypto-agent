@@ -102,7 +102,7 @@ class BinancePrivateClient:
 
         headers = {
             "X-MBX-APIKEY": self._api_key,
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
         }
 
         if signed:
@@ -119,7 +119,7 @@ class BinancePrivateClient:
             # For GET requests, params in query string
             if method == "GET":
                 query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-                url = f"{url}?{query_string}"
+                url = f"{url}?{query_string}" if query_string else url
 
                 self._logger.debug(
                     "Making GET request to %s with params: %s",
@@ -131,6 +131,7 @@ class BinancePrivateClient:
                     return await self._handle_response(response)
 
             # For POST requests, params in body
+            query_string = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
             self._logger.debug(
                 "Making %s request to %s with params: %s",
                 method,
@@ -139,7 +140,7 @@ class BinancePrivateClient:
             )
 
             async with self._session.post(
-                url, headers=headers, data=params
+                url, headers=headers, data=query_string
             ) as response:
                 return await self._handle_response(response)
         except BinanceApiError as exc:
