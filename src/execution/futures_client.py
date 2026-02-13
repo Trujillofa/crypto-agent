@@ -66,6 +66,15 @@ class FundingRateInfo:
     funding_time: int  # Next funding timestamp
 
 
+class BinanceFuturesApiError(RuntimeError):
+    """Binance Futures API error with code for retry handling."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(f"Binance Futures API error [{code}]: {message}")
+        self.code = code
+        self.message = message
+
+
 class BinanceFuturesClient:
     """Async Binance USDⓈ-M Futures API client.
 
@@ -89,6 +98,9 @@ class BinanceFuturesClient:
         self._session: aiohttp.ClientSession | None = None
         # Use demo URL when in test mode (same keys work for both spot and futures on demo)
         self._base_url = self.DEMO_URL if test_mode else self.BASE_URL
+        self._time_offset_ms = 0
+        self._last_time_sync = 0.0
+        self._time_sync_interval_seconds = 60.0
 
     async def __aenter__(self) -> BinanceFuturesClient:
         self._session = aiohttp.ClientSession()
@@ -112,6 +124,7 @@ class BinanceFuturesClient:
         endpoint: str,
         params: Mapping[str, Any] | None = None,
         signed: bool = False,
+        _retry: bool = True,
     ) -> dict[str, Any]:
         """Make a request to Binance Futures API.
 
@@ -121,13 +134,15 @@ class BinanceFuturesClient:
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
 
-        params = dict(params) if params else {}
+        base_params = dict(params) if params else {}
+        params = dict(base_params)
         url = f"{self._base_url}{endpoint}"
 
         headers = {"X-MBX-APIKEY": self._api_key}
 
         if signed:
-            params["timestamp"] = int(time.time() * 1000)
+            await self._ensure_time_sync()
+            params["timestamp"] = self._current_timestamp_ms()
             params["recvWindow"] = 5000
 
             # Create query string for signature
@@ -146,17 +161,31 @@ class BinanceFuturesClient:
             {k: "***" if k == "signature" else v for k, v in params.items()},
         )
 
-        if method == "GET":
-            async with self._session.get(full_url, headers=headers) as response:
-                return await self._handle_response(response)
-        elif method == "POST":
-            async with self._session.post(full_url, headers=headers) as response:
-                return await self._handle_response(response)
-        elif method == "DELETE":
-            async with self._session.delete(full_url, headers=headers) as response:
-                return await self._handle_response(response)
-        else:
+        try:
+            if method == "GET":
+                async with self._session.get(full_url, headers=headers) as response:
+                    return await self._handle_response(response)
+            if method == "POST":
+                async with self._session.post(full_url, headers=headers) as response:
+                    return await self._handle_response(response)
+            if method == "DELETE":
+                async with self._session.delete(full_url, headers=headers) as response:
+                    return await self._handle_response(response)
             raise ValueError(f"Unsupported HTTP method: {method}")
+        except BinanceFuturesApiError as exc:
+            if signed and _retry and exc.code == -1021:
+                self._logger.warning(
+                    "Binance futures timestamp rejected. Resyncing time and retrying."
+                )
+                await self._sync_time(force=True)
+                return await self._request(
+                    method,
+                    endpoint,
+                    base_params,
+                    signed=signed,
+                    _retry=False,
+                )
+            raise
 
     async def _handle_response(
         self, response: aiohttp.ClientResponse
@@ -166,10 +195,39 @@ class BinanceFuturesClient:
 
         if response.status >= 400:
             error_msg = data.get("msg", "Unknown error")
-            error_code = data.get("code", response.status)
-            raise RuntimeError(f"Binance Futures API error [{error_code}]: {error_msg}")
+            error_code = int(data.get("code", response.status))
+            raise BinanceFuturesApiError(error_code, error_msg)
 
         return data
+
+    def _current_timestamp_ms(self) -> int:
+        return int(time.time() * 1000) + self._time_offset_ms
+
+    async def _ensure_time_sync(self) -> None:
+        if (time.time() - self._last_time_sync) < self._time_sync_interval_seconds:
+            return
+        await self._sync_time(force=False)
+
+    async def _sync_time(self, force: bool) -> None:
+        if self._session is None:
+            raise RuntimeError("Session not initialized. Use async context manager.")
+        if not force and (
+            time.time() - self._last_time_sync
+        ) < self._time_sync_interval_seconds:
+            return
+
+        url = f"{self._base_url}/fapi/v1/time"
+        async with self._session.get(url) as response:
+            data = await response.json()
+            server_time = int(data.get("serverTime", 0))
+            if server_time:
+                local_time = int(time.time() * 1000)
+                self._time_offset_ms = server_time - local_time
+                self._last_time_sync = time.time()
+                self._logger.debug(
+                    "Synced Binance futures server time. Offset=%sms",
+                    self._time_offset_ms,
+                )
 
     async def set_leverage(self, symbol: str, leverage: int) -> dict[str, Any]:
         """Set leverage for a symbol.
