@@ -205,9 +205,7 @@ def _vwap(
 
     typical_prices = [
         (high_price + low_price + close_price) / 3
-        for high_price, low_price, close_price in zip(
-            high, low, close, strict=False
-        )
+        for high_price, low_price, close_price in zip(high, low, close, strict=False)
     ]
     total_pv = sum(tp * vol for tp, vol in zip(typical_prices, volume, strict=False))
     total_vol = sum(volume)
@@ -256,9 +254,7 @@ def _cci(
     # Calculate typical price for each period
     typical_prices = [
         (high_price + low_price + close_price) / 3
-        for high_price, low_price, close_price in zip(
-            high, low, close, strict=False
-        )
+        for high_price, low_price, close_price in zip(high, low, close, strict=False)
     ]
 
     # Calculate SMA of typical prices
