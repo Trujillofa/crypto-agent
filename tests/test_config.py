@@ -89,11 +89,13 @@ class TestLoadSettings:
             {
                 "BINANCE_TESTNET_API_KEY": "env_key",
                 "BINANCE_TESTNET_API_SECRET": "env_secret",
+                "XAI_API_KEY": "xai_env_key",
             },
         ):
             settings = load_settings(config_file)
             assert settings.trading_execution.api_key == "env_key"
             assert settings.trading_execution.api_secret == "env_secret"
+            assert settings.ai.api_key == "xai_env_key"
 
     def test_invalid_type_raises_error(self) -> None:
         """Test that invalid types in config raise ValueError."""

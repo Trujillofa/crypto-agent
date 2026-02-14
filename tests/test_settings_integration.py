@@ -18,19 +18,19 @@ def test_settings_default_safe():
 
     # Paper trading is enabled by default for full pipeline testing
     # Safety is ensured by test_mode=True (uses Binance testnet, not real funds)
-    assert (
-        settings.trading_execution.enabled is True
-    ), "Paper trading should be enabled by default for pipeline testing"
+    assert settings.trading_execution.enabled is True, (
+        "Paper trading should be enabled by default for pipeline testing"
+    )
 
     # Test mode should be enabled by default (crucial safety check)
-    assert (
-        settings.trading_execution.test_mode is True
-    ), "Test mode must be enabled by default for safety"
+    assert settings.trading_execution.test_mode is True, (
+        "Test mode must be enabled by default for safety"
+    )
 
     # Strategy config should load with configured interval
-    assert (
-        settings.strategy.evaluation_interval_seconds == 30
-    ), "Default evaluation interval should be 30 seconds"
+    assert settings.strategy.evaluation_interval_seconds == 30, (
+        "Default evaluation interval should be 30 seconds"
+    )
 
 
 def test_settings_has_strategy_section():
@@ -39,9 +39,9 @@ def test_settings_has_strategy_section():
         raw = yaml.safe_load(f)
 
     assert "strategy" in raw, "settings.yaml must contain 'strategy' section"
-    assert (
-        "evaluation_interval_seconds" in raw["strategy"]
-    ), "strategy section must have 'evaluation_interval_seconds'"
+    assert "evaluation_interval_seconds" in raw["strategy"], (
+        "strategy section must have 'evaluation_interval_seconds'"
+    )
 
 
 def test_settings_all_required_sections():
@@ -70,6 +70,13 @@ def test_settings_telegram_config():
     assert settings.telegram is not None, "Telegram config required"
     assert settings.telegram.rate_limit_seconds == 5
     assert isinstance(settings.telegram.enabled, bool)
+
+
+def test_settings_ai_config_defaults():
+    settings = load_settings(Path("config/settings.yaml"))
+    assert settings.ai.provider == "xai"
+    assert isinstance(settings.ai.enabled, bool)
+    assert settings.ai.model != ""
 
 
 @pytest.mark.asyncio
@@ -147,6 +154,6 @@ async def test_full_flow_engine_to_executor():
     # Verify signal was generated and passed to handler
     assert len(received_signals) == 1, "Should receive exactly one signal"
     assert received_signals[0].symbol == "BTCUSDT", "Signal should be for BTCUSDT"
-    assert (
-        received_signals[0].type == SignalType.BUY
-    ), "Should be BUY signal (ema_12 > ema_26)"
+    assert received_signals[0].type == SignalType.BUY, (
+        "Should be BUY signal (ema_12 > ema_26)"
+    )

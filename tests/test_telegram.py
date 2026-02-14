@@ -34,6 +34,7 @@ class TestTelegramConfig:
         config = TelegramConfig(bot_token="token", chat_id="chat")
         assert config.enabled is True
         assert config.rate_limit_seconds == 5
+        assert config.allowed_updates == ("message",)
 
     def test_custom_values(self) -> None:
         """Test custom config values."""
@@ -42,9 +43,11 @@ class TestTelegramConfig:
             chat_id="chat",
             enabled=False,
             rate_limit_seconds=10,
+            allowed_updates=("message", "callback_query"),
         )
         assert config.enabled is False
         assert config.rate_limit_seconds == 10
+        assert config.allowed_updates == ("message", "callback_query")
 
 
 class TestTelegramNotifier:
@@ -147,6 +150,45 @@ class TestSendAlert:
                 result = await notifier.send_alert("test message")
 
         assert result is False
+
+
+class TestGetUpdates:
+    @pytest.mark.asyncio
+    async def test_get_updates_not_configured(self) -> None:
+        config = TelegramConfig(bot_token="", chat_id="", enabled=False)
+        notifier = TelegramNotifier(config=config)
+        result = await notifier.get_updates()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_updates_success(self, notifier: TelegramNotifier) -> None:
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"ok": True, "result": [{"update_id": 7}]}
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+
+        async with notifier:
+            with patch.object(notifier._session, "post", return_value=mock_response):
+                result = await notifier.get_updates(offset=6, timeout=5)
+
+        assert result == [{"update_id": 7}]
+
+    @pytest.mark.asyncio
+    async def test_get_updates_api_error(self, notifier: TelegramNotifier) -> None:
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.text = AsyncMock(return_value="Internal Server Error")
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+
+        async with notifier:
+            with patch.object(notifier._session, "post", return_value=mock_response):
+                result = await notifier.get_updates()
+
+        assert result == []
 
 
 class TestSpecializedAlerts:
