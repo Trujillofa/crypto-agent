@@ -30,6 +30,17 @@ telegram:
   bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
   chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
   rate_limit_seconds: 5
+  allowed_updates:
+    - message
+
+ai:
+  enabled: true
+  provider: xai
+  model: grok-4-1-fast-reasoning
+  polling_interval: 1.0
+  max_history: 10
+  allowed_chat_ids: []
+  api_key: ""
 
 prometheus:
   port: 8000
@@ -39,14 +50,14 @@ trading_execution:
   api_key: ""  # Set via BINANCE_API_KEY environment variable
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
-  order_size_usdt: 100.0  # Default order size in USDT
+  order_size_usdt: 50.0  # Default order size in USDT
 
 futures:
   enabled: true  # Futures demo trading enabled
   symbols:
     - BTCUSDT
     - ETHUSDT
-  default_leverage: 5  # Conservative default
+  default_leverage: 3  # Conservative default
   max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
   margin_mode: isolated  # isolated only for MVP
   position_mode: one-way  # one-way only for MVP
@@ -82,6 +93,6 @@ strategy:
         rsi_max_entry: 80
         rsi_min_entry: 20
   aggregator:
-    min_agreement: 1
+    min_agreement: 2
     buy_threshold: 0.6
     sell_threshold: -0.6
