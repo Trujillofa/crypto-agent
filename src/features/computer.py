@@ -172,7 +172,11 @@ class IndicatorComputer:
             cci=indicators.cci,
         )
 
+        write_start = time.perf_counter()
         await self._writer.write_indicators(stored)
+        write_elapsed = time.perf_counter() - write_start
+        self._metrics.write_latency.labels(symbol=symbol).observe(write_elapsed)
+        self._metrics.writes_total.labels(symbol=symbol, status="success").inc()
 
         # Update metrics
         elapsed = time.perf_counter() - computation_start

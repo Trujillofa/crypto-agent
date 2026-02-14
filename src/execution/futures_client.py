@@ -211,9 +211,10 @@ class BinanceFuturesClient:
     async def _sync_time(self, force: bool) -> None:
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        if not force and (
-            time.time() - self._last_time_sync
-        ) < self._time_sync_interval_seconds:
+        if (
+            not force
+            and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds
+        ):
             return
 
         url = f"{self._base_url}/fapi/v1/time"
@@ -257,6 +258,16 @@ class BinanceFuturesClient:
             },
             signed=True,
         )
+
+    async def get_position_mode(self) -> str:
+        data = await self._request(
+            "GET",
+            "/fapi/v1/positionSide/dual",
+            params={},
+            signed=True,
+        )
+        dual_side = str(data.get("dualSidePosition", "false")).lower() == "true"
+        return "hedge" if dual_side else "one-way"
 
     async def get_position_risk(self, symbol: str) -> list[FuturesPositionInfo]:
         """Get position risk information including liquidation price.
@@ -340,6 +351,10 @@ class BinanceFuturesClient:
             signed=True,
         )
 
+        avg_price = float(data.get("avgPrice", 0)) if data.get("avgPrice") else None
+        price = float(data.get("price", 0)) if data.get("price") else None
+        resolved_price = avg_price if avg_price and avg_price > 0 else price
+
         return FuturesOrderInfo(
             order_id=str(data.get("orderId", 0)),
             symbol=data.get("symbol", symbol),
@@ -347,11 +362,35 @@ class BinanceFuturesClient:
             position_side=data.get("positionSide", position_side),
             order_type=data.get("type", order_type),
             quantity=float(data.get("origQty", quantity)),
-            price=float(data.get("price", 0)) if data.get("price") else None,
+            price=resolved_price,
             status=data.get("status", "NEW"),
             executed_quantity=float(data.get("executedQty", 0)),
             create_time=int(data.get("time", 0)),
             reduce_only=reduce_only,
+        )
+
+    async def get_order_status(self, symbol: str, order_id: str) -> FuturesOrderInfo:
+        data = await self._request(
+            "GET",
+            "/fapi/v1/order",
+            params={"symbol": symbol, "orderId": order_id},
+            signed=True,
+        )
+        avg_price = float(data.get("avgPrice", 0)) if data.get("avgPrice") else None
+        price = float(data.get("price", 0)) if data.get("price") else None
+        resolved_price = avg_price if avg_price and avg_price > 0 else price
+        return FuturesOrderInfo(
+            order_id=str(data.get("orderId", order_id)),
+            symbol=data.get("symbol", symbol),
+            side=data.get("side", "BUY"),
+            position_side=data.get("positionSide", "BOTH"),
+            order_type=data.get("type", "MARKET"),
+            quantity=float(data.get("origQty", 0)),
+            price=resolved_price,
+            status=data.get("status", "NEW"),
+            executed_quantity=float(data.get("executedQty", 0)),
+            create_time=int(data.get("time", 0)),
+            reduce_only=str(data.get("reduceOnly", "false")).lower() == "true",
         )
 
     async def get_funding_rate(self, symbol: str) -> FundingRateInfo:
