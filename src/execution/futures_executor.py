@@ -357,6 +357,7 @@ class FuturesTradingExecutor:
                         quantity=self._config.order_size_usdt,
                         price=signal.price,
                         pnl=None,
+                        market="futures",
                     )
                 elif current_position.position_side == "LONG":
                     # Already have LONG position - add to it (pyramiding)
@@ -411,6 +412,7 @@ class FuturesTradingExecutor:
                         quantity=current_position.position_amt,
                         price=signal.price,
                         pnl=pnl,
+                        market="futures",
                     )
                 else:
                     self._logger.info(

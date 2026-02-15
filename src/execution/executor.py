@@ -509,6 +509,7 @@ class TradingExecutor:
                     quantity=self._config.order_size_usdt,
                     price=signal.price,
                     pnl=None,
+                    market="spot",
                 )
             elif signal.type == SignalType.SELL:
                 base_asset = signal.symbol.removesuffix("USDT")
@@ -526,6 +527,7 @@ class TradingExecutor:
                         quantity=balance,
                         price=signal.price,
                         pnl=pnl,
+                        market="spot",
                     )
                 else:
                     self._logger.info("SELL signal but no %s balance", base_asset)
