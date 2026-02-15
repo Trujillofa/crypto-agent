@@ -65,7 +65,7 @@ futures:
   liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
 
 strategy:
-  evaluation_interval_seconds: 300
+  evaluation_interval_seconds: 60
   cooldown_candles: 3
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
@@ -94,6 +94,6 @@ strategy:
         rsi_max_entry: 75
         rsi_min_entry: 25
   aggregator:
-    min_agreement: 2
-    buy_threshold: 0.6
-    sell_threshold: -0.6
+    min_agreement: 1
+    buy_threshold: 0.4
+    sell_threshold: -0.4
