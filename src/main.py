@@ -486,14 +486,8 @@ async def run() -> None:
     writer = TimescaleWriter(settings.database, ingest_metrics)
 
     if settings.use_websocket:
-        spot_ws_url = (
-            BinanceWebSocketIngestor.SPOT_TESTNET_WS_URL
-            if settings.trading_execution.test_mode
-            else BinanceWebSocketIngestor.SPOT_WS_URL
-        )
         ingestor = BinanceWebSocketIngestor(
-            settings.trading_pairs, settings.timeframe, ingest_metrics,
-            base_url=spot_ws_url,
+            settings.trading_pairs, settings.timeframe, ingest_metrics
         )
     else:
         ingestor = BinanceIngestor(
