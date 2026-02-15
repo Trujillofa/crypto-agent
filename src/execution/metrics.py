@@ -72,6 +72,13 @@ risk_blocks_total = Counter(
     ["symbol", "reason"],
 )
 
+# Counter for strategy signals routed for execution
+signals_total = Counter(
+    "execution_signals_total",
+    "Total number of strategy signals routed for execution",
+    ["symbol", "trading_mode", "signal_type"],
+)
+
 
 class ExecutionMetrics:
     """Container for trading execution metrics."""
@@ -88,6 +95,7 @@ class ExecutionMetrics:
         self.trading_active = trading_active
         self.api_errors = api_errors_total
         self.risk_blocks = risk_blocks_total
+        self.signals = signals_total
 
     def start_trading(self) -> None:
         """Mark trading as active."""
@@ -123,6 +131,14 @@ class ExecutionMetrics:
     def record_risk_block(self, symbol: str, reason: str) -> None:
         """Record an order blocked by risk manager."""
         self.risk_blocks.labels(symbol=symbol, reason=reason).inc()
+
+    def record_signal(self, symbol: str, trading_mode: str, signal_type: str) -> None:
+        """Record a strategy signal routed for execution."""
+        self.signals.labels(
+            symbol=symbol,
+            trading_mode=trading_mode,
+            signal_type=signal_type,
+        ).inc()
 
     def record_api_error(self, endpoint: str, error_code: str) -> None:
         """Record an API error."""

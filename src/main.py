@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from src.execution import (
 )
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
+from src.overseer import OverseerAgent, XAIClient
 from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy import (
@@ -38,6 +40,7 @@ from src.strategy import (
     BollingerBounceStrategy,
     MomentumStrategy,
 )
+from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
 
 
@@ -65,6 +68,17 @@ class FuturesSettings:
 
 
 @dataclass(frozen=True)
+class AISettings:
+    enabled: bool
+    provider: str
+    model: str
+    polling_interval: float
+    max_history: int
+    allowed_chat_ids: list[str]
+    api_key: str
+
+
+@dataclass(frozen=True)
 class Settings:
     mode: str
     log_level: str
@@ -75,6 +89,7 @@ class Settings:
     trading_execution: TradingConfig
     strategy: StrategySettings
     telegram: TelegramConfig
+    ai: AISettings
     use_websocket: bool
     futures: FuturesSettings | None = None
 
@@ -93,9 +108,7 @@ def load_settings(config_path: Path) -> Settings:
     strategy = _as_mapping(root.get("strategy"), "strategy section")
     ingest = _as_mapping(root.get("ingest"), "ingest section")
     telegram = _as_mapping(root.get("telegram"), "telegram section")
-
-    # Get API key from environment if not in config
-    import os as _os
+    ai = _as_mapping(root.get("ai"), "ai section")
 
     # Check if test_mode is enabled first
     test_mode = _as_bool(
@@ -108,29 +121,29 @@ def load_settings(config_path: Path) -> Settings:
             trading_exec.get("api_key"), "trading_execution.api_key", default=""
         )
         if not api_key:
-            api_key = _os.getenv("BINANCE_TESTNET_API_KEY", "").strip()
+            api_key = os.getenv("BINANCE_TESTNET_API_KEY", "").strip()
 
         api_secret = _as_str(
             trading_exec.get("api_secret"), "trading_execution.api_secret", default=""
         )
         if not api_secret:
-            api_secret = _os.getenv("BINANCE_TESTNET_API_SECRET", "").strip()
+            api_secret = os.getenv("BINANCE_TESTNET_API_SECRET", "").strip()
     else:
         api_key = _as_str(
             trading_exec.get("api_key"), "trading_execution.api_key", default=""
         )
         if not api_key:
-            api_key = _os.getenv("BINANCE_API_KEY", "").strip()
+            api_key = os.getenv("BINANCE_API_KEY", "").strip()
 
         api_secret = _as_str(
             trading_exec.get("api_secret"), "trading_execution.api_secret", default=""
         )
         if not api_secret:
-            api_secret = _os.getenv("BINANCE_API_SECRET", "").strip()
+            api_secret = os.getenv("BINANCE_API_SECRET", "").strip()
 
     db_password = _as_str(database.get("password"), "database.password", default="")
     if not db_password:
-        db_password = _os.getenv("POSTGRES_PASSWORD", "").strip()
+        db_password = os.getenv("POSTGRES_PASSWORD", "").strip()
 
     trading_pairs = _as_str_list(trading.get("pairs"), "trading.pairs")
     if not trading_pairs:
@@ -185,11 +198,18 @@ def load_settings(config_path: Path) -> Settings:
         telegram.get("bot_token"), "telegram.bot_token", default=""
     )
     if not telegram_bot_token:
-        telegram_bot_token = _os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
     telegram_chat_id = _as_str(telegram.get("chat_id"), "telegram.chat_id", default="")
     if not telegram_chat_id:
-        telegram_chat_id = _os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+    telegram_allowed_updates = _as_str_list(
+        telegram.get("allowed_updates"),
+        "telegram.allowed_updates",
+    )
+    if not telegram_allowed_updates:
+        telegram_allowed_updates = ["message"]
 
     telegram_config = TelegramConfig(
         bot_token=telegram_bot_token,
@@ -200,6 +220,43 @@ def load_settings(config_path: Path) -> Settings:
             "telegram.rate_limit_seconds",
             default=5,
         ),
+        allowed_updates=tuple(telegram_allowed_updates),
+    )
+
+    ai_api_key = _as_str(ai.get("api_key"), "ai.api_key", default="")
+    if not ai_api_key:
+        ai_api_key = os.getenv("XAI_API_KEY", "").strip()
+
+    ai_allowed_chat_ids = _as_str_list(
+        ai.get("allowed_chat_ids"), "ai.allowed_chat_ids"
+    )
+    if not ai_allowed_chat_ids and telegram_chat_id:
+        ai_allowed_chat_ids = [telegram_chat_id]
+
+    ai_provider = _as_str(ai.get("provider"), "ai.provider", default="xai")
+    if ai_provider != "xai":
+        raise ValueError(f"ai.provider='{ai_provider}' is invalid. Must be 'xai'.")
+
+    ai_settings = AISettings(
+        enabled=_as_bool(ai.get("enabled"), "ai.enabled", default=False),
+        provider=ai_provider,
+        model=_as_str(
+            ai.get("model"),
+            "ai.model",
+            default="grok-4-1-fast-reasoning",
+        ),
+        polling_interval=_as_float(
+            ai.get("polling_interval"),
+            "ai.polling_interval",
+            default=1.0,
+        ),
+        max_history=_as_int(
+            ai.get("max_history"),
+            "ai.max_history",
+            default=10,
+        ),
+        allowed_chat_ids=ai_allowed_chat_ids,
+        api_key=ai_api_key,
     )
 
     # Parse and validate futures configuration
@@ -307,6 +364,7 @@ def load_settings(config_path: Path) -> Settings:
         trading_execution=trading_config,
         strategy=strategy_config,
         telegram=telegram_config,
+        ai=ai_settings,
         use_websocket=_as_bool(
             ingest.get("use_websocket"), "ingest.use_websocket", default=False
         ),
@@ -510,6 +568,40 @@ async def run() -> None:
 
     telegram_notifier = TelegramNotifier(settings.telegram)
 
+    overseer_agent = None
+    if settings.ai.enabled:
+        logger = get_logger("main")
+        if not settings.telegram.enabled:
+            logger.warning(
+                "AI overseer enabled but telegram.enabled=false; overseer disabled"
+            )
+        elif not settings.telegram.bot_token:
+            logger.warning(
+                "AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled"
+            )
+        else:
+            xai_client = None
+            if settings.ai.api_key:
+                xai_client = XAIClient(
+                    api_key=settings.ai.api_key,
+                    model=settings.ai.model,
+                )
+            else:
+                logger.warning(
+                    "AI overseer running without XAI_API_KEY; /ask will be unavailable"
+                )
+
+            overseer_agent = OverseerAgent(
+                mode=settings.mode,
+                poll_interval_seconds=settings.ai.polling_interval,
+                max_history=settings.ai.max_history,
+                allowed_chat_ids=settings.ai.allowed_chat_ids,
+                telegram=telegram_notifier,
+                portfolio_manager=portfolio_manager,
+                risk_manager=risk_manager,
+                xai_client=xai_client,
+            )
+
     # Initialize trading executor (spot)
     trading_executor = TradingExecutor(
         config=settings.trading_execution,
@@ -618,15 +710,53 @@ async def run() -> None:
         # Start trading executor (spot)
         trading_task = asyncio.create_task(trading_executor.run())
 
+        overseer_task = None
+        if overseer_agent is not None:
+            overseer_task = asyncio.create_task(overseer_agent.run())
+
         # Start strategy engine - route signals to appropriate executor
         if futures_executor:
+            futures_symbols = set(settings.futures.symbols)
+            router_trace_symbols = {"BTCUSDT", "ETHUSDT"}
+            router_logger = get_logger("signal_router")
+
             # Strategy signals go to both spot and futures executors
             # Executor decides based on signal.trading_mode
-            async def on_signal_router(signal):
+            async def on_signal_router(signal: Signal) -> None:
+                execution_metrics.record_signal(
+                    signal.symbol,
+                    signal.trading_mode,
+                    signal.type.value,
+                )
+
                 if signal.trading_mode == "futures":
                     await futures_executor.on_signal(signal)
                 else:
                     await trading_executor.on_signal(signal)
+
+                    if signal.symbol in futures_symbols:
+                        mirrored_signal = Signal(
+                            type=signal.type,
+                            symbol=signal.symbol,
+                            price=signal.price,
+                            confidence=signal.confidence,
+                            reason=signal.reason,
+                            indicators=signal.indicators,
+                            trading_mode="futures",
+                        )
+                        execution_metrics.record_signal(
+                            mirrored_signal.symbol,
+                            mirrored_signal.trading_mode,
+                            mirrored_signal.type.value,
+                        )
+                        if mirrored_signal.symbol in router_trace_symbols:
+                            router_logger.info(
+                                "Routed mirrored signal to futures: %s %s (%s)",
+                                mirrored_signal.type.value,
+                                mirrored_signal.symbol,
+                                mirrored_signal.trading_mode,
+                            )
+                        await futures_executor.on_signal(mirrored_signal)
 
             strategy_task = asyncio.create_task(
                 strategy_engine.run(on_signal=on_signal_router)
@@ -681,7 +811,7 @@ async def run() -> None:
 
             risk_summary = risk_manager.get_risk_summary()
             logger.info(
-                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s futures=%s",
+                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s futures=%s ai=%s",
                 writer.is_connected(),
                 ohlcv_rows,
                 indicator_rows,
@@ -689,6 +819,7 @@ async def run() -> None:
                 risk_summary,
                 telegram_notifier.is_configured(),
                 "enabled" if futures_executor else "disabled",
+                "enabled" if overseer_agent else "disabled",
             )
 
         await _log_startup_diagnostics()
@@ -701,6 +832,8 @@ async def run() -> None:
         indicator_task.cancel()
         trading_task.cancel()
         strategy_task.cancel()
+        if overseer_task:
+            overseer_task.cancel()
         if futures_task:
             futures_task.cancel()
         if futures_ingest_task:
@@ -708,6 +841,8 @@ async def run() -> None:
 
         indicator_computer.stop()
         trading_executor.stop()
+        if overseer_agent:
+            overseer_agent.stop()
         if futures_executor:
             futures_executor.stop()
 
@@ -717,6 +852,8 @@ async def run() -> None:
             await indicator_task
             await trading_task
             await strategy_task
+            if overseer_task:
+                await overseer_task
             if futures_task:
                 await futures_task
             if futures_ingest_task:
