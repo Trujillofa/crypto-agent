@@ -13,7 +13,7 @@ trading:
     - DOGEUSDT
     - AVAXUSDT
     - LINKUSDT
-  timeframe: 1m
+  timeframe: 5m
 
 ingest:
   use_websocket: true
@@ -39,7 +39,7 @@ trading_execution:
   api_key: ""  # Set via BINANCE_API_KEY environment variable
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
-  order_size_usdt: 100.0  # Default order size in USDT
+  order_size_usdt: 20.0  # Default order size in USDT
 
 futures:
   enabled: true  # Futures demo trading enabled
@@ -54,7 +54,8 @@ futures:
   liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
 
 strategy:
-  evaluation_interval_seconds: 30
+  evaluation_interval_seconds: 300
+  cooldown_candles: 3
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
@@ -64,24 +65,24 @@ strategy:
     - name: rsi_reversal
       config:
         rsi_period: 14
-        oversold_threshold: 45
-        overbought_threshold: 55
+        oversold_threshold: 30
+        overbought_threshold: 70
     - name: macd_histogram
       config:
         min_histogram_threshold: 0.0
-        use_atr_filter: false
+        use_atr_filter: true
     - name: bollinger_bounce
       config:
         band_distance_threshold: 0.005
-        rsi_oversold: 45
-        rsi_overbought: 55
+        rsi_oversold: 30
+        rsi_overbought: 70
     - name: momentum
       config:
-        rsi_buy_threshold: 48
-        rsi_sell_threshold: 52
-        rsi_max_entry: 80
-        rsi_min_entry: 20
+        rsi_buy_threshold: 55
+        rsi_sell_threshold: 45
+        rsi_max_entry: 75
+        rsi_min_entry: 25
   aggregator:
-    min_agreement: 1
+    min_agreement: 2
     buy_threshold: 0.6
     sell_threshold: -0.6

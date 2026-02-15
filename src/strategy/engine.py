@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,6 +13,14 @@ from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
 
+_TIMEFRAME_SECONDS = {
+    "1m": 60,
+    "5m": 300,
+    "15m": 900,
+    "1h": 3600,
+}
+
+
 @dataclass(frozen=True)
 class EngineConfig:
     """Strategy engine configuration."""
@@ -21,6 +30,7 @@ class EngineConfig:
     timeframe: str = "1m"
     evaluation_interval_seconds: int = 60
     default_trading_mode: str = "spot"
+    cooldown_candles: int = 3
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
@@ -39,6 +49,7 @@ class StrategyEngine:
         self._logger = get_logger(self.__class__.__name__)
         self._strategies: dict[str, list[BaseStrategy]] = {}
         self._running = False
+        self._last_signal_time: dict[str, float] = {}
         self._aggregator = SignalAggregator(
             config.aggregator_config, config.default_trading_mode
         )
@@ -104,6 +115,31 @@ class StrategyEngine:
                 final_signal = self._aggregator.aggregate(symbol, generated_signals)
 
                 if final_signal.type != SignalType.HOLD:
+                    timeframe_seconds = _TIMEFRAME_SECONDS.get(self._config.timeframe)
+                    if timeframe_seconds is None:
+                        self._logger.warning(
+                            "Cooldown disabled: unknown timeframe %s",
+                            self._config.timeframe,
+                        )
+                    else:
+                        cooldown_seconds = (
+                            self._config.cooldown_candles * timeframe_seconds
+                        )
+                        last_signal_time = self._last_signal_time.get(symbol)
+                        now = time.time()
+                        if last_signal_time is not None:
+                            elapsed = now - last_signal_time
+                            if elapsed < cooldown_seconds:
+                                remaining = cooldown_seconds - elapsed
+                                self._logger.info(
+                                    "Cooldown active for %s: %.0fs remaining",
+                                    symbol,
+                                    remaining,
+                                )
+                                continue
+
+                        self._last_signal_time[symbol] = now
+
                     self._logger.info(f"Consensus Signal: {final_signal}")
                     if on_signal:
                         await on_signal(final_signal)

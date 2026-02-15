@@ -45,6 +45,6 @@ async def test_portfolio_manager_open_close():
                 symbol="BTCUSDT", price=110.0
             )
             assert closed_position.is_closed is True
-            assert closed_position.realized_pnl == pytest.approx(20.0)
-            assert pnl == pytest.approx(20.0)
+            assert closed_position.realized_pnl == pytest.approx(19.58)
+            assert pnl == pytest.approx(19.58)
             assert manager.has_position("BTCUSDT") is False

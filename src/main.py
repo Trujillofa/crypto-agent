@@ -45,6 +45,7 @@ from src.utils.logger import configure_logger, get_logger
 class StrategySettings:
     evaluation_interval_seconds: int
     default_trading_mode: str = "spot"
+    cooldown_candles: int = 3
     strategies: list[Mapping[str, object]] = field(default_factory=list)
     aggregator: Mapping[str, object] = field(default_factory=dict)
 
@@ -169,6 +170,11 @@ def load_settings(config_path: Path) -> Settings:
             default=60,
         ),
         default_trading_mode=default_trading_mode,
+        cooldown_candles=_as_int(
+            strategy.get("cooldown_candles"),
+            "strategy.cooldown_candles",
+            default=3,
+        ),
         strategies=_as_list_of_mappings(
             strategy.get("strategies"), "strategy.strategies"
         ),
@@ -566,6 +572,7 @@ async def run() -> None:
         timeframe=settings.timeframe,
         evaluation_interval_seconds=settings.strategy.evaluation_interval_seconds,
         default_trading_mode=settings.strategy.default_trading_mode,
+        cooldown_candles=settings.strategy.cooldown_candles,
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
