@@ -38,11 +38,13 @@ class PaperTradingConfig:
     """Configuration for paper trading executor."""
 
     enabled: bool = True
-    order_size_usdt: float = 20.0
+    order_size_usdt: float = 200.0
     initial_balance: float = 10000.0
     symbols: list[str] = field(default_factory=list)
     futures_symbols: list[str] = field(default_factory=list)
     futures_leverage: int = 3
+    fee_rate_spot: float = 0.001  # 0.1% per trade (Binance spot taker)
+    fee_rate_futures: float = 0.0004  # 0.04% per trade (Binance futures taker)
 
 
 class PaperExecutor:
@@ -70,6 +72,7 @@ class PaperExecutor:
         self._positions: dict[str, PaperPosition] = {}  # symbol -> position
         self._trade_count: int = 0
         self._realized_pnl: float = 0.0
+        self._total_fees: float = 0.0
         self._running = False
 
     async def __aenter__(self) -> PaperExecutor:
@@ -90,9 +93,10 @@ class PaperExecutor:
         await self._notifier.__aexit__(exc_type, exc, tb)
         self._metrics.stop_trading()
         self._logger.info(
-            "PaperExecutor stopped: balance=%.2f, realized_pnl=%.2f, trades=%d",
+            "PaperExecutor stopped: balance=%.2f, realized_pnl=%.2f, fees=%.2f, trades=%d",
             self._balance,
             self._realized_pnl,
+            self._total_fees,
             self._trade_count,
         )
 
@@ -164,9 +168,12 @@ class PaperExecutor:
             )
             return
 
-        # Simulate fill
+        # Simulate fill with fee
+        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+        fee = order_usdt * fee_rate
         quantity = order_usdt / signal.price
-        self._balance -= margin_needed
+        self._balance -= margin_needed + fee
+        self._total_fees += fee
         self._positions[pos_key] = PaperPosition(
             symbol=signal.symbol,
             side="LONG",
@@ -178,13 +185,14 @@ class PaperExecutor:
 
         leverage_text = f" ({self._config.futures_leverage}x)" if is_futures else ""
         self._logger.info(
-            "Paper BUY %s [%s%s]: qty=%.6f @ %.4f (%.2f USDT)",
+            "Paper BUY %s [%s%s]: qty=%.6f @ %.4f (%.2f USDT, fee=%.2f)",
             signal.symbol,
             market_tag,
             leverage_text,
             quantity,
             signal.price,
             order_usdt,
+            fee,
         )
 
         self._metrics.record_order_placed(
@@ -220,10 +228,16 @@ class PaperExecutor:
             )
             return
 
-        # Calculate PnL
-        pnl = position.pnl(signal.price)
+        # Calculate PnL with fees
+        gross_pnl = position.pnl(signal.price)
         if is_futures:
-            pnl *= self._config.futures_leverage
+            gross_pnl *= self._config.futures_leverage
+
+        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+        sell_notional = position.quantity * signal.price
+        fee = sell_notional * fee_rate
+        net_pnl = gross_pnl - fee
+        self._total_fees += fee
 
         # Close position
         if is_futures:
@@ -231,23 +245,24 @@ class PaperExecutor:
         else:
             margin_returned = position.notional
 
-        self._balance += margin_returned + pnl
-        self._realized_pnl += pnl
+        self._balance += margin_returned + net_pnl
+        self._realized_pnl += net_pnl
         del self._positions[pos_key]
         self._trade_count += 1
 
         # Record in risk manager
-        self._risk_manager.record_trade(signal.symbol, pnl, self._balance)
+        self._risk_manager.record_trade(signal.symbol, net_pnl, self._balance)
 
         leverage_text = f" ({self._config.futures_leverage}x)" if is_futures else ""
         self._logger.info(
-            "Paper SELL %s [%s%s]: qty=%.6f @ %.4f, PnL=%.2f USDT, balance=%.2f",
+            "Paper SELL %s [%s%s]: qty=%.6f @ %.4f, PnL=%.2f (fee=%.2f) USDT, balance=%.2f",
             signal.symbol,
             market_tag,
             leverage_text,
             position.quantity,
             signal.price,
-            pnl,
+            net_pnl,
+            fee,
             self._balance,
         )
 
@@ -264,7 +279,7 @@ class PaperExecutor:
             side="SELL",
             quantity=position.quantity,
             price=signal.price,
-            pnl=pnl,
+            pnl=net_pnl,
             market=f"paper-{market_tag}{leverage_text}",
         )
 
