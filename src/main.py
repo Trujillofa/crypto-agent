@@ -488,7 +488,7 @@ async def run() -> None:
     if settings.use_websocket:
         spot_ws_url = (
             BinanceWebSocketIngestor.SPOT_TESTNET_WS_URL
-            if settings.test_mode
+            if settings.trading_execution.test_mode
             else BinanceWebSocketIngestor.SPOT_WS_URL
         )
         ingestor = BinanceWebSocketIngestor(
