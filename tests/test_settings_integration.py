@@ -28,8 +28,8 @@ def test_settings_default_safe():
     )
 
     # Strategy config should load with configured interval
-    assert settings.strategy.evaluation_interval_seconds == 300, (
-        "Default evaluation interval should be 300 seconds"
+    assert settings.strategy.evaluation_interval_seconds == 60, (
+        "Evaluation interval should be 60 seconds"
     )
 
 

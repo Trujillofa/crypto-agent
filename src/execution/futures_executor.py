@@ -419,9 +419,17 @@ class FuturesTradingExecutor:
                         "SELL signal but no LONG position for %s. Ignoring.",
                         signal.symbol,
                     )
+                    await self._notifier.send_alert(
+                        f"<b>Signal skipped</b> [futures]\n"
+                        f"{signal.symbol} SELL — no LONG position"
+                    )
 
-        except RuntimeError as exc:
+        except Exception as exc:  # noqa: BLE001
             self._logger.warning("Futures signal rejected: %s — %s", signal, exc)
+            await self._notifier.send_alert(
+                f"<b>Signal rejected</b> [futures]\n"
+                f"{signal.symbol} {signal.type.value} — {exc}"
+            )
 
     def _calculate_quantity(self, symbol: str) -> float:
         """Calculate order quantity based on config.

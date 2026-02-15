@@ -531,5 +531,13 @@ class TradingExecutor:
                     )
                 else:
                     self._logger.info("SELL signal but no %s balance", base_asset)
-        except RuntimeError as exc:
+                    await self._notifier.send_alert(
+                        f"<b>Signal skipped</b> [spot]\n"
+                        f"{signal.symbol} SELL — no {base_asset} balance"
+                    )
+        except Exception as exc:  # noqa: BLE001
             self._logger.warning("Signal rejected: %s — %s", signal, exc)
+            await self._notifier.send_alert(
+                f"<b>Signal rejected</b> [spot]\n"
+                f"{signal.symbol} {signal.type.value} — {exc}"
+            )
