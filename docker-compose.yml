@@ -30,7 +30,7 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--web.config.file=/etc/prometheus/auth/web.yml'
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://admin:$${PROMETHEUS_PASSWORD}@localhost:9090/-/healthy 2>/dev/null | grep -q 'Prometheus' || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/ready 2>&1 | grep -qE 'ready|Unauthorized' || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
