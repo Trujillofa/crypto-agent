@@ -85,6 +85,7 @@ class RiskManager:
         self._api_error_count: int = 0
         self._latency_readings: deque[float] = deque(maxlen=100)
         self._kill_switch_triggered: bool = False
+        self._stale_anchor_warning_emitted: bool = False
         self._circuit_breakers: dict[str, bool] = {
             "consecutive_losses": False,
             "api_errors": False,
@@ -121,6 +122,7 @@ class RiskManager:
             loss_limits=LossLimits(**raw.get("loss_limits", {})),
             circuit_breakers=CircuitBreakers(**raw.get("circuit_breakers", {})),
             kill_switch=KillSwitch(**raw.get("kill_switch", {})),
+            futures_limits=FuturesLimits(**raw.get("futures_limits", {})),
         )
 
     def _load_state(self) -> None:
@@ -284,6 +286,26 @@ class RiskManager:
             if self._peak_balance > 0
             else 0
         )
+        warning_threshold = self._config.loss_limits.max_drawdown_pct * 0.75
+        if (
+            drawdown >= warning_threshold
+            and drawdown < self._config.loss_limits.max_drawdown_pct
+        ):
+            if not self._stale_anchor_warning_emitted:
+                max_daily_loss_abs = (
+                    portfolio_value * self._config.loss_limits.max_daily_loss_pct
+                )
+                if abs(self._daily_pnl) <= max_daily_loss_abs:
+                    self._logger.warning(
+                        "Possible stale drawdown anchor: peak_balance=%.2f current_balance=%.2f drawdown=%.2f%%",
+                        self._peak_balance,
+                        current_balance,
+                        drawdown * 100,
+                    )
+                    self._stale_anchor_warning_emitted = True
+        else:
+            self._stale_anchor_warning_emitted = False
+
         if drawdown > self._config.loss_limits.max_drawdown_pct:
             self._logger.error(f"Max drawdown exceeded: {drawdown:.2%}")
             self._trigger_circuit_breaker("drawdown")
@@ -377,6 +399,22 @@ class RiskManager:
                 else 0
             ),
         }
+
+    def clear_trading_blocks(
+        self,
+        reset_counters: bool = True,
+        reset_peak_balance: bool = True,
+    ) -> None:
+        self._kill_switch_triggered = False
+        self._circuit_breakers = {k: False for k in self._circuit_breakers}
+        if reset_counters:
+            self._consecutive_losses = 0
+            self._api_error_count = 0
+        if reset_peak_balance:
+            self._peak_balance = 0.0
+            self._stale_anchor_warning_emitted = False
+        self._save_state()
+        self._logger.warning("Risk trading blocks manually cleared")
 
     async def monitor_loop(self) -> None:
         """Background monitoring loop for risk checks."""
