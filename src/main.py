@@ -26,6 +26,7 @@ from src.execution import (
     FuturesTradingConfig,
 )
 from src.execution.metrics import ExecutionMetrics
+from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.overseer import OverseerAgent, XAIClient
 from src.portfolio import PortfolioManager
@@ -602,56 +603,90 @@ async def run() -> None:
                 xai_client=xai_client,
             )
 
-    # Initialize trading executor (spot)
-    trading_executor = TradingExecutor(
-        config=settings.trading_execution,
-        risk_manager=risk_manager,
-        metrics=execution_metrics,
-        portfolio_manager=portfolio_manager,
-        notifier=telegram_notifier,
-    )
-
-    # Initialize futures executor if enabled
+    # Initialize executors based on mode
+    use_paper = settings.mode == "paper"
+    paper_executor = None
+    trading_executor = None
     futures_executor = None
     futures_ingestor = None
-    if settings.futures and settings.futures.enabled:
-        logger = get_logger("main")
-        logger.info("Futures trading enabled - initializing futures executor")
 
-        futures_config = FuturesTradingConfig(
-            api_key=settings.trading_execution.api_key,
-            api_secret=settings.trading_execution.api_secret,
-            test_mode=settings.futures.test_mode,
-            enabled=True,
-            symbols=settings.futures.symbols,
-            default_leverage=settings.futures.default_leverage,
-            max_leverage=settings.futures.max_leverage,
-            margin_mode=settings.futures.margin_mode,
-            position_mode=settings.futures.position_mode,
-            order_size_usdt=settings.trading_execution.order_size_usdt,
-            liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+    if use_paper:
+        # Internal paper trading — no Binance API calls for execution
+        futures_symbols = (
+            settings.futures.symbols
+            if settings.futures and settings.futures.enabled
+            else []
         )
-
-        futures_executor = FuturesTradingExecutor(
-            config=futures_config,
+        futures_leverage = (
+            settings.futures.default_leverage
+            if settings.futures and settings.futures.enabled
+            else 3
+        )
+        paper_config = PaperTradingConfig(
+            enabled=True,
+            order_size_usdt=settings.trading_execution.order_size_usdt,
+            initial_balance=10000.0,
+            symbols=settings.trading_pairs,
+            futures_symbols=futures_symbols,
+            futures_leverage=futures_leverage,
+        )
+        paper_executor = PaperExecutor(
+            config=paper_config,
+            risk_manager=risk_manager,
+            metrics=execution_metrics,
+            notifier=telegram_notifier,
+        )
+        get_logger("main").info(
+            "Paper mode: using internal PaperExecutor (no Binance API)"
+        )
+    else:
+        # Live mode — real Binance API executors
+        trading_executor = TradingExecutor(
+            config=settings.trading_execution,
             risk_manager=risk_manager,
             metrics=execution_metrics,
             portfolio_manager=portfolio_manager,
             notifier=telegram_notifier,
         )
 
-        # Initialize futures mark price WebSocket
-        futures_ingestor = BinanceWebSocketIngestor(
-            symbols=settings.futures.symbols,
-            timeframe=settings.timeframe,
-            metrics=ingest_metrics,
-            base_url=(
-                BinanceWebSocketIngestor.FUTURES_WS_URL
-                if not settings.futures.test_mode
-                else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL
-            ),
-            stream_type="mark_price",
-        )
+        if settings.futures and settings.futures.enabled:
+            logger = get_logger("main")
+            logger.info("Futures trading enabled - initializing futures executor")
+
+            futures_config = FuturesTradingConfig(
+                api_key=settings.trading_execution.api_key,
+                api_secret=settings.trading_execution.api_secret,
+                test_mode=settings.futures.test_mode,
+                enabled=True,
+                symbols=settings.futures.symbols,
+                default_leverage=settings.futures.default_leverage,
+                max_leverage=settings.futures.max_leverage,
+                margin_mode=settings.futures.margin_mode,
+                position_mode=settings.futures.position_mode,
+                order_size_usdt=settings.trading_execution.order_size_usdt,
+                liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+            )
+
+            futures_executor = FuturesTradingExecutor(
+                config=futures_config,
+                risk_manager=risk_manager,
+                metrics=execution_metrics,
+                portfolio_manager=portfolio_manager,
+                notifier=telegram_notifier,
+            )
+
+            # Initialize futures mark price WebSocket
+            futures_ingestor = BinanceWebSocketIngestor(
+                symbols=settings.futures.symbols,
+                timeframe=settings.timeframe,
+                metrics=ingest_metrics,
+                base_url=(
+                    BinanceWebSocketIngestor.FUTURES_WS_URL
+                    if not settings.futures.test_mode
+                    else BinanceWebSocketIngestor.FUTURES_DEMO_WS_URL
+                ),
+                stream_type="mark_price",
+            )
 
     # Initialize indicator reader and strategy engine
     indicator_reader = IndicatorReader(settings.database)
@@ -686,10 +721,13 @@ async def run() -> None:
         indicator_reader,
         portfolio_manager,
         ingestor,
-        trading_executor,
         strategy_engine,
     ]
 
+    if paper_executor:
+        context_managers.append(paper_executor)
+    if trading_executor:
+        context_managers.append(trading_executor)
     if futures_executor:
         context_managers.extend([futures_executor, futures_ingestor])
 
@@ -707,21 +745,54 @@ async def run() -> None:
         # Start indicator computation
         indicator_task = asyncio.create_task(indicator_computer.run())
 
-        # Start trading executor (spot)
-        trading_task = asyncio.create_task(trading_executor.run())
+        # Start executor tasks
+        trading_task = None
+        if trading_executor:
+            trading_task = asyncio.create_task(trading_executor.run())
 
         overseer_task = None
         if overseer_agent is not None:
             overseer_task = asyncio.create_task(overseer_agent.run())
 
         # Start strategy engine - route signals to appropriate executor
-        if futures_executor:
+        if paper_executor:
+            # Paper mode: all signals (spot + futures) go to PaperExecutor
+            paper_futures_symbols = set(paper_executor._config.futures_symbols)
+            router_logger = get_logger("signal_router")
+
+            async def on_signal_paper(signal: Signal) -> None:
+                execution_metrics.record_signal(
+                    signal.symbol, signal.trading_mode, signal.type.value,
+                )
+                await paper_executor.on_signal(signal)
+
+                # Mirror to futures if applicable
+                if signal.symbol in paper_futures_symbols and signal.trading_mode != "futures":
+                    mirrored = Signal(
+                        type=signal.type,
+                        symbol=signal.symbol,
+                        price=signal.price,
+                        confidence=signal.confidence,
+                        reason=signal.reason,
+                        indicators=signal.indicators,
+                        trading_mode="futures",
+                    )
+                    execution_metrics.record_signal(
+                        mirrored.symbol, mirrored.trading_mode, mirrored.type.value,
+                    )
+                    await paper_executor.on_signal(mirrored)
+
+            strategy_task = asyncio.create_task(
+                strategy_engine.run(on_signal=on_signal_paper)
+            )
+            futures_task = None
+            futures_ingest_task = None
+
+        elif futures_executor:
             futures_symbols = set(settings.futures.symbols)
             router_trace_symbols = {"BTCUSDT", "ETHUSDT"}
             router_logger = get_logger("signal_router")
 
-            # Strategy signals go to both spot and futures executors
-            # Executor decides based on signal.trading_mode
             async def on_signal_router(signal: Signal) -> None:
                 execution_metrics.record_signal(
                     signal.symbol,
@@ -811,14 +882,15 @@ async def run() -> None:
 
             risk_summary = risk_manager.get_risk_summary()
             logger.info(
-                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s futures=%s ai=%s",
+                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s executor=%s futures=%s ai=%s",
                 writer.is_connected(),
                 ohlcv_rows,
                 indicator_rows,
                 indicator_ready,
                 risk_summary,
                 telegram_notifier.is_configured(),
-                "enabled" if futures_executor else "disabled",
+                "paper" if paper_executor else "live",
+                "enabled" if futures_executor or (paper_executor and paper_executor._config.futures_symbols) else "disabled",
                 "enabled" if overseer_agent else "disabled",
             )
 
@@ -840,7 +912,10 @@ async def run() -> None:
             futures_ingest_task.cancel()
 
         indicator_computer.stop()
-        trading_executor.stop()
+        if paper_executor:
+            paper_executor.stop()
+        if trading_executor:
+            trading_executor.stop()
         if overseer_agent:
             overseer_agent.stop()
         if futures_executor:
@@ -850,7 +925,8 @@ async def run() -> None:
             await ingest_task
             await risk_task
             await indicator_task
-            await trading_task
+            if trading_task:
+                await trading_task
             await strategy_task
             if overseer_task:
                 await overseer_task

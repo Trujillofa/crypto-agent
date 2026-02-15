@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -101,6 +102,7 @@ class BinanceFuturesClient:
         self._time_offset_ms = 0
         self._last_time_sync = 0.0
         self._time_sync_interval_seconds = 60.0
+        self._symbol_filters: dict[str, dict[str, float]] = {}
 
     async def __aenter__(self) -> BinanceFuturesClient:
         self._session = aiohttp.ClientSession()
@@ -109,6 +111,49 @@ class BinanceFuturesClient:
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._session is not None:
             await self._session.close()
+
+    async def load_exchange_info(self, symbols: list[str] | None = None) -> None:
+        """Fetch LOT_SIZE filters from /fapi/v1/exchangeInfo and cache them."""
+        if self._session is None:
+            raise RuntimeError("Session not initialized. Use async context manager.")
+
+        url = f"{self._base_url}/fapi/v1/exchangeInfo"
+        async with self._session.get(url) as resp:
+            data = await resp.json()
+
+        for sym_info in data.get("symbols", []):
+            symbol = sym_info["symbol"]
+            if symbols and symbol not in symbols:
+                continue
+            for filt in sym_info.get("filters", []):
+                if filt["filterType"] == "LOT_SIZE":
+                    self._symbol_filters[symbol] = {
+                        "stepSize": float(filt["stepSize"]),
+                        "minQty": float(filt["minQty"]),
+                    }
+                    break
+
+        self._logger.info(
+            "Loaded futures LOT_SIZE filters for %d symbols",
+            len(self._symbol_filters),
+        )
+
+    def format_quantity(self, symbol: str, quantity: float) -> str:
+        """Round quantity to the symbol's LOT_SIZE stepSize."""
+        filt = self._symbol_filters.get(symbol)
+        if not filt:
+            return f"{quantity:.8f}".rstrip("0").rstrip(".")
+
+        step = filt["stepSize"]
+        min_qty = filt["minQty"]
+        precision = max(0, int(round(-math.log10(step)))) if step < 1 else 0
+        truncated = math.floor(quantity / step) * step
+
+        if truncated < min_qty:
+            return "0"
+        if precision == 0:
+            return str(int(truncated))
+        return f"{truncated:.{precision}f}"
 
     def _generate_signature(self, query_string: str) -> str:
         """Generate HMAC SHA256 signature for Binance API."""
@@ -322,11 +367,17 @@ class BinanceFuturesClient:
         Returns:
             FuturesOrderInfo with order details
         """
+        formatted_qty = self.format_quantity(symbol, quantity)
+        if formatted_qty == "0":
+            raise BinanceFuturesApiError(
+                -1, f"Quantity {quantity} below minimum for {symbol}"
+            )
+
         params = {
             "symbol": symbol,
             "side": side,
             "type": order_type,
-            "quantity": quantity,
+            "quantity": formatted_qty,
             "positionSide": position_side,
         }
 

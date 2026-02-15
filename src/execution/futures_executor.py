@@ -72,6 +72,7 @@ class FuturesTradingExecutor:
             test_mode=self._config.test_mode,
         )
         await self._client.__aenter__()
+        await self._client.load_exchange_info(self._config.symbols)
         await self._notifier.__aenter__()
         self._metrics.start_trading()
 

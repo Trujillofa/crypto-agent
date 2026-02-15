@@ -66,6 +66,7 @@ class TradingExecutor:
             test_mode=self._config.test_mode,
         )
         await self._client.__aenter__()
+        await self._client.load_exchange_info(self._config.symbols)
         await self._notifier.__aenter__()
         self._metrics.start_trading()
         self._logger.info("TradingExecutor initialized")
@@ -202,13 +203,14 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
-        # Check position limits
-        allowed, risk_reason = self._risk_manager.check_position_limit(
-            symbol, quantity, portfolio_value
-        )
-        if not allowed:
-            self._metrics.record_risk_block(symbol, risk_reason)
-            raise RuntimeError(f"Position limit check failed: {risk_reason}")
+        # Check position limits (skip for SELL — closing a position shouldn't be blocked)
+        if side == "BUY":
+            allowed, risk_reason = self._risk_manager.check_position_limit(
+                symbol, quantity, portfolio_value
+            )
+            if not allowed:
+                self._metrics.record_risk_block(symbol, risk_reason)
+                raise RuntimeError(f"Position limit check failed: {risk_reason}")
 
         # Place order
         start_time = time.perf_counter()
@@ -340,13 +342,14 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
-        # Check position limits
-        allowed, risk_reason = self._risk_manager.check_position_limit(
-            symbol, quantity, portfolio_value
-        )
-        if not allowed:
-            self._metrics.record_risk_block(symbol, risk_reason)
-            raise RuntimeError(f"Position limit check failed: {risk_reason}")
+        # Check position limits (skip for SELL — closing a position shouldn't be blocked)
+        if side == "BUY":
+            allowed, risk_reason = self._risk_manager.check_position_limit(
+                symbol, quantity, portfolio_value
+            )
+            if not allowed:
+                self._metrics.record_risk_block(symbol, risk_reason)
+                raise RuntimeError(f"Position limit check failed: {risk_reason}")
 
         # Place order
         start_time = time.perf_counter()
