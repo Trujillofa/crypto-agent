@@ -635,6 +635,7 @@ async def run() -> None:
             risk_manager=risk_manager,
             metrics=execution_metrics,
             notifier=telegram_notifier,
+            portfolio_manager=portfolio_manager,
         )
         get_logger("main").info(
             "Paper mode: using internal PaperExecutor (no Binance API)"

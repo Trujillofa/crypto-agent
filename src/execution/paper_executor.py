@@ -8,6 +8,7 @@ from typing import Any
 
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramNotifier
+from src.portfolio.manager import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -60,11 +61,13 @@ class PaperExecutor:
         risk_manager: RiskManager,
         metrics: ExecutionMetrics,
         notifier: TelegramNotifier | None = None,
+        portfolio_manager: PortfolioManager | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
         self._notifier = notifier or TelegramNotifier()
+        self._portfolio_manager = portfolio_manager
         self._logger = get_logger("PaperExecutor")
 
         # Simulated state
@@ -183,6 +186,15 @@ class PaperExecutor:
         )
         self._trade_count += 1
 
+        # Record in portfolio DB for overseer visibility
+        if self._portfolio_manager:
+            try:
+                await self._portfolio_manager.open_position(
+                    symbol=pos_key, quantity=quantity, price=signal.price,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._logger.warning("Portfolio DB write failed (buy): %s", exc)
+
         leverage_text = f" ({self._config.futures_leverage}x)" if is_futures else ""
         self._logger.info(
             "Paper BUY %s [%s%s]: qty=%.6f @ %.4f (%.2f USDT, fee=%.2f)",
@@ -252,6 +264,15 @@ class PaperExecutor:
 
         # Record in risk manager
         self._risk_manager.record_trade(signal.symbol, net_pnl, self._balance)
+
+        # Record in portfolio DB for overseer visibility
+        if self._portfolio_manager:
+            try:
+                await self._portfolio_manager.close_position(
+                    symbol=pos_key, price=signal.price,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._logger.warning("Portfolio DB write failed (sell): %s", exc)
 
         leverage_text = f" ({self._config.futures_leverage}x)" if is_futures else ""
         self._logger.info(
