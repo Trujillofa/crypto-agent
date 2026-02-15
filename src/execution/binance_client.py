@@ -62,8 +62,7 @@ class BinancePrivateClient:
         self._test_mode = test_mode
         self._logger = get_logger(self.__class__.__name__)
         self._session: aiohttp.ClientSession | None = None
-        # Use demo URL when in test mode (demo.binance.com, not testnet)
-        self._base_url = self.DEMO_URL if test_mode else self.BASE_URL
+        self._base_url = self.TESTNET_URL if test_mode else self.BASE_URL
         self._time_offset_ms = 0
         self._last_time_sync = 0.0
         self._time_sync_interval_seconds = 60.0
