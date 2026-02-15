@@ -2,7 +2,7 @@ services:
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     ports:
-      - "15432:5432"
+      - "127.0.0.1:15432:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-marketdata}
       POSTGRES_USER: ${POSTGRES_USER:-trading}
@@ -20,7 +20,7 @@ services:
   prometheus:
     image: prom/prometheus
     ports:
-      - "19090:9090"
+      - "127.0.0.1:19090:9090"
     environment:
       - PROMETHEUS_PASSWORD=${PROMETHEUS_PASSWORD}
     volumes:
@@ -40,7 +40,7 @@ services:
   grafana:
     image: grafana/grafana
     ports:
-      - "13001:3000"
+      - "127.0.0.1:13001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
@@ -81,7 +81,7 @@ services:
       - ./:/app
     command: ["python", "-m", "src.main"]
     ports:
-      - "18000:8000"
+      - "127.0.0.1:18000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
