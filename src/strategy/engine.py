@@ -97,11 +97,17 @@ class StrategyEngine:
         on_signal: Callable[[Signal], Awaitable[Any]] | None = None,
     ) -> None:
         """Evaluate all strategies for all symbols and aggregate results."""
+        evaluated = 0
+        skipped = 0
+        signals_fired = 0
+
         for symbol in self._config.symbols:
             indicators = await self._fetch_indicators(symbol)
             if indicators is None:
+                skipped += 1
                 continue
 
+            evaluated += 1
             generated_signals = []
             for strategy in self._strategies.get(symbol, []):
                 try:
@@ -140,11 +146,19 @@ class StrategyEngine:
 
                         self._last_signal_time[symbol] = now
 
+                    signals_fired += 1
                     self._logger.info(f"Consensus Signal: {final_signal}")
                     if on_signal:
                         await on_signal(final_signal)
                 else:
                     self._logger.debug(f"Consensus HOLD: {final_signal.reason}")
+
+        self._logger.info(
+            "Strategy cycle: evaluated=%d skipped=%d signals=%d",
+            evaluated,
+            skipped,
+            signals_fired,
+        )
 
     async def _fetch_indicators(self, symbol: str) -> dict[str, float] | None:
         """Fetch latest indicators for symbol from database.
