@@ -15,6 +15,7 @@ circuit_breakers:
 kill_switch:
   enabled: true
   telegram_confirm: true
+  auto_reset_minutes: 60  # Auto-reset after 60 min cooldown (paper mode only, 0 = disabled)
 
 futures_limits:
   max_leverage: 10  # Maximum allowed leverage (1-20, hard cap at 20)

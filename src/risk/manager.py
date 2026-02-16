@@ -39,6 +39,7 @@ class CircuitBreakers:
 class KillSwitch:
     enabled: bool = True
     telegram_confirm: bool = True
+    auto_reset_minutes: int = 0  # 0 = disabled; only active in paper mode
 
 
 @dataclass
@@ -70,11 +71,13 @@ class RiskManager:
         config_path: Path | None = None,
         notifier: TelegramNotifier | None = None,
         state_path: Path | None = None,
+        paper_mode: bool = False,
     ) -> None:
         self._logger = get_logger(self.__class__.__name__)
         self._config = self._load_config(config_path)
         self._notifier = notifier or TelegramNotifier()
         self._state_path = state_path or Path("data/risk_state.json")
+        self._paper_mode = paper_mode
         self._logger.info("Risk manager initialized")
 
         # Trading state tracking
@@ -85,6 +88,7 @@ class RiskManager:
         self._api_error_count: int = 0
         self._latency_readings: deque[float] = deque(maxlen=100)
         self._kill_switch_triggered: bool = False
+        self._kill_switch_triggered_at: float = 0.0
         self._stale_anchor_warning_emitted: bool = False
         self._circuit_breakers: dict[str, bool] = {
             "consecutive_losses": False,
@@ -140,6 +144,9 @@ class RiskManager:
             self._consecutive_losses = state.get("consecutive_losses", 0)
             self._api_error_count = state.get("api_error_count", 0)
             self._kill_switch_triggered = state.get("kill_switch_triggered", False)
+            self._kill_switch_triggered_at = state.get(
+                "kill_switch_triggered_at", 0.0
+            )
             self._circuit_breakers = state.get(
                 "circuit_breakers", self._circuit_breakers
             )
@@ -186,6 +193,7 @@ class RiskManager:
                 "consecutive_losses": self._consecutive_losses,
                 "api_error_count": self._api_error_count,
                 "kill_switch_triggered": self._kill_switch_triggered,
+                "kill_switch_triggered_at": self._kill_switch_triggered_at,
                 "circuit_breakers": self._circuit_breakers,
                 "last_reset": self._last_reset,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -353,6 +361,7 @@ class RiskManager:
             return
 
         self._kill_switch_triggered = True
+        self._kill_switch_triggered_at = time.time()
         self._save_state()  # Persist kill switch state
         self._logger.critical(f"KILL SWITCH ACTIVATED: {reason}")
 
@@ -406,6 +415,7 @@ class RiskManager:
         reset_peak_balance: bool = True,
     ) -> None:
         self._kill_switch_triggered = False
+        self._kill_switch_triggered_at = 0.0
         self._circuit_breakers = {k: False for k in self._circuit_breakers}
         if reset_counters:
             self._consecutive_losses = 0
@@ -422,6 +432,9 @@ class RiskManager:
             try:
                 self.reset_daily_metrics()
 
+                # Auto-reset kill switch in paper mode after cooldown
+                self._check_auto_reset()
+
                 # Process pending notifications
                 await self._process_notifications()
 
@@ -433,6 +446,28 @@ class RiskManager:
             except Exception as exc:
                 self._logger.error(f"Risk monitor error: {exc}")
                 await asyncio.sleep(60)
+
+    def _check_auto_reset(self) -> None:
+        """Auto-reset kill switch after cooldown (paper mode only)."""
+        cooldown = self._config.kill_switch.auto_reset_minutes
+        if (
+            not self._paper_mode
+            or cooldown <= 0
+            or not self._kill_switch_triggered
+            or self._kill_switch_triggered_at <= 0
+        ):
+            return
+
+        elapsed = (time.time() - self._kill_switch_triggered_at) / 60.0
+        if elapsed >= cooldown:
+            self._logger.warning(
+                "Auto-resetting kill switch after %.0f min cooldown (paper mode)",
+                elapsed,
+            )
+            self.clear_trading_blocks()
+            self._pending_notifications.put_nowait(
+                ("circuit_breaker", "Kill switch auto-reset after cooldown (paper mode)")
+            )
 
     async def _process_notifications(self) -> None:
         """Process and send pending notifications."""

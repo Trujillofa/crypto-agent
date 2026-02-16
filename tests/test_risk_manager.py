@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -330,3 +331,73 @@ class TestRiskManager:
         allowed, reason = manager.is_trading_allowed()
         assert allowed is False
         assert "api_errors" in reason
+
+    def test_auto_reset_in_paper_mode(self) -> None:
+        """Test kill switch auto-resets after cooldown in paper mode."""
+        config = {
+            "kill_switch": {"enabled": True, "auto_reset_minutes": 1},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            config_path = Path(f.name)
+
+        manager = RiskManager(
+            config_path=config_path,
+            state_path=self._state_path,
+            paper_mode=True,
+        )
+        # Simulate kill switch triggered 2 minutes ago
+        manager._kill_switch_triggered = True
+        manager._kill_switch_triggered_at = time.time() - 120
+        manager._circuit_breakers["drawdown"] = True
+
+        manager._check_auto_reset()
+
+        assert manager._kill_switch_triggered is False
+        assert manager._circuit_breakers["drawdown"] is False
+        config_path.unlink()
+
+    def test_auto_reset_skipped_before_cooldown(self) -> None:
+        """Test kill switch does NOT reset before cooldown expires."""
+        config = {
+            "kill_switch": {"enabled": True, "auto_reset_minutes": 60},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            config_path = Path(f.name)
+
+        manager = RiskManager(
+            config_path=config_path,
+            state_path=self._state_path,
+            paper_mode=True,
+        )
+        # Simulate kill switch triggered 5 minutes ago (cooldown is 60)
+        manager._kill_switch_triggered = True
+        manager._kill_switch_triggered_at = time.time() - 300
+
+        manager._check_auto_reset()
+
+        assert manager._kill_switch_triggered is True
+        config_path.unlink()
+
+    def test_auto_reset_skipped_in_live_mode(self) -> None:
+        """Test kill switch does NOT auto-reset in live mode."""
+        config = {
+            "kill_switch": {"enabled": True, "auto_reset_minutes": 1},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            config_path = Path(f.name)
+
+        manager = RiskManager(
+            config_path=config_path,
+            state_path=self._state_path,
+            paper_mode=False,
+        )
+        manager._kill_switch_triggered = True
+        manager._kill_switch_triggered_at = time.time() - 120
+
+        manager._check_auto_reset()
+
+        assert manager._kill_switch_triggered is True
+        config_path.unlink()

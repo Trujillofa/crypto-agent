@@ -512,14 +512,21 @@ async def run() -> None:
     )
 
     # Initialize risk manager
-    risk_manager = RiskManager(Path("config/risk.yaml"))
+    risk_manager = RiskManager(
+        Path("config/risk.yaml"),
+        paper_mode=settings.mode == "paper",
+    )
 
-    # Check if trading is allowed
+    # Check if trading is allowed (warn but don't exit in paper mode —
+    # the monitor_loop can auto-reset the kill switch after cooldown)
     is_allowed, reason = risk_manager.is_trading_allowed()
     if not is_allowed:
         logger = get_logger("main")
-        logger.error("Trading blocked: %s", reason)
-        return
+        if settings.mode == "paper":
+            logger.warning("Trading blocked at startup: %s (paper mode — will auto-reset if configured)", reason)
+        else:
+            logger.error("Trading blocked: %s", reason)
+            return
 
     # Initialize metrics
     ingest_metrics = IngestMetrics()
