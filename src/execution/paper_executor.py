@@ -171,6 +171,19 @@ class PaperExecutor:
             )
             return
 
+        # Position limit check (enforces max_open_positions across spot+futures)
+        max_positions = self._risk_manager._config.position_limits.max_open_positions
+        if len(self._positions) >= max_positions:
+            self._logger.info(
+                "BUY blocked: max open positions (%d) reached for %s [%s]",
+                max_positions, signal.symbol, market_tag,
+            )
+            await self._notifier.send_alert(
+                f"<b>Paper signal blocked</b> [{market_tag}]\n"
+                f"{signal.symbol} BUY — max open positions ({max_positions}) reached"
+            )
+            return
+
         # Simulate fill with fee
         fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
         fee = order_usdt * fee_rate
@@ -185,6 +198,11 @@ class PaperExecutor:
             open_time=time.time(),
         )
         self._trade_count += 1
+
+        # Register with risk manager for position limit tracking
+        self._risk_manager.register_open_position(
+            pos_key, order_usdt, signal.price,
+        )
 
         # Record in portfolio DB for overseer visibility
         if self._portfolio_manager:
@@ -264,6 +282,7 @@ class PaperExecutor:
 
         # Record in risk manager
         self._risk_manager.record_trade(signal.symbol, net_pnl, self._balance)
+        self._risk_manager.register_close_position(pos_key)
 
         # Record in portfolio DB for overseer visibility
         if self._portfolio_manager:

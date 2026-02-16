@@ -82,9 +82,10 @@ strategy:
       config:
         min_histogram_threshold: 0.0
         use_atr_filter: true
+        atr_min_pct: 0.003
     - name: bollinger_bounce
       config:
-        band_distance_threshold: 0.005
+        band_distance_threshold: 0.003
         rsi_oversold: 30
         rsi_overbought: 70
     - name: momentum
@@ -95,5 +96,5 @@ strategy:
         rsi_min_entry: 25
   aggregator:
     min_agreement: 2
-    buy_threshold: 1.0
-    sell_threshold: -1.0
+    buy_threshold: 1.1
+    sell_threshold: -1.1
