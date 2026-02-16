@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
+
+import asyncpg
 
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramNotifier
@@ -23,6 +27,11 @@ class PaperPosition:
     quantity: float  # base asset units
     entry_price: float
     open_time: float
+    high_water_mark: float = 0.0  # Track peak price for trailing stop
+
+    def __post_init__(self) -> None:
+        if self.high_water_mark == 0.0:
+            self.high_water_mark = self.entry_price
 
     @property
     def notional(self) -> float:
@@ -46,6 +55,10 @@ class PaperTradingConfig:
     futures_leverage: int = 3
     fee_rate_spot: float = 0.001  # 0.1% per trade (Binance spot taker)
     fee_rate_futures: float = 0.0004  # 0.04% per trade (Binance futures taker)
+    trailing_stop_pct: float = 0.005  # 0.5% trailing stop from peak
+    take_profit_pct: float = 0.008  # 0.8% take profit
+    time_stop_minutes: int = 60  # close after 60 min
+    exit_check_interval: int = 15  # seconds between exit checks
 
 
 class PaperExecutor:
@@ -62,12 +75,15 @@ class PaperExecutor:
         metrics: ExecutionMetrics,
         notifier: TelegramNotifier | None = None,
         portfolio_manager: PortfolioManager | None = None,
+        db_config: Mapping[str, object] | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
         self._notifier = notifier or TelegramNotifier()
         self._portfolio_manager = portfolio_manager
+        self._db_config = db_config
+        self._db_conn: asyncpg.Connection | None = None
         self._logger = get_logger("PaperExecutor")
 
         # Simulated state
@@ -85,14 +101,41 @@ class PaperExecutor:
 
         await self._notifier.__aenter__()
         self._metrics.start_trading()
+
+        # Open DB connection for price queries in exit monitoring
+        if self._db_config:
+            try:
+                self._db_conn = await asyncpg.connect(
+                    host=str(self._db_config.get("host", "localhost")),
+                    port=int(self._db_config.get("port", 5432)),  # type: ignore[arg-type]
+                    database=str(self._db_config.get("name", "marketdata")),
+                    user=str(self._db_config.get("user", "trading")),
+                    password=str(self._db_config.get("password", "")),
+                )
+                self._logger.info("Exit monitor DB connection established")
+            except Exception as exc:  # noqa: BLE001
+                self._logger.warning(
+                    "Failed to connect DB for exit monitoring: %s (exits disabled)", exc
+                )
+                self._db_conn = None
+
         self._logger.info(
-            "PaperExecutor initialized: balance=%.2f USDT, order_size=%.2f USDT",
+            "PaperExecutor initialized: balance=%.2f USDT, order_size=%.2f USDT, "
+            "exits=%s (trail=%.1f%% tp=%.1f%% time=%dm)",
             self._balance,
             self._config.order_size_usdt,
+            "enabled" if self._db_conn else "disabled",
+            self._config.trailing_stop_pct * 100,
+            self._config.take_profit_pct * 100,
+            self._config.time_stop_minutes,
         )
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self._running = False
+        if self._db_conn:
+            await self._db_conn.close()
+            self._db_conn = None
         await self._notifier.__aexit__(exc_type, exc, tb)
         self._metrics.stop_trading()
         self._logger.info(
@@ -104,11 +147,115 @@ class PaperExecutor:
         )
 
     async def run(self) -> None:
-        """No-op run loop — paper executor is event-driven via on_signal."""
-        pass
+        """Monitor open positions and trigger exits (trailing stop, TP, time stop)."""
+        if not self._db_conn:
+            self._logger.info("Exit monitor not started (no DB connection)")
+            return
+
+        self._running = True
+        self._logger.info(
+            "Exit monitor started: check every %ds", self._config.exit_check_interval
+        )
+
+        while self._running:
+            try:
+                await asyncio.sleep(self._config.exit_check_interval)
+                if not self._positions:
+                    continue
+                await self._check_exits()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:  # noqa: BLE001
+                self._logger.warning("Exit monitor error: %s", exc)
 
     def stop(self) -> None:
         self._running = False
+
+    async def _check_exits(self) -> None:
+        """Check all open positions for exit conditions."""
+        now = time.time()
+
+        # Snapshot keys to avoid mutating dict during iteration
+        for pos_key in list(self._positions):
+            position = self._positions.get(pos_key)
+            if position is None:
+                continue
+
+            # Determine market tag from pos_key (e.g. "BTCUSDT:spot" -> "spot")
+            parts = pos_key.split(":")
+            symbol = parts[0]
+            market_tag = parts[1] if len(parts) > 1 else "spot"
+            is_futures = market_tag == "futures"
+
+            # Fetch latest price from DB
+            current_price = await self._fetch_latest_price(symbol)
+            if current_price is None:
+                continue
+
+            # Update high water mark
+            if current_price > position.high_water_mark:
+                position.high_water_mark = current_price
+
+            # Check exit conditions
+            exit_reason = self._evaluate_exit(position, current_price, now)
+            if exit_reason is None:
+                continue
+
+            self._logger.info(
+                "Exit triggered for %s: %s (price=%.4f, entry=%.4f, hwm=%.4f)",
+                pos_key, exit_reason, current_price, position.entry_price,
+                position.high_water_mark,
+            )
+
+            # Construct synthetic SELL signal and reuse existing sell handler
+            synthetic_signal = Signal(
+                type=SignalType.SELL,
+                symbol=symbol,
+                price=current_price,
+                confidence=1.0,
+                reason=exit_reason,
+                indicators={},
+                trading_mode=market_tag,
+            )
+            await self._handle_sell(synthetic_signal, market_tag, is_futures)
+
+    def _evaluate_exit(
+        self, position: PaperPosition, current_price: float, now: float
+    ) -> str | None:
+        """Return exit reason string if any condition triggers, else None."""
+        # Trailing stop: price dropped below HWM * (1 - trail%)
+        trail_threshold = position.high_water_mark * (1 - self._config.trailing_stop_pct)
+        if current_price < trail_threshold:
+            drop_pct = (1 - current_price / position.high_water_mark) * 100
+            return f"TRAILING_STOP (hwm={position.high_water_mark:.4f}, drop={drop_pct:.2f}%)"
+
+        # Take profit: price rose above entry * (1 + tp%)
+        tp_threshold = position.entry_price * (1 + self._config.take_profit_pct)
+        if current_price >= tp_threshold:
+            gain_pct = (current_price / position.entry_price - 1) * 100
+            return f"TAKE_PROFIT (entry={position.entry_price:.4f}, gain={gain_pct:.2f}%)"
+
+        # Time stop: position open longer than configured minutes
+        elapsed_minutes = (now - position.open_time) / 60
+        if elapsed_minutes >= self._config.time_stop_minutes:
+            return f"TIME_STOP (open={elapsed_minutes:.0f}m, limit={self._config.time_stop_minutes}m)"
+
+        return None
+
+    async def _fetch_latest_price(self, symbol: str) -> float | None:
+        """Fetch the most recent close price from ohlcv table."""
+        if not self._db_conn:
+            return None
+        try:
+            row = await self._db_conn.fetchrow(
+                "SELECT close FROM ohlcv WHERE symbol = $1 ORDER BY time DESC LIMIT 1",
+                symbol,
+            )
+            if row:
+                return float(row["close"])
+        except Exception as exc:  # noqa: BLE001
+            self._logger.warning("Price fetch failed for %s: %s", symbol, exc)
+        return None
 
     async def on_signal(self, signal: Signal) -> None:
         """Handle a trading signal by simulating the fill."""

@@ -51,6 +51,11 @@ trading_execution:
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
   order_size_usdt: 200.0  # 2% of $10k paper balance
+  exit_rules:
+    trailing_stop_pct: 0.005     # 0.5% trailing stop from peak
+    take_profit_pct: 0.008       # 0.8% take profit
+    time_stop_minutes: 60        # close after 60 min
+    exit_check_interval: 15      # seconds between exit checks
 
 futures:
   enabled: true  # Futures demo trading enabled

@@ -93,6 +93,7 @@ class Settings:
     ai: AISettings
     use_websocket: bool
     futures: FuturesSettings | None = None
+    exit_rules: Mapping[str, object] = field(default_factory=dict)
 
 
 def load_settings(config_path: Path) -> Settings:
@@ -350,6 +351,10 @@ def load_settings(config_path: Path) -> Settings:
             ),
         )
 
+    exit_rules = _as_mapping(
+        trading_exec.get("exit_rules"), "trading_execution.exit_rules"
+    )
+
     return Settings(
         mode=global_mode,
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
@@ -370,6 +375,7 @@ def load_settings(config_path: Path) -> Settings:
             ingest.get("use_websocket"), "ingest.use_websocket", default=False
         ),
         futures=futures_config,
+        exit_rules=exit_rules,
     )
 
 
@@ -636,6 +642,26 @@ async def run() -> None:
             symbols=settings.trading_pairs,
             futures_symbols=futures_symbols,
             futures_leverage=futures_leverage,
+            trailing_stop_pct=_as_float(
+                settings.exit_rules.get("trailing_stop_pct"),
+                "exit_rules.trailing_stop_pct",
+                default=0.005,
+            ),
+            take_profit_pct=_as_float(
+                settings.exit_rules.get("take_profit_pct"),
+                "exit_rules.take_profit_pct",
+                default=0.008,
+            ),
+            time_stop_minutes=_as_int(
+                settings.exit_rules.get("time_stop_minutes"),
+                "exit_rules.time_stop_minutes",
+                default=60,
+            ),
+            exit_check_interval=_as_int(
+                settings.exit_rules.get("exit_check_interval"),
+                "exit_rules.exit_check_interval",
+                default=15,
+            ),
         )
         paper_executor = PaperExecutor(
             config=paper_config,
@@ -643,6 +669,7 @@ async def run() -> None:
             metrics=execution_metrics,
             notifier=telegram_notifier,
             portfolio_manager=portfolio_manager,
+            db_config=settings.database,
         )
         get_logger("main").info(
             "Paper mode: using internal PaperExecutor (no Binance API)"
@@ -754,6 +781,7 @@ async def run() -> None:
         indicator_task = asyncio.create_task(indicator_computer.run())
 
         # Start executor tasks
+        paper_exit_task = None
         trading_task = None
         if trading_executor:
             trading_task = asyncio.create_task(trading_executor.run())
@@ -793,6 +821,7 @@ async def run() -> None:
             strategy_task = asyncio.create_task(
                 strategy_engine.run(on_signal=on_signal_paper)
             )
+            paper_exit_task = asyncio.create_task(paper_executor.run())
             futures_task = None
             futures_ingest_task = None
 
@@ -912,6 +941,8 @@ async def run() -> None:
         indicator_task.cancel()
         trading_task.cancel()
         strategy_task.cancel()
+        if paper_exit_task:
+            paper_exit_task.cancel()
         if overseer_task:
             overseer_task.cancel()
         if futures_task:
@@ -936,6 +967,8 @@ async def run() -> None:
             if trading_task:
                 await trading_task
             await strategy_task
+            if paper_exit_task:
+                await paper_exit_task
             if overseer_task:
                 await overseer_task
             if futures_task:
