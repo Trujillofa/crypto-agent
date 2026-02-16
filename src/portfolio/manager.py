@@ -19,13 +19,17 @@ class PortfolioManager:
         self._logger = get_logger(self.__class__.__name__)
         self._conn: asyncpg.Connection | None = None
         self._connected = False
-        self._positions: dict[str, Position] = {}  # Cache of open positions by symbol
+        self._positions: dict[tuple[str, str], Position] = {}
 
     async def __aenter__(self) -> "PortfolioManager":
         await self._connect()
         await self._ensure_schema()
         await self._load_open_positions()
         return self
+
+    @staticmethod
+    def _position_key(symbol: str, market: str) -> tuple[str, str]:
+        return (market, symbol)
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._conn is not None:
@@ -57,6 +61,7 @@ class PortfolioManager:
             CREATE TABLE IF NOT EXISTS positions (
                 id SERIAL PRIMARY KEY,
                 symbol TEXT NOT NULL,
+                market TEXT NOT NULL DEFAULT 'spot',
                 entry_time TIMESTAMPTZ NOT NULL,
                 entry_price DOUBLE PRECISION NOT NULL,
                 quantity DOUBLE PRECISION NOT NULL,
@@ -71,6 +76,7 @@ class PortfolioManager:
                 id SERIAL PRIMARY KEY,
                 time TIMESTAMPTZ NOT NULL,
                 symbol TEXT NOT NULL,
+                market TEXT NOT NULL DEFAULT 'spot',
                 side TEXT NOT NULL,
                 quantity DOUBLE PRECISION NOT NULL,
                 price DOUBLE PRECISION NOT NULL,
@@ -79,14 +85,60 @@ class PortfolioManager:
                 position_id INTEGER REFERENCES positions(id)
             )
             """)
+        await self._conn.execute(
+            "ALTER TABLE positions ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'spot'"
+        )
+        await self._conn.execute(
+            "ALTER TABLE trades ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'spot'"
+        )
 
     async def _load_open_positions(self) -> None:
         """Load open positions from database into cache."""
+        await self._normalize_open_positions()
         rows = await self._fetch_open_positions()
         for row in rows:
             position = self._row_to_position(row)
-            self._positions[position.symbol] = position
+            market = str(row.get("market") or "spot")
+            self._positions[self._position_key(position.symbol, market)] = position
         self._logger.info(f"Loaded {len(self._positions)} open positions")
+
+    async def _normalize_open_positions(self) -> None:
+        if self._conn is None:
+            return
+
+        duplicates = await self._conn.fetch(
+            """
+            SELECT market, symbol, ARRAY_AGG(id ORDER BY entry_time DESC, id DESC) AS ids
+            FROM positions
+            WHERE status = 'open'
+            GROUP BY market, symbol
+            HAVING COUNT(*) > 1
+            """
+        )
+
+        for row in duplicates:
+            ids = list(row["ids"])
+            stale_ids = [int(position_id) for position_id in ids[1:]]
+            if not stale_ids:
+                continue
+
+            await self._conn.execute(
+                """
+                UPDATE positions
+                SET status = 'closed',
+                    exit_time = COALESCE(exit_time, entry_time),
+                    exit_price = COALESCE(exit_price, entry_price),
+                    realized_pnl = COALESCE(realized_pnl, 0)
+                WHERE id = ANY($1::int[])
+                """,
+                stale_ids,
+            )
+            self._logger.warning(
+                "Normalized duplicate open positions for %s/%s; closed stale IDs: %s",
+                row["market"],
+                row["symbol"],
+                stale_ids,
+            )
 
     async def _fetch_open_positions(self) -> list[asyncpg.Record]:
         if self._conn is None:
@@ -111,7 +163,12 @@ class PortfolioManager:
         )
 
     async def open_position(
-        self, symbol: str, quantity: float, price: float, order_id: str | None = None
+        self,
+        symbol: str,
+        quantity: float,
+        price: float,
+        order_id: str | None = None,
+        market: str = "spot",
     ) -> Position:
         """Open a new position.
 
@@ -131,11 +188,12 @@ class PortfolioManager:
         async with self._conn.transaction():
             position_id = await self._conn.fetchval(
                 """
-                INSERT INTO positions (symbol, entry_time, entry_price, quantity, status)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING id
                 """,
                 symbol,
+                market,
                 entry_time,
                 price,
                 quantity,
@@ -144,11 +202,12 @@ class PortfolioManager:
 
             await self._conn.execute(
                 """
-                INSERT INTO trades (time, symbol, side, quantity, price, order_id, position_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, position_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 entry_time,
                 symbol,
+                market,
                 "BUY",
                 quantity,
                 price,
@@ -165,13 +224,17 @@ class PortfolioManager:
             status=PositionStatus.OPEN,
         )
 
-        self._positions[symbol] = position
+        self._positions[self._position_key(symbol, market)] = position
         self._logger.info(f"Opened position: {symbol} @ {price} (qty: {quantity})")
 
         return position
 
     async def close_position(
-        self, symbol: str, price: float, order_id: str | None = None
+        self,
+        symbol: str,
+        price: float,
+        order_id: str | None = None,
+        market: str = "spot",
     ) -> tuple[Position, float]:
         """Close an existing position.
 
@@ -186,10 +249,11 @@ class PortfolioManager:
         Raises:
             ValueError: If no open position exists for symbol
         """
-        if symbol not in self._positions:
+        key = self._position_key(symbol, market)
+        if key not in self._positions:
             raise ValueError(f"No open position for {symbol}")
 
-        position = self._positions[symbol]
+        position = self._positions[key]
         exit_time = datetime.now(timezone.utc)
         realized_pnl = position.close(price, exit_time)
         if self._conn is None:
@@ -210,11 +274,12 @@ class PortfolioManager:
             )
             await self._conn.execute(
                 """
-                INSERT INTO trades (time, symbol, side, quantity, price, order_id, pnl, position_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, pnl, position_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 exit_time,
                 symbol,
+                market,
                 "SELL",
                 position.quantity,
                 price,
@@ -222,7 +287,7 @@ class PortfolioManager:
                 realized_pnl,
                 position.id,
             )
-        del self._positions[symbol]
+        del self._positions[key]
 
         self._logger.info(
             f"Closed position: {symbol} @ {price} (PnL: {realized_pnl:.2f})"
@@ -230,21 +295,23 @@ class PortfolioManager:
 
         return position, realized_pnl
 
-    def get_position(self, symbol: str) -> Position | None:
+    def get_position(self, symbol: str, market: str = "spot") -> Position | None:
         """Get current open position for symbol."""
-        return self._positions.get(symbol)
+        return self._positions.get(self._position_key(symbol, market))
 
-    def has_position(self, symbol: str) -> bool:
+    def has_position(self, symbol: str, market: str = "spot") -> bool:
         """Check if there's an open position for symbol."""
-        return symbol in self._positions
+        return self._position_key(symbol, market) in self._positions
 
     def get_all_positions(self) -> list[Position]:
         """Get all open positions."""
         return list(self._positions.values())
 
-    def calculate_unrealized_pnl(self, symbol: str, current_price: float) -> float:
+    def calculate_unrealized_pnl(
+        self, symbol: str, current_price: float, market: str = "spot"
+    ) -> float:
         """Calculate unrealized PnL for a position."""
-        position = self._positions.get(symbol)
+        position = self._positions.get(self._position_key(symbol, market))
         if position is None:
             return 0.0
         return position.calculate_unrealized_pnl(current_price)

@@ -201,6 +201,42 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["quantity"] == 0.01  # Full position size
 
     @pytest.mark.asyncio
+    async def test_on_signal_buy_ignores_when_long_exists(self, executor):
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(
+            return_value=[
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=0.01,
+                    entry_price=49000.0,
+                    mark_price=50000.0,
+                    liquidation_price=45000.0,
+                    leverage=5,
+                    isolated_margin=100.0,
+                    unrealized_pnl=100.0,
+                    notional_value=500.0,
+                )
+            ]
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.85,
+            reason="EMA crossover",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        mock_client.place_order.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_on_signal_ignores_non_futures_mode(self, executor):
         """Test that signals with non-futures trading_mode are ignored."""
         executor._client = MagicMock()
@@ -254,7 +290,7 @@ class TestFuturesTradingExecutor:
             return_value=[
                 FuturesPositionInfo(
                     symbol="BTCUSDT",
-                    position_side="LONG",
+                    position_side="BOTH",
                     position_amt=0.1,
                     entry_price=50000.0,
                     mark_price=45500.0,  # Close to liq
@@ -286,6 +322,8 @@ class TestFuturesTradingExecutor:
 
         # Verify liquidation check was called (once per symbol with position)
         assert executor._risk_manager.check_liquidation_buffer.call_count == 2
+        first_call = executor._risk_manager.check_liquidation_buffer.call_args_list[0]
+        assert first_call.kwargs["position_side"] == "LONG"
 
     @pytest.mark.asyncio
     async def test_leverage_check_blocks_excessive_leverage(self, executor):

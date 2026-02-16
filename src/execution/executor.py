@@ -66,6 +66,7 @@ class TradingExecutor:
             test_mode=self._config.test_mode,
         )
         await self._client.__aenter__()
+        await self._client.load_exchange_info(self._config.symbols)
         await self._notifier.__aenter__()
         self._metrics.start_trading()
         self._logger.info("TradingExecutor initialized")
@@ -202,13 +203,14 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
-        # Check position limits
-        allowed, risk_reason = self._risk_manager.check_position_limit(
-            symbol, quantity, portfolio_value
-        )
-        if not allowed:
-            self._metrics.record_risk_block(symbol, risk_reason)
-            raise RuntimeError(f"Position limit check failed: {risk_reason}")
+        # Check position limits (skip for SELL — closing a position shouldn't be blocked)
+        if side == "BUY":
+            allowed, risk_reason = self._risk_manager.check_position_limit(
+                symbol, quantity, portfolio_value
+            )
+            if not allowed:
+                self._metrics.record_risk_block(symbol, risk_reason)
+                raise RuntimeError(f"Position limit check failed: {risk_reason}")
 
         # Place order
         start_time = time.perf_counter()
@@ -242,26 +244,34 @@ class TradingExecutor:
 
             if order.status == "FILLED":
                 self._metrics.record_order_filled(symbol, side)
+                executed_price = order.executed_price or (
+                    float(order.price) if order.price else 0.0
+                )
+                filled_quantity = (
+                    order.executed_quantity if order.executed_quantity > 0 else quantity
+                )
                 # Record trade in portfolio manager for PnL tracking
                 if self._portfolio_manager is not None:
                     if side == "BUY":
                         await self._portfolio_manager.open_position(
                             symbol=symbol,
-                            quantity=quantity,
-                            price=float(order.price) if order.price else 0.0,
+                            quantity=filled_quantity,
+                            price=executed_price,
                             order_id=str(order.order_id),
+                            market="spot",
                         )
                         # Register position in risk manager
                         self._risk_manager.register_open_position(
                             symbol,
-                            quantity * (float(order.price) if order.price else 0.0),
-                            float(order.price) if order.price else 0.0,
+                            filled_quantity * executed_price,
+                            executed_price,
                         )
                     elif side == "SELL":
                         _, pnl = await self._portfolio_manager.close_position(
                             symbol=symbol,
-                            price=float(order.price) if order.price else 0.0,
+                            price=executed_price,
                             order_id=str(order.order_id),
+                            market="spot",
                         )
                         # Record realized PnL in risk manager
                         self._risk_manager.record_trade(
@@ -269,6 +279,8 @@ class TradingExecutor:
                             pnl=pnl,
                             portfolio_value=portfolio_value,
                         )
+                        # Record realized PnL in metrics
+                        self._metrics.record_realized_pnl(symbol, pnl)
                         # Register position close in risk manager
                         self._risk_manager.register_close_position(symbol)
 
@@ -277,7 +289,7 @@ class TradingExecutor:
                 side,
                 symbol,
                 order.order_id,
-                quantity,
+                filled_quantity if order.status == "FILLED" else quantity,
                 order.status,
             )
 
@@ -340,13 +352,14 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
-        # Check position limits
-        allowed, risk_reason = self._risk_manager.check_position_limit(
-            symbol, quantity, portfolio_value
-        )
-        if not allowed:
-            self._metrics.record_risk_block(symbol, risk_reason)
-            raise RuntimeError(f"Position limit check failed: {risk_reason}")
+        # Check position limits (skip for SELL — closing a position shouldn't be blocked)
+        if side == "BUY":
+            allowed, risk_reason = self._risk_manager.check_position_limit(
+                symbol, quantity, portfolio_value
+            )
+            if not allowed:
+                self._metrics.record_risk_block(symbol, risk_reason)
+                raise RuntimeError(f"Position limit check failed: {risk_reason}")
 
         # Place order
         start_time = time.perf_counter()
@@ -492,7 +505,8 @@ class TradingExecutor:
             if signal.type == SignalType.BUY:
                 # Check for duplicate orders/existing positions
                 if self._portfolio_manager and self._portfolio_manager.has_position(
-                    signal.symbol
+                    signal.symbol,
+                    market="spot",
                 ):
                     self._logger.info(
                         "BUY signal ignored: Position already exists for %s",
@@ -500,34 +514,100 @@ class TradingExecutor:
                     )
                     return
 
-                await self.place_market_order(
+                order = await self.place_market_order(
                     signal.symbol, "BUY", self._config.order_size_usdt
                 )
-                await self._notifier.send_trade_alert(
-                    symbol=signal.symbol,
-                    side="BUY",
-                    quantity=self._config.order_size_usdt,
-                    price=signal.price,
-                    pnl=None,
-                )
+                if order.status == "FILLED":
+                    filled_quantity = (
+                        order.executed_quantity
+                        if order.executed_quantity > 0
+                        else self._config.order_size_usdt
+                    )
+                    filled_price = order.executed_price or (
+                        float(order.price) if order.price else signal.price
+                    )
+                    await self._notifier.send_trade_alert(
+                        symbol=signal.symbol,
+                        side="BUY",
+                        quantity=filled_quantity,
+                        price=filled_price,
+                        pnl=None,
+                        market="spot",
+                    )
+                else:
+                    self._logger.info(
+                        "BUY order not filled yet for %s (status: %s)",
+                        signal.symbol,
+                        order.status,
+                    )
             elif signal.type == SignalType.SELL:
                 base_asset = signal.symbol.removesuffix("USDT")
                 balance = await self._client.get_asset_balance(base_asset)
                 if balance > 0:
-                    await self.place_market_order(signal.symbol, "SELL", balance)
-                    pnl = None
+                    entry_price: float | None = None
+                    position_qty: float | None = None
                     if self._portfolio_manager is not None:
-                        position = self._portfolio_manager.get_position(signal.symbol)
+                        position = self._portfolio_manager.get_position(
+                            signal.symbol,
+                            market="spot",
+                        )
                         if position is not None:
-                            pnl = position.calculate_unrealized_pnl(signal.price)
-                    await self._notifier.send_trade_alert(
-                        symbol=signal.symbol,
-                        side="SELL",
-                        quantity=balance,
-                        price=signal.price,
-                        pnl=pnl,
+                            entry_price = position.entry_price
+                            position_qty = position.quantity
+
+                    normalized_quantity = await self._client.normalize_sell_quantity(
+                        signal.symbol,
+                        balance,
                     )
+                    if normalized_quantity is None:
+                        self._logger.debug(
+                            "Skipping SELL for %s: balance %.12f below min LOT_SIZE",
+                            signal.symbol,
+                            balance,
+                        )
+                        return
+
+                    order = await self.place_market_order(
+                        signal.symbol, "SELL", balance
+                    )
+                    if order.status == "FILLED":
+                        filled_quantity = (
+                            order.executed_quantity
+                            if order.executed_quantity > 0
+                            else balance
+                        )
+                        filled_price = order.executed_price or (
+                            float(order.price) if order.price else signal.price
+                        )
+                        pnl = None
+                        if entry_price is not None and position_qty is not None:
+                            pnl_quantity = (
+                                filled_quantity if filled_quantity > 0 else position_qty
+                            )
+                            pnl = (filled_price - entry_price) * pnl_quantity
+                        await self._notifier.send_trade_alert(
+                            symbol=signal.symbol,
+                            side="SELL",
+                            quantity=filled_quantity,
+                            price=filled_price,
+                            pnl=pnl,
+                            market="SPOT",
+                        )
+                    else:
+                        self._logger.info(
+                            "SELL order not filled yet for %s (status: %s)",
+                            signal.symbol,
+                            order.status,
+                        )
                 else:
                     self._logger.info("SELL signal but no %s balance", base_asset)
-        except RuntimeError as exc:
+                    await self._notifier.send_alert(
+                        f"<b>Signal skipped</b> [spot]\n"
+                        f"{signal.symbol} SELL — no {base_asset} balance"
+                    )
+        except Exception as exc:  # noqa: BLE001
             self._logger.warning("Signal rejected: %s — %s", signal, exc)
+            await self._notifier.send_alert(
+                f"<b>Signal rejected</b> [spot]\n"
+                f"{signal.symbol} {signal.type.value} — {exc}"
+            )

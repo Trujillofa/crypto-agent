@@ -59,6 +59,7 @@ class Position:
     liquidation_price: float | None = None  # Calculated, None for spot
     mark_price: float | None = None  # Last mark price update, None for spot
     funding_fees: float = 0.0  # Accumulated funding, 0 for spot
+    fee_rate: float = 0.001
 
     @property
     def is_open(self) -> bool:
@@ -98,10 +99,15 @@ class Position:
 
         # Futures SHORT positions have inverse PnL calculation
         if self.position_side == "SHORT":
-            return (self.entry_price - current_price) * self.quantity
+            raw_pnl = (self.entry_price - current_price) * self.quantity
+        else:
+            # Spot and futures LONG use same calculation
+            raw_pnl = (current_price - self.entry_price) * self.quantity
 
-        # Spot and futures LONG use same calculation
-        return (current_price - self.entry_price) * self.quantity
+        fees = (
+            self.entry_price * self.quantity + current_price * self.quantity
+        ) * self.fee_rate
+        return raw_pnl - fees
 
     def close(self, exit_price: float, exit_time: datetime | None = None) -> float:
         """Close the position and calculate realized PnL.
@@ -125,10 +131,15 @@ class Position:
 
         # Futures SHORT positions have inverse PnL calculation
         if self.position_side == "SHORT":
-            self.realized_pnl = (self.entry_price - exit_price) * self.quantity
+            raw_pnl = (self.entry_price - exit_price) * self.quantity
         else:
             # Spot and futures LONG use same calculation
-            self.realized_pnl = (exit_price - self.entry_price) * self.quantity
+            raw_pnl = (exit_price - self.entry_price) * self.quantity
+
+        fees = (
+            self.entry_price * self.quantity + exit_price * self.quantity
+        ) * self.fee_rate
+        self.realized_pnl = raw_pnl - fees
 
         return self.realized_pnl
 

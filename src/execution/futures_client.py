@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -101,6 +102,7 @@ class BinanceFuturesClient:
         self._time_offset_ms = 0
         self._last_time_sync = 0.0
         self._time_sync_interval_seconds = 60.0
+        self._symbol_filters: dict[str, dict[str, float]] = {}
 
     async def __aenter__(self) -> BinanceFuturesClient:
         self._session = aiohttp.ClientSession()
@@ -109,6 +111,49 @@ class BinanceFuturesClient:
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._session is not None:
             await self._session.close()
+
+    async def load_exchange_info(self, symbols: list[str] | None = None) -> None:
+        """Fetch LOT_SIZE filters from /fapi/v1/exchangeInfo and cache them."""
+        if self._session is None:
+            raise RuntimeError("Session not initialized. Use async context manager.")
+
+        url = f"{self._base_url}/fapi/v1/exchangeInfo"
+        async with self._session.get(url) as resp:
+            data = await resp.json()
+
+        for sym_info in data.get("symbols", []):
+            symbol = sym_info["symbol"]
+            if symbols and symbol not in symbols:
+                continue
+            for filt in sym_info.get("filters", []):
+                if filt["filterType"] == "LOT_SIZE":
+                    self._symbol_filters[symbol] = {
+                        "stepSize": float(filt["stepSize"]),
+                        "minQty": float(filt["minQty"]),
+                    }
+                    break
+
+        self._logger.info(
+            "Loaded futures LOT_SIZE filters for %d symbols",
+            len(self._symbol_filters),
+        )
+
+    def format_quantity(self, symbol: str, quantity: float) -> str:
+        """Round quantity to the symbol's LOT_SIZE stepSize."""
+        filt = self._symbol_filters.get(symbol)
+        if not filt:
+            return f"{quantity:.8f}".rstrip("0").rstrip(".")
+
+        step = filt["stepSize"]
+        min_qty = filt["minQty"]
+        precision = max(0, int(round(-math.log10(step)))) if step < 1 else 0
+        truncated = math.floor(quantity / step) * step
+
+        if truncated < min_qty:
+            return "0"
+        if precision == 0:
+            return str(int(truncated))
+        return f"{truncated:.{precision}f}"
 
     def _generate_signature(self, query_string: str) -> str:
         """Generate HMAC SHA256 signature for Binance API."""
@@ -211,9 +256,10 @@ class BinanceFuturesClient:
     async def _sync_time(self, force: bool) -> None:
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        if not force and (
-            time.time() - self._last_time_sync
-        ) < self._time_sync_interval_seconds:
+        if (
+            not force
+            and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds
+        ):
             return
 
         url = f"{self._base_url}/fapi/v1/time"
@@ -257,6 +303,16 @@ class BinanceFuturesClient:
             },
             signed=True,
         )
+
+    async def get_position_mode(self) -> str:
+        data = await self._request(
+            "GET",
+            "/fapi/v1/positionSide/dual",
+            params={},
+            signed=True,
+        )
+        dual_side = str(data.get("dualSidePosition", "false")).lower() == "true"
+        return "hedge" if dual_side else "one-way"
 
     async def get_position_risk(self, symbol: str) -> list[FuturesPositionInfo]:
         """Get position risk information including liquidation price.
@@ -322,11 +378,17 @@ class BinanceFuturesClient:
         Returns:
             FuturesOrderInfo with order details
         """
+        formatted_qty = self.format_quantity(symbol, quantity)
+        if formatted_qty == "0":
+            raise BinanceFuturesApiError(
+                -1, f"Quantity {quantity} below minimum for {symbol}"
+            )
+
         params = {
             "symbol": symbol,
             "side": side,
             "type": order_type,
-            "quantity": quantity,
+            "quantity": formatted_qty,
             "positionSide": position_side,
         }
 
@@ -340,6 +402,10 @@ class BinanceFuturesClient:
             signed=True,
         )
 
+        avg_price = float(data.get("avgPrice", 0)) if data.get("avgPrice") else None
+        price = float(data.get("price", 0)) if data.get("price") else None
+        resolved_price = avg_price if avg_price and avg_price > 0 else price
+
         return FuturesOrderInfo(
             order_id=str(data.get("orderId", 0)),
             symbol=data.get("symbol", symbol),
@@ -347,11 +413,35 @@ class BinanceFuturesClient:
             position_side=data.get("positionSide", position_side),
             order_type=data.get("type", order_type),
             quantity=float(data.get("origQty", quantity)),
-            price=float(data.get("price", 0)) if data.get("price") else None,
+            price=resolved_price,
             status=data.get("status", "NEW"),
             executed_quantity=float(data.get("executedQty", 0)),
             create_time=int(data.get("time", 0)),
             reduce_only=reduce_only,
+        )
+
+    async def get_order_status(self, symbol: str, order_id: str) -> FuturesOrderInfo:
+        data = await self._request(
+            "GET",
+            "/fapi/v1/order",
+            params={"symbol": symbol, "orderId": order_id},
+            signed=True,
+        )
+        avg_price = float(data.get("avgPrice", 0)) if data.get("avgPrice") else None
+        price = float(data.get("price", 0)) if data.get("price") else None
+        resolved_price = avg_price if avg_price and avg_price > 0 else price
+        return FuturesOrderInfo(
+            order_id=str(data.get("orderId", order_id)),
+            symbol=data.get("symbol", symbol),
+            side=data.get("side", "BUY"),
+            position_side=data.get("positionSide", "BOTH"),
+            order_type=data.get("type", "MARKET"),
+            quantity=float(data.get("origQty", 0)),
+            price=resolved_price,
+            status=data.get("status", "NEW"),
+            executed_quantity=float(data.get("executedQty", 0)),
+            create_time=int(data.get("time", 0)),
+            reduce_only=str(data.get("reduceOnly", "false")).lower() == "true",
         )
 
     async def get_funding_rate(self, symbol: str) -> FundingRateInfo:

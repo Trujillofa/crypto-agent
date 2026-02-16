@@ -16,6 +16,7 @@ class MockBinanceClient:
         self.get_account_info = AsyncMock()
         self.get_open_orders = AsyncMock()
         self.get_asset_balance = AsyncMock()
+        self.normalize_sell_quantity = AsyncMock()
         self.place_limit_order = AsyncMock()
         self.cancel_order = AsyncMock()
         self.cancel_all_orders = AsyncMock()
@@ -223,6 +224,7 @@ async def test_on_signal_sell_uses_removesuffix():
 
     mock_client = MockBinanceClient()
     mock_client.get_asset_balance.return_value = 1.5
+    mock_client.normalize_sell_quantity.return_value = "1.5"
     executor._client = mock_client
 
     from src.strategy.signals import Signal, SignalType
@@ -254,4 +256,42 @@ async def test_on_signal_sell_uses_removesuffix():
     await executor.on_signal(signal)
 
     mock_client.get_asset_balance.assert_called_once_with("BUSD")
+    mock_client.normalize_sell_quantity.assert_called_once_with("BUSDUSDT", 1.5)
     executor.place_market_order.assert_called_once_with("BUSDUSDT", "SELL", 1.5)
+
+
+@pytest.mark.asyncio
+async def test_on_signal_sell_skips_dust_balance_silently():
+    config = TradingConfig(
+        api_key="key", api_secret="secret", enabled=True, symbols=["XRPUSDT"]
+    )
+    risk_manager = MagicMock(spec=RiskManager)
+    metrics = MagicMock(spec=ExecutionMetrics)
+    notifier = MagicMock()
+    notifier.send_trade_alert = AsyncMock()
+    executor = TradingExecutor(config, risk_manager, metrics, notifier=notifier)
+
+    mock_client = MockBinanceClient()
+    mock_client.get_asset_balance.return_value = 0.0292
+    mock_client.normalize_sell_quantity.return_value = None
+    executor._client = mock_client
+
+    from src.strategy.signals import Signal, SignalType
+
+    signal = Signal(
+        type=SignalType.SELL,
+        symbol="XRPUSDT",
+        price=1.47,
+        confidence=1.0,
+        reason="Test",
+        indicators={},
+    )
+
+    executor.place_market_order = AsyncMock()
+
+    await executor.on_signal(signal)
+
+    mock_client.get_asset_balance.assert_called_once_with("XRP")
+    mock_client.normalize_sell_quantity.assert_called_once_with("XRPUSDT", 0.0292)
+    executor.place_market_order.assert_not_called()
+    notifier.send_trade_alert.assert_not_awaited()

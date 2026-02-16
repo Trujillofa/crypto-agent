@@ -19,6 +19,7 @@ class BinanceWebSocketIngestor:
     """Async Binance Spot data ingestor using WebSockets."""
 
     SPOT_WS_URL = "wss://stream.binance.com:9443/ws"
+    SPOT_TESTNET_WS_URL = "wss://testnet.binance.vision/ws"
     FUTURES_WS_URL = "wss://fstream.binance.com/ws"
     FUTURES_DEMO_WS_URL = "wss://fstream.binancefuture.com/ws"
 

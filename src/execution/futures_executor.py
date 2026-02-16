@@ -56,6 +56,7 @@ class FuturesTradingExecutor:
         self._client: BinanceFuturesClient | None = None
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
+        self._active_position_mode = "hedge"
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -72,8 +73,26 @@ class FuturesTradingExecutor:
             test_mode=self._config.test_mode,
         )
         await self._client.__aenter__()
+        await self._client.load_exchange_info(self._config.symbols)
         await self._notifier.__aenter__()
         self._metrics.start_trading()
+
+        try:
+            account_position_mode = await self._client.get_position_mode()
+            self._active_position_mode = account_position_mode
+            if account_position_mode != self._config.position_mode:
+                self._logger.warning(
+                    "Configured futures position_mode=%s but account mode is %s. Using account mode.",
+                    self._config.position_mode,
+                    account_position_mode,
+                )
+        except Exception as exc:
+            self._logger.warning(
+                "Failed to read futures account position mode, using config value '%s': %s",
+                self._config.position_mode,
+                exc,
+            )
+            self._active_position_mode = self._config.position_mode
 
         # Set default leverage for all configured symbols
         for symbol in self._config.symbols:
@@ -137,10 +156,19 @@ class FuturesTradingExecutor:
                 for pos in positions:
                     # Check liquidation buffer
                     if pos.liquidation_price > 0:
+                        risk_side = pos.position_side
+                        if risk_side not in {"LONG", "SHORT"}:
+                            if pos.position_amt > 0:
+                                risk_side = "LONG"
+                            elif pos.position_amt < 0:
+                                risk_side = "SHORT"
+                            else:
+                                continue
+
                         allowed, reason = self._risk_manager.check_liquidation_buffer(
                             mark_price=pos.mark_price,
                             liquidation_price=pos.liquidation_price,
-                            position_side=pos.position_side,
+                            position_side=risk_side,
                             buffer_pct=self._config.liquidation_buffer_pct,
                         )
                         if not allowed:
@@ -232,6 +260,10 @@ class FuturesTradingExecutor:
             self._metrics.record_risk_block(symbol, margin_reason)
             raise RuntimeError(f"Margin check failed: {margin_reason}")
 
+        request_position_side = (
+            "BOTH" if self._active_position_mode == "one-way" else position_side
+        )
+
         # Place order
         start_time = time.perf_counter()
         try:
@@ -241,8 +273,21 @@ class FuturesTradingExecutor:
                 quantity=quantity,
                 order_type="MARKET",
                 reduce_only=reduce_only,
-                position_side=position_side,
+                position_side=request_position_side,
             )
+            if order.status != "FILLED":
+                initial_status = order.status
+                for _ in range(4):
+                    await asyncio.sleep(0.25)
+                    order = await self._client.get_order_status(symbol, order.order_id)
+                    if order.status == "FILLED":
+                        self._logger.info(
+                            "Futures order %s transitioned %s -> FILLED for %s",
+                            order.order_id,
+                            initial_status,
+                            symbol,
+                        )
+                        break
             elapsed = time.perf_counter() - start_time
 
             self._metrics.record_order_placed(
@@ -266,6 +311,7 @@ class FuturesTradingExecutor:
                             symbol=symbol,
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
+                            market="futures",
                         )
                     self._logger.info(
                         "Futures position closed: %s %s (qty: %.4f)",
@@ -281,12 +327,13 @@ class FuturesTradingExecutor:
                             quantity=quantity,
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
+                            market="futures",
                         )
                     self._logger.info(
                         "Futures position opened: %s %s %s (qty: %.4f, leverage: %dx)",
                         side,
                         symbol,
-                        position_side,
+                        request_position_side,
                         quantity,
                         self._config.default_leverage,
                     )
@@ -331,6 +378,22 @@ class FuturesTradingExecutor:
             )
             return
 
+        if signal.symbol not in self._config.symbols:
+            self._logger.info(
+                "Futures signal for unmanaged symbol %s. Configured symbols: %s",
+                signal.symbol,
+                self._config.symbols,
+            )
+            return
+
+        self._logger.info(
+            "Futures signal received: %s %s @ %.2f (mode=%s)",
+            signal.type.value,
+            signal.symbol,
+            signal.price,
+            signal.trading_mode,
+        )
+
         try:
             # Get current position info
             positions = await self._client.get_position_risk(signal.symbol)
@@ -340,36 +403,51 @@ class FuturesTradingExecutor:
                     current_position = pos
                     break
 
+            has_long_position = False
+            if current_position is not None:
+                if self._active_position_mode == "one-way":
+                    has_long_position = current_position.position_amt > 0
+                else:
+                    has_long_position = current_position.position_side == "LONG"
+
             if signal.type == SignalType.BUY:
                 # Open or add to LONG position
                 if current_position is None:
                     # No position - open new LONG
-                    await self.place_futures_order(
+                    order = await self.place_futures_order(
                         symbol=signal.symbol,
                         side="BUY",
                         quantity=self._calculate_quantity(signal.symbol),
                         position_side="LONG",
                         reduce_only=False,
                     )
-                    await self._notifier.send_trade_alert(
-                        symbol=signal.symbol,
-                        side="BUY",
-                        quantity=self._config.order_size_usdt,
-                        price=signal.price,
-                        pnl=None,
-                    )
-                elif current_position.position_side == "LONG":
-                    # Already have LONG position - add to it (pyramiding)
+                    if order.status == "FILLED":
+                        filled_quantity = (
+                            order.executed_quantity
+                            if order.executed_quantity > 0
+                            else order.quantity
+                        )
+                        filled_price = (
+                            float(order.price) if order.price else signal.price
+                        )
+                        await self._notifier.send_trade_alert(
+                            symbol=signal.symbol,
+                            side="BUY",
+                            quantity=filled_quantity,
+                            price=filled_price,
+                            pnl=None,
+                            market="futures",
+                        )
+                    else:
+                        self._logger.info(
+                            "Futures BUY order not filled yet for %s (status: %s)",
+                            signal.symbol,
+                            order.status,
+                        )
+                elif has_long_position:
                     self._logger.info(
-                        "Already in LONG position for %s. Adding to position.",
+                        "BUY signal ignored: Futures LONG position already exists for %s",
                         signal.symbol,
-                    )
-                    await self.place_futures_order(
-                        symbol=signal.symbol,
-                        side="BUY",
-                        quantity=self._calculate_quantity(signal.symbol),
-                        position_side="LONG",
-                        reduce_only=False,
                     )
                 else:
                     # Have SHORT position - this shouldn't happen in LONG-only MVP
@@ -396,30 +474,56 @@ class FuturesTradingExecutor:
 
             elif signal.type == SignalType.SELL:
                 # Close LONG position (reduceOnly)
-                if current_position and current_position.position_side == "LONG":
-                    await self.place_futures_order(
+                if current_position and has_long_position:
+                    order = await self.place_futures_order(
                         symbol=signal.symbol,
                         side="SELL",
-                        quantity=current_position.position_amt,
+                        quantity=abs(current_position.position_amt),
                         position_side="LONG",
                         reduce_only=True,  # Important: only reduce, don't flip
                     )
-                    pnl = current_position.unrealized_pnl
-                    await self._notifier.send_trade_alert(
-                        symbol=signal.symbol,
-                        side="SELL",
-                        quantity=current_position.position_amt,
-                        price=signal.price,
-                        pnl=pnl,
-                    )
+                    if order.status == "FILLED":
+                        filled_quantity = (
+                            order.executed_quantity
+                            if order.executed_quantity > 0
+                            else abs(current_position.position_amt)
+                        )
+                        filled_price = (
+                            float(order.price) if order.price else signal.price
+                        )
+                        pnl = (
+                            filled_price - current_position.entry_price
+                        ) * filled_quantity
+                        await self._notifier.send_trade_alert(
+                            symbol=signal.symbol,
+                            side="SELL",
+                            quantity=filled_quantity,
+                            price=filled_price,
+                            pnl=pnl,
+                            market="futures",
+                        )
+                    else:
+                        self._logger.info(
+                            "Futures SELL order not filled yet for %s (status: %s)",
+                            signal.symbol,
+                            order.status,
+                        )
                 else:
                     self._logger.info(
                         "SELL signal but no LONG position for %s. Ignoring.",
                         signal.symbol,
                     )
+                    await self._notifier.send_alert(
+                        f"<b>Signal skipped</b> [futures]\n"
+                        f"{signal.symbol} SELL — no LONG position"
+                    )
 
-        except RuntimeError as exc:
+        except Exception as exc:  # noqa: BLE001
             self._logger.warning("Futures signal rejected: %s — %s", signal, exc)
+            await self._notifier.send_alert(
+                f"<b>Signal rejected</b> [futures]\n"
+                f"{signal.symbol} {signal.type.value} — {exc}"
+            )
 
     def _calculate_quantity(self, symbol: str) -> float:
         """Calculate order quantity based on config.

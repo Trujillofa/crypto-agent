@@ -28,9 +28,8 @@ class TestPositionModel:
         assert position.mark_price is None
         assert position.funding_fees == 0.0
 
-        # Spot PnL calculation unchanged
         pnl = position.calculate_unrealized_pnl(51000.0)
-        assert pnl == (51000.0 - 50000.0) * 0.1  # $100 profit
+        assert pnl == pytest.approx(89.9)
 
     def test_futures_long_position(self):
         """Test futures LONG position PnL calculation."""
@@ -46,11 +45,11 @@ class TestPositionModel:
 
         # LONG position profit when price goes up
         pnl = position.calculate_unrealized_pnl(51000.0)
-        assert pnl == (51000.0 - 50000.0) * 0.1  # $100 profit
+        assert pnl == pytest.approx(89.9)
 
         # LONG position loss when price goes down
         pnl = position.calculate_unrealized_pnl(49000.0)
-        assert pnl == (49000.0 - 50000.0) * 0.1  # -$100 loss
+        assert pnl == pytest.approx(-109.9)
 
     def test_futures_short_position(self):
         """Test futures SHORT position PnL calculation."""
@@ -66,11 +65,11 @@ class TestPositionModel:
 
         # SHORT position profit when price goes down
         pnl = position.calculate_unrealized_pnl(49000.0)
-        assert pnl == (50000.0 - 49000.0) * 0.1  # $100 profit
+        assert pnl == pytest.approx(90.1)
 
         # SHORT position loss when price goes up
         pnl = position.calculate_unrealized_pnl(51000.0)
-        assert pnl == (50000.0 - 51000.0) * 0.1  # -$100 loss
+        assert pnl == pytest.approx(-110.1)
 
     def test_long_position_close(self):
         """Test closing a LONG position."""
@@ -84,8 +83,8 @@ class TestPositionModel:
 
         pnl = position.close(51000.0)
 
-        assert pnl == (51000.0 - 50000.0) * 0.1  # $100 profit
-        assert position.realized_pnl == 100.0
+        assert pnl == pytest.approx(89.9)
+        assert position.realized_pnl == pytest.approx(89.9)
         assert position.status == PositionStatus.CLOSED
         assert position.exit_price == 51000.0
 
@@ -102,8 +101,8 @@ class TestPositionModel:
         # Close SHORT at lower price = profit
         pnl = position.close(49000.0)
 
-        assert pnl == (50000.0 - 49000.0) * 0.1  # $100 profit
-        assert position.realized_pnl == 100.0
+        assert pnl == pytest.approx(90.1)
+        assert position.realized_pnl == pytest.approx(90.1)
         assert position.status == PositionStatus.CLOSED
 
     def test_spot_position_close_unchanged(self):
@@ -118,8 +117,8 @@ class TestPositionModel:
 
         pnl = position.close(51000.0)
 
-        assert pnl == (51000.0 - 50000.0) * 0.1  # Same as before
-        assert position.realized_pnl == 100.0
+        assert pnl == pytest.approx(89.9)
+        assert position.realized_pnl == pytest.approx(89.9)
 
     def test_calculate_liquidation_price_long(self):
         """Test liquidation price calculation for LONG."""
@@ -198,7 +197,7 @@ class TestPositionModel:
         pnl = position.update_mark_price(51000.0)
 
         assert position.mark_price == 51000.0
-        assert pnl == 100.0  # (51000 - 50000) * 0.1
+        assert pnl == pytest.approx(89.9)
 
     def test_is_near_liquidation_long(self):
         """Test liquidation buffer check for LONG."""

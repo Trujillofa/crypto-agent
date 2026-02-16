@@ -1,6 +1,6 @@
 position_limits:
   max_position_pct: 0.10
-  max_open_positions: 5
+  max_open_positions: 3
 
 loss_limits:
   max_daily_loss_pct: 0.05
@@ -8,13 +8,14 @@ loss_limits:
   max_single_loss_pct: 0.02
 
 circuit_breakers:
-  consecutive_losses: 5
+  consecutive_losses: 3
   api_errors: 3
   latency_spike_ms: 5000
 
 kill_switch:
   enabled: true
   telegram_confirm: true
+  auto_reset_minutes: 60  # Auto-reset after 60 min cooldown (paper mode only, 0 = disabled)
 
 futures_limits:
   max_leverage: 10  # Maximum allowed leverage (1-20, hard cap at 20)
