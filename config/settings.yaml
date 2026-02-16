@@ -66,7 +66,7 @@ futures:
 
 strategy:
   evaluation_interval_seconds: 60
-  cooldown_candles: 3
+  cooldown_candles: 6
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
@@ -89,11 +89,11 @@ strategy:
         rsi_overbought: 70
     - name: momentum
       config:
-        rsi_buy_threshold: 55
-        rsi_sell_threshold: 45
+        rsi_buy_threshold: 60
+        rsi_sell_threshold: 40
         rsi_max_entry: 75
         rsi_min_entry: 25
   aggregator:
     min_agreement: 2
-    buy_threshold: 0.4
-    sell_threshold: -0.4
+    buy_threshold: 1.0
+    sell_threshold: -1.0

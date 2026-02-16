@@ -30,7 +30,7 @@ class MACDHistogramStrategy(BaseStrategy):
 
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
         """Evaluate indicators and generate a trading signal."""
-        required_indicators = {"macd_hist", "close_price"}
+        required_indicators = {"macd_hist", "ema_50", "close_price"}
         if self._use_atr_filter:
             required_indicators.add("atr_pct")
 
@@ -39,10 +39,11 @@ class MACDHistogramStrategy(BaseStrategy):
                 raise ValueError(f"Missing required indicator for {symbol}: {k}")
 
         hist_current = indicators["macd_hist"]
+        ema_50 = indicators["ema_50"]
         close_price = indicators["close_price"]
         atr_pct = indicators["atr_pct"] if self._use_atr_filter else None
 
-        if hist_current is None:
+        if hist_current is None or ema_50 is None:
             return Signal(
                 type=SignalType.HOLD,
                 symbol=symbol,
@@ -70,12 +71,19 @@ class MACDHistogramStrategy(BaseStrategy):
         strength_bonus = min(0.5, hist_ratio * 250)  # 0.002 * 250 = 0.5
         base_confidence = 0.5
 
+        # EMA(50) trend gate: only allow signals in trend direction
+        in_uptrend = close_price > ema_50
+        in_downtrend = close_price < ema_50
+
         if hist_previous < 0 and hist_current > 0:
             if abs(hist_current) >= self._min_hist_threshold:
                 if not is_low_volatility:
-                    signal_type = SignalType.BUY
-                    confidence = base_confidence + strength_bonus
-                    reason = f"Bullish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
+                    if in_uptrend:
+                        signal_type = SignalType.BUY
+                        confidence = base_confidence + strength_bonus
+                        reason = f"Bullish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f}) [price > EMA50]"
+                    else:
+                        reason += " - Counter-trend (price < EMA50)"
                 else:
                     reason += " - Low Volatility"
             else:
@@ -84,9 +92,12 @@ class MACDHistogramStrategy(BaseStrategy):
         elif hist_previous > 0 and hist_current < 0:
             if abs(hist_current) >= self._min_hist_threshold:
                 if not is_low_volatility:
-                    signal_type = SignalType.SELL
-                    confidence = base_confidence + strength_bonus
-                    reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
+                    if in_downtrend:
+                        signal_type = SignalType.SELL
+                        confidence = base_confidence + strength_bonus
+                        reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f}) [price < EMA50]"
+                    else:
+                        reason += " - Counter-trend (price > EMA50)"
                 else:
                     reason += " - Low Volatility"
             else:

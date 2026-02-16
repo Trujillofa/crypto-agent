@@ -102,14 +102,14 @@ async def test_full_flow_engine_to_executor():
         if call_count == 1:
             # Warmup: short < long
             return [
-                {"ema_12": 95.0, "ema_26": 100.0, "close_price": 99.0},
-                {"ema_12": 96.0, "ema_26": 100.0, "close_price": 99.5},
+                {"ema_12": 95.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 99.0},
+                {"ema_12": 96.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 99.5},
             ]
         else:
-            # Crossover: short > long (BUY signal)
+            # Crossover: short > long (BUY signal, price > ema_50 = uptrend)
             return [
-                {"ema_12": 96.0, "ema_26": 100.0, "close_price": 99.5},
-                {"ema_12": 101.0, "ema_26": 100.0, "close_price": 102.0},
+                {"ema_12": 96.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 99.5},
+                {"ema_12": 101.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 102.0},
             ]
 
     mock_reader.fetch_latest = mock_fetch_latest

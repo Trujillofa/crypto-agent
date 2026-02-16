@@ -16,25 +16,25 @@ class TestMACDHistogramStrategy:
 
     @pytest.mark.asyncio
     async def test_warmup_none_value(self, strategy):
-        indicators = {"macd_hist": None, "close_price": 50000.0, "atr_pct": 0.01}
+        indicators = {"macd_hist": None, "ema_50": 49000.0, "close_price": 50000.0, "atr_pct": 0.01}
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.HOLD
         assert "Waiting for MACD" in signal.reason
 
     @pytest.mark.asyncio
     async def test_missing_indicator(self, strategy):
-        indicators = {"close_price": 50000.0, "atr_pct": 0.01}  # Missing macd_hist
+        indicators = {"close_price": 50000.0, "ema_50": 49000.0, "atr_pct": 0.01}  # Missing macd_hist
         with pytest.raises(ValueError, match="Missing required indicator"):
             await strategy.evaluate("BTCUSDT", indicators)
 
     @pytest.mark.asyncio
     async def test_neutral_hold(self, strategy):
         await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 10.0, "close_price": 50000.0, "atr_pct": 0.01}
+            "BTCUSDT", {"macd_hist": 10.0, "ema_50": 49000.0, "close_price": 50000.0, "atr_pct": 0.01}
         )
 
         signal = await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 20.0, "close_price": 50100.0, "atr_pct": 0.01}
+            "BTCUSDT", {"macd_hist": 20.0, "ema_50": 49000.0, "close_price": 50100.0, "atr_pct": 0.01}
         )
 
         assert signal.type == SignalType.HOLD
@@ -43,11 +43,11 @@ class TestMACDHistogramStrategy:
     @pytest.mark.asyncio
     async def test_bullish_crossover(self, strategy):
         await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": -10.0, "close_price": 50000.0, "atr_pct": 0.01}
+            "BTCUSDT", {"macd_hist": -10.0, "ema_50": 49000.0, "close_price": 50000.0, "atr_pct": 0.01}
         )
 
         signal = await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 10.0, "close_price": 50100.0, "atr_pct": 0.01}
+            "BTCUSDT", {"macd_hist": 10.0, "ema_50": 49000.0, "close_price": 50100.0, "atr_pct": 0.01}
         )
 
         assert signal.type == SignalType.BUY
@@ -57,11 +57,11 @@ class TestMACDHistogramStrategy:
     @pytest.mark.asyncio
     async def test_bearish_crossover(self, strategy):
         await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 10.0, "close_price": 50000.0, "atr_pct": 0.01}
+            "BTCUSDT", {"macd_hist": 10.0, "ema_50": 51000.0, "close_price": 50000.0, "atr_pct": 0.01}
         )
 
         signal = await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": -10.0, "close_price": 49900.0, "atr_pct": 0.01}
+            "BTCUSDT", {"macd_hist": -10.0, "ema_50": 51000.0, "close_price": 49900.0, "atr_pct": 0.01}
         )
 
         assert signal.type == SignalType.SELL
@@ -71,11 +71,11 @@ class TestMACDHistogramStrategy:
     @pytest.mark.asyncio
     async def test_atr_filter_blocks_signal(self, strategy):
         await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": -10.0, "close_price": 50000.0, "atr_pct": 0.001}
+            "BTCUSDT", {"macd_hist": -10.0, "ema_50": 49000.0, "close_price": 50000.0, "atr_pct": 0.001}
         )
 
         signal = await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 10.0, "close_price": 50100.0, "atr_pct": 0.001}
+            "BTCUSDT", {"macd_hist": 10.0, "ema_50": 49000.0, "close_price": 50100.0, "atr_pct": 0.001}
         )
 
         assert signal.type == SignalType.HOLD
@@ -87,17 +87,17 @@ class TestMACDHistogramStrategy:
             {"min_histogram_threshold": 5.0, "use_atr_filter": False}
         )
 
-        await strategy.evaluate("BTCUSDT", {"macd_hist": -10.0, "close_price": 50000.0})
+        await strategy.evaluate("BTCUSDT", {"macd_hist": -10.0, "ema_50": 49000.0, "close_price": 50000.0})
 
         signal = await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 2.0, "close_price": 50000.0}
+            "BTCUSDT", {"macd_hist": 2.0, "ema_50": 49000.0, "close_price": 50000.0}
         )
 
         assert signal.type == SignalType.HOLD
 
-        await strategy.evaluate("BTCUSDT", {"macd_hist": -1.0, "close_price": 50000.0})
+        await strategy.evaluate("BTCUSDT", {"macd_hist": -1.0, "ema_50": 49000.0, "close_price": 50000.0})
         signal = await strategy.evaluate(
-            "BTCUSDT", {"macd_hist": 6.0, "close_price": 50000.0}
+            "BTCUSDT", {"macd_hist": 6.0, "ema_50": 49000.0, "close_price": 50000.0}
         )
 
         assert signal.type == SignalType.BUY

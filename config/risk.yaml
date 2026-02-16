@@ -8,7 +8,7 @@ loss_limits:
   max_single_loss_pct: 0.02
 
 circuit_breakers:
-  consecutive_losses: 5
+  consecutive_losses: 3
   api_errors: 3
   latency_spike_ms: 5000
 

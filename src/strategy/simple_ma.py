@@ -48,6 +48,7 @@ class SimpleMACrossoverStrategy(BaseStrategy):
         required_indicators = {
             f"ema_{self._ema_short_period}",
             f"ema_{self._ema_long_period}",
+            "ema_50",
             "close_price",
         }
 
@@ -60,10 +61,11 @@ class SimpleMACrossoverStrategy(BaseStrategy):
         # Get current values
         ema_short_current = indicators[f"ema_{self._ema_short_period}"]
         ema_long_current = indicators[f"ema_{self._ema_long_period}"]
+        ema_50 = indicators["ema_50"]
         close_price = indicators["close_price"]
 
         # Check for None values (not enough data yet)
-        if ema_short_current is None or ema_long_current is None:
+        if ema_short_current is None or ema_long_current is None or ema_50 is None:
             return Signal(
                 type=SignalType.HOLD,
                 symbol=symbol,
@@ -90,30 +92,36 @@ class SimpleMACrossoverStrategy(BaseStrategy):
             and ema_short_current < ema_long_current
         )
 
-        # Generate signal based on crossover
-        if crossover_up:
+        # EMA(50) trend gate: only allow signals in trend direction
+        in_uptrend = close_price > ema_50
+        in_downtrend = close_price < ema_50
+
+        # Generate signal based on crossover + trend gate
+        if crossover_up and in_uptrend:
             signal = Signal(
                 type=SignalType.BUY,
                 symbol=symbol,
                 price=close_price,
                 confidence=self._confidence_threshold,
-                reason=f"EMA({self._ema_short_period}) crossed above EMA({self._ema_long_period})",
+                reason=f"EMA({self._ema_short_period}) crossed above EMA({self._ema_long_period}) [price > EMA50]",
                 indicators={
                     f"ema_{self._ema_short_period}": ema_short_current,
                     f"ema_{self._ema_long_period}": ema_long_current,
+                    "ema_50": ema_50,
                     "close_price": close_price,
                 },
             )
-        elif crossover_down:
+        elif crossover_down and in_downtrend:
             signal = Signal(
                 type=SignalType.SELL,
                 symbol=symbol,
                 price=close_price,
                 confidence=self._confidence_threshold,
-                reason=f"EMA({self._ema_short_period}) crossed below EMA({self._ema_long_period})",
+                reason=f"EMA({self._ema_short_period}) crossed below EMA({self._ema_long_period}) [price < EMA50]",
                 indicators={
                     f"ema_{self._ema_short_period}": ema_short_current,
                     f"ema_{self._ema_long_period}": ema_long_current,
+                    "ema_50": ema_50,
                     "close_price": close_price,
                 },
             )
