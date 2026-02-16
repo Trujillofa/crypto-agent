@@ -72,6 +72,13 @@ def test_settings_telegram_config():
     assert isinstance(settings.telegram.enabled, bool)
 
 
+def test_settings_ai_config_defaults():
+    settings = load_settings(Path("config/settings.yaml"))
+    assert settings.ai.provider == "xai"
+    assert isinstance(settings.ai.enabled, bool)
+    assert settings.ai.model != ""
+
+
 @pytest.mark.asyncio
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""

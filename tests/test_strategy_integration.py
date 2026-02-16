@@ -257,6 +257,7 @@ class TestTradingExecutorOnSignal:
         async def mock_init(self):
             self._client = MagicMock()
             self._client.get_asset_balance = AsyncMock(return_value=0.5)
+            self._client.normalize_sell_quantity = AsyncMock(return_value="0.5")
             self._client.__aenter__ = AsyncMock(return_value=self._client)
             self._client.__aexit__ = AsyncMock()
 

@@ -6,6 +6,7 @@ import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_DOWN
 from typing import Any
 
 import aiohttp
@@ -26,6 +27,7 @@ class OrderInfo:
     status: str  # "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", etc.
     executed_quantity: float
     create_time: int
+    executed_price: float | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,7 @@ class BinancePrivateClient:
         self._time_sync_interval_seconds = 60.0
         # LOT_SIZE filters: {symbol: {"stepSize": float, "minQty": float}}
         self._symbol_filters: dict[str, dict[str, float]] = {}
+        self._lot_size_cache: dict[str, tuple[Decimal, Decimal, Decimal]] = {}
 
     async def __aenter__(self) -> BinancePrivateClient:
         self._session = aiohttp.ClientSession()
@@ -238,9 +241,10 @@ class BinancePrivateClient:
     async def _sync_time(self, force: bool) -> None:
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        if not force and (
-            time.time() - self._last_time_sync
-        ) < self._time_sync_interval_seconds:
+        if (
+            not force
+            and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds
+        ):
             return
 
         url = f"{self._base_url}/api/v3/time"
@@ -254,6 +258,61 @@ class BinancePrivateClient:
                 self._logger.debug(
                     "Synced Binance server time. Offset=%sms", self._time_offset_ms
                 )
+
+    async def _get_lot_size_filter(
+        self, symbol: str
+    ) -> tuple[Decimal, Decimal, Decimal]:
+        cached = self._lot_size_cache.get(symbol)
+        if cached is not None:
+            return cached
+
+        data = await self._request(
+            "GET",
+            "/api/v3/exchangeInfo",
+            params={"symbol": symbol},
+            signed=False,
+        )
+        symbols = data.get("symbols", [])
+        if not symbols:
+            raise RuntimeError(f"No exchange info found for {symbol}")
+
+        filters = symbols[0].get("filters", [])
+        lot_size = next(
+            (flt for flt in filters if flt.get("filterType") == "LOT_SIZE"),
+            None,
+        )
+        if lot_size is None:
+            raise RuntimeError(f"LOT_SIZE filter missing for {symbol}")
+
+        step_size = Decimal(str(lot_size.get("stepSize", "0.00000001")))
+        min_qty = Decimal(str(lot_size.get("minQty", "0")))
+        max_qty = Decimal(str(lot_size.get("maxQty", "99999999")))
+        parsed = (step_size, min_qty, max_qty)
+        self._lot_size_cache[symbol] = parsed
+        return parsed
+
+    async def _format_sell_quantity(self, symbol: str, quantity: float) -> str:
+        normalized = await self.normalize_sell_quantity(symbol, quantity)
+        if normalized is None:
+            raise RuntimeError(
+                f"SELL quantity {quantity} for {symbol} is below min LOT_SIZE after normalization"
+            )
+        return normalized
+
+    async def normalize_sell_quantity(self, symbol: str, quantity: float) -> str | None:
+        step_size, min_qty, max_qty = await self._get_lot_size_filter(symbol)
+
+        qty = Decimal(str(quantity))
+        if qty > max_qty:
+            qty = max_qty
+
+        steps = (qty / step_size).to_integral_value(rounding=ROUND_DOWN)
+        normalized_qty = steps * step_size
+
+        if normalized_qty < min_qty or normalized_qty <= 0:
+            return None
+
+        return format(normalized_qty.normalize(), "f")
 
     async def get_account_info(self) -> AccountInfo:
         """Get current spot account information.
@@ -356,12 +415,12 @@ class BinancePrivateClient:
         if side == "BUY":
             params["quoteOrderQty"] = str(quantity)
         else:
-            formatted = self.format_quantity(symbol, quantity)
-            if formatted == "0":
-                raise BinanceApiError(-1, f"Quantity {quantity} below minimum for {symbol}")
-            params["quantity"] = formatted
+            params["quantity"] = await self._format_sell_quantity(symbol, quantity)
 
         data = await self._request("POST", "/api/v3/order", params, signed=True)
+        executed_qty = float(data.get("executedQty", 0))
+        cum_quote = float(data.get("cummulativeQuoteQty", 0))
+        executed_price = cum_quote / executed_qty if executed_qty > 0 else None
 
         return OrderInfo(
             order_id=str(data.get("orderId", "")),
@@ -371,7 +430,8 @@ class BinancePrivateClient:
             quantity=float(data.get("origQty", 0)),
             price=float(data.get("price", 0)) if data.get("price") else None,
             status=data.get("status", ""),
-            executed_quantity=float(data.get("executedQty", 0)),
+            executed_quantity=executed_qty,
+            executed_price=executed_price,
             create_time=int(data.get("time", 0)),
         )
 
@@ -473,6 +533,9 @@ class BinancePrivateClient:
         }
 
         data = await self._request("GET", "/api/v3/order", params, signed=True)
+        executed_qty = float(data.get("executedQty", 0))
+        cum_quote = float(data.get("cummulativeQuoteQty", 0))
+        executed_price = cum_quote / executed_qty if executed_qty > 0 else None
 
         return OrderInfo(
             order_id=str(data.get("orderId", "")),
@@ -482,6 +545,7 @@ class BinancePrivateClient:
             quantity=float(data.get("origQty", 0)),
             price=float(data.get("price", 0)) if data.get("price") else None,
             status=data.get("status", ""),
-            executed_quantity=float(data.get("executedQty", 0)),
+            executed_quantity=executed_qty,
+            executed_price=executed_price,
             create_time=int(data.get("time", 0)),
         )

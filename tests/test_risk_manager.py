@@ -401,3 +401,56 @@ class TestRiskManager:
 
         assert manager._kill_switch_triggered is True
         config_path.unlink()
+
+    def test_clear_trading_blocks_resets_flags_and_counters(self) -> None:
+        manager = self._make_manager()
+        manager._kill_switch_triggered = True
+        manager._circuit_breakers["consecutive_losses"] = True
+        manager._api_error_count = 2
+        manager._consecutive_losses = 5
+        manager._peak_balance = 6200.0
+
+        manager.clear_trading_blocks(reset_counters=True)
+
+        allowed, reason = manager.is_trading_allowed()
+        assert allowed is True
+        assert reason == "Trading allowed"
+        assert manager._api_error_count == 0
+        assert manager._consecutive_losses == 0
+        assert manager._peak_balance == 0.0
+        assert all(v is False for v in manager._circuit_breakers.values())
+
+    def test_clear_trading_blocks_keep_counters(self) -> None:
+        manager = self._make_manager()
+        manager._kill_switch_triggered = True
+        manager._circuit_breakers["consecutive_losses"] = True
+        manager._api_error_count = 2
+        manager._consecutive_losses = 5
+        manager._peak_balance = 6200.0
+
+        manager.clear_trading_blocks(reset_counters=False, reset_peak_balance=False)
+
+        allowed, reason = manager.is_trading_allowed()
+        assert allowed is True
+        assert reason == "Trading allowed"
+        assert manager._api_error_count == 2
+        assert manager._consecutive_losses == 5
+        assert manager._peak_balance == 6200.0
+
+    def test_warns_on_possible_stale_drawdown_anchor_once(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        manager = self._make_manager()
+        manager._peak_balance = 6200.0
+        manager._daily_pnl = 0.0
+
+        with caplog.at_level("WARNING"):
+            manager.record_trade("BTCUSDT", pnl=0.0, portfolio_value=5300.0)
+            manager.record_trade("BTCUSDT", pnl=0.0, portfolio_value=5300.0)
+
+        warnings = [
+            r.message
+            for r in caplog.records
+            if "Possible stale drawdown anchor" in r.message
+        ]
+        assert len(warnings) == 1

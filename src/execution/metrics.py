@@ -132,17 +132,20 @@ class ExecutionMetrics:
         """Record an order blocked by risk manager."""
         self.risk_blocks.labels(symbol=symbol, reason=reason).inc()
 
+    def record_realized_pnl(self, symbol: str, pnl: float) -> None:
+        """Record realized PnL for a closed position."""
+        self.realized_pnl.labels(symbol=symbol).observe(pnl)
+
+    def record_api_error(self, endpoint: str, error_code: str) -> None:
+        """Record an API error."""
+        self.api_errors.labels(endpoint=endpoint, error_code=error_code).inc()
+
     def record_signal(self, symbol: str, trading_mode: str, signal_type: str) -> None:
-        """Record a strategy signal routed for execution."""
         self.signals.labels(
             symbol=symbol,
             trading_mode=trading_mode,
             signal_type=signal_type,
         ).inc()
-
-    def record_api_error(self, endpoint: str, error_code: str) -> None:
-        """Record an API error."""
-        self.api_errors.labels(endpoint=endpoint, error_code=error_code).inc()
 
     def update_account_balance(
         self,
