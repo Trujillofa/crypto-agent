@@ -42,7 +42,7 @@ class TestStrategyConfidence:
             }
         )
 
-        # Case 1: Deep RSI oversold
+        # Case 1: Deep RSI oversold, in uptrend (price > ema_50)
         # RSI 20 (10 below 30). Boost = min(0.5, 10 * 0.05) = 0.5. Conf = 1.0
         signal = await strategy.evaluate(
             "BTCUSDT",
@@ -51,12 +51,13 @@ class TestStrategyConfidence:
                 "bb_upper_dist": 0.1,
                 "rsi_14": 20.0,
                 "close_price": 50000.0,
+                "ema_50": 49000.0,
             },
         )
         assert signal.type == SignalType.BUY
         assert abs(signal.confidence - 1.0) < 0.01
 
-        # Case 2: Shallow RSI oversold
+        # Case 2: Shallow RSI oversold, in uptrend
         # RSI 29 (1 below 30). Boost = min(0.5, 1 * 0.05) = 0.05. Conf = 0.55
         signal = await strategy.evaluate(
             "BTCUSDT",
@@ -65,6 +66,7 @@ class TestStrategyConfidence:
                 "bb_upper_dist": 0.1,
                 "rsi_14": 29.0,
                 "close_price": 50000.0,
+                "ema_50": 49000.0,
             },
         )
         assert signal.type == SignalType.BUY

@@ -18,10 +18,12 @@ class TestRSIReversalStrategy:
 
     @pytest.mark.asyncio
     async def test_neutral_hold(self, strategy):
-        await strategy.evaluate("BTCUSDT", {"rsi_14": 50.0, "close_price": 50000.0})
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 50.0, "close_price": 50000.0, "ema_50": 49000.0}
+        )
 
         signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 55.0, "close_price": 50100.0}
+            "BTCUSDT", {"rsi_14": 55.0, "close_price": 50100.0, "ema_50": 49000.0}
         )
 
         assert signal.type == SignalType.HOLD
@@ -29,12 +31,14 @@ class TestRSIReversalStrategy:
 
     @pytest.mark.asyncio
     async def test_bullish_reversal_buy(self, strategy):
-        # 1. Previous was oversold (20 < 30)
-        await strategy.evaluate("BTCUSDT", {"rsi_14": 20.0, "close_price": 49000.0})
+        # 1. Previous was oversold (20 < 30), price in uptrend (above ema_50)
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 20.0, "close_price": 49000.0, "ema_50": 48000.0}
+        )
 
-        # 2. Current crosses back up (35 >= 30)
+        # 2. Current crosses back up (35 >= 30), still in uptrend
         signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 35.0, "close_price": 49500.0}
+            "BTCUSDT", {"rsi_14": 35.0, "close_price": 49500.0, "ema_50": 48000.0}
         )
 
         assert signal.type == SignalType.BUY
@@ -45,13 +49,29 @@ class TestRSIReversalStrategy:
         assert 0.6 < signal.confidence < 0.7
 
     @pytest.mark.asyncio
-    async def test_bearish_reversal_sell(self, strategy):
-        # 1. Previous was overbought (80 > 70)
-        await strategy.evaluate("BTCUSDT", {"rsi_14": 80.0, "close_price": 55000.0})
+    async def test_bullish_reversal_blocked_in_downtrend(self, strategy):
+        # Previous was oversold, but price is in downtrend (below ema_50)
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 20.0, "close_price": 47000.0, "ema_50": 48000.0}
+        )
 
-        # 2. Current crosses back down (65 <= 70)
+        # Current crosses back up, but still in downtrend — should HOLD
         signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 65.0, "close_price": 54000.0}
+            "BTCUSDT", {"rsi_14": 35.0, "close_price": 47500.0, "ema_50": 48000.0}
+        )
+
+        assert signal.type == SignalType.HOLD
+
+    @pytest.mark.asyncio
+    async def test_bearish_reversal_sell(self, strategy):
+        # 1. Previous was overbought (80 > 70), price in downtrend (below ema_50)
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 80.0, "close_price": 55000.0, "ema_50": 56000.0}
+        )
+
+        # 2. Current crosses back down (65 <= 70), still in downtrend
+        signal = await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 65.0, "close_price": 54000.0, "ema_50": 56000.0}
         )
 
         assert signal.type == SignalType.SELL
@@ -59,13 +79,29 @@ class TestRSIReversalStrategy:
         assert "crossed below 70.0" in signal.reason
 
     @pytest.mark.asyncio
+    async def test_bearish_reversal_blocked_in_uptrend(self, strategy):
+        # Previous was overbought, but price is in uptrend (above ema_50)
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 80.0, "close_price": 55000.0, "ema_50": 50000.0}
+        )
+
+        # Current crosses back down, but still in uptrend — should HOLD
+        signal = await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 65.0, "close_price": 54000.0, "ema_50": 50000.0}
+        )
+
+        assert signal.type == SignalType.HOLD
+
+    @pytest.mark.asyncio
     async def test_entering_oversold_zone_no_signal(self, strategy):
         # Previous 35 (neutral)
-        await strategy.evaluate("BTCUSDT", {"rsi_14": 35.0, "close_price": 50000.0})
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 35.0, "close_price": 50000.0, "ema_50": 49000.0}
+        )
 
         # Current 25 (oversold, but no crossover UP)
         signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 25.0, "close_price": 49000.0}
+            "BTCUSDT", {"rsi_14": 25.0, "close_price": 49000.0, "ema_50": 48000.0}
         )
 
         assert signal.type == SignalType.HOLD
@@ -74,11 +110,13 @@ class TestRSIReversalStrategy:
     @pytest.mark.asyncio
     async def test_entering_overbought_zone_no_signal(self, strategy):
         # Previous 65 (neutral)
-        await strategy.evaluate("BTCUSDT", {"rsi_14": 65.0, "close_price": 50000.0})
+        await strategy.evaluate(
+            "BTCUSDT", {"rsi_14": 65.0, "close_price": 50000.0, "ema_50": 49000.0}
+        )
 
         # Current 75 (overbought, but no crossover DOWN)
         signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 75.0, "close_price": 51000.0}
+            "BTCUSDT", {"rsi_14": 75.0, "close_price": 51000.0, "ema_50": 49000.0}
         )
 
         assert signal.type == SignalType.HOLD

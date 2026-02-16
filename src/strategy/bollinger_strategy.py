@@ -27,6 +27,7 @@ class BollingerBounceStrategy(BaseStrategy):
             "bb_lower_dist",
             "rsi_14",
             "close_price",
+            "ema_50",
         }
 
         for k in required_indicators:
@@ -37,8 +38,9 @@ class BollingerBounceStrategy(BaseStrategy):
         bb_lower_dist = indicators["bb_lower_dist"]
         rsi = indicators["rsi_14"]
         close_price = indicators["close_price"]
+        ema_50 = indicators["ema_50"]
 
-        if bb_upper_dist is None or bb_lower_dist is None or rsi is None:
+        if bb_upper_dist is None or bb_lower_dist is None or rsi is None or ema_50 is None:
             return Signal(
                 type=SignalType.HOLD,
                 symbol=symbol,
@@ -48,6 +50,10 @@ class BollingerBounceStrategy(BaseStrategy):
                 indicators={},
             )
 
+        # Trend gate: only BUY in uptrend, SELL in downtrend
+        in_uptrend = close_price > ema_50
+        in_downtrend = close_price < ema_50
+
         signal_type = SignalType.HOLD
         confidence = 0.0
         reason = (
@@ -55,32 +61,28 @@ class BollingerBounceStrategy(BaseStrategy):
         )
 
         if bb_lower_dist <= self._band_dist_threshold:
-            if rsi < self._rsi_oversold:
+            if rsi < self._rsi_oversold and in_uptrend:
                 signal_type = SignalType.BUY
-                # Calculate confidence: Base 0.5 + boost from RSI depth
-                # RSI 10 points below threshold gives max boost (0.5)
                 rsi_diff = max(0.0, self._rsi_oversold - rsi)
                 confidence = 0.5 + min(0.5, rsi_diff * 0.05)
                 reason = (
                     f"Price at Lower Band (Dist: {bb_lower_dist:.4f}) "
-                    f"& RSI Oversold ({rsi:.2f}, Conf: {confidence:.2f})"
+                    f"& RSI Oversold ({rsi:.2f}, Conf: {confidence:.2f}, trend UP)"
                 )
             else:
-                reason += " - RSI not oversold"
+                reason += " - RSI not oversold or downtrend"
 
         elif bb_upper_dist <= self._band_dist_threshold:
-            if rsi > self._rsi_overbought:
+            if rsi > self._rsi_overbought and in_downtrend:
                 signal_type = SignalType.SELL
-                # Calculate confidence: Base 0.5 + boost from RSI depth
-                # RSI 10 points above threshold gives max boost (0.5)
                 rsi_diff = max(0.0, rsi - self._rsi_overbought)
                 confidence = 0.5 + min(0.5, rsi_diff * 0.05)
                 reason = (
                     f"Price at Upper Band (Dist: {bb_upper_dist:.4f}) "
-                    f"& RSI Overbought ({rsi:.2f}, Conf: {confidence:.2f})"
+                    f"& RSI Overbought ({rsi:.2f}, Conf: {confidence:.2f}, trend DOWN)"
                 )
             else:
-                reason += " - RSI not overbought"
+                reason += " - RSI not overbought or uptrend"
 
         signal = Signal(
             type=signal_type,

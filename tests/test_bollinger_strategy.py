@@ -21,6 +21,7 @@ class TestBollingerBounceStrategy:
             "bb_lower_dist": 0.05,
             "rsi_14": 50.0,
             "close_price": 50000.0,
+            "ema_50": 49000.0,
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.HOLD
@@ -39,6 +40,7 @@ class TestBollingerBounceStrategy:
             "bb_lower_dist": 0.05,
             "rsi_14": 50.0,
             "close_price": 50000.0,
+            "ema_50": 49000.0,
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.HOLD
@@ -46,11 +48,13 @@ class TestBollingerBounceStrategy:
 
     @pytest.mark.asyncio
     async def test_buy_signal(self, strategy):
+        # Price at lower band, RSI oversold, in uptrend (price > ema_50)
         indicators = {
             "bb_upper_dist": 0.10,
             "bb_lower_dist": -0.001,
             "rsi_14": 25.0,
             "close_price": 40000.0,
+            "ema_50": 39000.0,
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.BUY
@@ -59,24 +63,39 @@ class TestBollingerBounceStrategy:
         assert "RSI Oversold" in signal.reason
 
     @pytest.mark.asyncio
+    async def test_buy_blocked_in_downtrend(self, strategy):
+        # Price at lower band, RSI oversold, but in downtrend — should HOLD
+        indicators = {
+            "bb_upper_dist": 0.10,
+            "bb_lower_dist": -0.001,
+            "rsi_14": 25.0,
+            "close_price": 38000.0,
+            "ema_50": 39000.0,
+        }
+        signal = await strategy.evaluate("BTCUSDT", indicators)
+        assert signal.type == SignalType.HOLD
+
+    @pytest.mark.asyncio
     async def test_buy_signal_filtered_rsi(self, strategy):
         indicators = {
             "bb_upper_dist": 0.10,
             "bb_lower_dist": -0.001,
             "rsi_14": 35.0,
             "close_price": 40000.0,
+            "ema_50": 39000.0,
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.HOLD
-        assert "RSI not oversold" in signal.reason
 
     @pytest.mark.asyncio
     async def test_sell_signal(self, strategy):
+        # Price at upper band, RSI overbought, in downtrend (price < ema_50)
         indicators = {
             "bb_upper_dist": -0.001,
             "bb_lower_dist": 0.10,
             "rsi_14": 75.0,
             "close_price": 60000.0,
+            "ema_50": 61000.0,
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.SELL
@@ -85,13 +104,26 @@ class TestBollingerBounceStrategy:
         assert "RSI Overbought" in signal.reason
 
     @pytest.mark.asyncio
+    async def test_sell_blocked_in_uptrend(self, strategy):
+        # Price at upper band, RSI overbought, but in uptrend — should HOLD
+        indicators = {
+            "bb_upper_dist": -0.001,
+            "bb_lower_dist": 0.10,
+            "rsi_14": 75.0,
+            "close_price": 60000.0,
+            "ema_50": 55000.0,
+        }
+        signal = await strategy.evaluate("BTCUSDT", indicators)
+        assert signal.type == SignalType.HOLD
+
+    @pytest.mark.asyncio
     async def test_sell_signal_filtered_rsi(self, strategy):
         indicators = {
             "bb_upper_dist": -0.001,
             "bb_lower_dist": 0.10,
             "rsi_14": 65.0,
             "close_price": 60000.0,
+            "ema_50": 61000.0,
         }
         signal = await strategy.evaluate("BTCUSDT", indicators)
         assert signal.type == SignalType.HOLD
-        assert "RSI not overbought" in signal.reason

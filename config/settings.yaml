@@ -94,6 +94,6 @@ strategy:
         rsi_max_entry: 75
         rsi_min_entry: 25
   aggregator:
-    min_agreement: 1
+    min_agreement: 2
     buy_threshold: 0.4
     sell_threshold: -0.4
