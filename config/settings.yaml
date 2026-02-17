@@ -50,7 +50,9 @@ trading_execution:
   api_key: ""  # Set via BINANCE_API_KEY environment variable
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
-  order_size_usdt: 200.0  # 2% of $10k paper balance
+  order_size_usdt: 100.0  # 1% of $10k paper balance
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.03
 
 futures:
   enabled: true  # Futures demo trading enabled
@@ -66,7 +68,7 @@ futures:
 
 strategy:
   evaluation_interval_seconds: 60
-  cooldown_candles: 6
+  cooldown_candles: 10
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
@@ -75,12 +77,12 @@ strategy:
         ema_long_period: 26
     - name: rsi_reversal
       config:
-        rsi_period: 14
+        rsi_period: 7
         oversold_threshold: 30
         overbought_threshold: 70
     - name: macd_histogram
       config:
-        min_histogram_threshold: 0.0
+        min_histogram_threshold: 0.0001
         use_atr_filter: true
     - name: bollinger_bounce
       config:
@@ -91,9 +93,9 @@ strategy:
       config:
         rsi_buy_threshold: 60
         rsi_sell_threshold: 40
-        rsi_max_entry: 75
-        rsi_min_entry: 25
+        rsi_max_entry: 80
+        rsi_min_entry: 20
   aggregator:
     min_agreement: 2
-    buy_threshold: 1.0
-    sell_threshold: -1.0
+    buy_threshold: 1.2
+    sell_threshold: -1.2

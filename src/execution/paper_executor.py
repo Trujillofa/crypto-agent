@@ -46,6 +46,8 @@ class PaperTradingConfig:
     futures_leverage: int = 3
     fee_rate_spot: float = 0.001  # 0.1% per trade (Binance spot taker)
     fee_rate_futures: float = 0.0004  # 0.04% per trade (Binance futures taker)
+    stop_loss_pct: float = 0.01
+    take_profit_pct: float = 0.03
 
 
 class PaperExecutor:
@@ -85,10 +87,55 @@ class PaperExecutor:
 
         await self._notifier.__aenter__()
         self._metrics.start_trading()
+
+        # Restore state from PortfolioManager if available
+        restored_count = 0
+        if self._portfolio_manager:
+            for pos in self._portfolio_manager.get_all_positions():
+                # Determine market tag and check if it matches our config
+                if ":" in pos.symbol:
+                    # Format: "SYMBOL:market" (e.g. "BTCUSDT:spot")
+                    symbol_base, market_tag = pos.symbol.split(":", 1)
+                else:
+                    # Legacy or simple format
+                    symbol_base = pos.symbol
+                    market_tag = "spot"
+
+                # Filter out positions that shouldn't be managed by this executor
+                # (Simulated logic: if we have futures config, we manage futures; always manage spot)
+                is_futures = market_tag == "futures"
+
+                # Determine side
+                side = pos.position_side or "LONG"
+
+                # Create PaperPosition
+                paper_pos = PaperPosition(
+                    symbol=symbol_base,
+                    side=side,
+                    quantity=pos.quantity,
+                    entry_price=pos.entry_price,
+                    open_time=pos.entry_time.timestamp(),
+                )
+
+                # Add to simulated state
+                self._positions[pos.symbol] = paper_pos
+                restored_count += 1
+
+                # Adjust balance (deduct margin used)
+                notional = pos.quantity * pos.entry_price
+                if is_futures:
+                    leverage = pos.leverage or self._config.futures_leverage
+                    margin_used = notional / leverage
+                else:
+                    margin_used = notional
+
+                self._balance -= margin_used
+
         self._logger.info(
-            "PaperExecutor initialized: balance=%.2f USDT, order_size=%.2f USDT",
+            "PaperExecutor initialized: balance=%.2f USDT, order_size=%.2f USDT, restored_positions=%d",
             self._balance,
             self._config.order_size_usdt,
+            restored_count,
         )
         return self
 
@@ -112,9 +159,6 @@ class PaperExecutor:
 
     async def on_signal(self, signal: Signal) -> None:
         """Handle a trading signal by simulating the fill."""
-        if signal.type == SignalType.HOLD:
-            return
-
         if not self._config.enabled:
             return
 
@@ -122,6 +166,12 @@ class PaperExecutor:
         market_tag = "futures" if is_futures else "spot"
 
         try:
+            if await self._check_stop_take(signal, market_tag, is_futures):
+                return
+
+            if signal.type == SignalType.HOLD:
+                return
+
             if signal.type == SignalType.BUY:
                 await self._handle_buy(signal, market_tag, is_futures)
             elif signal.type == SignalType.SELL:
@@ -132,6 +182,66 @@ class PaperExecutor:
                 f"<b>Paper signal failed</b> [{market_tag}]\n"
                 f"{signal.symbol} {signal.type.value} — {exc}"
             )
+
+    async def _check_stop_take(
+        self, signal: Signal, market_tag: str, is_futures: bool
+    ) -> bool:
+        pos_key = f"{signal.symbol}:{market_tag}"
+        position = self._positions.get(pos_key)
+        if position is None:
+            return False
+
+        stop_loss_pct = self._config.stop_loss_pct
+        take_profit_pct = self._config.take_profit_pct
+        if stop_loss_pct <= 0 and take_profit_pct <= 0:
+            return False
+
+        entry_price = position.entry_price
+        current_price = signal.price
+        reason = None
+
+        if position.side == "LONG":
+            if stop_loss_pct > 0 and current_price <= entry_price * (1 - stop_loss_pct):
+                reason = "STOP_LOSS"
+            elif take_profit_pct > 0 and current_price >= entry_price * (
+                1 + take_profit_pct
+            ):
+                reason = "TAKE_PROFIT"
+        else:
+            if stop_loss_pct > 0 and current_price >= entry_price * (1 + stop_loss_pct):
+                reason = "STOP_LOSS"
+            elif take_profit_pct > 0 and current_price <= entry_price * (
+                1 - take_profit_pct
+            ):
+                reason = "TAKE_PROFIT"
+
+        if reason is None:
+            return False
+
+        self._logger.info(
+            "Paper %s triggered for %s [%s]: entry=%.4f current=%.4f",
+            reason,
+            signal.symbol,
+            market_tag,
+            entry_price,
+            current_price,
+        )
+        await self._notifier.send_alert(
+            f"<b>Paper exit</b> [{market_tag}]\n"
+            f"{signal.symbol} {reason} — entry {entry_price:.4f} → {current_price:.4f}"
+        )
+
+        exit_signal = Signal(
+            type=SignalType.SELL,
+            symbol=signal.symbol,
+            price=current_price,
+            confidence=signal.confidence,
+            reason=reason,
+            indicators=signal.indicators,
+            trading_mode=signal.trading_mode,
+        )
+        await self._handle_sell(exit_signal, market_tag, is_futures)
+        return True
 
     async def _handle_buy(
         self, signal: Signal, market_tag: str, is_futures: bool
@@ -172,7 +282,9 @@ class PaperExecutor:
             return
 
         # Simulate fill with fee
-        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+        fee_rate = (
+            self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+        )
         fee = order_usdt * fee_rate
         quantity = order_usdt / signal.price
         self._balance -= margin_needed + fee
@@ -190,7 +302,9 @@ class PaperExecutor:
         if self._portfolio_manager:
             try:
                 await self._portfolio_manager.open_position(
-                    symbol=pos_key, quantity=quantity, price=signal.price,
+                    symbol=pos_key,
+                    quantity=quantity,
+                    price=signal.price,
                 )
             except Exception as exc:  # noqa: BLE001
                 self._logger.warning("Portfolio DB write failed (buy): %s", exc)
@@ -245,7 +359,9 @@ class PaperExecutor:
         if is_futures:
             gross_pnl *= self._config.futures_leverage
 
-        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+        fee_rate = (
+            self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+        )
         sell_notional = position.quantity * signal.price
         fee = sell_notional * fee_rate
         net_pnl = gross_pnl - fee
@@ -269,7 +385,8 @@ class PaperExecutor:
         if self._portfolio_manager:
             try:
                 await self._portfolio_manager.close_position(
-                    symbol=pos_key, price=signal.price,
+                    symbol=pos_key,
+                    price=signal.price,
                 )
             except Exception as exc:  # noqa: BLE001
                 self._logger.warning("Portfolio DB write failed (sell): %s", exc)

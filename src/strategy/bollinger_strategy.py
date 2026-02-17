@@ -40,7 +40,12 @@ class BollingerBounceStrategy(BaseStrategy):
         close_price = indicators["close_price"]
         ema_50 = indicators["ema_50"]
 
-        if bb_upper_dist is None or bb_lower_dist is None or rsi is None or ema_50 is None:
+        if (
+            bb_upper_dist is None
+            or bb_lower_dist is None
+            or rsi is None
+            or ema_50 is None
+        ):
             return Signal(
                 type=SignalType.HOLD,
                 symbol=symbol,
@@ -61,28 +66,34 @@ class BollingerBounceStrategy(BaseStrategy):
         )
 
         if bb_lower_dist <= self._band_dist_threshold:
-            if rsi < self._rsi_oversold and in_uptrend:
-                signal_type = SignalType.BUY
-                rsi_diff = max(0.0, self._rsi_oversold - rsi)
-                confidence = 0.5 + min(0.5, rsi_diff * 0.05)
-                reason = (
-                    f"Price at Lower Band (Dist: {bb_lower_dist:.4f}) "
-                    f"& RSI Oversold ({rsi:.2f}, Conf: {confidence:.2f}, trend UP)"
-                )
+            if rsi < self._rsi_oversold:
+                if in_uptrend:
+                    signal_type = SignalType.BUY
+                    rsi_diff = max(0.0, self._rsi_oversold - rsi)
+                    confidence = 0.5 + min(0.5, rsi_diff * 0.05)
+                    reason = (
+                        f"Price at Lower Band (Dist: {bb_lower_dist:.4f}) "
+                        f"& RSI Oversold ({rsi:.2f}, Conf: {confidence:.2f})"
+                    )
+                else:
+                    reason = "Blocked by trend filter (price below EMA50)"
             else:
-                reason += " - RSI not oversold or downtrend"
+                reason += " - RSI not oversold"
 
         elif bb_upper_dist <= self._band_dist_threshold:
-            if rsi > self._rsi_overbought and in_downtrend:
-                signal_type = SignalType.SELL
-                rsi_diff = max(0.0, rsi - self._rsi_overbought)
-                confidence = 0.5 + min(0.5, rsi_diff * 0.05)
-                reason = (
-                    f"Price at Upper Band (Dist: {bb_upper_dist:.4f}) "
-                    f"& RSI Overbought ({rsi:.2f}, Conf: {confidence:.2f}, trend DOWN)"
-                )
+            if rsi > self._rsi_overbought:
+                if in_downtrend:
+                    signal_type = SignalType.SELL
+                    rsi_diff = max(0.0, rsi - self._rsi_overbought)
+                    confidence = 0.5 + min(0.5, rsi_diff * 0.05)
+                    reason = (
+                        f"Price at Upper Band (Dist: {bb_upper_dist:.4f}) "
+                        f"& RSI Overbought ({rsi:.2f}, Conf: {confidence:.2f})"
+                    )
+                else:
+                    reason = "Blocked by trend filter (price above EMA50)"
             else:
-                reason += " - RSI not overbought or uptrend"
+                reason += " - RSI not overbought"
 
         signal = Signal(
             type=signal_type,

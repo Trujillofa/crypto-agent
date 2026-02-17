@@ -72,41 +72,57 @@ class RSIReversalStrategy(BaseStrategy):
 
         # Crossover Up (Bullish Reversal): Previous < 30 and Current >= 30
         if (
-            in_uptrend
-            and rsi_previous < self._oversold_threshold
+            rsi_previous < self._oversold_threshold
             and rsi_current >= self._oversold_threshold
         ):
             depth = self._oversold_threshold - rsi_previous
             confidence = 0.5 + (depth / 30.0) * 0.5
             confidence = min(0.95, confidence)
-
-            signal = Signal(
-                type=SignalType.BUY,
-                symbol=symbol,
-                price=close_price,
-                confidence=confidence,
-                reason=f"RSI({self._rsi_period}) crossed above {self._oversold_threshold} (prev: {rsi_previous:.2f}, trend UP)",
-                indicators={rsi_key: rsi_current, "close_price": close_price},
-            )
+            if in_uptrend:
+                signal = Signal(
+                    type=SignalType.BUY,
+                    symbol=symbol,
+                    price=close_price,
+                    confidence=confidence,
+                    reason=f"RSI({self._rsi_period}) crossed above {self._oversold_threshold} (prev: {rsi_previous:.2f})",
+                    indicators={rsi_key: rsi_current, "close_price": close_price},
+                )
+            else:
+                signal = Signal(
+                    type=SignalType.HOLD,
+                    symbol=symbol,
+                    price=close_price,
+                    confidence=0.0,
+                    reason="Blocked by trend filter (price below EMA50)",
+                    indicators={rsi_key: rsi_current, "close_price": close_price},
+                )
 
         # Crossover Down (Bearish Reversal): Previous > 70 and Current <= 70
         elif (
-            in_downtrend
-            and rsi_previous > self._overbought_threshold
+            rsi_previous > self._overbought_threshold
             and rsi_current <= self._overbought_threshold
         ):
             excess = rsi_previous - self._overbought_threshold
             confidence = 0.5 + (excess / 30.0) * 0.5
             confidence = min(0.95, confidence)
-
-            signal = Signal(
-                type=SignalType.SELL,
-                symbol=symbol,
-                price=close_price,
-                confidence=confidence,
-                reason=f"RSI({self._rsi_period}) crossed below {self._overbought_threshold} (prev: {rsi_previous:.2f}, trend DOWN)",
-                indicators={rsi_key: rsi_current, "close_price": close_price},
-            )
+            if in_downtrend:
+                signal = Signal(
+                    type=SignalType.SELL,
+                    symbol=symbol,
+                    price=close_price,
+                    confidence=confidence,
+                    reason=f"RSI({self._rsi_period}) crossed below {self._overbought_threshold} (prev: {rsi_previous:.2f})",
+                    indicators={rsi_key: rsi_current, "close_price": close_price},
+                )
+            else:
+                signal = Signal(
+                    type=SignalType.HOLD,
+                    symbol=symbol,
+                    price=close_price,
+                    confidence=0.0,
+                    reason="Blocked by trend filter (price above EMA50)",
+                    indicators={rsi_key: rsi_current, "close_price": close_price},
+                )
 
         self._previous_rsi[symbol] = rsi_current
         self._logger.debug(f"{self.get_name()} generated {signal} for {symbol}")

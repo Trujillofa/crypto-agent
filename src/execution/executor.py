@@ -27,6 +27,8 @@ class TradingConfig:
     enabled: bool = False
     symbols: list[str] = field(default_factory=list)
     order_size_usdt: float = 100.0  # Default order size in USDT
+    stop_loss_pct: float = 0.0
+    take_profit_pct: float = 0.0
 
 
 class TradingExecutor:

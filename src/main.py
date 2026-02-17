@@ -163,6 +163,16 @@ def load_settings(config_path: Path) -> Settings:
             "trading_execution.order_size_usdt",
             default=100.0,
         ),
+        stop_loss_pct=_as_float(
+            trading_exec.get("stop_loss_pct"),
+            "trading_execution.stop_loss_pct",
+            default=0.01,
+        ),
+        take_profit_pct=_as_float(
+            trading_exec.get("take_profit_pct"),
+            "trading_execution.take_profit_pct",
+            default=0.03,
+        ),
     )
 
     # Parse default trading mode (spot or futures)
@@ -319,6 +329,8 @@ def load_settings(config_path: Path) -> Settings:
                 enabled=trading_config.enabled,
                 symbols=trading_config.symbols,
                 order_size_usdt=trading_config.order_size_usdt,
+                stop_loss_pct=trading_config.stop_loss_pct,
+                take_profit_pct=trading_config.take_profit_pct,
             )
 
     # Parse futures configuration
@@ -523,7 +535,10 @@ async def run() -> None:
     if not is_allowed:
         logger = get_logger("main")
         if settings.mode == "paper":
-            logger.warning("Trading blocked at startup: %s (paper mode — will auto-reset if configured)", reason)
+            logger.warning(
+                "Trading blocked at startup: %s (paper mode — will auto-reset if configured)",
+                reason,
+            )
         else:
             logger.error("Trading blocked: %s", reason)
             return
@@ -636,6 +651,8 @@ async def run() -> None:
             symbols=settings.trading_pairs,
             futures_symbols=futures_symbols,
             futures_leverage=futures_leverage,
+            stop_loss_pct=settings.trading_execution.stop_loss_pct,
+            take_profit_pct=settings.trading_execution.take_profit_pct,
         )
         paper_executor = PaperExecutor(
             config=paper_config,
@@ -770,12 +787,17 @@ async def run() -> None:
 
             async def on_signal_paper(signal: Signal) -> None:
                 execution_metrics.record_signal(
-                    signal.symbol, signal.trading_mode, signal.type.value,
+                    signal.symbol,
+                    signal.trading_mode,
+                    signal.type.value,
                 )
                 await paper_executor.on_signal(signal)
 
                 # Mirror to futures if applicable
-                if signal.symbol in paper_futures_symbols and signal.trading_mode != "futures":
+                if (
+                    signal.symbol in paper_futures_symbols
+                    and signal.trading_mode != "futures"
+                ):
                     mirrored = Signal(
                         type=signal.type,
                         symbol=signal.symbol,
@@ -786,7 +808,9 @@ async def run() -> None:
                         trading_mode="futures",
                     )
                     execution_metrics.record_signal(
-                        mirrored.symbol, mirrored.trading_mode, mirrored.type.value,
+                        mirrored.symbol,
+                        mirrored.trading_mode,
+                        mirrored.type.value,
                     )
                     await paper_executor.on_signal(mirrored)
 
@@ -898,7 +922,10 @@ async def run() -> None:
                 risk_summary,
                 telegram_notifier.is_configured(),
                 "paper" if paper_executor else "live",
-                "enabled" if futures_executor or (paper_executor and paper_executor._config.futures_symbols) else "disabled",
+                "enabled"
+                if futures_executor
+                or (paper_executor and paper_executor._config.futures_symbols)
+                else "disabled",
                 "enabled" if overseer_agent else "disabled",
             )
 
