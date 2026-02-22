@@ -819,7 +819,7 @@ async def run() -> None:
                     await paper_executor.on_signal(mirrored)
 
             strategy_task = asyncio.create_task(
-                strategy_engine.run(on_signal=on_signal_paper)
+                strategy_engine.run(on_signal=on_signal_paper, on_tick=paper_executor.on_tick)
             )
             futures_task = None
             futures_ingest_task = None

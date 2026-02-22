@@ -79,15 +79,22 @@ class StrategyEngine:
     async def run(
         self,
         on_signal: Callable[[Signal], Awaitable[Any]] | None = None,
+        on_tick: Callable[[str, float, dict[str, float]], Awaitable[Any]] | None = None,
     ) -> None:
-        """Main evaluation loop."""
+        """Main evaluation loop.
+
+        Args:
+            on_signal: Called when a BUY/SELL consensus signal fires.
+            on_tick: Called every cycle for every symbol with (symbol, price, indicators).
+                     Used to check SL/TP/trailing independently of signal generation.
+        """
         if not self._strategies:
             self._logger.warning("No strategies initialized")
             return
 
         try:
             while self._running:
-                await self._evaluate_all(on_signal)
+                await self._evaluate_all(on_signal, on_tick)
                 await asyncio.sleep(self._config.evaluation_interval_seconds)
         except asyncio.CancelledError:
             self._logger.info("StrategyEngine loop cancelled")
@@ -95,6 +102,7 @@ class StrategyEngine:
     async def _evaluate_all(
         self,
         on_signal: Callable[[Signal], Awaitable[Any]] | None = None,
+        on_tick: Callable[[str, float, dict[str, float]], Awaitable[Any]] | None = None,
     ) -> None:
         """Evaluate all strategies for all symbols and aggregate results."""
         evaluated = 0
@@ -108,6 +116,14 @@ class StrategyEngine:
                 continue
 
             evaluated += 1
+
+            # Emit tick for position monitoring (SL/TP/trailing) every cycle
+            if on_tick and "close_price" in indicators:
+                try:
+                    await on_tick(symbol, indicators["close_price"], indicators)
+                except Exception as exc:  # noqa: BLE001
+                    self._logger.error("on_tick failed for %s: %s", symbol, exc)
+
             generated_signals = []
             for strategy in self._strategies.get(symbol, []):
                 try:
@@ -119,6 +135,38 @@ class StrategyEngine:
 
             if generated_signals:
                 final_signal = self._aggregator.aggregate(symbol, generated_signals)
+
+                if final_signal.type == SignalType.BUY:
+                    price = indicators["close_price"]
+                    ema_200 = indicators["ema_200"]
+                    if ema_200 is not None and price < ema_200:
+                        self._logger.info(
+                            "Blocked by Global Trend Filter (Price < EMA200) for %s: price=%.2f ema_200=%.2f",
+                            symbol,
+                            price,
+                            ema_200,
+                        )
+                        final_signal = Signal(
+                            type=SignalType.HOLD,
+                            symbol=symbol,
+                            price=price,
+                            confidence=0.0,
+                            reason="Blocked by Global Trend Filter (Price < EMA200)",
+                            indicators=final_signal.indicators,
+                            trading_mode=final_signal.trading_mode,
+                        )
+
+                # Inject atr_14 from indicators into the signal if not already present
+                if "atr_14" in indicators and "atr_14" not in final_signal.indicators:
+                    final_signal = Signal(
+                        type=final_signal.type,
+                        symbol=final_signal.symbol,
+                        price=final_signal.price,
+                        confidence=final_signal.confidence,
+                        reason=final_signal.reason,
+                        indicators={**final_signal.indicators, "atr_14": indicators["atr_14"]},
+                        trading_mode=final_signal.trading_mode,
+                    )
 
                 if final_signal.type != SignalType.HOLD:
                     timeframe_seconds = _TIMEFRAME_SECONDS.get(self._config.timeframe)
@@ -167,7 +215,7 @@ class StrategyEngine:
             symbol: Trading pair symbol
 
         Returns:
-            Dict with ema_12, ema_26, close_price keys.
+            Dict with ema_12, ema_26, ema_200, close_price keys.
             None if insufficient data (< 2 rows for crossover detection).
         """
         rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
@@ -177,7 +225,7 @@ class StrategyEngine:
             )
             return None
         latest = rows[-1]
-        required_keys = ("ema_12", "ema_26", "close_price")
+        required_keys = ("ema_12", "ema_26", "ema_200", "close_price")
         missing = [key for key in required_keys if key not in latest]
         if missing:
             self._logger.warning(

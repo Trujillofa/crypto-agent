@@ -16,6 +16,14 @@ Co-Authored-By: OpenCode <noreply@openai.com>
 - **Config**: `config/settings.yaml` + env vars for secrets
 - **Safety**: Paper trading is the default. Never bypass risk checks.
 
+## Server Access
+
+- SSH alias: `ssh crypto-agent` (configured in `~/.ssh/config`)
+- Deploy dir: `/opt/crypto-agent`
+- Deploy: `ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"`
+- Logs: `ssh crypto-agent "cd /opt/crypto-agent && docker compose logs agent --tail=100 --no-log-prefix"`
+- Branch: `feat/tune-strategy-config`
+
 ## Before editing any file
 
 1. Read the file first to check for recent changes.

@@ -23,6 +23,10 @@ class PaperPosition:
     quantity: float  # base asset units
     entry_price: float
     open_time: float
+    atr_at_entry: float = 0.0  # ATR(14) value at entry
+    sl_price: float = 0.0  # computed at entry: entry - sl_mult * ATR
+    tp_price: float = 0.0  # computed at entry: entry + tp_mult * ATR
+    highest_price: float = 0.0  # for trailing stop tracking
 
     @property
     def notional(self) -> float:
@@ -46,8 +50,13 @@ class PaperTradingConfig:
     futures_leverage: int = 3
     fee_rate_spot: float = 0.001  # 0.1% per trade (Binance spot taker)
     fee_rate_futures: float = 0.0004  # 0.04% per trade (Binance futures taker)
-    stop_loss_pct: float = 0.01
-    take_profit_pct: float = 0.03
+    stop_loss_pct: float = 0.03  # fallback if ATR unavailable
+    take_profit_pct: float = 0.06  # fallback if ATR unavailable
+    # ATR-based SL/TP (primary)
+    sl_atr_multiplier: float = 2.0  # SL = entry - 2.0 * ATR
+    tp_atr_multiplier: float = 4.5  # TP = entry + 4.5 * ATR
+    trailing_activate_atr: float = 1.5  # activate trailing after +1.5 * ATR profit
+    trailing_offset_atr: float = 1.0  # trail SL at highest - 1.0 * ATR
 
 
 class PaperExecutor:
@@ -158,7 +167,12 @@ class PaperExecutor:
         self._running = False
 
     async def on_signal(self, signal: Signal) -> None:
-        """Handle a trading signal by simulating the fill."""
+        """Handle a trading signal by simulating the fill.
+
+        Strategy SELL signals are ignored — exits happen only via SL/TP/trailing
+        from on_tick(). This prevents late strategy sells from interfering with
+        ATR-based risk management.
+        """
         if not self._config.enabled:
             return
 
@@ -166,16 +180,17 @@ class PaperExecutor:
         market_tag = "futures" if is_futures else "spot"
 
         try:
-            if await self._check_stop_take(signal, market_tag, is_futures):
-                return
-
             if signal.type == SignalType.HOLD:
                 return
 
             if signal.type == SignalType.BUY:
                 await self._handle_buy(signal, market_tag, is_futures)
             elif signal.type == SignalType.SELL:
-                await self._handle_sell(signal, market_tag, is_futures)
+                self._logger.info(
+                    "Strategy SELL ignored for %s [%s] — exits via SL/TP/trailing only",
+                    signal.symbol,
+                    market_tag,
+                )
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Paper signal failed: %s — %s", signal.symbol, exc)
             await self._notifier.send_alert(
@@ -183,62 +198,104 @@ class PaperExecutor:
                 f"{signal.symbol} {signal.type.value} — {exc}"
             )
 
-    async def _check_stop_take(
-        self, signal: Signal, market_tag: str, is_futures: bool
+    async def on_tick(
+        self, symbol: str, price: float, indicators: dict[str, float]
+    ) -> None:
+        """Check SL/TP/trailing for all positions of this symbol. Called every cycle."""
+        if not self._config.enabled:
+            return
+
+        for market_tag in ("spot", "futures"):
+            pos_key = f"{symbol}:{market_tag}"
+            position = self._positions.get(pos_key)
+            if position is None:
+                continue
+            is_futures = market_tag == "futures"
+            await self._check_position_exit(position, pos_key, price, market_tag, is_futures)
+
+    async def _check_position_exit(
+        self,
+        position: PaperPosition,
+        pos_key: str,
+        current_price: float,
+        market_tag: str,
+        is_futures: bool,
     ) -> bool:
-        pos_key = f"{signal.symbol}:{market_tag}"
-        position = self._positions.get(pos_key)
-        if position is None:
-            return False
-
-        stop_loss_pct = self._config.stop_loss_pct
-        take_profit_pct = self._config.take_profit_pct
-        if stop_loss_pct <= 0 and take_profit_pct <= 0:
-            return False
-
+        """Check SL/TP/trailing stop for a single position. Returns True if exited."""
         entry_price = position.entry_price
-        current_price = signal.price
+        atr = position.atr_at_entry
         reason = None
 
-        if position.side == "LONG":
-            if stop_loss_pct > 0 and current_price <= entry_price * (1 - stop_loss_pct):
-                reason = "STOP_LOSS"
-            elif take_profit_pct > 0 and current_price >= entry_price * (
-                1 + take_profit_pct
-            ):
-                reason = "TAKE_PROFIT"
+        if atr > 0:
+            # ATR-based SL/TP
+            # Update highest price for trailing stop
+            if current_price > position.highest_price:
+                position.highest_price = current_price
+
+            # Check trailing stop activation
+            trailing_activation = entry_price + self._config.trailing_activate_atr * atr
+            if position.highest_price >= trailing_activation:
+                trailing_sl = position.highest_price - self._config.trailing_offset_atr * atr
+                if trailing_sl > position.sl_price:
+                    position.sl_price = trailing_sl
+
+            if position.side == "LONG":
+                if current_price <= position.sl_price:
+                    reason = "STOP_LOSS"
+                elif current_price >= position.tp_price:
+                    reason = "TAKE_PROFIT"
+            else:
+                # SHORT: SL is above entry, TP is below entry
+                if current_price >= position.sl_price:
+                    reason = "STOP_LOSS"
+                elif current_price <= position.tp_price:
+                    reason = "TAKE_PROFIT"
         else:
-            if stop_loss_pct > 0 and current_price >= entry_price * (1 + stop_loss_pct):
-                reason = "STOP_LOSS"
-            elif take_profit_pct > 0 and current_price <= entry_price * (
-                1 - take_profit_pct
-            ):
-                reason = "TAKE_PROFIT"
+            # Fallback to fixed percentage
+            stop_loss_pct = self._config.stop_loss_pct
+            take_profit_pct = self._config.take_profit_pct
+            if stop_loss_pct <= 0 and take_profit_pct <= 0:
+                return False
+
+            if position.side == "LONG":
+                if stop_loss_pct > 0 and current_price <= entry_price * (1 - stop_loss_pct):
+                    reason = "STOP_LOSS"
+                elif take_profit_pct > 0 and current_price >= entry_price * (1 + take_profit_pct):
+                    reason = "TAKE_PROFIT"
+            else:
+                if stop_loss_pct > 0 and current_price >= entry_price * (1 + stop_loss_pct):
+                    reason = "STOP_LOSS"
+                elif take_profit_pct > 0 and current_price <= entry_price * (1 - take_profit_pct):
+                    reason = "TAKE_PROFIT"
 
         if reason is None:
             return False
 
+        sl_info = f"sl={position.sl_price:.4f}" if atr > 0 else f"sl_pct={self._config.stop_loss_pct}"
+        tp_info = f"tp={position.tp_price:.4f}" if atr > 0 else f"tp_pct={self._config.take_profit_pct}"
         self._logger.info(
-            "Paper %s triggered for %s [%s]: entry=%.4f current=%.4f",
+            "Paper %s triggered for %s [%s]: entry=%.4f current=%.4f (%s, %s)",
             reason,
-            signal.symbol,
+            position.symbol,
             market_tag,
             entry_price,
             current_price,
+            sl_info,
+            tp_info,
         )
         await self._notifier.send_alert(
             f"<b>Paper exit</b> [{market_tag}]\n"
-            f"{signal.symbol} {reason} — entry {entry_price:.4f} → {current_price:.4f}"
+            f"{position.symbol} {reason} — entry {entry_price:.4f} → {current_price:.4f}"
         )
 
         exit_signal = Signal(
             type=SignalType.SELL,
-            symbol=signal.symbol,
+            symbol=position.symbol,
             price=current_price,
-            confidence=signal.confidence,
+            confidence=1.0,
             reason=reason,
-            indicators=signal.indicators,
-            trading_mode=signal.trading_mode,
+            indicators={},
+            trading_mode="futures" if is_futures else "spot",
         )
         await self._handle_sell(exit_signal, market_tag, is_futures)
         return True
@@ -289,12 +346,28 @@ class PaperExecutor:
         quantity = order_usdt / signal.price
         self._balance -= margin_needed + fee
         self._total_fees += fee
+
+        # Compute ATR-based SL/TP levels
+        atr_14 = signal.indicators.get("atr_14", 0.0)
+        entry_price = signal.price
+        if atr_14 > 0:
+            sl_price = entry_price - self._config.sl_atr_multiplier * atr_14
+            tp_price = entry_price + self._config.tp_atr_multiplier * atr_14
+        else:
+            # Fallback to fixed pct
+            sl_price = entry_price * (1 - self._config.stop_loss_pct) if self._config.stop_loss_pct > 0 else 0.0
+            tp_price = entry_price * (1 + self._config.take_profit_pct) if self._config.take_profit_pct > 0 else 0.0
+
         self._positions[pos_key] = PaperPosition(
             symbol=signal.symbol,
             side="LONG",
             quantity=quantity,
-            entry_price=signal.price,
+            entry_price=entry_price,
             open_time=time.time(),
+            atr_at_entry=atr_14,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            highest_price=entry_price,
         )
         self._trade_count += 1
 
@@ -310,15 +383,17 @@ class PaperExecutor:
                 self._logger.warning("Portfolio DB write failed (buy): %s", exc)
 
         leverage_text = f" ({self._config.futures_leverage}x)" if is_futures else ""
+        atr_text = f", ATR={atr_14:.4f}, SL={sl_price:.4f}, TP={tp_price:.4f}" if atr_14 > 0 else " (fixed % SL/TP)"
         self._logger.info(
-            "Paper BUY %s [%s%s]: qty=%.6f @ %.4f (%.2f USDT, fee=%.2f)",
+            "Paper BUY %s [%s%s]: qty=%.6f @ %.4f (%.2f USDT, fee=%.2f%s)",
             signal.symbol,
             market_tag,
             leverage_text,
             quantity,
-            signal.price,
+            entry_price,
             order_usdt,
             fee,
+            atr_text,
         )
 
         self._metrics.record_order_placed(
@@ -345,12 +420,8 @@ class PaperExecutor:
         position = self._positions.get(pos_key)
 
         if position is None:
-            self._logger.info(
+            self._logger.debug(
                 "SELL ignored: no %s position for %s", market_tag, signal.symbol
-            )
-            await self._notifier.send_alert(
-                f"<b>Paper signal skipped</b> [{market_tag}]\n"
-                f"{signal.symbol} SELL — no position"
             )
             return
 
