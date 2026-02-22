@@ -10,12 +10,13 @@ sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.features.reader import IndicatorReader
-from src.strategy.macd_strategy import MACDHistogramStrategy
-from src.strategy.bollinger_strategy import BollingerBounceStrategy
-from src.strategy.momentum_strategy import MomentumStrategy
+from src.utils.logger import configure_logger
+from src.main import load_settings, _resolve_strategy_config
+from pathlib import Path
 
 
 async def main():
+    configure_logger("INFO")
     parser = argparse.ArgumentParser(description="Run crypto strategy backtest")
     parser.add_argument(
         "--symbol", type=str, required=True, help="Trading pair (e.g. BTCUSDT)"
@@ -33,8 +34,29 @@ async def main():
     parser.add_argument(
         "--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)"
     )
+    parser.add_argument(
+        "--sl", type=float, default=0.0, help="Stop loss percentage (e.g. 0.01 for 1%%)"
+    )
+    parser.add_argument(
+        "--tp", type=float, default=0.0, help="Take profit percentage (e.g. 0.02 for 2%%)"
+    )
+    parser.add_argument(
+        "--config", type=str, default="config/settings.yaml", help="Path to config file"
+    )
 
     args = parser.parse_args()
+
+    # Load settings from config file
+    try:
+        settings = load_settings(Path(args.config))
+        strategy_classes, strategy_configs, aggregator_config = _resolve_strategy_config(
+            settings.strategy
+        )
+        print(f"Loaded configuration from {args.config}")
+    except Exception as e:
+        print(f"Failed to load config from {args.config}: {e}")
+        # Fallback to defaults or exit? Let's exit to enforce config usage.
+        return
 
     db_config = {
         "host": os.getenv("DB_HOST", "localhost"),
@@ -44,32 +66,23 @@ async def main():
         "password": os.getenv("DB_PASSWORD", "trading"),
     }
 
-    strategies = [MACDHistogramStrategy, BollingerBounceStrategy, MomentumStrategy]
-
-    strategy_configs = [
-        {"min_histogram_threshold": 0.0, "use_atr_filter": True},
-        {"band_distance_threshold": 0.0, "rsi_oversold": 30.0, "rsi_overbought": 70.0},
-        {"rsi_buy_threshold": 60.0},
-    ]
-
     config = BacktestConfig(
         symbol=args.symbol,
         timeframe=args.timeframe,
-        start_date=args.start,
-        end_date=args.end,
+        start_date=datetime.fromisoformat(args.start),
+        end_date=datetime.fromisoformat(args.end),
         initial_capital=args.capital,
         fee_rate=args.fee,
-        strategy_classes=strategies,
+        stop_loss_pct=args.sl,
+        take_profit_pct=args.tp,
+        strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
-        aggregator_config={
-            "min_agreement": 2,
-            "buy_threshold": 0.5,
-            "sell_threshold": -0.5,
-        },
+        aggregator_config=aggregator_config,
     )
 
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
-    print(f"Strategies: {[s.__name__ for s in strategies]}")
+    print(f"Strategies: {[s.__name__ for s in strategy_classes]}")
+    print(f"Aggregator Config: {aggregator_config}")
 
     reader = IndicatorReader(db_config)
     async with reader:
