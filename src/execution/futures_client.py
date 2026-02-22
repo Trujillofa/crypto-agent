@@ -103,10 +103,21 @@ class BinanceFuturesClient:
         self._last_time_sync = 0.0
         self._time_sync_interval_seconds = 60.0
         self._symbol_filters: dict[str, dict[str, float]] = {}
+        self._price_filters: dict[str, dict[str, float]] = {}
 
     async def __aenter__(self) -> BinanceFuturesClient:
         self._session = aiohttp.ClientSession()
         return self
+
+    def format_price(self, symbol: str, price: float) -> str:
+        """Round price to the symbol's PRICE_FILTER tickSize."""
+        filt = self._price_filters.get(symbol)
+        if not filt:
+            return f"{price:.2f}"
+        tick = filt["tickSize"]
+        precision = max(0, int(round(-math.log10(tick)))) if tick < 1 else 0
+        rounded = round(price / tick) * tick
+        return f"{rounded:.{precision}f}"
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._session is not None:
@@ -131,7 +142,10 @@ class BinanceFuturesClient:
                         "stepSize": float(filt["stepSize"]),
                         "minQty": float(filt["minQty"]),
                     }
-                    break
+                elif filt["filterType"] == "PRICE_FILTER":
+                    self._price_filters[symbol] = {
+                        "tickSize": float(filt["tickSize"]),
+                    }
 
         self._logger.info(
             "Loaded futures LOT_SIZE filters for %d symbols",
@@ -351,6 +365,7 @@ class BinanceFuturesClient:
         order_type: str = "MARKET",
         reduce_only: bool = False,
         position_side: str = "LONG",
+        stop_price: float | None = None,
     ) -> FuturesOrderInfo:
         """Place a futures order.
 
@@ -383,6 +398,11 @@ class BinanceFuturesClient:
 
         if reduce_only:
             params["reduceOnly"] = "true"
+
+        if stop_price is not None:
+            params["stopPrice"] = self.format_price(symbol, stop_price)
+            params["workingType"] = "MARK_PRICE"
+            params["priceProtect"] = "TRUE"
 
         data = await self._request(
             "POST",
@@ -460,6 +480,19 @@ class BinanceFuturesClient:
             available_balance=float(data.get("availableBalance", 0)),
             unrealized_pnl=float(data.get("totalUnrealizedProfit", 0)),
             margin_ratio=float(data.get("marginRatio", 0)),
+        )
+
+    async def cancel_all_open_orders(self, symbol: str) -> dict[str, Any]:
+        """Cancel all open orders for a symbol.
+
+        Endpoint: DELETE /fapi/v1/allOpenOrders
+        Used to clean up SL/TP bracket orders when closing a position.
+        """
+        return await self._request(
+            "DELETE",
+            "/fapi/v1/allOpenOrders",
+            params={"symbol": symbol},
+            signed=True,
         )
 
     async def cancel_order(self, symbol: str, order_id: str) -> dict[str, Any]:

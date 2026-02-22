@@ -34,6 +34,11 @@ class FuturesTradingConfig:
     position_mode: str = "one-way"
     order_size_usdt: float = 100.0
     liquidation_buffer_pct: float = 5.0
+    # SL/TP — ATR-based (primary) with fixed-pct fallback
+    sl_atr_multiplier: float = 2.0   # SL = entry - mult * ATR(14)
+    tp_atr_multiplier: float = 4.5   # TP = entry + mult * ATR(14)
+    stop_loss_pct: float = 0.03      # fallback if ATR unavailable
+    take_profit_pct: float = 0.06    # fallback if ATR unavailable
 
 
 class FuturesTradingExecutor:
@@ -56,6 +61,7 @@ class FuturesTradingExecutor:
         self._client: BinanceFuturesClient | None = None
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
+        self._sl_tp_orders: dict[str, dict[str, str]] = {}  # symbol → {sl_order_id, tp_order_id}
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -165,6 +171,15 @@ class FuturesTradingExecutor:
                         "leverage": pos.leverage,
                         "unrealized_pnl": pos.unrealized_pnl,
                     }
+
+                # Position closed by exchange-side SL/TP — clean up tracking
+                if not positions and symbol in self._sl_tp_orders:
+                    self._logger.info(
+                        "Position %s closed by exchange SL/TP — clearing order tracking",
+                        symbol,
+                    )
+                    self._sl_tp_orders.pop(symbol, None)
+
             except Exception as exc:
                 self._logger.error(
                     "Failed to get position risk for %s: %s", symbol, exc
@@ -342,16 +357,33 @@ class FuturesTradingExecutor:
                     break
 
             if signal.type == SignalType.BUY:
-                # Open or add to LONG position
-                if current_position is None:
-                    # No position - open new LONG
-                    await self.place_futures_order(
+                if current_position is not None:
+                    # Already have a position with active SL/TP — skip
+                    self._logger.info(
+                        "BUY ignored: already have position for %s with active SL/TP",
+                        signal.symbol,
+                    )
+                else:
+                    # No position — open new LONG
+                    qty = self._calculate_quantity(signal.symbol, signal.price)
+                    order = await self.place_futures_order(
                         symbol=signal.symbol,
                         side="BUY",
-                        quantity=self._calculate_quantity(signal.symbol),
+                        quantity=qty,
                         position_side="LONG",
                         reduce_only=False,
                     )
+                    if order.status == "FILLED":
+                        entry_price = (
+                            float(order.price)
+                            if order.price and order.price > 0
+                            else signal.price
+                        )
+                        filled_qty = order.executed_quantity if order.executed_quantity > 0 else qty
+                        atr_14 = float(signal.indicators.get("atr_14") or 0.0)
+                        await self._place_sl_tp_orders(
+                            signal.symbol, entry_price, filled_qty, atr_14
+                        )
                     await self._notifier.send_trade_alert(
                         symbol=signal.symbol,
                         side="BUY",
@@ -360,51 +392,17 @@ class FuturesTradingExecutor:
                         pnl=None,
                         market="futures",
                     )
-                elif current_position.position_side == "LONG":
-                    # Already have LONG position - add to it (pyramiding)
-                    self._logger.info(
-                        "Already in LONG position for %s. Adding to position.",
-                        signal.symbol,
-                    )
-                    await self.place_futures_order(
-                        symbol=signal.symbol,
-                        side="BUY",
-                        quantity=self._calculate_quantity(signal.symbol),
-                        position_side="LONG",
-                        reduce_only=False,
-                    )
-                else:
-                    # Have SHORT position - this shouldn't happen in LONG-only MVP
-                    self._logger.warning(
-                        "BUY signal but have SHORT position for %s. Closing SHORT first.",
-                        signal.symbol,
-                    )
-                    # Close SHORT with reduceOnly
-                    await self.place_futures_order(
-                        symbol=signal.symbol,
-                        side="BUY",  # BUY to close SHORT
-                        quantity=abs(current_position.position_amt),
-                        position_side="SHORT",
-                        reduce_only=True,
-                    )
-                    # Then open LONG
-                    await self.place_futures_order(
-                        symbol=signal.symbol,
-                        side="BUY",
-                        quantity=self._calculate_quantity(signal.symbol),
-                        position_side="LONG",
-                        reduce_only=False,
-                    )
 
             elif signal.type == SignalType.SELL:
-                # Close LONG position (reduceOnly)
+                # Close LONG position: cancel exchange SL/TP orders first, then market close
                 if current_position and current_position.position_side == "LONG":
+                    await self._cancel_sl_tp_orders(signal.symbol)
                     await self.place_futures_order(
                         symbol=signal.symbol,
                         side="SELL",
                         quantity=current_position.position_amt,
                         position_side="LONG",
-                        reduce_only=True,  # Important: only reduce, don't flip
+                        reduce_only=True,
                     )
                     pnl = current_position.unrealized_pnl
                     await self._notifier.send_trade_alert(
@@ -420,10 +418,6 @@ class FuturesTradingExecutor:
                         "SELL signal but no LONG position for %s. Ignoring.",
                         signal.symbol,
                     )
-                    await self._notifier.send_alert(
-                        f"<b>Signal skipped</b> [futures]\n"
-                        f"{signal.symbol} SELL — no LONG position"
-                    )
 
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Futures signal rejected: %s — %s", signal, exc)
@@ -432,25 +426,104 @@ class FuturesTradingExecutor:
                 f"{signal.symbol} {signal.type.value} — {exc}"
             )
 
-    def _calculate_quantity(self, symbol: str) -> float:
-        """Calculate order quantity based on config.
+    def _calculate_quantity(self, symbol: str, price: float) -> float:
+        """Calculate order quantity as order_size_usdt / current price.
 
-        For futures, this returns the base asset quantity based on order_size_usdt
-        and current price. For now, returns a fixed quantity.
-
-        Args:
-            symbol: Trading pair symbol
-
-        Returns:
-            float: Order quantity in base asset units
+        The client's format_quantity will round to the correct LOT_SIZE step.
         """
-        # TODO: Get current price and calculate quantity
-        # For now, return a reasonable default based on symbol
-        defaults = {
-            "BTCUSDT": 0.01,  # ~$500-1000 at current prices
-            "ETHUSDT": 0.1,  # ~$300-500 at current prices
+        if price <= 0:
+            self._logger.warning("Invalid price %.4f for %s", price, symbol)
+            return 0.0
+        return self._config.order_size_usdt / price
+
+    async def _place_sl_tp_orders(
+        self,
+        symbol: str,
+        entry_price: float,
+        quantity: float,
+        atr_14: float,
+    ) -> None:
+        """Place exchange-side STOP_MARKET (SL) and TAKE_PROFIT_MARKET (TP) orders.
+
+        Uses ATR-based levels when atr_14 > 0, falls back to fixed percentage otherwise.
+        Both orders are reduceOnly so they can only close the existing LONG.
+        """
+        if atr_14 > 0:
+            sl_price = entry_price - self._config.sl_atr_multiplier * atr_14
+            tp_price = entry_price + self._config.tp_atr_multiplier * atr_14
+        else:
+            sl_price = (
+                entry_price * (1 - self._config.stop_loss_pct)
+                if self._config.stop_loss_pct > 0
+                else 0.0
+            )
+            tp_price = (
+                entry_price * (1 + self._config.take_profit_pct)
+                if self._config.take_profit_pct > 0
+                else 0.0
+            )
+
+        sl_order_id = ""
+        tp_order_id = ""
+
+        if sl_price > 0:
+            try:
+                sl_order = await self._client.place_order(
+                    symbol=symbol,
+                    side="SELL",
+                    quantity=quantity,
+                    order_type="STOP_MARKET",
+                    reduce_only=True,
+                    stop_price=sl_price,
+                )
+                sl_order_id = sl_order.order_id
+                self._logger.info(
+                    "SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14
+                )
+            except Exception as exc:
+                self._logger.error("Failed to place SL order for %s: %s", symbol, exc)
+
+        if tp_price > 0:
+            try:
+                tp_order = await self._client.place_order(
+                    symbol=symbol,
+                    side="SELL",
+                    quantity=quantity,
+                    order_type="TAKE_PROFIT_MARKET",
+                    reduce_only=True,
+                    stop_price=tp_price,
+                )
+                tp_order_id = tp_order.order_id
+                self._logger.info(
+                    "TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14
+                )
+            except Exception as exc:
+                self._logger.error("Failed to place TP order for %s: %s", symbol, exc)
+
+        self._sl_tp_orders[symbol] = {
+            "sl_order_id": sl_order_id,
+            "tp_order_id": tp_order_id,
         }
-        return defaults.get(symbol, 0.01)
+
+    async def _cancel_sl_tp_orders(self, symbol: str) -> None:
+        """Cancel tracked SL/TP orders for a symbol before a manual close."""
+        tracked = self._sl_tp_orders.pop(symbol, None)
+        if not tracked:
+            return
+        for label, order_id in [
+            ("SL", tracked.get("sl_order_id")),
+            ("TP", tracked.get("tp_order_id")),
+        ]:
+            if order_id:
+                try:
+                    await self._client.cancel_order(symbol, order_id)
+                    self._logger.info("Cancelled %s order %s for %s", label, order_id, symbol)
+                except Exception as exc:
+                    # Order may already be filled or cancelled by the exchange — fine
+                    self._logger.debug(
+                        "Cancel %s order %s for %s (may already be closed): %s",
+                        label, order_id, symbol, exc,
+                    )
 
     def stop(self) -> None:
         """Stop the futures trading loop."""

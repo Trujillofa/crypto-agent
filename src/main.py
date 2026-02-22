@@ -694,6 +694,8 @@ async def run() -> None:
                 position_mode=settings.futures.position_mode,
                 order_size_usdt=settings.trading_execution.order_size_usdt,
                 liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+                stop_loss_pct=settings.trading_execution.stop_loss_pct,
+                take_profit_pct=settings.trading_execution.take_profit_pct,
             )
 
             futures_executor = FuturesTradingExecutor(
