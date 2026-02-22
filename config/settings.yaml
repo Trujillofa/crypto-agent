@@ -51,8 +51,14 @@ trading_execution:
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
   order_size_usdt: 100.0  # 1% of $10k paper balance
-  stop_loss_pct: 0.01
-  take_profit_pct: 0.03
+  # Fixed SL/TP as fallback only (ATR-based is primary)
+  stop_loss_pct: 0.03  # 3% fallback if ATR unavailable
+  take_profit_pct: 0.06  # 6% fallback if ATR unavailable
+  # ATR-based SL/TP (primary)
+  sl_atr_multiplier: 2.0   # SL = entry - 2.0 * ATR(14)
+  tp_atr_multiplier: 4.5   # TP = entry + 4.5 * ATR(14)
+  trailing_activate_atr: 1.5  # activate trailing after +1.5 * ATR profit
+  trailing_offset_atr: 1.0    # trail SL at highest - 1.0 * ATR
 
 futures:
   enabled: true  # Futures demo trading enabled
@@ -68,7 +74,7 @@ futures:
 
 strategy:
   evaluation_interval_seconds: 60
-  cooldown_candles: 10
+  cooldown_candles: 5
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
@@ -96,6 +102,6 @@ strategy:
         rsi_max_entry: 80
         rsi_min_entry: 20
   aggregator:
-    min_agreement: 2
-    buy_threshold: 1.2
-    sell_threshold: -1.2
+    min_agreement: 1
+    buy_threshold: 0.55
+    sell_threshold: -0.5

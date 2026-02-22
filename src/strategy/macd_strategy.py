@@ -71,9 +71,9 @@ class MACDHistogramStrategy(BaseStrategy):
         strength_bonus = min(0.5, hist_ratio * 250)  # 0.002 * 250 = 0.5
         base_confidence = 0.5
 
-        # EMA(50) trend gate: only allow signals in trend direction
+        # EMA(50) trend gate: only gate BUY (avoid buying into downtrends)
+        # SELL has no gate — bearish crossovers fire regardless of trend direction
         in_uptrend = close_price > ema_50
-        in_downtrend = close_price < ema_50
 
         if hist_previous < 0 and hist_current > 0:
             if abs(hist_current) >= self._min_hist_threshold:
@@ -92,12 +92,9 @@ class MACDHistogramStrategy(BaseStrategy):
         elif hist_previous > 0 and hist_current < 0:
             if abs(hist_current) >= self._min_hist_threshold:
                 if not is_low_volatility:
-                    if in_downtrend:
-                        signal_type = SignalType.SELL
-                        confidence = base_confidence + strength_bonus
-                        reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f}) [price < EMA50]"
-                    else:
-                        reason += " - Counter-trend (price > EMA50)"
+                    signal_type = SignalType.SELL
+                    confidence = base_confidence + strength_bonus
+                    reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
                 else:
                     reason += " - Low Volatility"
             else:
