@@ -65,6 +65,14 @@ futures:
   symbols:
     - BTCUSDT
     - ETHUSDT
+    - SOLUSDT
+    - BNBUSDT
+    - ADAUSDT
+    - XRPUSDT
+    - DOTUSDT
+    - DOGEUSDT
+    - AVAXUSDT
+    - LINKUSDT
   default_leverage: 3  # Conservative default
   max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
   margin_mode: isolated  # isolated only for MVP
@@ -75,7 +83,7 @@ futures:
 strategy:
   evaluation_interval_seconds: 60
   cooldown_candles: 10
-  default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
+  default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: rsi_reversal
       config:
