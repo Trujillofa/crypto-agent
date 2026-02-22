@@ -1,4 +1,4 @@
-mode: paper
+mode: live
 log_level: INFO
 
 trading:
@@ -38,7 +38,7 @@ prometheus:
   port: 8000
 
 trading_execution:
-  enabled: true  # Paper trading enabled
+  enabled: true  # Futures demo trading via demo-fapi.binance.com
   api_key: ""  # Set via BINANCE_API_KEY environment variable
   api_secret: ""  # Set via BINANCE_API_SECRET environment variable
   test_mode: true  # Set to false for live trading
