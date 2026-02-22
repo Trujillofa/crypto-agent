@@ -74,7 +74,7 @@ futures:
 
 strategy:
   evaluation_interval_seconds: 60
-  cooldown_candles: 5
+  cooldown_candles: 10
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
@@ -102,6 +102,6 @@ strategy:
         rsi_max_entry: 80
         rsi_min_entry: 20
   aggregator:
-    min_agreement: 1
-    buy_threshold: 0.55
-    sell_threshold: -0.5
+    min_agreement: 2
+    buy_threshold: 1.2
+    sell_threshold: -0.65
