@@ -62,7 +62,7 @@ def test_settings_all_required_sections():
         "ERROR",
     ), "Invalid log level"
     assert len(settings.trading_pairs) > 0, "Must have at least one trading pair"
-    assert settings.timeframe in ("1m", "5m", "15m", "1h"), "Invalid timeframe"
+    assert settings.timeframe in ("1m", "5m", "15m", "1h", "4h"), "Invalid timeframe"
     assert settings.database is not None, "Database config required"
     assert settings.prometheus_port > 0, "Prometheus port required"
     assert settings.trading_execution is not None, "Trading execution config required"

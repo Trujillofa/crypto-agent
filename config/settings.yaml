@@ -3,17 +3,9 @@ log_level: INFO
 
 trading:
   pairs:
-    - BTCUSDT
-    - ETHUSDT
-    - SOLUSDT
     - BNBUSDT
-    - ADAUSDT
-    - XRPUSDT
-    - DOTUSDT
-    - DOGEUSDT
-    - AVAXUSDT
-    - LINKUSDT
-  timeframe: 5m
+    - SOLUSDT
+  timeframe: 4h
 
 ingest:
   use_websocket: true
@@ -63,16 +55,8 @@ trading_execution:
 futures:
   enabled: true  # Futures demo trading enabled
   symbols:
-    - BTCUSDT
-    - ETHUSDT
-    - SOLUSDT
     - BNBUSDT
-    - ADAUSDT
-    - XRPUSDT
-    - DOTUSDT
-    - DOGEUSDT
-    - AVAXUSDT
-    - LINKUSDT
+    - SOLUSDT
   default_leverage: 3  # Conservative default
   max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
   margin_mode: isolated  # isolated only for MVP
@@ -111,5 +95,5 @@ strategy:
         rsi_overbought: 60
   aggregator:
     min_agreement: 2
-    buy_threshold: 1.2
+    buy_threshold: 0.8
     sell_threshold: -0.65
