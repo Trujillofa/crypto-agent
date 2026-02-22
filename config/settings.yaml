@@ -77,10 +77,6 @@ strategy:
   cooldown_candles: 10
   default_trading_mode: spot  # "spot" or "futures" - determines where signals are routed
   strategies:
-    - name: simple_ma
-      config:
-        ema_short_period: 12
-        ema_long_period: 26
     - name: rsi_reversal
       config:
         rsi_period: 7
@@ -95,12 +91,16 @@ strategy:
         band_distance_threshold: 0.005
         rsi_oversold: 30
         rsi_overbought: 70
-    - name: momentum
+    - name: cci_breakout
       config:
-        rsi_buy_threshold: 60
-        rsi_sell_threshold: 40
-        rsi_max_entry: 80
-        rsi_min_entry: 20
+        cci_buy_threshold: 100
+        cci_sell_threshold: -100
+        atr_min_pct: 0.005
+    - name: vwap_reversion
+      config:
+        vwap_atr_multiplier: 1.5
+        rsi_oversold: 40
+        rsi_overbought: 60
   aggregator:
     min_agreement: 2
     buy_threshold: 1.2

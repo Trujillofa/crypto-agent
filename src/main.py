@@ -40,6 +40,8 @@ from src.strategy import (
     MACDHistogramStrategy,
     BollingerBounceStrategy,
     MomentumStrategy,
+    CCIBreakoutStrategy,
+    VWAPReversionStrategy,
 )
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
@@ -490,6 +492,8 @@ def _resolve_strategy_config(
         "macd_histogram": MACDHistogramStrategy,
         "bollinger_bounce": BollingerBounceStrategy,
         "momentum": MomentumStrategy,
+        "cci_breakout": CCIBreakoutStrategy,
+        "vwap_reversion": VWAPReversionStrategy,
     }
 
     strategy_classes: list[type[BaseStrategy]] = []
