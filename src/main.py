@@ -44,6 +44,7 @@ from src.strategy import (
     VWAPReversionStrategy,
 )
 from src.strategy.signals import Signal
+from src.strategy.lifecycle import LifecycleManager
 from src.utils.logger import configure_logger, get_logger
 
 
@@ -742,6 +743,30 @@ async def run() -> None:
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
     )
+
+    # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB
+    # Non-blocking — logs warnings but does not prevent startup
+    try:
+        lifecycle_db = {
+            "host": settings.database.get("host", "localhost"),
+            "port": int(settings.database.get("port", 5432)),
+            "user": settings.database.get("user", "postgres"),
+            "password": settings.database.get("password", ""),
+            "database": settings.database.get("name", "trading"),
+        }
+        async with LifecycleManager(lifecycle_db) as lifecycle:
+            strategy_names = [cls.__name__ for cls in strategy_classes]
+            all_live = await lifecycle.is_live(strategy_names)
+            if not all_live:
+                get_logger("lifecycle").warning(
+                    "Some strategies not promoted to 'live' in DB — "
+                    "run migration 004 and baseline_strategies.py to enable lifecycle gating"
+                )
+    except Exception as exc:
+        get_logger("lifecycle").debug(
+            "Lifecycle check skipped (table may not exist): %s", exc
+        )
+
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 
     stop_event = asyncio.Event()

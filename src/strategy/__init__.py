@@ -10,6 +10,7 @@ from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.momentum_strategy import MomentumStrategy
 from src.strategy.cci_strategy import CCIBreakoutStrategy
 from src.strategy.vwap_strategy import VWAPReversionStrategy
+from src.strategy.mean_reversion import MeanReversionStrategy
 
 __all__ = [
     "Signal",
@@ -24,4 +25,5 @@ __all__ = [
     "MomentumStrategy",
     "CCIBreakoutStrategy",
     "VWAPReversionStrategy",
+    "MeanReversionStrategy",
 ]
