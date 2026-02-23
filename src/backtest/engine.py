@@ -23,11 +23,11 @@ class BacktestConfig:
     stop_loss_pct: float = 0.0  # 0.0 = disabled
     take_profit_pct: float = 0.0  # 0.0 = disabled
     slippage_pct: float = 0.001  # 0.1% slippage per trade
-    risk_per_trade: float = (
-        0.02  # 2% risk of equity per trade (used if use_atr_sizing=True)
-    )
+    risk_per_trade: float = 0.02  # 2% risk of equity per trade (used if use_atr_sizing=True)
     use_atr_sizing: bool = False
     atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
+    apply_global_trend_filter: bool = True
+    allow_short: bool = False
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
@@ -39,7 +39,7 @@ class Trade:
 
     entry_time: str
     exit_time: str
-    side: str  # BUY
+    side: str
     entry_price: float
     exit_price: float
     quantity: float
@@ -112,24 +112,30 @@ class BacktestEngine:
             high_price = row.get("high_price", current_price)
             low_price = row.get("low_price", current_price)
 
-            if self._position_qty > 0:
+            if self._position_qty != 0:
                 if self._config.stop_loss_pct > 0:
-                    sl_price = self._position_entry_price * (
-                        1 - self._config.stop_loss_pct
-                    )
-                    if low_price <= sl_price:
-                        self._close_position(current_time, sl_price, reason="STOP_LOSS")
-                        continue
+                    if self._position_qty > 0:
+                        sl_price = self._position_entry_price * (1 - self._config.stop_loss_pct)
+                        if low_price <= sl_price:
+                            self._close_position(current_time, sl_price, reason="STOP_LOSS")
+                            continue
+                    else:
+                        sl_price = self._position_entry_price * (1 + self._config.stop_loss_pct)
+                        if high_price >= sl_price:
+                            self._close_position(current_time, sl_price, reason="STOP_LOSS")
+                            continue
 
                 if self._config.take_profit_pct > 0:
-                    tp_price = self._position_entry_price * (
-                        1 + self._config.take_profit_pct
-                    )
-                    if high_price >= tp_price:
-                        self._close_position(
-                            current_time, tp_price, reason="TAKE_PROFIT"
-                        )
-                        continue
+                    if self._position_qty > 0:
+                        tp_price = self._position_entry_price * (1 + self._config.take_profit_pct)
+                        if high_price >= tp_price:
+                            self._close_position(current_time, tp_price, reason="TAKE_PROFIT")
+                            continue
+                    else:
+                        tp_price = self._position_entry_price * (1 - self._config.take_profit_pct)
+                        if low_price <= tp_price:
+                            self._close_position(current_time, tp_price, reason="TAKE_PROFIT")
+                            continue
 
             signals = []
             for strategy in strategies:
@@ -141,15 +147,30 @@ class BacktestEngine:
 
             final_signal = self._aggregator.aggregate(self._config.symbol, signals)
 
+            if self._config.apply_global_trend_filter and final_signal.type == SignalType.BUY:
+                ema_200 = row.get("ema_200")
+                if ema_200 is not None and current_price < ema_200:
+                    final_signal = Signal(
+                        type=SignalType.HOLD,
+                        symbol=final_signal.symbol,
+                        price=final_signal.price,
+                        confidence=0.0,
+                        reason="Blocked by Global Trend Filter (Price < EMA200)",
+                        indicators=final_signal.indicators,
+                        trading_mode=final_signal.trading_mode,
+                    )
+
             atr = row.get("atr_14", 0.0)
             self._process_signal(final_signal, current_time, current_price, atr)
 
             equity = self._cash
             if self._position_qty > 0:
-                equity += self._position_qty * current_price
+                equity += (current_price - self._position_entry_price) * self._position_qty
+            elif self._position_qty < 0:
+                equity += (self._position_entry_price - current_price) * abs(self._position_qty)
             self._equity_curve.append(equity)
 
-        if self._position_qty > 0:
+        if self._position_qty != 0:
             last_price = data[-1]["close_price"]
             last_time = str(data[-1]["time"])
             self._close_position(last_time, last_price)
@@ -159,74 +180,91 @@ class BacktestEngine:
     def _process_signal(
         self, signal: Signal, timestamp: str, price: float, atr: float = 0.0
     ) -> None:
-        if signal.type == SignalType.BUY and self._position_qty == 0:
-            # Apply slippage on entry logic first to determine actual fill price
-            entry_price = price * (1 + self._config.slippage_pct)
+        if signal.type == SignalType.BUY:
+            if self._position_qty == 0:
+                self._open_long(timestamp, price, atr)
+            elif self._position_qty < 0:
+                self._close_position(timestamp, price, reason="SIGNAL")
 
-            if self._config.use_atr_sizing and atr > 0:
-                # Risk = Equity * Risk %
-                # Stop Distance = ATR * Multiplier
-                # Qty = Risk / Stop Distance
-                current_equity = self._cash  # No position, so equity == cash
-                risk_amount = current_equity * self._config.risk_per_trade
-                stop_distance = atr * self._config.atr_multiplier
+        elif signal.type == SignalType.SELL:
+            if self._position_qty > 0:
+                self._close_position(timestamp, price, reason="SIGNAL")
+            elif self._position_qty == 0 and self._config.allow_short:
+                self._open_short(timestamp, price, atr)
 
-                # Avoid division by zero
-                if stop_distance > 0:
-                    target_qty = risk_amount / stop_distance
-                else:
-                    target_qty = 0.0
+    def _calculate_entry_qty(self, entry_price: float, atr: float) -> float:
+        if entry_price <= 0:
+            return 0.0
 
-                # Check max purchasing power using ENTRY PRICE (not signal price)
-                max_qty = (self._cash * (1 - self._config.fee_rate)) / entry_price
-                qty = min(target_qty, max_qty)
-            else:
-                # Default: All-in
-                qty = (self._cash * (1 - self._config.fee_rate)) / entry_price
+        if self._config.use_atr_sizing and atr > 0:
+            risk_amount = self._cash * self._config.risk_per_trade
+            stop_distance = atr * self._config.atr_multiplier
+            target_qty = risk_amount / stop_distance if stop_distance > 0 else 0.0
+            max_qty = (self._cash * (1 - self._config.fee_rate)) / entry_price
+            return min(target_qty, max_qty)
 
-            cost = qty * entry_price
-            fee = cost * self._config.fee_rate
+        return (self._cash * (1 - self._config.fee_rate)) / entry_price
 
-            self._cash -= cost + fee
-            self._position_qty = qty
-            self._position_entry_price = entry_price
-            self._position_entry_fee = fee
-            self._position_entry_time = timestamp
+    def _open_long(self, timestamp: str, price: float, atr: float) -> None:
+        entry_price = price * (1 + self._config.slippage_pct)
+        qty = self._calculate_entry_qty(entry_price, atr)
+        notional = qty * entry_price
+        fee = notional * self._config.fee_rate
 
-        elif signal.type == SignalType.SELL and self._position_qty > 0:
-            self._close_position(timestamp, price, reason="SIGNAL")
+        self._cash -= fee
+        self._position_qty = qty
+        self._position_entry_price = entry_price
+        self._position_entry_fee = fee
+        self._position_entry_time = timestamp
 
-    def _close_position(
-        self, timestamp: str, price: float, reason: str = "SIGNAL"
-    ) -> None:
-        # Apply slippage on exit
-        # Selling pushes price down, so we get less
-        exit_price = price * (1 - self._config.slippage_pct)
+    def _open_short(self, timestamp: str, price: float, atr: float) -> None:
+        entry_price = price * (1 - self._config.slippage_pct)
+        qty = self._calculate_entry_qty(entry_price, atr)
+        notional = qty * entry_price
+        fee = notional * self._config.fee_rate
 
-        revenue = self._position_qty * exit_price
-        fee = revenue * self._config.fee_rate
-        net_revenue = revenue - fee
+        self._cash -= fee
+        self._position_qty = -qty
+        self._position_entry_price = entry_price
+        self._position_entry_fee = fee
+        self._position_entry_time = timestamp
 
-        cost_basis = self._position_qty * self._position_entry_price
-        total_cost = cost_basis + self._position_entry_fee
-        pnl = net_revenue - total_cost
+    def _close_position(self, timestamp: str, price: float, reason: str = "SIGNAL") -> None:
+        is_long = self._position_qty > 0
+        qty = abs(self._position_qty)
+
+        if is_long:
+            exit_price = price * (1 - self._config.slippage_pct)
+            gross_pnl = (exit_price - self._position_entry_price) * qty
+            trade_side = "BUY"
+        else:
+            exit_price = price * (1 + self._config.slippage_pct)
+            gross_pnl = (self._position_entry_price - exit_price) * qty
+            trade_side = "SELL"
+
+        exit_notional = qty * exit_price
+        exit_fee = exit_notional * self._config.fee_rate
+
+        pnl = gross_pnl - self._position_entry_fee - exit_fee
+        self._cash += gross_pnl - exit_fee
+
+        entry_notional = qty * self._position_entry_price
+        total_cost = entry_notional + self._position_entry_fee
         return_pct = (pnl / total_cost) * 100 if total_cost > 0 else 0.0
 
         trade = Trade(
             entry_time=self._position_entry_time,
             exit_time=timestamp,
-            side="BUY",
+            side=trade_side,
             entry_price=self._position_entry_price,
             exit_price=exit_price,
-            quantity=self._position_qty,
+            quantity=qty,
             pnl=pnl,
             return_pct=return_pct,
             exit_reason=reason,
         )
 
         self._trades.append(trade)
-
-        self._cash += net_revenue
         self._position_qty = 0.0
         self._position_entry_price = 0.0
         self._position_entry_fee = 0.0
@@ -236,9 +274,7 @@ class BacktestEngine:
         import math
 
         final_equity = (
-            self._equity_curve[-1]
-            if self._equity_curve
-            else self._config.initial_capital
+            self._equity_curve[-1] if self._equity_curve else self._config.initial_capital
         )
         total_return = final_equity - self._config.initial_capital
         total_return_pct = (total_return / self._config.initial_capital) * 100
@@ -254,15 +290,15 @@ class BacktestEngine:
         profit_factor = (
             (gross_profit / gross_loss)
             if gross_loss > 0
-            else float("inf") if gross_profit > 0 else 0.0
+            else float("inf")
+            if gross_profit > 0
+            else 0.0
         )
 
         avg_win = (gross_profit / len(wins)) if wins else 0.0
         avg_loss = (gross_loss / len(losses)) if losses else 0.0
         avg_win_loss_ratio = (
-            (avg_win / avg_loss)
-            if avg_loss > 0
-            else float("inf") if avg_win > 0 else 0.0
+            (avg_win / avg_loss) if avg_loss > 0 else float("inf") if avg_win > 0 else 0.0
         )
 
         # Drawdown
@@ -296,14 +332,17 @@ class BacktestEngine:
                 variance = sum((x - mean_return) ** 2 for x in returns) / len(returns)
                 std_return = math.sqrt(variance)
 
-                # Annualize (assuming 1m data = 525600 periods/year)
-                # Adjust periods based on config timeframe in future
-                periods_per_year = 365 * 24 * 60
+                # Annualize based on configured timeframe
+                _tf_minutes = {
+                    "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
+                    "1h": 60, "2h": 120, "4h": 240, "6h": 360, "8h": 480,
+                    "12h": 720, "1d": 1440, "3d": 4320, "1w": 10080,
+                }
+                tf_min = _tf_minutes.get(self._config.timeframe, 1)
+                periods_per_year = int(365 * 24 * 60 / tf_min)
 
                 if std_return > 0:
-                    sharpe_ratio = (mean_return / std_return) * math.sqrt(
-                        periods_per_year
-                    )
+                    sharpe_ratio = (mean_return / std_return) * math.sqrt(periods_per_year)
 
                 # Sortino (Downside deviation)
                 negative_returns = [r for r in returns if r < 0]
@@ -313,9 +352,7 @@ class BacktestEngine:
                     )  # Downside deviation uses total N
                     downside_std = math.sqrt(downside_variance)
                     if downside_std > 0:
-                        sortino_ratio = (mean_return / downside_std) * math.sqrt(
-                            periods_per_year
-                        )
+                        sortino_ratio = (mean_return / downside_std) * math.sqrt(periods_per_year)
 
         return BacktestResult(
             total_return=total_return,

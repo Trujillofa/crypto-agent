@@ -32,9 +32,10 @@ def test_settings_default_safe():
         "Test mode must be enabled by default for safety"
     )
 
-    # Strategy config should load with configured interval
-    assert settings.strategy.evaluation_interval_seconds == 60, (
-        "Evaluation interval should be 60 seconds"
+    with Path("config/settings.yaml").open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    assert settings.strategy.evaluation_interval_seconds == int(
+        raw["strategy"]["evaluation_interval_seconds"]
     )
 
 
@@ -163,9 +164,7 @@ async def test_full_flow_engine_to_executor():
         timeframe="1m",
         evaluation_interval_seconds=60,
         strategy_classes=[SimpleMACrossoverStrategy],
-        strategy_configs=[
-            {"ema_short_period": 12, "ema_long_period": 26}
-        ],  # LIST not dict!
+        strategy_configs=[{"ema_short_period": 12, "ema_long_period": 26}],  # LIST not dict!
     )
 
     # Create engine with mock reader
@@ -187,6 +186,4 @@ async def test_full_flow_engine_to_executor():
     # Verify signal was generated and passed to handler
     assert len(received_signals) == 1, "Should receive exactly one signal"
     assert received_signals[0].symbol == "BTCUSDT", "Signal should be for BTCUSDT"
-    assert received_signals[0].type == SignalType.BUY, (
-        "Should be BUY signal (ema_12 > ema_26)"
-    )
+    assert received_signals[0].type == SignalType.BUY, "Should be BUY signal (ema_12 > ema_26)"

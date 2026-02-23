@@ -15,9 +15,7 @@ class AlwaysBuyStrategy(BaseStrategy):
         if price == 101.0:
             return Signal(SignalType.BUY, symbol, price, 1.0, "Buy Trigger", indicators)
         elif price == 103.0:
-            return Signal(
-                SignalType.SELL, symbol, price, 1.0, "Sell Trigger", indicators
-            )
+            return Signal(SignalType.SELL, symbol, price, 1.0, "Sell Trigger", indicators)
 
         return Signal(SignalType.HOLD, symbol, price, 0.0, "Hold", indicators)
 
@@ -31,6 +29,17 @@ class BuyOnceStrategy(BaseStrategy):
         # Buy at 100
         if price == 100.0:
             return Signal(SignalType.BUY, symbol, price, 1.0, "Buy", indicators)
+        return Signal(SignalType.HOLD, symbol, price, 0.0, "Hold", indicators)
+
+
+class SellOnceStrategy(BaseStrategy):
+    def get_name(self):
+        return "SellOnce"
+
+    async def evaluate(self, symbol, indicators):
+        price = indicators["close_price"]
+        if price == 100.0:
+            return Signal(SignalType.SELL, symbol, price, 1.0, "Sell", indicators)
         return Signal(SignalType.HOLD, symbol, price, 0.0, "Hold", indicators)
 
 
@@ -202,4 +211,91 @@ class TestBacktestEngine:
         assert trade.entry_price == 100.0
         assert trade.exit_price == pytest.approx(110.0)
         assert trade.exit_reason == "TAKE_PROFIT"
+        assert trade.pnl > 0
+
+    @pytest.mark.asyncio
+    async def test_global_trend_filter_blocks_buy(self):
+        reader = IndicatorReader({})
+        reader._connected = True
+
+        data = [
+            {
+                "time": "2023-01-01T00:00:00",
+                "close_price": 100.0,
+                "ema_200": 120.0,
+            },
+            {
+                "time": "2023-01-01T00:01:00",
+                "close_price": 100.0,
+                "ema_200": 120.0,
+            },
+        ]
+
+        async def _mock_fetch(*args):
+            return data
+
+        reader.fetch_range = _mock_fetch
+
+        config = BacktestConfig(
+            symbol="BTCUSDT",
+            timeframe="1m",
+            start_date="2023-01-01",
+            end_date="2023-01-02",
+            initial_capital=10000.0,
+            fee_rate=0.0,
+            slippage_pct=0.0,
+            strategy_classes=[BuyOnceStrategy],
+            aggregator_config={"min_agreement": 1, "buy_threshold": 0.5},
+            apply_global_trend_filter=True,
+        )
+
+        engine = BacktestEngine(config, reader)
+        result = await engine.run()
+
+        assert result.total_trades == 0
+        assert result.final_equity == pytest.approx(10000.0)
+
+    @pytest.mark.asyncio
+    async def test_allow_short_opens_and_closes_short(self):
+        reader = IndicatorReader({})
+        reader._connected = True
+
+        data = [
+            {
+                "time": "2023-01-01T00:00:00",
+                "close_price": 100.0,
+            },
+            {
+                "time": "2023-01-01T00:01:00",
+                "close_price": 95.0,
+            },
+        ]
+
+        async def _mock_fetch(*args):
+            return data
+
+        reader.fetch_range = _mock_fetch
+
+        config = BacktestConfig(
+            symbol="BTCUSDT",
+            timeframe="1m",
+            start_date="2023-01-01",
+            end_date="2023-01-02",
+            initial_capital=10000.0,
+            fee_rate=0.0,
+            slippage_pct=0.0,
+            strategy_classes=[SellOnceStrategy],
+            aggregator_config={"min_agreement": 1, "sell_threshold": -0.5},
+            apply_global_trend_filter=False,
+            allow_short=True,
+        )
+
+        engine = BacktestEngine(config, reader)
+        result = await engine.run()
+
+        assert result.total_trades == 1
+        trade = result.trades[0]
+        assert trade.side == "SELL"
+        assert trade.entry_price == pytest.approx(100.0)
+        assert trade.exit_price == pytest.approx(95.0)
         assert trade.pnl > 0
