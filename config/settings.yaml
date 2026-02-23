@@ -3,9 +3,8 @@ log_level: INFO
 
 trading:
   pairs:
-    - BNBUSDT
     - SOLUSDT
-  timeframe: 1m
+  timeframe: 4h
 
 ingest:
   use_websocket: true
@@ -44,8 +43,8 @@ trading_execution:
   test_mode: true  # Set to false for live trading
   order_size_usdt: 100.0  # 1% of $10k paper balance
   # Fixed SL/TP as fallback only (ATR-based is primary)
-  stop_loss_pct: 0.03  # 3% fallback if ATR unavailable
-  take_profit_pct: 0.06  # 6% fallback if ATR unavailable
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.05
   # ATR-based SL/TP (primary)
   sl_atr_multiplier: 2.0   # SL = entry - 2.0 * ATR(14)
   tp_atr_multiplier: 4.5   # TP = entry + 4.5 * ATR(14)
@@ -55,7 +54,6 @@ trading_execution:
 futures:
   enabled: true  # Futures demo trading enabled
   symbols:
-    - BNBUSDT
     - SOLUSDT
   default_leverage: 3  # Conservative default
   max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
@@ -65,8 +63,8 @@ futures:
   liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
 
 strategy:
-  evaluation_interval_seconds: 60
-  cooldown_candles: 10
+  evaluation_interval_seconds: 14400
+  cooldown_candles: 1
   default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: rsi_reversal
@@ -95,6 +93,6 @@ strategy:
         rsi_oversold: 40
         rsi_overbought: 60
   aggregator:
-    min_agreement: 2
-    buy_threshold: 0.8
-    sell_threshold: -0.65
+    min_agreement: 1
+    buy_threshold: 1.1
+    sell_threshold: -1.0
