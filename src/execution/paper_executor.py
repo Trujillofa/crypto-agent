@@ -280,11 +280,11 @@ class PaperExecutor:
             return None
         try:
             row = await self._db_conn.fetchrow(
-                "SELECT close FROM ohlcv WHERE symbol = $1 ORDER BY time DESC LIMIT 1",
+                "SELECT close_price FROM ohlcv WHERE symbol = $1 ORDER BY time DESC LIMIT 1",
                 symbol,
             )
             if row:
-                return float(row["close"])
+                return float(row["close_price"])
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Price fetch failed for %s: %s", symbol, exc)
         return None

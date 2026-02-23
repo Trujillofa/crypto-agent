@@ -41,14 +41,16 @@ class OverseerAgent:
     async def run(self) -> None:
         self._running = True
         self._logger.info("AI overseer loop started")
+        consecutive_errors = 0
+        max_backoff = 300  # 5 minutes cap
 
         while self._running:
-            should_backoff = False
             try:
                 updates = await self._telegram.get_updates(
                     offset=self._offset,
                     timeout=25,
                 )
+                consecutive_errors = 0  # reset on success
                 for update in updates:
                     update_id = update.get("update_id")
                     if isinstance(update_id, int):
@@ -58,11 +60,12 @@ class OverseerAgent:
                 self._logger.info("AI overseer loop cancelled")
                 raise
             except Exception as exc:
-                self._logger.error("AI overseer loop error: %s", exc)
-                should_backoff = True
-
-            if should_backoff:
-                await asyncio.sleep(self._poll_interval_seconds)
+                consecutive_errors += 1
+                backoff = min(self._poll_interval_seconds * (2 ** consecutive_errors), max_backoff)
+                self._logger.error(
+                    "AI overseer loop error (retry in %.0fs): %s", backoff, exc
+                )
+                await asyncio.sleep(backoff)
 
     def stop(self) -> None:
         self._running = False

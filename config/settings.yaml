@@ -5,7 +5,7 @@ trading:
   pairs:
     - BNBUSDT
     - SOLUSDT
-  timeframe: 4h
+  timeframe: 1m
 
 ingest:
   use_websocket: true
