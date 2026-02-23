@@ -148,6 +148,8 @@ class TelegramNotifier:
         try:
             updates = await self._fetch_updates(offset, timeout, allowed_updates)
             return updates
+        except RuntimeError:
+            raise  # Auth errors must propagate for caller backoff
         except Exception as exc:
             self._logger.error("Failed to fetch Telegram updates: %s", exc)
             return []
