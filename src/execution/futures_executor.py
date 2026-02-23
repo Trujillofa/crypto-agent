@@ -62,6 +62,7 @@ class FuturesTradingExecutor:
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
         self._sl_tp_orders: dict[str, dict[str, str]] = {}  # symbol → {sl_order_id, tp_order_id}
+        self._active_position_mode: str = config.position_mode
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:

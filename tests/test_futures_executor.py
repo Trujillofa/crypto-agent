@@ -153,7 +153,7 @@ class TestFuturesTradingExecutor:
         entry_call = mock_client.place_order.call_args_list[0]
         assert entry_call.kwargs["symbol"] == "BTCUSDT"
         assert entry_call.kwargs["side"] == "BUY"
-        assert entry_call.kwargs["position_side"] == "LONG"
+        assert entry_call.kwargs["position_side"] == "BOTH"  # one-way mode default
         assert entry_call.kwargs["reduce_only"] is False
 
         # SL/TP orders are tracked
@@ -330,7 +330,7 @@ class TestFuturesTradingExecutor:
         call_kwargs = mock_client.place_order.call_args.kwargs
         assert call_kwargs["symbol"] == "BTCUSDT"
         assert call_kwargs["side"] == "SELL"
-        assert call_kwargs["position_side"] == "LONG"
+        assert call_kwargs["position_side"] == "BOTH"  # one-way mode default
         assert call_kwargs["reduce_only"] is True
         assert call_kwargs["quantity"] == 0.01
 

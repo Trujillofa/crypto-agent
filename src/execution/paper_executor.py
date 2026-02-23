@@ -30,7 +30,11 @@ class PaperPosition:
     atr_at_entry: float = 0.0  # ATR(14) value at entry
     sl_price: float = 0.0  # computed at entry: entry - sl_mult * ATR
     tp_price: float = 0.0  # computed at entry: entry + tp_mult * ATR
-    highest_price: float = 0.0  # for trailing stop tracking
+    high_water_mark: float = 0.0  # for trailing stop tracking
+
+    def __post_init__(self) -> None:
+        if self.high_water_mark == 0.0:
+            self.high_water_mark = self.entry_price
 
     @property
     def notional(self) -> float:
@@ -61,6 +65,10 @@ class PaperTradingConfig:
     tp_atr_multiplier: float = 4.5  # TP = entry + 4.5 * ATR
     trailing_activate_atr: float = 1.5  # activate trailing after +1.5 * ATR profit
     trailing_offset_atr: float = 1.0  # trail SL at highest - 1.0 * ATR
+    # Fixed-pct exit fallbacks (used when ATR unavailable)
+    trailing_stop_pct: float = 0.005  # 0.5% trailing stop
+    time_stop_minutes: float = 60  # max position hold time in minutes
+    exit_check_interval: int = 5  # seconds between exit checks
 
 
 class PaperExecutor:
