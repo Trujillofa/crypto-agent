@@ -948,7 +948,7 @@ async def run() -> None:
                     for key in (
                         "ema_12",
                         "ema_26",
-                        "close_price",
+                        "rsi_14",
                     )
                 )
 
