@@ -133,7 +133,16 @@ class IndicatorReader:
             ORDER BY i.time ASC
         """
 
-        rows = await self._conn.fetch(query, symbol, timeframe, start_time, end_time)
+        from datetime import datetime
+
+        def _parse_dt(val: str | datetime) -> datetime:
+            if isinstance(val, datetime):
+                return val
+            return datetime.fromisoformat(val)
+
+        rows = await self._conn.fetch(
+            query, symbol, timeframe, _parse_dt(start_time), _parse_dt(end_time)
+        )
 
         if not rows:
             return []

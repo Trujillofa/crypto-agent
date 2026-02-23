@@ -40,6 +40,8 @@ from src.strategy import (
     MACDHistogramStrategy,
     BollingerBounceStrategy,
     MomentumStrategy,
+    CCIBreakoutStrategy,
+    VWAPReversionStrategy,
 )
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
@@ -163,6 +165,16 @@ def load_settings(config_path: Path) -> Settings:
             trading_exec.get("order_size_usdt"),
             "trading_execution.order_size_usdt",
             default=100.0,
+        ),
+        stop_loss_pct=_as_float(
+            trading_exec.get("stop_loss_pct"),
+            "trading_execution.stop_loss_pct",
+            default=0.01,
+        ),
+        take_profit_pct=_as_float(
+            trading_exec.get("take_profit_pct"),
+            "trading_execution.take_profit_pct",
+            default=0.03,
         ),
     )
 
@@ -320,6 +332,8 @@ def load_settings(config_path: Path) -> Settings:
                 enabled=trading_config.enabled,
                 symbols=trading_config.symbols,
                 order_size_usdt=trading_config.order_size_usdt,
+                stop_loss_pct=trading_config.stop_loss_pct,
+                take_profit_pct=trading_config.take_profit_pct,
             )
 
     # Parse futures configuration
@@ -484,6 +498,8 @@ def _resolve_strategy_config(
         "macd_histogram": MACDHistogramStrategy,
         "bollinger_bounce": BollingerBounceStrategy,
         "momentum": MomentumStrategy,
+        "cci_breakout": CCIBreakoutStrategy,
+        "vwap_reversion": VWAPReversionStrategy,
     }
 
     strategy_classes: list[type[BaseStrategy]] = []
@@ -529,7 +545,10 @@ async def run() -> None:
     if not is_allowed:
         logger = get_logger("main")
         if settings.mode == "paper":
-            logger.warning("Trading blocked at startup: %s (paper mode — will auto-reset if configured)", reason)
+            logger.warning(
+                "Trading blocked at startup: %s (paper mode — will auto-reset if configured)",
+                reason,
+            )
         else:
             logger.error("Trading blocked: %s", reason)
             return
@@ -642,26 +661,8 @@ async def run() -> None:
             symbols=settings.trading_pairs,
             futures_symbols=futures_symbols,
             futures_leverage=futures_leverage,
-            trailing_stop_pct=_as_float(
-                settings.exit_rules.get("trailing_stop_pct"),
-                "exit_rules.trailing_stop_pct",
-                default=0.005,
-            ),
-            take_profit_pct=_as_float(
-                settings.exit_rules.get("take_profit_pct"),
-                "exit_rules.take_profit_pct",
-                default=0.008,
-            ),
-            time_stop_minutes=_as_int(
-                settings.exit_rules.get("time_stop_minutes"),
-                "exit_rules.time_stop_minutes",
-                default=60,
-            ),
-            exit_check_interval=_as_int(
-                settings.exit_rules.get("exit_check_interval"),
-                "exit_rules.exit_check_interval",
-                default=15,
-            ),
+            stop_loss_pct=settings.trading_execution.stop_loss_pct,
+            take_profit_pct=settings.trading_execution.take_profit_pct,
         )
         paper_executor = PaperExecutor(
             config=paper_config,
@@ -700,6 +701,8 @@ async def run() -> None:
                 position_mode=settings.futures.position_mode,
                 order_size_usdt=settings.trading_execution.order_size_usdt,
                 liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+                stop_loss_pct=settings.trading_execution.stop_loss_pct,
+                take_profit_pct=settings.trading_execution.take_profit_pct,
             )
 
             futures_executor = FuturesTradingExecutor(
@@ -798,12 +801,17 @@ async def run() -> None:
 
             async def on_signal_paper(signal: Signal) -> None:
                 execution_metrics.record_signal(
-                    signal.symbol, signal.trading_mode, signal.type.value,
+                    signal.symbol,
+                    signal.trading_mode,
+                    signal.type.value,
                 )
                 await paper_executor.on_signal(signal)
 
                 # Mirror to futures if applicable
-                if signal.symbol in paper_futures_symbols and signal.trading_mode != "futures":
+                if (
+                    signal.symbol in paper_futures_symbols
+                    and signal.trading_mode != "futures"
+                ):
                     mirrored = Signal(
                         type=signal.type,
                         symbol=signal.symbol,
@@ -814,12 +822,14 @@ async def run() -> None:
                         trading_mode="futures",
                     )
                     execution_metrics.record_signal(
-                        mirrored.symbol, mirrored.trading_mode, mirrored.type.value,
+                        mirrored.symbol,
+                        mirrored.trading_mode,
+                        mirrored.type.value,
                     )
                     await paper_executor.on_signal(mirrored)
 
             strategy_task = asyncio.create_task(
-                strategy_engine.run(on_signal=on_signal_paper)
+                strategy_engine.run(on_signal=on_signal_paper, on_tick=paper_executor.on_tick)
             )
             paper_exit_task = asyncio.create_task(paper_executor.run())
             futures_task = None
@@ -927,7 +937,10 @@ async def run() -> None:
                 risk_summary,
                 telegram_notifier.is_configured(),
                 "paper" if paper_executor else "live",
-                "enabled" if futures_executor or (paper_executor and paper_executor._config.futures_symbols) else "disabled",
+                "enabled"
+                if futures_executor
+                or (paper_executor and paper_executor._config.futures_symbols)
+                else "disabled",
                 "enabled" if overseer_agent else "disabled",
             )
 

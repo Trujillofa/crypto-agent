@@ -74,8 +74,20 @@ class TestStrategyEngineFetchIndicators:
         """Fetch with 2+ rows returns latest row."""
         # Mock reader returns 2 rows
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 50000.0, "ema_26": 49000.0, "ema_50": 49500.0, "close_price": 50500.0},
-            {"ema_12": 50100.0, "ema_26": 49100.0, "ema_50": 49500.0, "close_price": 50600.0},
+            {
+                "ema_12": 50000.0,
+                "ema_26": 49000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50600.0,
+            },
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
@@ -86,6 +98,7 @@ class TestStrategyEngineFetchIndicators:
             "ema_12": 50100.0,
             "ema_26": 49100.0,
             "ema_50": 49500.0,
+            "ema_200": 48000.0,
             "close_price": 50600.0,
         }
         mock_reader.fetch_latest.assert_called_once_with("BTCUSDT", "1m", limit=2)
@@ -95,7 +108,13 @@ class TestStrategyEngineFetchIndicators:
         """Fetch with < 2 rows returns None (warmup period)."""
         # Mock reader returns only 1 row
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 50000.0, "ema_26": 49000.0, "ema_50": 49500.0, "close_price": 50500.0},
+            {
+                "ema_12": 50000.0,
+                "ema_26": 49000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
@@ -116,8 +135,20 @@ class TestStrategyEngineSignalFlow:
         """BUY signal from strategy triggers callback."""
         # First warmup the strategy (set initial state)
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 49000.0, "ema_26": 50000.0, "ema_50": 49500.0, "close_price": 50500.0},  # Below
-            {"ema_12": 49000.0, "ema_26": 50000.0, "ema_50": 49500.0, "close_price": 50500.0},  # Below
+            {
+                "ema_12": 49000.0,
+                "ema_26": 50000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },  # Below
+            {
+                "ema_12": 49000.0,
+                "ema_26": 50000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },  # Below
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
@@ -129,8 +160,20 @@ class TestStrategyEngineSignalFlow:
 
         # Now provide crossover up data (close_price > ema_50 = uptrend)
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 49000.0, "ema_26": 50000.0, "ema_50": 49500.0, "close_price": 50500.0},  # Was below
-            {"ema_12": 50100.0, "ema_26": 49100.0, "ema_50": 49500.0, "close_price": 50600.0},  # Now above
+            {
+                "ema_12": 49000.0,
+                "ema_26": 50000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },  # Was below
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50600.0,
+            },  # Now above
         ]
 
         await engine._evaluate_all(on_signal=callback)
@@ -148,8 +191,20 @@ class TestStrategyEngineSignalFlow:
         """SELL signal from strategy triggers callback."""
         # First warmup the strategy with data
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 50100.0, "ema_26": 49100.0, "ema_50": 51000.0, "close_price": 50500.0},  # Above
-            {"ema_12": 50100.0, "ema_26": 49100.0, "ema_50": 51000.0, "close_price": 50600.0},  # Above
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 51000.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },  # Above
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 51000.0,
+                "ema_200": 48000.0,
+                "close_price": 50600.0,
+            },  # Above
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
@@ -161,8 +216,20 @@ class TestStrategyEngineSignalFlow:
 
         # Now crossover down (close_price < ema_50 = downtrend)
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 50100.0, "ema_26": 49100.0, "ema_50": 51000.0, "close_price": 50500.0},  # Above
-            {"ema_12": 49000.0, "ema_26": 50000.0, "ema_50": 51000.0, "close_price": 50400.0},  # Below
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 51000.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },  # Above
+            {
+                "ema_12": 49000.0,
+                "ema_26": 50000.0,
+                "ema_50": 51000.0,
+                "ema_200": 48000.0,
+                "close_price": 50400.0,
+            },  # Below
         ]
 
         await engine._evaluate_all(on_signal=callback)
@@ -178,8 +245,20 @@ class TestStrategyEngineSignalFlow:
         """HOLD signal does not trigger callback."""
         # Mock indicators showing no crossover
         mock_reader.fetch_latest.return_value = [
-            {"ema_12": 50100.0, "ema_26": 49100.0, "ema_50": 49500.0, "close_price": 50500.0},
-            {"ema_12": 50200.0, "ema_26": 49200.0, "ema_50": 49500.0, "close_price": 50600.0},
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },
+            {
+                "ema_12": 50200.0,
+                "ema_26": 49200.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50600.0,
+            },
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
@@ -215,9 +294,17 @@ class TestTradingExecutorOnSignal:
         """BUY signal uses quoteOrderQty (order_size_usdt)."""
         executor = TradingExecutor(trading_config, risk_manager, metrics)
 
-        with patch.object(
-            executor, "place_market_order", new_callable=AsyncMock
-        ) as mock_order:
+        async def mock_init(self):
+            self._client = MagicMock()
+            self._client.__aenter__ = AsyncMock(return_value=self._client)
+            self._client.__aexit__ = AsyncMock()
+
+        with (
+            patch.object(
+                executor, "place_market_order", new_callable=AsyncMock
+            ) as mock_order,
+            patch.object(executor, "__aenter__", new=mock_init),
+        ):
             mock_order.return_value = OrderInfo(
                 order_id="123",
                 symbol="BTCUSDT",
@@ -239,13 +326,11 @@ class TestTradingExecutorOnSignal:
                 indicators={},
             )
 
-            await executor.__aenter__()
+            await executor.__aenter__(executor)
             await executor.on_signal(signal)
 
             # Verify place_market_order called with order_size_usdt
             mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0)
-
-            await executor.__aexit__(None, None, None)
 
     @pytest.mark.asyncio
     async def test_on_signal_sell_queries_balance(
@@ -368,12 +453,20 @@ class TestTradingExecutorOnSignal:
 
         executor = TradingExecutor(trading_config, risk_manager, metrics)
 
-        with patch.object(
-            executor, "place_market_order", new_callable=AsyncMock
-        ) as mock_order:
+        async def mock_init(self):
+            self._client = MagicMock()
+            self._client.__aenter__ = AsyncMock(return_value=self._client)
+            self._client.__aexit__ = AsyncMock()
+
+        with (
+            patch.object(
+                executor, "place_market_order", new_callable=AsyncMock
+            ) as mock_order,
+            patch.object(executor, "__aenter__", new=mock_init),
+        ):
             mock_order.side_effect = RuntimeError("Trading blocked: Daily loss limit")
 
-            await executor.__aenter__()
+            await executor.__aenter__(executor)
 
             signal = Signal(
                 type=SignalType.BUY,
@@ -390,8 +483,6 @@ class TestTradingExecutorOnSignal:
             # Verify order was attempted but failed
             mock_order.assert_called_once()
 
-            await executor.__aexit__(None, None, None)
-
     @pytest.mark.asyncio
     async def test_paper_mode_no_real_orders(
         self, trading_config, risk_manager, metrics
@@ -400,7 +491,14 @@ class TestTradingExecutorOnSignal:
         assert trading_config.test_mode is True
 
         executor = TradingExecutor(trading_config, risk_manager, metrics)
-        await executor.__aenter__()
+
+        async def mock_init(self):
+            self._client = MagicMock()
+            self._client._test_mode = True
+            self._client.__aenter__ = AsyncMock(return_value=self._client)
+            self._client.__aexit__ = AsyncMock()
+
+        await mock_init(executor)
 
         # Verify client was created in test_mode
         assert executor._client is not None
@@ -435,5 +533,3 @@ class TestTradingExecutorOnSignal:
 
             # Verify mock order was placed (paper trading)
             mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0)
-
-        await executor.__aexit__(None, None, None)

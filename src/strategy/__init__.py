@@ -8,6 +8,8 @@ from src.strategy.rsi_reversal import RSIReversalStrategy
 from src.strategy.macd_strategy import MACDHistogramStrategy
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.momentum_strategy import MomentumStrategy
+from src.strategy.cci_strategy import CCIBreakoutStrategy
+from src.strategy.vwap_strategy import VWAPReversionStrategy
 
 __all__ = [
     "Signal",
@@ -20,4 +22,6 @@ __all__ = [
     "MACDHistogramStrategy",
     "BollingerBounceStrategy",
     "MomentumStrategy",
+    "CCIBreakoutStrategy",
+    "VWAPReversionStrategy",
 ]

@@ -6,11 +6,40 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.execution.futures_executor import FuturesTradingExecutor, FuturesTradingConfig
-from src.execution.futures_client import FuturesOrderInfo, FuturesPositionInfo
-from src.risk.manager import RiskManager
+from src.execution.futures_client import (
+    BinanceFuturesApiError,
+    FuturesOrderInfo,
+    FuturesPositionInfo,
+)
+from src.execution.futures_executor import FuturesTradingConfig, FuturesTradingExecutor
 from src.execution.metrics import ExecutionMetrics
+from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
+
+
+def _make_order(
+    order_id: str = "111",
+    symbol: str = "BTCUSDT",
+    side: str = "BUY",
+    quantity: float = 0.01,
+    price: float = 50000.0,
+    status: str = "FILLED",
+    reduce_only: bool = False,
+    order_type: str = "MARKET",
+) -> FuturesOrderInfo:
+    return FuturesOrderInfo(
+        order_id=order_id,
+        symbol=symbol,
+        side=side,
+        position_side="LONG",
+        order_type=order_type,
+        quantity=quantity,
+        price=price,
+        status=status,
+        executed_quantity=quantity,
+        create_time=1234567890,
+        reduce_only=reduce_only,
+    )
 
 
 class TestFuturesTradingExecutor:
@@ -76,7 +105,6 @@ class TestFuturesTradingExecutor:
             "Kill switch active",
         )
 
-        # Mock client
         executor._client = MagicMock()
 
         with pytest.raises(RuntimeError) as exc_info:
@@ -86,8 +114,7 @@ class TestFuturesTradingExecutor:
 
     @pytest.mark.asyncio
     async def test_on_signal_buy_opens_long(self, executor):
-        """Test BUY signal opens LONG position."""
-        # Mock client with no existing position
+        """BUY signal opens LONG position and places SL/TP bracket orders."""
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(return_value=[])
         mock_client.get_account_info = AsyncMock(
@@ -96,20 +123,13 @@ class TestFuturesTradingExecutor:
                 available_balance=5000.0,
             )
         )
+        # Called 3 times: market entry + STOP_MARKET (SL) + TAKE_PROFIT_MARKET (TP)
         mock_client.place_order = AsyncMock(
-            return_value=FuturesOrderInfo(
-                order_id="12345",
-                symbol="BTCUSDT",
-                side="BUY",
-                position_side="LONG",
-                order_type="MARKET",
-                quantity=0.01,
-                price=50000.0,
-                status="FILLED",
-                executed_quantity=0.01,
-                create_time=1234567890,
-                reduce_only=False,
-            )
+            side_effect=[
+                _make_order(order_id="entry", side="BUY", status="FILLED"),
+                _make_order(order_id="sl_order", side="SELL", reduce_only=True, order_type="STOP_MARKET"),
+                _make_order(order_id="tp_order", side="SELL", reduce_only=True, order_type="TAKE_PROFIT_MARKET"),
+            ]
         )
         executor._client = mock_client
         executor._notifier = AsyncMock()
@@ -126,18 +146,145 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        # Verify order was placed
-        mock_client.place_order.assert_called_once()
-        call_kwargs = mock_client.place_order.call_args.kwargs
-        assert call_kwargs["symbol"] == "BTCUSDT"
-        assert call_kwargs["side"] == "BUY"
-        assert call_kwargs["position_side"] == "LONG"
-        assert call_kwargs["reduce_only"] is False
+        # Three place_order calls: market entry + SL + TP
+        assert mock_client.place_order.call_count == 3
+
+        # First call must be the market BUY entry
+        entry_call = mock_client.place_order.call_args_list[0]
+        assert entry_call.kwargs["symbol"] == "BTCUSDT"
+        assert entry_call.kwargs["side"] == "BUY"
+        assert entry_call.kwargs["position_side"] == "LONG"
+        assert entry_call.kwargs["reduce_only"] is False
+
+        # SL/TP orders are tracked
+        assert "BTCUSDT" in executor._sl_tp_orders
+
+    @pytest.mark.asyncio
+    async def test_buy_signal_places_sl_tp_with_atr(self, executor):
+        """BUY signal with ATR places SL at entry - 2*ATR and TP at entry + 4.5*ATR."""
+        entry_price = 700.0
+        atr_14 = 10.0  # SL = 680, TP = 745
+
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.place_order = AsyncMock(
+            side_effect=[
+                _make_order(order_id="entry", price=entry_price, status="FILLED"),
+                _make_order(order_id="sl_111", reduce_only=True),
+                _make_order(order_id="tp_222", reduce_only=True),
+            ]
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=entry_price,
+            confidence=0.9,
+            reason="test",
+            indicators={"atr_14": atr_14},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        assert mock_client.place_order.call_count == 3
+
+        sl_call = mock_client.place_order.call_args_list[1]
+        assert sl_call.kwargs["order_type"] == "STOP_MARKET"
+        assert sl_call.kwargs["stop_price"] == entry_price - 2.0 * atr_14  # 680.0
+        assert sl_call.kwargs["reduce_only"] is True
+
+        tp_call = mock_client.place_order.call_args_list[2]
+        assert tp_call.kwargs["order_type"] == "TAKE_PROFIT_MARKET"
+        assert tp_call.kwargs["stop_price"] == entry_price + 4.5 * atr_14  # 745.0
+        assert tp_call.kwargs["reduce_only"] is True
+
+    @pytest.mark.asyncio
+    async def test_buy_signal_uses_fixed_pct_fallback_when_no_atr(self, executor):
+        """BUY signal with no ATR falls back to fixed-percentage SL/TP."""
+        entry_price = 1000.0
+        # defaults: stop_loss_pct=0.03 → SL=970, take_profit_pct=0.06 → TP=1060
+
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.place_order = AsyncMock(
+            side_effect=[
+                _make_order(order_id="entry", price=entry_price, status="FILLED"),
+                _make_order(order_id="sl_x", reduce_only=True),
+                _make_order(order_id="tp_x", reduce_only=True),
+            ]
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=entry_price,
+            confidence=0.8,
+            reason="test",
+            indicators={},  # No ATR — forces fixed-pct path
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        sl_call = mock_client.place_order.call_args_list[1]
+        assert sl_call.kwargs["order_type"] == "STOP_MARKET"
+        assert abs(sl_call.kwargs["stop_price"] - 970.0) < 0.01  # 1000 * (1 - 0.03)
+
+        tp_call = mock_client.place_order.call_args_list[2]
+        assert tp_call.kwargs["order_type"] == "TAKE_PROFIT_MARKET"
+        assert abs(tp_call.kwargs["stop_price"] - 1060.0) < 0.01  # 1000 * (1 + 0.06)
+
+    @pytest.mark.asyncio
+    async def test_buy_ignored_when_position_already_open(self, executor):
+        """BUY signal is skipped when a position already exists (no pyramiding)."""
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(
+            return_value=[
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=0.01,
+                    entry_price=50000.0,
+                    mark_price=51000.0,
+                    liquidation_price=45000.0,
+                    leverage=5,
+                    isolated_margin=100.0,
+                    unrealized_pnl=10.0,
+                    notional_value=510.0,
+                )
+            ]
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=51000.0,
+            confidence=0.9,
+            reason="test",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        mock_client.place_order.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_on_signal_sell_closes_long(self, executor):
-        """Test SELL signal closes LONG position with reduceOnly."""
-        # Mock client with existing LONG position
+        """SELL signal closes LONG position with reduceOnly."""
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(
             return_value=[
@@ -162,19 +309,7 @@ class TestFuturesTradingExecutor:
             )
         )
         mock_client.place_order = AsyncMock(
-            return_value=FuturesOrderInfo(
-                order_id="12346",
-                symbol="BTCUSDT",
-                side="SELL",
-                position_side="LONG",
-                order_type="MARKET",
-                quantity=0.01,
-                price=50000.0,
-                status="FILLED",
-                executed_quantity=0.01,
-                create_time=1234567890,
-                reduce_only=True,  # Important: close position
-            )
+            return_value=_make_order(order_id="close", side="SELL", reduce_only=True)
         )
         executor._client = mock_client
         executor._notifier = AsyncMock()
@@ -191,14 +326,95 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        # Verify order was placed with reduce_only=True
         mock_client.place_order.assert_called_once()
         call_kwargs = mock_client.place_order.call_args.kwargs
         assert call_kwargs["symbol"] == "BTCUSDT"
         assert call_kwargs["side"] == "SELL"
         assert call_kwargs["position_side"] == "LONG"
-        assert call_kwargs["reduce_only"] is True  # Key: reduces position
-        assert call_kwargs["quantity"] == 0.01  # Full position size
+        assert call_kwargs["reduce_only"] is True
+        assert call_kwargs["quantity"] == 0.01
+
+    @pytest.mark.asyncio
+    async def test_sell_cancels_sl_tp_before_close(self, executor):
+        """SELL signal cancels tracked SL/TP orders before placing the market close."""
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(
+            return_value=[
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=0.005,
+                    entry_price=700.0,
+                    mark_price=750.0,
+                    liquidation_price=500.0,
+                    leverage=5,
+                    isolated_margin=10.0,
+                    unrealized_pnl=0.25,
+                    notional_value=3.75,
+                )
+            ]
+        )
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(order_id="close", side="SELL", reduce_only=True)
+        )
+        mock_client.cancel_order = AsyncMock(return_value={"orderId": "cancelled"})
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        # Pre-populate tracked SL/TP order IDs (as if a prior BUY placed them)
+        executor._sl_tp_orders["BTCUSDT"] = {
+            "sl_order_id": "sl_999",
+            "tp_order_id": "tp_888",
+        }
+
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=750.0,
+            confidence=0.8,
+            reason="test",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        # Both SL and TP orders cancelled before market close
+        assert mock_client.cancel_order.call_count == 2
+        cancelled_ids = {c.args[1] for c in mock_client.cancel_order.call_args_list}
+        assert cancelled_ids == {"sl_999", "tp_888"}
+
+        # Market close order placed after cancellation
+        mock_client.place_order.assert_called_once()
+        assert mock_client.place_order.call_args.kwargs["reduce_only"] is True
+
+        # SL/TP tracking cleared after SELL
+        assert "BTCUSDT" not in executor._sl_tp_orders
+
+    @pytest.mark.asyncio
+    async def test_cancel_sl_tp_tolerates_already_filled_order(self, executor):
+        """_cancel_sl_tp_orders does not raise when one order is already filled/cancelled."""
+        mock_client = MagicMock()
+        mock_client.cancel_order = AsyncMock(
+            side_effect=[
+                BinanceFuturesApiError(-2011, "Unknown order"),  # SL already filled
+                {"orderId": "tp_888"},  # TP cancelled OK
+            ]
+        )
+        executor._client = mock_client
+        executor._sl_tp_orders["BTCUSDT"] = {
+            "sl_order_id": "sl_999",
+            "tp_order_id": "tp_888",
+        }
+
+        # Must not raise even though first cancel fails
+        await executor._cancel_sl_tp_orders("BTCUSDT")
+
+        assert mock_client.cancel_order.call_count == 2
+        assert "BTCUSDT" not in executor._sl_tp_orders
 
     @pytest.mark.asyncio
     async def test_on_signal_buy_ignores_when_long_exists(self, executor):
@@ -238,7 +454,7 @@ class TestFuturesTradingExecutor:
 
     @pytest.mark.asyncio
     async def test_on_signal_ignores_non_futures_mode(self, executor):
-        """Test that signals with non-futures trading_mode are ignored."""
+        """Signals with trading_mode != 'futures' are silently ignored."""
         executor._client = MagicMock()
         executor._notifier = AsyncMock()
 
@@ -254,13 +470,11 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        # Verify no order was placed
         executor._client.place_order.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_on_signal_sell_no_position(self, executor):
-        """Test SELL signal with no position is ignored."""
-        # Mock client with no position
+        """SELL signal with no open position is ignored."""
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(return_value=[])
         executor._client = mock_client
@@ -278,13 +492,62 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        # Verify no order was placed
         mock_client.place_order.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_hold_signal_is_ignored(self, executor):
+        """HOLD signal must not trigger any API calls."""
+        mock_client = MagicMock()
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        signal = Signal(
+            type=SignalType.HOLD,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.5,
+            reason="no clear direction",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        mock_client.place_order.assert_not_called()
+
+    def test_calculate_quantity_from_price(self, executor):
+        """_calculate_quantity returns order_size_usdt / price."""
+        # config.order_size_usdt = 100.0
+        qty = executor._calculate_quantity("BTCUSDT", 500.0)
+        assert abs(qty - 0.2) < 1e-9  # 100 / 500 = 0.2
+
+    def test_calculate_quantity_zero_price_returns_zero(self, executor):
+        """_calculate_quantity returns 0.0 when price is zero or negative."""
+        assert executor._calculate_quantity("BTCUSDT", 0.0) == 0.0
+        assert executor._calculate_quantity("BTCUSDT", -1.0) == 0.0
+
+    @pytest.mark.asyncio
+    async def test_monitor_clears_sl_tp_when_position_closed_by_exchange(self, executor):
+        """_monitor_and_update cleans up _sl_tp_orders when exchange closed position via SL/TP."""
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])  # No positions
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        # Pre-populate — SL/TP was active before exchange closed the position
+        executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "sl_1", "tp_order_id": "tp_1"}
+
+        await executor._monitor_and_update()
+
+        # Tracking should be cleaned up
+        assert "BTCUSDT" not in executor._sl_tp_orders
+
+    @pytest.mark.asyncio
     async def test_liquidation_buffer_check(self, executor):
-        """Test that liquidation buffer check is performed."""
-        # Mock client with position near liquidation
+        """Test that liquidation buffer check fires when position is near liquidation."""
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(
             return_value=[
@@ -293,7 +556,7 @@ class TestFuturesTradingExecutor:
                     position_side="BOTH",
                     position_amt=0.1,
                     entry_price=50000.0,
-                    mark_price=45500.0,  # Close to liq
+                    mark_price=45500.0,  # Close to liquidation
                     liquidation_price=45000.0,
                     leverage=10,
                     isolated_margin=500.0,
@@ -311,23 +574,22 @@ class TestFuturesTradingExecutor:
         executor._client = mock_client
 
         executor._risk_manager.check_liquidation_buffer.return_value = (
-            False,  # Within buffer!
+            False,
             "LONG position within 5.0% of liquidation",
         )
 
-        # Should trigger alert
         executor._notifier = AsyncMock()
 
         await executor._monitor_and_update()
 
-        # Verify liquidation check was called (once per symbol with position)
+        # Called once per symbol (BTCUSDT and ETHUSDT both return the same mocked position)
         assert executor._risk_manager.check_liquidation_buffer.call_count == 2
         first_call = executor._risk_manager.check_liquidation_buffer.call_args_list[0]
         assert first_call.kwargs["position_side"] == "LONG"
 
     @pytest.mark.asyncio
     async def test_leverage_check_blocks_excessive_leverage(self, executor):
-        """Test that excessive leverage is blocked."""
+        """Excessive leverage is blocked before placing any order."""
         mock_client = MagicMock()
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(
@@ -345,13 +607,3 @@ class TestFuturesTradingExecutor:
             await executor.place_futures_order("BTCUSDT", "BUY", 0.01)
 
         assert "Leverage" in str(exc_info.value)
-
-    def test_calculate_quantity_defaults(self, executor):
-        """Test default quantity calculations."""
-        btc_qty = executor._calculate_quantity("BTCUSDT")
-        eth_qty = executor._calculate_quantity("ETHUSDT")
-        unknown_qty = executor._calculate_quantity("UNKNOWN")
-
-        assert btc_qty == 0.01
-        assert eth_qty == 0.1
-        assert unknown_qty == 0.01  # Default

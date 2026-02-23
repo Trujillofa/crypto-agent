@@ -34,7 +34,7 @@ class RSIReversalStrategy(BaseStrategy):
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
         """Evaluate indicators and generate a trading signal."""
         rsi_key = f"rsi_{self._rsi_period}"
-        required_indicators = {rsi_key, "close_price", "ema_50"}
+        required_indicators = {rsi_key, "close_price"}
 
         for k in required_indicators:
             if k not in indicators:
@@ -42,15 +42,13 @@ class RSIReversalStrategy(BaseStrategy):
 
         rsi_current = indicators[rsi_key]
         close_price = indicators["close_price"]
-        ema_50 = indicators["ema_50"]
-
-        if rsi_current is None or ema_50 is None:
+        if rsi_current is None:
             return Signal(
                 type=SignalType.HOLD,
                 symbol=symbol,
                 price=close_price,
                 confidence=0.0,
-                reason=f"Waiting for RSI({self._rsi_period})/EMA50 data",
+                reason=f"Waiting for RSI({self._rsi_period}) data",
                 indicators={},
             )
 
@@ -65,46 +63,37 @@ class RSIReversalStrategy(BaseStrategy):
             indicators={rsi_key: rsi_current, "close_price": close_price},
         )
 
-        # Trend gate: only allow BUY in uptrend (price > EMA50),
-        # SELL in downtrend (price < EMA50). Prevents buying bounces in downtrends.
-        in_uptrend = close_price > ema_50
-        in_downtrend = close_price < ema_50
-
         # Crossover Up (Bullish Reversal): Previous < 30 and Current >= 30
         if (
-            in_uptrend
-            and rsi_previous < self._oversold_threshold
+            rsi_previous < self._oversold_threshold
             and rsi_current >= self._oversold_threshold
         ):
             depth = self._oversold_threshold - rsi_previous
             confidence = 0.5 + (depth / 30.0) * 0.5
             confidence = min(0.95, confidence)
-
             signal = Signal(
                 type=SignalType.BUY,
                 symbol=symbol,
                 price=close_price,
                 confidence=confidence,
-                reason=f"RSI({self._rsi_period}) crossed above {self._oversold_threshold} (prev: {rsi_previous:.2f}, trend UP)",
+                reason=f"RSI({self._rsi_period}) crossed above {self._oversold_threshold} (prev: {rsi_previous:.2f})",
                 indicators={rsi_key: rsi_current, "close_price": close_price},
             )
 
         # Crossover Down (Bearish Reversal): Previous > 70 and Current <= 70
         elif (
-            in_downtrend
-            and rsi_previous > self._overbought_threshold
+            rsi_previous > self._overbought_threshold
             and rsi_current <= self._overbought_threshold
         ):
             excess = rsi_previous - self._overbought_threshold
             confidence = 0.5 + (excess / 30.0) * 0.5
             confidence = min(0.95, confidence)
-
             signal = Signal(
                 type=SignalType.SELL,
                 symbol=symbol,
                 price=close_price,
                 confidence=confidence,
-                reason=f"RSI({self._rsi_period}) crossed below {self._overbought_threshold} (prev: {rsi_previous:.2f}, trend DOWN)",
+                reason=f"RSI({self._rsi_period}) crossed below {self._overbought_threshold} (prev: {rsi_previous:.2f})",
                 indicators={rsi_key: rsi_current, "close_price": close_price},
             )
 

@@ -20,6 +20,14 @@ This project implements a fully automated Binance Spot trading agent with strate
 - **Strategy Framework**: Extensible strategy architecture (currently: Simple MA Crossover)
 - **Signal Filtering**: Only actionable signals (BUY/SELL) trigger orders
 
+## Core Principles
+
+The development and operation of this agent follow a strict three-step cycle to ensure safety and performance:
+
+1.  **Research**: Analyze market data, identify potential strategies, and understand the underlying logic before writing code.
+2.  **Backtest**: Rigorously test strategies against historical data using the `scripts/run_backtest.py` tool. verify performance metrics (win rate, drawdown, PnL) before enabling them.
+3.  **Implement**: Only after a strategy has proven itself in backtesting is it deployed to the live (or paper) environment via `config/settings.yaml`.
+
 ## Architecture
 
 ```

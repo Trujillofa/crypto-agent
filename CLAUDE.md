@@ -187,6 +187,219 @@ pytest
 python -m src.main
 ```
 
+## Test Writing Patterns
+
+This codebase uses **pytest** with **asyncio auto mode** (configured in `pyproject.toml`).
+
+### Basic Test Structure
+
+```python
+import pytest
+from src.module import ClassToTest
+
+@pytest.mark.asyncio
+async def test_feature_xyz():
+    """Description of what this test verifies."""
+    # Arrange
+    subject = ClassToTest(param="value")
+    
+    # Act
+    result = await subject.method()
+    
+    # Assert
+    assert result == expected
+```
+
+### Mocking External Dependencies
+
+```python
+from unittest.mock import AsyncMock, patch, MagicMock
+
+@pytest.mark.asyncio
+async def test_with_binance_api():
+    with patch("src.execution.binance_client.BinanceClient") as mock:
+        mock_instance = AsyncMock()
+        mock_instance.place_order = AsyncMock(return_value={"orderId": 123, "status": "FILLED"})
+        mock_instance.get_balance = AsyncMock(return_value={"USDT": "1000.0"})
+        mock.return_value = mock_instance
+        
+        # Your test logic
+        result = await executor.execute_order(...)
+        assert result["orderId"] == 123
+```
+
+### Using Fixtures
+
+```python
+# From tests/conftest.py
+@pytest.fixture
+def test_settings():
+    return Settings(
+        trading_execution=TradingExecutionConfig(
+            enabled=True,
+            test_mode=True,
+            order_size_usdt=100.0,
+        ),
+        # ...
+    )
+
+@pytest.mark.asyncio
+async def test_something(test_settings):
+    # Use fixture
+    manager = RiskManager(test_settings)
+```
+
+### Testing Strategies
+
+```python
+@pytest.mark.asyncio
+async def test_strategy_signal_generation():
+    # Create mock indicators
+    indicators = {
+        "close": 50000.0,
+        "ema_short": 50100.0,
+        "ema_long": 49500.0,
+        "rsi": 65.0,
+    }
+    
+    strategy = MyStrategy(config={})
+    signal = await strategy.evaluate("BTCUSDT", indicators)
+    
+    assert signal is not None
+    assert signal.type == SignalType.BUY
+```
+
+### Running Tests
+
+```bash
+pytest                          # All tests
+pytest tests/test_foo.py        # Single file
+pytest -k "test_name"          # By pattern match
+pytest --tb=short              # Shorter tracebacks
+pytest -v                       # Verbose output
+```
+
+## Common Workflows
+
+### Add a New Strategy
+
+1. Create `src/strategy/strategies/my_strategy.py`
+2. Inherit from `BaseStrategy`
+3. Implement `evaluate()` returning `Signal | None`
+4. Export in `src/strategy/__init__.py`
+5. Add to `config/settings.yaml` under `strategy.strategies`
+6. Write tests in `tests/test_my_strategy.py`
+
+### Add Configuration Option
+
+1. Add to `config/settings.yaml` with comment
+2. Update dataclass in `src/main.py` or relevant module
+3. Add validation if needed
+4. Document in this file's config reference
+
+### Debug a Failing Test
+
+```bash
+# Run with full output
+pytest tests/test_foo.py -v --tb=long
+
+# Run single test
+pytest tests/test_foo.py::test_name -v
+
+# Check if it's a pre-existing failure
+git stash
+pytest
+# If passes, your changes broke it
+```
+
+### Deploy to Production
+
+```bash
+# On local machine
+git push origin feat/my-feature
+# Create PR, review, merge to main
+
+# On server
+ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"
+
+# Verify
+ssh crypto-agent "docker compose ps"
+ssh crypto-agent "docker compose logs agent --tail=20"
+```
+
+### Add New Test
+
+1. Follow naming: `tests/test_<module>.py`
+2. Use existing fixtures from `conftest.py`
+3. Mock external APIs (Binance, database)
+4. Use descriptive test names: `test_<action>_<expected_result>`
+5. Add docstrings explaining what is being tested
+
+## File Location Index
+
+| Need | Path |
+|------|------|
+| **Entry Points** | |
+| Main app | `src/main.py` |
+| CLI scripts | `scripts/run_backtest.py`, `scripts/smoke_test.py` |
+| **Configuration** | |
+| Trading settings | `config/settings.yaml` |
+| Risk parameters | `config/risk.yaml` |
+| Environment template | `.env.example` |
+| **Core Modules** | |
+| Data ingestion | `src/ingest/binance.py`, `src/ingest/websocket.py` |
+| Database | `src/ingest/db.py`, `src/db/pool.py` |
+| Indicators | `src/features/technical.py`, `src/features/computer.py` |
+| Execution | `src/execution/executor.py`, `src/execution/binance_client.py` |
+| Futures | `src/execution/futures_executor.py`, `src/execution/futures_client.py` |
+| Risk management | `src/risk/manager.py` |
+| Strategies | `src/strategy/engine.py`, `src/strategy/aggregator.py` |
+| Strategy implementations | `src/strategy/simple_ma.py`, `src/strategy/rsi_reversal.py`, etc. |
+| Notifications | `src/notifications/telegram.py` |
+| Portfolio | `src/portfolio/manager.py` |
+| Backtesting | `src/backtest/engine.py` |
+| AI/Overseer | `src/overseer/agent.py` |
+| **Testing** | |
+| Fixtures | `tests/conftest.py` |
+| Test utilities | `tests/conftest.py` |
+| **Infrastructure** | |
+| Docker Compose | `docker-compose.yml`, `docker-compose.prod.yml` |
+| Prometheus config | `config/prometheus.yml` |
+| Grafana dashboards | `config/grafana/` |
+
+## Trading Modes Reference
+
+| Mode | Config | Risk |
+|------|--------|------|
+| **Paper** | `enabled: false` | No real orders |
+| **Testnet** | `enabled: true, test_mode: true` | Fake funds (demo.binance.com) |
+| **Live** | `enabled: true, test_mode: false` | Real money |
+
+## Quick Config Reference
+
+### Enable Live Trading
+```yaml
+trading_execution:
+  enabled: true
+  test_mode: false  # REAL MONEY
+  order_size_usdt: 20.0  # Start small!
+```
+
+### Add Trading Pair
+```yaml
+trading:
+  pairs:
+    - BTCUSDT
+    - NEWPAIR
+```
+
+### Adjust Risk Limits
+```yaml
+loss_limits:
+  max_daily_loss_pct: 0.05    # 5% daily stop
+  max_drawdown_pct: 0.15       # 15% kill switch
+```
+
 ## Related Files
 
 - `AGENTS.md` — Full list of active agents and coordination details

@@ -8,8 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from src.main import load_settings
-from src.strategy import Signal, SignalType
+from src.main import _resolve_strategy_config, load_settings
+from src.strategy import (
+    CCIBreakoutStrategy,
+    Signal,
+    SignalType,
+    VWAPReversionStrategy,
+)
 
 
 def test_settings_default_safe():
@@ -57,7 +62,7 @@ def test_settings_all_required_sections():
         "ERROR",
     ), "Invalid log level"
     assert len(settings.trading_pairs) > 0, "Must have at least one trading pair"
-    assert settings.timeframe in ("1m", "5m", "15m", "1h"), "Invalid timeframe"
+    assert settings.timeframe in ("1m", "5m", "15m", "1h", "4h"), "Invalid timeframe"
     assert settings.database is not None, "Database config required"
     assert settings.prometheus_port > 0, "Prometheus port required"
     assert settings.trading_execution is not None, "Trading execution config required"
@@ -72,11 +77,15 @@ def test_settings_telegram_config():
     assert isinstance(settings.telegram.enabled, bool)
 
 
-def test_settings_ai_config_defaults():
+def test_settings_resolves_new_strategy_registry_entries():
+    """Configured strategy names resolve to the expected strategy classes."""
     settings = load_settings(Path("config/settings.yaml"))
-    assert settings.ai.provider == "xai"
-    assert isinstance(settings.ai.enabled, bool)
-    assert settings.ai.model != ""
+    strategy_classes, strategy_configs, _ = _resolve_strategy_config(settings.strategy)
+
+    assert len(strategy_classes) == len(settings.strategy.strategies)
+    assert len(strategy_configs) == len(settings.strategy.strategies)
+    assert CCIBreakoutStrategy in strategy_classes
+    assert VWAPReversionStrategy in strategy_classes
 
 
 @pytest.mark.asyncio
@@ -109,14 +118,38 @@ async def test_full_flow_engine_to_executor():
         if call_count == 1:
             # Warmup: short < long
             return [
-                {"ema_12": 95.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 99.0},
-                {"ema_12": 96.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 99.5},
+                {
+                    "ema_12": 95.0,
+                    "ema_26": 100.0,
+                    "ema_50": 98.0,
+                    "ema_200": 90.0,
+                    "close_price": 99.0,
+                },
+                {
+                    "ema_12": 96.0,
+                    "ema_26": 100.0,
+                    "ema_50": 98.0,
+                    "ema_200": 90.0,
+                    "close_price": 99.5,
+                },
             ]
         else:
             # Crossover: short > long (BUY signal, price > ema_50 = uptrend)
             return [
-                {"ema_12": 96.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 99.5},
-                {"ema_12": 101.0, "ema_26": 100.0, "ema_50": 98.0, "close_price": 102.0},
+                {
+                    "ema_12": 96.0,
+                    "ema_26": 100.0,
+                    "ema_50": 98.0,
+                    "ema_200": 90.0,
+                    "close_price": 99.5,
+                },
+                {
+                    "ema_12": 101.0,
+                    "ema_26": 100.0,
+                    "ema_50": 98.0,
+                    "ema_200": 90.0,
+                    "close_price": 102.0,
+                },
             ]
 
     mock_reader.fetch_latest = mock_fetch_latest
