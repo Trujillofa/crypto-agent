@@ -1,4 +1,4 @@
-mode: live
+mode: paper
 log_level: INFO
 
 trading:
