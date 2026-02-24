@@ -96,3 +96,5 @@ strategy:
     min_agreement: 1
     buy_threshold: 1.1
     sell_threshold: -1.0
+   atr_multiplier: 1.0  # ATR multiplier for position sizing (risk = equity × 1.0% / (atr × multiplier))
+   use_atr_sizing: true

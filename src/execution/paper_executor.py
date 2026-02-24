@@ -438,6 +438,17 @@ class PaperExecutor:
 
         # Check balance
         order_usdt = self._config.order_size_usdt
+        order_usdt = self._config.order_size_usdt
+        if self._config.use_atr_sizing:
+            atr_14 = signal.indicators.get("atr_14", 0.0)
+            if atr_14 > 0:
+                # ATR-based sizing: risk_amount = (self._balance * 0.02) / (atr_14 * self._config.atr_multiplier)
+                stop_distance = atr_14 * self._config.atr_multiplier
+                target_qty = risk_amount / stop_distance
+                max_qty = (self._balance * 0.98) / signal.price
+                quantity = min(target_qty, max_qty)
+            else:
+                quantity = order_usdt / signal.price
         if is_futures:
             # Futures uses margin = order_size / leverage
             margin_needed = order_usdt / self._config.futures_leverage
