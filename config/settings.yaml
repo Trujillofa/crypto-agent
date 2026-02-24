@@ -70,8 +70,8 @@ strategy:
     - name: rsi_reversal
       config:
         rsi_period: 7
-        oversold_threshold: 30
-        overbought_threshold: 70
+        oversold_threshold: 35
+        overbought_threshold: 65
     - name: macd_histogram
       config:
         min_histogram_threshold: 0.0001
@@ -80,8 +80,8 @@ strategy:
     - name: bollinger_bounce
       config:
         band_distance_threshold: 0.003
-        rsi_oversold: 30
-        rsi_overbought: 70
+        rsi_oversold: 35
+        rsi_overbought: 65
     - name: cci_breakout
       config:
         cci_buy_threshold: 100
