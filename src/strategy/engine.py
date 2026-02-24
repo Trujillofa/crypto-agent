@@ -126,13 +126,28 @@ class StrategyEngine:
                     self._logger.error("on_tick failed for %s: %s", symbol, exc)
 
             generated_signals = []
+            named_signals: list[tuple[str, Signal]] = []
             for strategy in self._strategies.get(symbol, []):
                 try:
                     signal = await strategy.evaluate(symbol, indicators)
                     generated_signals.append(signal)
+                    named_signals.append((strategy.get_name(), signal))
                     self._logger.debug(f"{strategy.get_name()} generated {signal}")
                 except Exception as exc:  # noqa: BLE001
                     self._logger.error(f"Strategy {strategy.get_name()} failed: {exc}")
+
+            # Log per-strategy attribution at INFO when any strategy votes non-HOLD
+            non_hold_votes = [
+                f"{name}→{sig.type.value}({sig.confidence:.2f})"
+                for name, sig in named_signals
+                if sig.type != SignalType.HOLD
+            ]
+            if non_hold_votes:
+                self._logger.info(
+                    "Strategy votes for %s: %s",
+                    symbol,
+                    " | ".join(non_hold_votes),
+                )
 
             if generated_signals:
                 final_signal = self._aggregator.aggregate(symbol, generated_signals)
