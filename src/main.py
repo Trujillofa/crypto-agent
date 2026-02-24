@@ -177,6 +177,21 @@ def load_settings(config_path: Path) -> Settings:
             "trading_execution.take_profit_pct",
             default=0.03,
         ),
+        use_atr_sizing=_as_bool(
+            trading_exec.get("use_atr_sizing"),
+            "trading_execution.use_atr_sizing",
+            default=False,
+        ),
+        atr_multiplier=_as_float(
+            trading_exec.get("atr_multiplier"),
+            "trading_execution.atr_multiplier",
+            default=1.0,
+        ),
+        risk_per_trade_pct=_as_float(
+            trading_exec.get("risk_per_trade_pct"),
+            "trading_execution.risk_per_trade_pct",
+            default=0.02,
+        ),
     )
 
     # Parse default trading mode (spot or futures)
@@ -664,6 +679,9 @@ async def run() -> None:
             futures_leverage=futures_leverage,
             stop_loss_pct=settings.trading_execution.stop_loss_pct,
             take_profit_pct=settings.trading_execution.take_profit_pct,
+            use_atr_sizing=settings.trading_execution.use_atr_sizing,
+            atr_multiplier=settings.trading_execution.atr_multiplier,
+            risk_per_trade_pct=settings.trading_execution.risk_per_trade_pct,
         )
         paper_executor = PaperExecutor(
             config=paper_config,

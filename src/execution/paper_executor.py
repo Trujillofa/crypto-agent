@@ -69,6 +69,10 @@ class PaperTradingConfig:
     trailing_stop_pct: float = 0.005  # 0.5% trailing stop
     time_stop_minutes: float = 60  # max position hold time in minutes
     exit_check_interval: int = 5  # seconds between exit checks
+    # ATR-based position sizing
+    use_atr_sizing: bool = False  # if True, size by (equity × risk_pct) / (atr × multiplier)
+    atr_multiplier: float = 1.0   # stop distance multiplier for sizing calc
+    risk_per_trade_pct: float = 0.02  # fraction of equity risked per trade
 
 
 class PaperExecutor:
@@ -436,19 +440,19 @@ class PaperExecutor:
             )
             return
 
-        # Check balance
+        # Check balance — compute quantity and order notional
         order_usdt = self._config.order_size_usdt
-        order_usdt = self._config.order_size_usdt
-        if self._config.use_atr_sizing:
-            atr_14 = signal.indicators.get("atr_14", 0.0)
-            if atr_14 > 0:
-                # ATR-based sizing: risk_amount = (self._balance * 0.02) / (atr_14 * self._config.atr_multiplier)
-                stop_distance = atr_14 * self._config.atr_multiplier
-                target_qty = risk_amount / stop_distance
-                max_qty = (self._balance * 0.98) / signal.price
-                quantity = min(target_qty, max_qty)
-            else:
-                quantity = order_usdt / signal.price
+        atr_14_for_size = signal.indicators.get("atr_14", 0.0)
+        if self._config.use_atr_sizing and atr_14_for_size > 0:
+            # ATR-based sizing: risk a fixed % of current equity per trade
+            risk_amount = self._balance * self._config.risk_per_trade_pct
+            stop_distance = atr_14_for_size * self._config.atr_multiplier
+            target_qty = risk_amount / stop_distance
+            max_qty = (self._balance * 0.98) / signal.price
+            quantity = min(target_qty, max_qty)
+            order_usdt = quantity * signal.price
+        else:
+            quantity = order_usdt / signal.price
         if is_futures:
             # Futures uses margin = order_size / leverage
             margin_needed = order_usdt / self._config.futures_leverage
@@ -490,7 +494,6 @@ class PaperExecutor:
             self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
         )
         fee = order_usdt * fee_rate
-        quantity = order_usdt / signal.price
         self._balance -= margin_needed + fee
         self._total_fees += fee
 

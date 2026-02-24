@@ -29,6 +29,9 @@ class TradingConfig:
     order_size_usdt: float = 100.0  # Default order size in USDT
     stop_loss_pct: float = 0.0
     take_profit_pct: float = 0.0
+    use_atr_sizing: bool = False
+    atr_multiplier: float = 1.0
+    risk_per_trade_pct: float = 0.02
 
 
 class TradingExecutor:
