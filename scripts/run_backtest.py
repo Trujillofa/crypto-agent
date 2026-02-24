@@ -18,22 +18,12 @@ from pathlib import Path
 async def main():
     configure_logger("INFO")
     parser = argparse.ArgumentParser(description="Run crypto strategy backtest")
-    parser.add_argument(
-        "--symbol", type=str, required=True, help="Trading pair (e.g. BTCUSDT)"
-    )
-    parser.add_argument(
-        "--timeframe", type=str, default="1m", help="Timeframe (e.g. 1m, 5m, 1h)"
-    )
-    parser.add_argument(
-        "--start", type=str, required=True, help="Start date (ISO 8601)"
-    )
+    parser.add_argument("--symbol", type=str, required=True, help="Trading pair (e.g. BTCUSDT)")
+    parser.add_argument("--timeframe", type=str, default="1m", help="Timeframe (e.g. 1m, 5m, 1h)")
+    parser.add_argument("--start", type=str, required=True, help="Start date (ISO 8601)")
     parser.add_argument("--end", type=str, required=True, help="End date (ISO 8601)")
-    parser.add_argument(
-        "--capital", type=float, default=10000.0, help="Initial capital"
-    )
-    parser.add_argument(
-        "--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)"
-    )
+    parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital")
+    parser.add_argument("--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)")
     parser.add_argument(
         "--sl", type=float, default=0.0, help="Stop loss percentage (e.g. 0.01 for 1%%)"
     )
@@ -42,6 +32,11 @@ async def main():
     )
     parser.add_argument(
         "--config", type=str, default="config/settings.yaml", help="Path to config file"
+    )
+    parser.add_argument(
+        "--allow-short",
+        action="store_true",
+        help="Enable short trading",
     )
 
     args = parser.parse_args()
@@ -78,11 +73,13 @@ async def main():
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
+        allow_short=args.allow_short,
     )
 
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
     print(f"Strategies: {[s.__name__ for s in strategy_classes]}")
     print(f"Aggregator Config: {aggregator_config}")
+    print(f"Allow Short: {args.allow_short}")
 
     reader = IndicatorReader(db_config)
     async with reader:
@@ -97,6 +94,7 @@ async def main():
     print(f"Total Return: ${result.total_return:.2f} ({result.total_return_pct:.2f}%)")
     print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")
     print(f"Final Equity: ${result.final_equity:.2f}")
+    print(f"Sharpe Ratio: {result.sharpe_ratio:.2f}")
     print("=" * 40)
 
     if result.trades:
