@@ -100,8 +100,3 @@ strategy:
     min_agreement: 1
     buy_threshold: 1.1
     sell_threshold: -1.0
-
-trading:
-  pairs:
-    - SOLUSDT
-
