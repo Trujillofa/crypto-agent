@@ -351,14 +351,14 @@ class PaperExecutor:
 
         if atr > 0:
             # ATR-based SL/TP
-            # Update highest price for trailing stop
-            if current_price > position.highest_price:
-                position.highest_price = current_price
+            # Update high water mark for trailing stop
+            if current_price > position.high_water_mark:
+                position.high_water_mark = current_price
 
             # Check trailing stop activation
             trailing_activation = entry_price + self._config.trailing_activate_atr * atr
-            if position.highest_price >= trailing_activation:
-                trailing_sl = position.highest_price - self._config.trailing_offset_atr * atr
+            if position.high_water_mark >= trailing_activation:
+                trailing_sl = position.high_water_mark - self._config.trailing_offset_atr * atr
                 if trailing_sl > position.sl_price:
                     position.sl_price = trailing_sl
 
@@ -503,7 +503,7 @@ class PaperExecutor:
             atr_at_entry=atr_14,
             sl_price=sl_price,
             tp_price=tp_price,
-            highest_price=entry_price,
+            high_water_mark=entry_price,
         )
         self._trade_count += 1
 
