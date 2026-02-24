@@ -314,18 +314,28 @@ pytest
 
 ### Deploy to Production
 
+**IMPORTANT**: The server uses `docker-compose.prod.yml` (NOT `docker-compose.yml`).
+`docker-compose.prod.yml` bakes `src/` and `config/` into the image at build time — no
+bind mount. This means editing files on the server does NOT affect the running agent.
+Config and code changes only take effect after an explicit build + up cycle.
+
 ```bash
 # On local machine
-git push origin feat/my-feature
-# Create PR, review, merge to main
+git push origin main
 
 # On server
-ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"
+ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose -f docker-compose.prod.yml build agent && docker compose -f docker-compose.prod.yml up -d agent"
 
 # Verify
-ssh crypto-agent "docker compose ps"
-ssh crypto-agent "docker compose logs agent --tail=20"
+ssh crypto-agent "docker compose -f docker-compose.prod.yml ps"
+ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20"
 ```
+
+**Why prod compose?**
+- No `./:/app` bind mount — live code cannot be mutated by agents working in the repo
+- Config is frozen at build time — other agents doing backtest work cannot accidentally
+  change the running agent's trading pairs, timeframe, or strategy parameters
+- Explicit rebuild required to change behavior — acts as a deploy gate
 
 ### Add New Test
 

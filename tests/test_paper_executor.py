@@ -261,3 +261,66 @@ class TestCheckExits:
         assert "BTCUSDT:spot" not in executor._positions  # Closed
         assert "ETHUSDT:spot" in executor._positions  # Still open
         assert executor._positions["ETHUSDT:spot"].high_water_mark == 3001.0
+
+
+class TestOnSignalEntryPath:
+    """Regression tests for the on_signal → _handle_buy entry path.
+
+    These tests exist to catch incomplete field renames in PaperPosition —
+    the kind of bug where the dataclass definition is updated but one or more
+    constructor call-sites are not.
+    """
+
+    def _make_buy_signal(self, atr: float = 0.0) -> "Signal":
+        from src.strategy.signals import Signal, SignalType
+
+        return Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=1.0,
+            reason="test",
+            indicators={"atr_14": atr},
+            trading_mode="spot",
+        )
+
+    @pytest.mark.asyncio
+    async def test_buy_with_atr_creates_position_with_high_water_mark(self):
+        """BUY signal with ATR data must create PaperPosition without crashing.
+
+        Regression: highest_price kwarg was passed after high_water_mark rename,
+        causing PaperPosition.__init__() to raise TypeError on every BUY.
+        """
+        executor = _make_executor(
+            _make_config(
+                sl_atr_multiplier=2.0,
+                tp_atr_multiplier=4.5,
+                trailing_activate_atr=1.5,
+                trailing_offset_atr=1.0,
+            )
+        )
+        signal = self._make_buy_signal(atr=500.0)
+
+        await executor.on_signal(signal)
+
+        pos = executor._positions.get("BTCUSDT:spot")
+        assert pos is not None, "Position must be created on BUY signal"
+        assert pos.high_water_mark == pytest.approx(50000.0)
+        assert pos.sl_price == pytest.approx(50000.0 - 2.0 * 500.0)
+        assert pos.tp_price == pytest.approx(50000.0 + 4.5 * 500.0)
+
+    @pytest.mark.asyncio
+    async def test_buy_without_atr_falls_back_to_pct(self):
+        """BUY signal with atr_14=0 uses fixed-pct SL/TP fallback."""
+        executor = _make_executor(
+            _make_config(stop_loss_pct=0.02, take_profit_pct=0.05)
+        )
+        signal = self._make_buy_signal(atr=0.0)
+
+        await executor.on_signal(signal)
+
+        pos = executor._positions.get("BTCUSDT:spot")
+        assert pos is not None
+        assert pos.high_water_mark == pytest.approx(50000.0)
+        assert pos.sl_price == pytest.approx(50000.0 * 0.98)
+        assert pos.tp_price == pytest.approx(50000.0 * 1.05)
