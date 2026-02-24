@@ -44,9 +44,11 @@ async def main():
     # Load settings from config file
     try:
         settings = load_settings(Path(args.config))
-        strategy_classes, strategy_configs, aggregator_config = _resolve_strategy_config(
-            settings.strategy
-        )
+        result = _resolve_strategy_config(settings.strategy)
+        strategy_classes = result[0]
+        strategy_configs = result[1]
+        aggregator_config = result[2]
+        # result[3] is per_symbol_aggregator_config, not used in backtest
         print(f"Loaded configuration from {args.config}")
     except Exception as e:
         print(f"Failed to load config from {args.config}: {e}")
