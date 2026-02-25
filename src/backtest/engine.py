@@ -145,7 +145,9 @@ class BacktestEngine:
                 except Exception as e:
                     self._logger.error(f"Strategy error at {current_time}: {e}")
 
-            final_signal = self._aggregator.aggregate(self._config.symbol, signals)
+            final_signal = self._aggregator.aggregate(
+                self._config.symbol, signals, ema_200=row.get("ema_200")
+            )
 
             if self._config.apply_global_trend_filter and final_signal.type == SignalType.BUY:
                 ema_200 = row.get("ema_200")

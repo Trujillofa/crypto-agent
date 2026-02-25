@@ -1,272 +1,275 @@
 #!/usr/bin/env python3
-"""Monte Carlo validation of backtest results."""
+"""
+Monte Carlo validation via bootstrap resampling.
+
+Runs a single deterministic backtest to obtain realized trade returns,
+then resamples those returns N times (with replacement) to estimate the
+distribution of Sharpe ratio, win rate, and total return. This correctly
+quantifies uncertainty from the finite trade sample — unlike re-running the
+same deterministic backtest with different seeds, which produces zero variance.
+"""
+
+from __future__ import annotations
 
 import asyncio
-import subprocess
-import numpy as np
-import sys
+import math
 import os
-from pathlib import Path
+import random
+import sys
 from datetime import datetime
+from pathlib import Path
 
 sys.path.append(os.getcwd())
+
+from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.features.reader import IndicatorReader
+from src.main import _resolve_strategy_config, load_settings
+from src.utils.logger import configure_logger
 
 SYMBOL = "SOLUSDT"
 TIMEFRAME = "4h"
 START = "2024-01-01"
 END = "2026-02-24"
-NUM_SIMULATIONS = 100  # 500 Monte Carlo runs
-SLIPPAGE_PCT = 0.001  # 0.1% slippage variance
-FEE_PCT = 0.001  # 0.1% fee
+N_BOOTSTRAP = 2000
+RANDOM_SEED = 42
 
 
-def run_single_backtest(seed: int) -> dict:
-    """Run backtest with random trade order to simulate sequence effects."""
-    # Set random seed for reproducibility
-    env = os.environ.copy()
-    env.update(
-        {
-            "DB_HOST": "localhost",
-            "DB_PORT": "15432",
-            "DB_NAME": "marketdata",
-            "DB_USER": "trading",
-            "DB_PASSWORD": "change_me",
-            "PYTHONHASHSEED": str(seed),
-        }
+def _compute_bootstrap_metrics(
+    trade_returns: list[float],
+) -> dict[str, float]:
+    """Compute metrics for a single bootstrap sample."""
+    n = len(trade_returns)
+    if n == 0:
+        return {"total_return_pct": 0.0, "win_rate": 0.0, "trade_sharpe": 0.0}
+
+    compound = 1.0
+    for r in trade_returns:
+        compound *= 1.0 + r / 100.0
+    total_return_pct = (compound - 1.0) * 100.0
+
+    wins = sum(1 for r in trade_returns if r > 0)
+    win_rate = wins / n * 100.0
+
+    mean_r = sum(trade_returns) / n
+    variance = sum((r - mean_r) ** 2 for r in trade_returns) / n
+    std_r = math.sqrt(variance) if variance > 0 else 0.0
+    # Cap Sharpe at a meaningful ceiling; inf/nan signals degenerate sample (all wins)
+    trade_sharpe = min(mean_r / std_r, 10.0) if std_r > 1e-6 else 10.0
+
+    return {
+        "total_return_pct": total_return_pct,
+        "win_rate": win_rate,
+        "trade_sharpe": trade_sharpe,
+    }
+
+
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    idx = (len(sorted_v) - 1) * p / 100.0
+    lo = int(idx)
+    hi = lo + 1
+    if hi >= len(sorted_v):
+        return sorted_v[-1]
+    frac = idx - lo
+    return sorted_v[lo] * (1.0 - frac) + sorted_v[hi] * frac
+
+
+def _write_report(
+    baseline: dict,
+    trade_returns: list[float],
+    bootstrap_results: list[dict],
+    report_path: Path,
+) -> None:
+    n_trades = len(trade_returns)
+    ret_vals = [r["total_return_pct"] for r in bootstrap_results]
+    win_vals = [r["win_rate"] for r in bootstrap_results]
+    sharpe_vals = [r["trade_sharpe"] for r in bootstrap_results]
+
+    ret_mean = sum(ret_vals) / len(ret_vals)
+    ret_std = math.sqrt(sum((x - ret_mean) ** 2 for x in ret_vals) / len(ret_vals))
+
+    win_mean = sum(win_vals) / len(win_vals)
+    win_std = math.sqrt(sum((x - win_mean) ** 2 for x in win_vals) / len(win_vals))
+
+    sharpe_mean = sum(sharpe_vals) / len(sharpe_vals)
+    sharpe_std = math.sqrt(
+        sum((x - sharpe_mean) ** 2 for x in sharpe_vals) / len(sharpe_vals)
     )
 
-    cmd = [
-        ".venv/bin/python",
-        "scripts/run_backtest.py",
-        "--symbol",
-        SYMBOL,
-        "--timeframe",
-        TIMEFRAME,
-        "--start",
-        START,
-        "--end",
-        END,
-        "--sl",
-        "0.02",
-        "--tp",
-        "0.05",
-    ]
+    percentile_pct_below_zero = sum(1 for r in ret_vals if r < 0) / len(ret_vals) * 100.0
 
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
-
-    metrics = {}
-    for line in result.stdout.splitlines():
-        if "Total Trades:" in line:
-            metrics["trades"] = int(line.split(":")[1].strip())
-        elif "Win Rate:" in line:
-            metrics["win_rate"] = float(line.split(":")[1].strip().replace("%", ""))
-        elif "Total Return:" in line:
-            parts = line.split("(")
-            if len(parts) > 1:
-                metrics["return_pct"] = float(parts[1].split("%")[0])
-        elif "Max Drawdown:" in line:
-            metrics["max_dd"] = float(line.split(":")[1].strip().replace("%", ""))
-        elif "Sharpe Ratio:" in line:
-            metrics["sharpe"] = float(line.split(":")[1].strip())
-
-    return metrics
-
-
-def main():
-    print(f"Monte Carlo Simulation: {SYMBOL} {TIMEFRAME}")
-    print(f"Period: {START} to {END}")
-    print(f"Simulations: {NUM_SIMULATIONS}")
-    print(f"Slippage variance: {SLIPPAGE_PCT * 100}% | Fee: {FEE_PCT * 100}%")
-    print("=" * 70)
-
-    results = []
-
-    # Run baseline first (deterministic)
-    print("\nRunning BASELINE backtest (deterministic)...")
-    baseline = run_single_backtest(seed=42)
-    baseline["name"] = "baseline"
-    results.append(baseline)
-    print(
-        f"  Trades: {baseline.get('trades', 0)}, Win Rate: {baseline.get('win_rate', 0):.1f}%, "
-        f"Return: {baseline.get('return_pct', 0):.2f}%, Sharpe: {baseline.get('sharpe', 0):.2f}, "
-        f"Max DD: {baseline.get('max_dd', 0):.2f}%"
-    )
-
-    # Run Monte Carlo simulations with different seeds
-    print(f"\nRunning {NUM_SIMULATIONS} Monte Carlo simulations...")
-
-    for i in range(NUM_SIMULATIONS):
-        if (i + 1) % 50 == 0:
-            print(f"  Progress: {i + 1}/{NUM_SIMULATIONS}")
-
-        # Random seed between 1 and 2^31 (avoid 0 and 42)
-        seed = np.random.randint(1, 2**31)
-        metrics = run_single_backtest(seed)
-        metrics["name"] = f"mc_{i + 1}"
-        metrics["seed"] = seed
-        results.append(metrics)
-
-    # Calculate statistics
-    sharpe_values = [r.get("sharpe", 0) for r in results]
-    winrate_values = [r.get("win_rate", 0) for r in results]
-    return_values = [r.get("return_pct", 0) for r in results]
-    dd_values = [r.get("max_dd", 0) for r in results]
-
-    print("\n" + "=" * 70)
-    print("MONTE CARLO RESULTS")
-    print("=" * 70)
-
-    # Baseline stats
-    print(f"\nBASELINE (deterministic, seed=42):")
-    print(f"  Trades: {baseline.get('trades', 0)}")
-    print(f"  Win Rate: {baseline.get('win_rate', 0):.2f}%")
-    print(f"  Return: {baseline.get('return_pct', 0):.2f}%")
-    print(f"  Max DD: {baseline.get('max_dd', 0):.2f}%")
-    print(f"  Sharpe: {baseline.get('sharpe', 0):.2f}")
-
-    # Monte Carlo statistics
-    mc_results = [r for r in results if r["name"] != "baseline"]
-
-    if mc_results:
-        mc_sharpe_mean = np.mean([r["sharpe"] for r in mc_results])
-        mc_sharpe_std = np.std([r["sharpe"] for r in mc_results])
-        mc_sharpe_percentiles = np.percentile(
-            [r["sharpe"] for r in mc_results], [5, 25, 50, 75, 95]
-        )
-
-        mc_winrate_mean = np.mean([r["win_rate"] for r in mc_results])
-        mc_winrate_std = np.std([r["win_rate"] for r in mc_results])
-
-        mc_return_mean = np.mean([r["return_pct"] for r in mc_results])
-        mc_return_std = np.std([r["return_pct"] for r in mc_results])
-
-        mc_dd_mean = np.mean([r["max_dd"] for r in mc_results])
-        mc_dd_percentiles = np.percentile([r["max_dd"] for r in mc_results], [5, 25, 50, 75, 95])
-
-        print(f"\nMONTE CARLO ({NUM_SIMULATIONS} runs, random seeds):")
-        print(f"  Sharpe: {mc_sharpe_mean:.2f} ± {mc_sharpe_std:.2f}")
-        print(
-            f"    5th/25th/50th/75th/95th percentile: {mc_sharpe_percentiles[0]:.2f} / {mc_sharpe_percentiles[1]:.2f} / "
-            f"{mc_sharpe_percentiles[2]:.2f} / {mc_sharpe_percentiles[3]:.2f} / {mc_sharpe_percentiles[4]:.2f}"
-        )
-        print(f"  Win Rate: {mc_winrate_mean:.2f}% ± {mc_winrate_std:.2f}%")
-        print(f"  Return: {mc_return_mean:.2f}% ± {mc_return_std:.2f}%")
-        print(
-            f"  Max DD: {mc_dd_mean:.2f}% (5th/95th: {mc_dd_percentiles[0]:.2f}% / {mc_dd_percentiles[4]:.2f}%)"
-        )
-
-        # Statistical significance test
-        # Compare baseline Sharpe to MC distribution
-        if len(sharpe_values) > 1:
-            mc_sharpe_mean_all = np.mean(sharpe_values)
-            mc_sharpe_std_all = np.std(sharpe_values)
-            z_score = (baseline["sharpe"] - mc_sharpe_mean_all) / mc_sharpe_std_all
-            print(f"\nSTATISTICAL SIGNIFICANCE:")
-            print(f"  Baseline Sharpe z-score: {z_score:.2f}")
-            print(f"  (z > 1.96 = p < 0.05 significant)")
-            print(f"  (z > 1.65 = p < 0.10 significant)")
-
-            # Confidence intervals
-            se = mc_sharpe_std_all / np.sqrt(NUM_SIMULATIONS + 1)
-            ci_95 = 1.96 * se
-            ci_90 = 1.645 * se
-            ci_80 = 1.282 * se
-
-            print(
-                f"\n  95% CI: [{baseline['sharpe'] - ci_95:.2f}, {baseline['sharpe'] + ci_95:.2f}]"
-            )
-            print(f"  90% CI: [{baseline['sharpe'] - ci_90:.2f}, {baseline['sharpe'] + ci_90:.2f}]")
-            print(f"  80% CI: [{baseline['sharpe'] - ci_80:.2f}, {baseline['sharpe'] + ci_80:.2f}]")
-
-    # Worst and best scenarios
-    sorted_by_sharpe = sorted(results, key=lambda x: x.get("sharpe", -999))
-    worst = sorted_by_sharpe[0]
-    best = sorted_by_sharpe[-1]
-
-    print(f"\nWORST CASE (Sharpe {worst.get('sharpe', 0):.2f}):")
-    print(
-        f"  Trades: {worst.get('trades', 0)}, Win Rate: {worst.get('win_rate', 0):.1f}%, "
-        f"Return: {worst.get('return_pct', 0):.2f}%, Max DD: {worst.get('max_dd', 0):.2f}%"
-    )
-
-    print(f"\nBEST CASE (Sharpe {best.get('sharpe', 0):.2f}):")
-    print(
-        f"  Trades: {best.get('trades', 0)}, Win Rate: {best.get('win_rate', 0):.1f}%, "
-        f"Return: {best.get('return_pct', 0):.2f}%, Max DD: {best.get('max_dd', 0):.2f}%"
-    )
-
-    # Final verdict
-    print("\n" + "=" * 70)
-    print("FINAL VERDICT")
-    print("=" * 70)
-
-    if baseline["sharpe"] > mc_sharpe_mean_all:
-        print(
-            f"✅ POSITIVE: Baseline Sharpe ({baseline['sharpe']:.2f}) > MC mean ({mc_sharpe_mean_all:.2f})"
-        )
-        print(f"   Strategy appears to have EDGE, not just luck")
-        print(f"   p-value (approx): < 0.05 (statistically significant)")
-    elif abs(baseline["sharpe"] - mc_sharpe_mean_all) < 0.5:
-        print(
-            f"⚠️  NEUTRAL: Baseline Sharpe ({baseline['sharpe']:.2f}) ≈ MC mean ({mc_sharpe_mean_all:.2f})"
-        )
-        print(f"   Could be luck, but insufficient MC runs to confirm")
-        print(f"   Consider running {NUM_SIMULATIONS * 2} simulations")
-    else:
-        print(
-            f"❌ NEGATIVE: Baseline Sharpe ({baseline['sharpe']:.2f}) < MC mean ({mc_sharpe_mean_all:.2f})"
-        )
-        print(f"   Strategy may be overfitted or lucky")
-        print(f"   Lower buy_threshold or add more strategies")
-
-    # Save detailed results
-    timestamp = datetime.now().strftime("%Y-%m-%d")
-    report_dir = Path("docs/reports")
-    report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = report_dir / f"monte-carlo-{SYMBOL.lower()}-{TIMEFRAME}-{timestamp}.md"
+    date_str = datetime.now().strftime("%Y-%m-%d")
 
     with open(report_path, "w") as f:
-        f.write(f"# Monte Carlo Validation: {SYMBOL} {TIMEFRAME}\n\n")
-        f.write(f"**Date:** {timestamp}\n")
+        f.write(f"# Monte Carlo Validation (Bootstrap): {SYMBOL} {TIMEFRAME}\n\n")
+        f.write(f"**Date:** {date_str}\n")
         f.write(f"**Period:** {START} to {END}\n")
-        f.write(f"**Simulations:** {NUM_SIMULATIONS}\n")
-        f.write(f"**Configuration:** SL=2%, TP=5%, fee=0.1%, slippage variance=0.1%\n\n")
-        f.write("## Baseline (Deterministic)\n\n")
-        f.write(f"| Metric | Value |\n")
-        f.write(f"|--------|-------|\n")
-        f.write(f"| Trades | {baseline.get('trades', 0)} |\n")
-        f.write(f"| Win Rate | {baseline.get('win_rate', 0):.2f}% |\n")
-        f.write(f"| Return | {baseline.get('return_pct', 0):.2f}% |\n")
-        f.write(f"| Max DD | {baseline.get('max_dd', 0):.2f}% |\n")
-        f.write(f"| Sharpe | {baseline.get('sharpe', 0):.2f} |\n")
-        f.write("\n## Monte Carlo Statistics (500 runs)\n\n")
-        f.write(f"| Metric | Mean | Std | 5th | 25th | 50th | 75th | 95th |\n")
-        f.write(f"|--------|------|-----|-----|------|------|------|------|--------|\n")
-        f.write(
-            f"| Sharpe | {mc_sharpe_mean:.2f} | {mc_sharpe_std:.2f} | {mc_sharpe_percentiles[0]:.2f} | "
-            f"{mc_sharpe_percentiles[1]:.2f} | {mc_sharpe_percentiles[2]:.2f} | "
-            f"{mc_sharpe_percentiles[3]:.2f} | {mc_sharpe_percentiles[4]:.2f} |\n"
-        )
-        f.write(
-            f"| Win Rate | {mc_winrate_mean:.2f}% | {mc_winrate_std:.2f}% | N/A | N/A | N/A | N/A | N/A |\n"
-        )
-        f.write(
-            f"| Return | {mc_return_mean:.2f}% | {mc_return_std:.2f}% | N/A | N/A | N/A | N/A | N/A |\n"
-        )
-        f.write(f"| Max DD | {mc_dd_mean:.2f}% | N/A | N/A | N/A | N/A | N/A | N/A |\n")
-        f.write("\n## Statistical Significance\n\n")
-        f.write(f"Baseline Sharpe: {baseline['sharpe']:.2f}\n")
-        f.write(f"MC Sharpe Mean: {mc_sharpe_mean_all:.2f}\n")
-        f.write(f"Z-score: {z_score:.2f}\n")
-        if z_score > 1.96:
-            f.write("**Conclusion**: Statistically significant at 95% confidence (p < 0.05)\n")
-        elif z_score > 1.65:
-            f.write("**Conclusion**: Statistically significant at 90% confidence (p < 0.10)\n")
-        else:
-            f.write("**Conclusion**: Not statistically significant (may be luck)\n")
+        f.write(f"**Method:** Bootstrap resampling ({N_BOOTSTRAP} iterations)\n")
+        f.write(f"**Trade sample size:** {n_trades} trades per resample\n\n")
 
-    print(f"\nReport saved to: {report_path}")
+        f.write("## Baseline (Deterministic Backtest)\n\n")
+        f.write("| Metric | Value |\n|--------|-------|\n")
+        f.write(f"| Trades | {baseline['total_trades']} |\n")
+        f.write(f"| Win Rate | {baseline['win_rate']:.2f}% |\n")
+        f.write(f"| Total Return | {baseline['total_return_pct']:.2f}% |\n")
+        f.write(f"| Max Drawdown | {baseline['max_drawdown_pct']:.2f}% |\n")
+        f.write(f"| Sharpe Ratio | {baseline['sharpe_ratio']:.2f} |\n\n")
+
+        f.write("## Bootstrap Distribution\n\n")
+        f.write(
+            "| Metric | Mean | Std | 5th pct | 25th pct | 50th pct | 75th pct | 95th pct |\n"
+        )
+        f.write("|--------|------|-----|---------|----------|----------|----------|----------|\n")
+        f.write(
+            f"| Return (%) | {ret_mean:.2f} | {ret_std:.2f} | "
+            f"{_percentile(ret_vals, 5):.2f} | {_percentile(ret_vals, 25):.2f} | "
+            f"{_percentile(ret_vals, 50):.2f} | {_percentile(ret_vals, 75):.2f} | "
+            f"{_percentile(ret_vals, 95):.2f} |\n"
+        )
+        f.write(
+            f"| Win Rate (%) | {win_mean:.2f} | {win_std:.2f} | "
+            f"{_percentile(win_vals, 5):.2f} | {_percentile(win_vals, 25):.2f} | "
+            f"{_percentile(win_vals, 50):.2f} | {_percentile(win_vals, 75):.2f} | "
+            f"{_percentile(win_vals, 95):.2f} |\n"
+        )
+        f.write(
+            f"| Trade Sharpe | {sharpe_mean:.2f} | {sharpe_std:.2f} | "
+            f"{_percentile(sharpe_vals, 5):.2f} | {_percentile(sharpe_vals, 25):.2f} | "
+            f"{_percentile(sharpe_vals, 50):.2f} | {_percentile(sharpe_vals, 75):.2f} | "
+            f"{_percentile(sharpe_vals, 95):.2f} |\n"
+        )
+
+        f.write("\n## Risk Assessment\n\n")
+        f.write(f"- **Probability of negative return:** {percentile_pct_below_zero:.1f}%\n")
+        f.write(
+            f"- **95% CI for total return:** "
+            f"[{_percentile(ret_vals, 2.5):.2f}%, {_percentile(ret_vals, 97.5):.2f}%]\n"
+        )
+        f.write(
+            f"- **Worst-case 5th percentile return:** {_percentile(ret_vals, 5):.2f}%\n"
+        )
+
+        f.write("\n## Interpretation\n\n")
+        f.write(
+            f"With only {n_trades} realized trades, bootstrap confidence intervals are wide. "
+            "This is not a flaw in the analysis — it accurately reflects the uncertainty "
+            "inherent in a low-frequency strategy. The intervals will narrow as more "
+            "live trades accumulate.\n\n"
+        )
+        if n_trades < 30:
+            f.write(
+                "⚠️  **Insufficient sample**: Fewer than 30 trades. Results are directional "
+                "only. Do not make config changes based solely on this analysis.\n"
+            )
+        elif percentile_pct_below_zero < 10:
+            f.write(
+                "✅ **Robust**: Less than 10% of bootstrap scenarios show a loss. "
+                "Strategy appears to have genuine edge.\n"
+            )
+        elif percentile_pct_below_zero < 25:
+            f.write(
+                "⚠️  **Moderate confidence**: 10-25% of scenarios show a loss. "
+                "Strategy is likely profitable but with meaningful tail risk.\n"
+            )
+        else:
+            f.write(
+                "❌ **Low confidence**: >25% of scenarios show a loss. "
+                "Strategy may be curve-fit. Recommend additional out-of-sample validation.\n"
+            )
+
+
+async def main() -> None:
+    configure_logger("WARNING")
+
+    settings = load_settings(Path("config/settings.yaml"))
+    result = _resolve_strategy_config(settings.strategy)
+    strategy_classes, strategy_configs, aggregator_config = result[0], result[1], result[2]
+
+    db_config = {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": int(os.getenv("DB_PORT", "15432")),
+        "name": os.getenv("DB_NAME", "marketdata"),
+        "user": os.getenv("DB_USER", "trading"),
+        "password": os.getenv("DB_PASSWORD", "change_me"),
+    }
+
+    backtest_cfg = BacktestConfig(
+        symbol=SYMBOL,
+        timeframe=TIMEFRAME,
+        start_date=START,
+        end_date=END,
+        initial_capital=10_000.0,
+        fee_rate=0.001,
+        stop_loss_pct=0.02,
+        take_profit_pct=0.05,
+        slippage_pct=0.001,
+        apply_global_trend_filter=True,
+        allow_short=False,
+        strategy_classes=strategy_classes,
+        strategy_configs=strategy_configs,
+        aggregator_config=aggregator_config,
+    )
+
+    print(f"Running baseline backtest: {SYMBOL} {TIMEFRAME} {START}→{END}")
+    reader = IndicatorReader(db_config)
+    async with reader:
+        engine = BacktestEngine(backtest_cfg, reader)
+        bt_result = await engine.run()
+
+    if bt_result.total_trades == 0:
+        print("No trades in backtest period. Cannot run bootstrap.")
+        return
+
+    trade_returns = [t.return_pct for t in bt_result.trades]
+
+    print(f"Baseline: {bt_result.total_trades} trades | "
+          f"Win Rate {bt_result.win_rate:.1f}% | "
+          f"Return {bt_result.total_return_pct:.2f}% | "
+          f"Sharpe {bt_result.sharpe_ratio:.2f}")
+    print(f"\nRunning {N_BOOTSTRAP} bootstrap iterations...")
+
+    rng = random.Random(RANDOM_SEED)
+    n_trades = len(trade_returns)
+    bootstrap_results = []
+    for i in range(N_BOOTSTRAP):
+        sample = rng.choices(trade_returns, k=n_trades)
+        bootstrap_results.append(_compute_bootstrap_metrics(sample))
+        if (i + 1) % 500 == 0:
+            print(f"  {i + 1}/{N_BOOTSTRAP} done")
+
+    ret_vals = [r["total_return_pct"] for r in bootstrap_results]
+    win_vals = [r["win_rate"] for r in bootstrap_results]
+    sharpe_vals = [r["trade_sharpe"] for r in bootstrap_results]
+
+    print("\n" + "=" * 60)
+    print("BOOTSTRAP RESULTS")
+    print("=" * 60)
+    print(f"Return:      {sum(ret_vals)/len(ret_vals):.2f}% ± {math.sqrt(sum((x - sum(ret_vals)/len(ret_vals))**2 for x in ret_vals)/len(ret_vals)):.2f}%")
+    print(f"  5th/95th:  {_percentile(ret_vals, 5):.2f}% / {_percentile(ret_vals, 95):.2f}%")
+    print(f"Win Rate:    {sum(win_vals)/len(win_vals):.1f}% ± {math.sqrt(sum((x - sum(win_vals)/len(win_vals))**2 for x in win_vals)/len(win_vals)):.1f}%")
+    print(f"  5th/95th:  {_percentile(win_vals, 5):.1f}% / {_percentile(win_vals, 95):.1f}%")
+    print(f"Trade Sharpe:{sum(sharpe_vals)/len(sharpe_vals):.2f} ± {math.sqrt(sum((x - sum(sharpe_vals)/len(sharpe_vals))**2 for x in sharpe_vals)/len(sharpe_vals)):.2f}")
+    pct_loss = sum(1 for r in ret_vals if r < 0) / len(ret_vals) * 100
+    print(f"P(loss):     {pct_loss:.1f}%")
+    if n_trades < 30:
+        print(f"\n⚠️  Only {n_trades} trades — wide intervals expected. Directional only.")
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    report_path = Path("docs/reports") / f"monte-carlo-bootstrap-{SYMBOL.lower()}-{TIMEFRAME}-{date_str}.md"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    baseline_dict = {
+        "total_trades": bt_result.total_trades,
+        "win_rate": bt_result.win_rate,
+        "total_return_pct": bt_result.total_return_pct,
+        "max_drawdown_pct": bt_result.max_drawdown * 100,
+        "sharpe_ratio": bt_result.sharpe_ratio,
+    }
+    _write_report(baseline_dict, trade_returns, bootstrap_results, report_path)
+    print(f"\nReport saved: {report_path}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

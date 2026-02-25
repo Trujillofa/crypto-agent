@@ -150,7 +150,9 @@ class StrategyEngine:
                 )
 
             if generated_signals:
-                final_signal = self._aggregator.aggregate(symbol, generated_signals)
+                final_signal = self._aggregator.aggregate(
+                    symbol, generated_signals, ema_200=indicators.get("ema_200")
+                )
 
                 if final_signal.type == SignalType.BUY:
                     price = indicators["close_price"]

@@ -98,5 +98,6 @@ strategy:
         rsi_overbought: 60
   aggregator:
     min_agreement: 1
-    buy_threshold: 1.1
+    buy_threshold: 1.1          # used when price <= EMA200 (downtrend/unknown)
+    buy_threshold_uptrend: 1.1  # used when price > EMA200 — matches base (WFO-optimal; lower to test aggression)
     sell_threshold: -1.0
