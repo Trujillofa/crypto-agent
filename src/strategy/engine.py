@@ -34,6 +34,8 @@ class EngineConfig:
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
+    # Per-symbol aggregator overrides: {"SOLUSDT": {"min_agreement": 1, "buy_threshold": 1.1, "sell_threshold": -1.0}, ...}
+    per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
 
 class StrategyEngine:
