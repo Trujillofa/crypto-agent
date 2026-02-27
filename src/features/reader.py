@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 
 import asyncpg
@@ -18,6 +19,7 @@ class IndicatorReader:
         self._logger = get_logger(self.__class__.__name__)
         self._connected = False
         self._conn: asyncpg.Connection | None = None
+        self._db_lock = asyncio.Lock()
 
     async def __aenter__(self) -> "IndicatorReader":
         await self._connect()
@@ -46,9 +48,10 @@ class IndicatorReader:
             Sorted oldest to newest (time ASC).
             Empty list if no data.
         """
-        if not self._connected:
-            raise RuntimeError("IndicatorReader connection not initialized")
-        return await self._fetch_rows(symbol, timeframe, limit)
+        async with self._db_lock:
+            if not self._connected:
+                raise RuntimeError("IndicatorReader connection not initialized")
+            return await self._fetch_rows(symbol, timeframe, limit)
 
     async def fetch_range(
         self,
@@ -68,9 +71,10 @@ class IndicatorReader:
         Returns:
             List of dicts with indicator keys, sorted oldest to newest (time ASC).
         """
-        if not self._connected:
-            raise RuntimeError("IndicatorReader connection not initialized")
-        return await self._fetch_range_rows(symbol, timeframe, start_time, end_time)
+        async with self._db_lock:
+            if not self._connected:
+                raise RuntimeError("IndicatorReader connection not initialized")
+            return await self._fetch_range_rows(symbol, timeframe, start_time, end_time)
 
     async def _connect(self) -> None:
         """Connect to TimescaleDB via asyncpg."""

@@ -34,6 +34,7 @@ class IndicatorComputer:
         self._logger = get_logger(self.__class__.__name__)
         self._conn: asyncpg.Connection | None = None
         self._running = False
+        self._db_lock = asyncio.Lock()
 
     async def run(self) -> None:
         """Main computation loop."""
@@ -101,88 +102,89 @@ class IndicatorComputer:
 
     async def _compute_symbol(self, symbol: str) -> None:
         """Compute and store indicators for a single symbol."""
-        computation_start = time.perf_counter()
+        async with self._db_lock:
+            computation_start = time.perf_counter()
 
-        # Read OHLCV data (need at least 200 periods for long-term indicators)
-        ohlcv_data = await self._read_ohlcv(symbol, limit=200)
+            # Read OHLCV data (need at least 200 periods for long-term indicators)
+            ohlcv_data = await self._read_ohlcv(symbol, limit=200)
 
-        if not ohlcv_data:
-            self._logger.warning("No OHLCV data found for %s", symbol)
-            return
+            if not ohlcv_data:
+                self._logger.warning("No OHLCV data found for %s", symbol)
+                return
 
-        # Compute indicators
-        try:
-            indicators = compute_indicators(ohlcv_data)
-        except ValueError as exc:
-            self._logger.warning(
-                "Not enough data to compute indicators for %s: %s", symbol, exc
-            )
-            self._metrics.errors_total.labels(
-                symbol=symbol, error_type="insufficient_data"
-            ).inc()
-            return
+            # Compute indicators
+            try:
+                indicators = compute_indicators(ohlcv_data)
+            except ValueError as exc:
+                self._logger.warning(
+                    "Not enough data to compute indicators for %s: %s", symbol, exc
+                )
+                self._metrics.errors_total.labels(
+                    symbol=symbol, error_type="insufficient_data"
+                ).inc()
+                return
 
-        # Get the latest timestamp from OHLCV data
-        time_values = list(ohlcv_data.get("time", []))
-        if time_values:
-            latest_time_value = time_values[-1]
-            if isinstance(latest_time_value, datetime):
-                latest_time = latest_time_value
+            # Get the latest timestamp from OHLCV data
+            time_values = list(ohlcv_data.get("time", []))
+            if time_values:
+                latest_time_value = time_values[-1]
+                if isinstance(latest_time_value, datetime):
+                    latest_time = latest_time_value
+                else:
+                    latest_time = datetime.now(timezone.utc)
             else:
                 latest_time = datetime.now(timezone.utc)
-        else:
-            latest_time = datetime.now(timezone.utc)
 
-        # Update Prometheus metrics
-        self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)
-        self._metrics.rsi.labels(symbol=symbol, period="7").set(indicators.rsi_7)
-        self._metrics.macd.labels(symbol=symbol, component="macd").set(indicators.macd)
-        self._metrics.macd.labels(symbol=symbol, component="signal").set(
-            indicators.macd_signal
-        )
-        self._metrics.macd.labels(symbol=symbol, component="hist").set(
-            indicators.macd_hist
-        )
-        self._metrics.atr.labels(symbol=symbol, period="14").set(indicators.atr_14)
+            # Update Prometheus metrics
+            self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)
+            self._metrics.rsi.labels(symbol=symbol, period="7").set(indicators.rsi_7)
+            self._metrics.macd.labels(symbol=symbol, component="macd").set(indicators.macd)
+            self._metrics.macd.labels(symbol=symbol, component="signal").set(
+                indicators.macd_signal
+            )
+            self._metrics.macd.labels(symbol=symbol, component="hist").set(
+                indicators.macd_hist
+            )
+            self._metrics.atr.labels(symbol=symbol, period="14").set(indicators.atr_14)
 
-        # Store indicators
-        stored = StoredIndicator(
-            time=latest_time,
-            symbol=symbol,
-            timeframe=self._timeframe,
-            rsi_14=indicators.rsi_14,
-            rsi_7=indicators.rsi_7,
-            macd=indicators.macd,
-            macd_signal=indicators.macd_signal,
-            macd_hist=indicators.macd_hist,
-            bb_upper_dist=indicators.bb_upper_dist,
-            bb_lower_dist=indicators.bb_lower_dist,
-            atr_14=indicators.atr_14,
-            atr_pct=indicators.atr_pct,
-            ema_12=indicators.ema_12,
-            ema_26=indicators.ema_26,
-            ema_50=indicators.ema_50,
-            ema_200=indicators.ema_200,
-            sma_20=indicators.sma_20,
-            sma_50=indicators.sma_50,
-            sma_200=indicators.sma_200,
-            vwap=indicators.vwap,
-            stoch_k=indicators.stoch_k,
-            stoch_d=indicators.stoch_d,
-            cci=indicators.cci,
-        )
+            # Store indicators
+            stored = StoredIndicator(
+                time=latest_time,
+                symbol=symbol,
+                timeframe=self._timeframe,
+                rsi_14=indicators.rsi_14,
+                rsi_7=indicators.rsi_7,
+                macd=indicators.macd,
+                macd_signal=indicators.macd_signal,
+                macd_hist=indicators.macd_hist,
+                bb_upper_dist=indicators.bb_upper_dist,
+                bb_lower_dist=indicators.bb_lower_dist,
+                atr_14=indicators.atr_14,
+                atr_pct=indicators.atr_pct,
+                ema_12=indicators.ema_12,
+                ema_26=indicators.ema_26,
+                ema_50=indicators.ema_50,
+                ema_200=indicators.ema_200,
+                sma_20=indicators.sma_20,
+                sma_50=indicators.sma_50,
+                sma_200=indicators.sma_200,
+                vwap=indicators.vwap,
+                stoch_k=indicators.stoch_k,
+                stoch_d=indicators.stoch_d,
+                cci=indicators.cci,
+            )
 
-        write_start = time.perf_counter()
-        await self._writer.write_indicators(stored)
-        write_elapsed = time.perf_counter() - write_start
-        self._metrics.write_latency.labels(symbol=symbol).observe(write_elapsed)
-        self._metrics.writes_total.labels(symbol=symbol, status="success").inc()
+            write_start = time.perf_counter()
+            await self._writer.write_indicators(stored)
+            write_elapsed = time.perf_counter() - write_start
+            self._metrics.write_latency.labels(symbol=symbol).observe(write_elapsed)
+            self._metrics.writes_total.labels(symbol=symbol, status="success").inc()
 
-        # Update metrics
-        elapsed = time.perf_counter() - computation_start
-        self._metrics.computation_latency.labels(symbol=symbol).observe(elapsed)
-        self._metrics.computations_total.labels(symbol=symbol, status="success").inc()
-        self._metrics.last_computation_time.labels(symbol=symbol).set(time.time())
+            # Update metrics
+            elapsed = time.perf_counter() - computation_start
+            self._metrics.computation_latency.labels(symbol=symbol).observe(elapsed)
+            self._metrics.computations_total.labels(symbol=symbol, status="success").inc()
+            self._metrics.last_computation_time.labels(symbol=symbol).set(time.time())
 
     async def _read_ohlcv(self, symbol: str, limit: int) -> dict[str, list]:
         """Read OHLCV data from TimescaleDB."""
@@ -217,3 +219,4 @@ class IndicatorComputer:
     def stop(self) -> None:
         """Stop the computation loop."""
         self._running = False
+        self._db_lock = asyncio.Lock()
