@@ -175,9 +175,10 @@ class PortfolioManager:
                     exit_time = COALESCE(exit_time, entry_time),
                     exit_price = COALESCE(exit_price, entry_price),
                     realized_pnl = COALESCE(realized_pnl, 0)
-                WHERE id = ANY($1::int[])
+                WHERE id = ANY($1::int[]) AND agent_id = $2
                 """,
                 stale_ids,
+                self._agent_id,
             )
             self._logger.warning(
                 "Normalized duplicate open positions for %s/%s; closed stale IDs: %s",
@@ -318,18 +319,19 @@ class PortfolioManager:
                 """
                 UPDATE positions
                 SET status = $1, exit_time = $2, exit_price = $3, realized_pnl = $4
-                WHERE id = $5
+                WHERE id = $5 AND agent_id = $6
                 """,
                 "closed",
                 exit_time,
                 price,
                 realized_pnl,
                 position.id,
+                self._agent_id,
             )
             await self._conn.execute(
                 """
-                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, pnl, position_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, pnl, position_id, agent_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 """,
                 exit_time,
                 self._scope_symbol(symbol),
@@ -340,6 +342,7 @@ class PortfolioManager:
                 order_id,
                 realized_pnl,
                 position.id,
+                self._agent_id,
             )
         del self._positions[key]
 
@@ -375,36 +378,37 @@ class PortfolioManager:
         if self._conn is None:
             raise RuntimeError("Database connection missing")
 
-        symbol_clause = "symbol LIKE $1" if self._symbol_prefix else "symbol NOT LIKE $1"
-        symbol_param = f"{self._symbol_prefix}%" if self._symbol_prefix else "%::%"
+        # Filter by agent_id instead of symbol pattern
+        agent_filter = "agent_id = $1"
+        agent_param = self._agent_id
 
         total_positions = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE {symbol_clause}",
-            symbol_param,
+            f"SELECT COUNT(*) FROM positions WHERE {agent_filter}",
+            agent_param,
         )
         open_positions = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'open' AND {symbol_clause}",
-            symbol_param,
+            f"SELECT COUNT(*) FROM positions WHERE status = 'open' AND {agent_filter}",
+            agent_param,
         )
         closed_positions = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND {symbol_clause}",
-            symbol_param,
+            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND {agent_filter}",
+            agent_param,
         )
         total_trades = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM trades WHERE {symbol_clause}",
-            symbol_param,
+            f"SELECT COUNT(*) FROM trades WHERE {agent_filter}",
+            agent_param,
         )
         total_realized_pnl = await self._conn.fetchval(
-            f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed' AND {symbol_clause}",
-            symbol_param,
+            f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed' AND {agent_filter}",
+            agent_param,
         )
         win_count = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0 AND {symbol_clause}",
-            symbol_param,
+            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0 AND {agent_filter}",
+            agent_param,
         )
         loss_count = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0 AND {symbol_clause}",
-            symbol_param,
+            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0 AND {agent_filter}",
+            agent_param,
         )
 
         # Calculate unrealized PnL for open positions
