@@ -596,7 +596,7 @@ class TradingExecutor:
                             quantity=filled_quantity,
                             price=filled_price,
                             pnl=pnl,
-                            market="SPOT",
+                            market="spot",
                         )
                     else:
                         self._logger.info(

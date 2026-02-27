@@ -581,7 +581,7 @@ class PaperExecutor:
         await self._notifier.send_trade_alert(
             symbol=signal.symbol,
             side="BUY",
-            quantity=order_usdt,
+            quantity=quantity,
             price=signal.price,
             pnl=None,
             market=f"paper-{market_tag}{leverage_text}",
