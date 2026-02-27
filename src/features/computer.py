@@ -86,9 +86,7 @@ class IndicatorComputer:
             try:
                 await self._compute_symbol(symbol)
             except Exception as exc:  # noqa: BLE001
-                self._logger.error(
-                    "Failed to compute indicators for %s: %s", symbol, exc
-                )
+                self._logger.error("Failed to compute indicators for %s: %s", symbol, exc)
                 self._metrics.errors_total.labels(
                     symbol=symbol, error_type=type(exc).__name__
                 ).inc()
@@ -139,12 +137,8 @@ class IndicatorComputer:
             self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)
             self._metrics.rsi.labels(symbol=symbol, period="7").set(indicators.rsi_7)
             self._metrics.macd.labels(symbol=symbol, component="macd").set(indicators.macd)
-            self._metrics.macd.labels(symbol=symbol, component="signal").set(
-                indicators.macd_signal
-            )
-            self._metrics.macd.labels(symbol=symbol, component="hist").set(
-                indicators.macd_hist
-            )
+            self._metrics.macd.labels(symbol=symbol, component="signal").set(indicators.macd_signal)
+            self._metrics.macd.labels(symbol=symbol, component="hist").set(indicators.macd_hist)
             self._metrics.atr.labels(symbol=symbol, period="14").set(indicators.atr_14)
 
             # Store indicators
@@ -219,4 +213,3 @@ class IndicatorComputer:
     def stop(self) -> None:
         """Stop the computation loop."""
         self._running = False
-        self._db_lock = asyncio.Lock()

@@ -59,13 +59,13 @@ class IndicatorWriter:
         async with self._db_lock:
             if self._conn is None:
                 return 0
-        # Validate table name to prevent SQL injection
-        valid_tables = {"indicators"}
-        if table not in valid_tables:
-            raise ValueError(f"Invalid table name: {table}")
-        query = f"SELECT COUNT(*) FROM {table}"
-        count = await self._conn.fetchval(query)
-        return int(count or 0)
+            # Validate table name to prevent SQL injection
+            valid_tables = {"indicators"}
+            if table not in valid_tables:
+                raise ValueError(f"Invalid table name: {table}")
+            query = f"SELECT COUNT(*) FROM {table}"
+            count = await self._conn.fetchval(query)
+            return int(count or 0)
 
     async def write_indicators(self, indicator: StoredIndicator) -> None:
         async with self._db_lock:

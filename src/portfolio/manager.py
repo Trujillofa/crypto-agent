@@ -245,49 +245,49 @@ class PortfolioManager:
 
             async with self._conn.transaction():
                 position_id = await self._conn.fetchval(
-                """
-                INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status, agent_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                RETURNING id
-                """,
-                scoped_symbol,
-                market,
-                entry_time,
-                price,
-                quantity,
-                "open",
-                self._agent_id,
+                    """
+                    INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status, agent_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id
+                    """,
+                    scoped_symbol,
+                    market,
+                    entry_time,
+                    price,
+                    quantity,
+                    "open",
+                    self._agent_id,
+                )
+
+                await self._conn.execute(
+                    """
+                    INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, position_id, agent_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    """,
+                    entry_time,
+                    scoped_symbol,
+                    market,
+                    "BUY",
+                    quantity,
+                    price,
+                    order_id,
+                    position_id,
+                    self._agent_id,
+                )
+
+            position = Position(
+                id=position_id,
+                symbol=symbol,
+                entry_time=entry_time,
+                entry_price=price,
+                quantity=quantity,
+                status=PositionStatus.OPEN,
             )
 
-            await self._conn.execute(
-                """
-                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, position_id, agent_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                """,
-                entry_time,
-                scoped_symbol,
-                market,
-                "BUY",
-                quantity,
-                price,
-                order_id,
-                position_id,
-                self._agent_id,
-            )
+            self._positions[self._position_key(symbol, market)] = position
+            self._logger.info(f"Opened position: {symbol} @ {price} (qty: {quantity})")
 
-        position = Position(
-            id=position_id,
-            symbol=symbol,
-            entry_time=entry_time,
-            entry_price=price,
-            quantity=quantity,
-            status=PositionStatus.OPEN,
-        )
-
-        self._positions[self._position_key(symbol, market)] = position
-        self._logger.info(f"Opened position: {symbol} @ {price} (qty: {quantity})")
-
-        return position
+            return position
 
     async def close_position(
         self,
@@ -322,41 +322,40 @@ class PortfolioManager:
 
             async with self._conn.transaction():
                 await self._conn.execute(
-                """
-                UPDATE positions
-                SET status = $1, exit_time = $2, exit_price = $3, realized_pnl = $4
-                WHERE id = $5 AND agent_id = $6
-                """,
-                "closed",
-                exit_time,
-                price,
-                realized_pnl,
-                position.id,
-                self._agent_id,
-            )
-            await self._conn.execute(
-                """
-                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, pnl, position_id, agent_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                """,
-                exit_time,
-                self._scope_symbol(symbol),
-                market,
-                "SELL",
-                position.quantity,
-                price,
-                order_id,
-                realized_pnl,
-                position.id,
-                self._agent_id,
-            )
-        del self._positions[key]
+                    """
+                    UPDATE positions
+                    SET status = $1, exit_time = $2, exit_price = $3, realized_pnl = $4
+                    WHERE id = $5 AND agent_id = $6
+                    """,
+                    "closed",
+                    exit_time,
+                    price,
+                    realized_pnl,
+                    position.id,
+                    self._agent_id,
+                )
+                await self._conn.execute(
+                    """
+                    INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, pnl, position_id, agent_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    """,
+                    exit_time,
+                    self._scope_symbol(symbol),
+                    market,
+                    "SELL",
+                    position.quantity,
+                    price,
+                    order_id,
+                    realized_pnl,
+                    position.id,
+                    self._agent_id,
+                )
 
-        self._logger.info(
-            f"Closed position: {symbol} @ {price} (PnL: {realized_pnl:.2f})"
-        )
+            del self._positions[key]
 
-        return position, realized_pnl
+            self._logger.info(f"Closed position: {symbol} @ {price} (PnL: {realized_pnl:.2f})")
+
+            return position, realized_pnl
 
     def get_position(self, symbol: str, market: str = "spot") -> Position | None:
         """Get current open position for symbol."""
@@ -385,49 +384,49 @@ class PortfolioManager:
             if self._conn is None:
                 raise RuntimeError("Database connection missing")
 
-        # Filter by agent_id instead of symbol pattern
-        agent_filter = "agent_id = $1"
-        agent_param = self._agent_id
+            # Filter by agent_id instead of symbol pattern
+            agent_filter = "agent_id = $1"
+            agent_param = self._agent_id
 
-        total_positions = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE {agent_filter}",
-            agent_param,
-        )
-        open_positions = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'open' AND {agent_filter}",
-            agent_param,
-        )
-        closed_positions = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND {agent_filter}",
-            agent_param,
-        )
-        total_trades = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM trades WHERE {agent_filter}",
-            agent_param,
-        )
-        total_realized_pnl = await self._conn.fetchval(
-            f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed' AND {agent_filter}",
-            agent_param,
-        )
-        win_count = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0 AND {agent_filter}",
-            agent_param,
-        )
-        loss_count = await self._conn.fetchval(
-            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0 AND {agent_filter}",
-            agent_param,
-        )
+            total_positions = await self._conn.fetchval(
+                f"SELECT COUNT(*) FROM positions WHERE {agent_filter}",
+                agent_param,
+            )
+            open_positions = await self._conn.fetchval(
+                f"SELECT COUNT(*) FROM positions WHERE status = 'open' AND {agent_filter}",
+                agent_param,
+            )
+            closed_positions = await self._conn.fetchval(
+                f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND {agent_filter}",
+                agent_param,
+            )
+            total_trades = await self._conn.fetchval(
+                f"SELECT COUNT(*) FROM trades WHERE {agent_filter}",
+                agent_param,
+            )
+            total_realized_pnl = await self._conn.fetchval(
+                f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed' AND {agent_filter}",
+                agent_param,
+            )
+            win_count = await self._conn.fetchval(
+                f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0 AND {agent_filter}",
+                agent_param,
+            )
+            loss_count = await self._conn.fetchval(
+                f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0 AND {agent_filter}",
+                agent_param,
+            )
 
-        # Calculate unrealized PnL for open positions
-        total_unrealized = 0.0
+            # Calculate unrealized PnL for open positions
+            total_unrealized = 0.0
 
-        return PortfolioSummary(
-            total_positions=int(total_positions or 0),
-            open_positions=int(open_positions or 0),
-            closed_positions=int(closed_positions or 0),
-            total_trades=int(total_trades or 0),
-            total_realized_pnl=float(total_realized_pnl or 0),
-            total_unrealized_pnl=total_unrealized,
-            win_count=int(win_count or 0),
-            loss_count=int(loss_count or 0),
-        )
+            return PortfolioSummary(
+                total_positions=int(total_positions or 0),
+                open_positions=int(open_positions or 0),
+                closed_positions=int(closed_positions or 0),
+                total_trades=int(total_trades or 0),
+                total_realized_pnl=float(total_realized_pnl or 0),
+                total_unrealized_pnl=total_unrealized,
+                win_count=int(win_count or 0),
+                loss_count=int(loss_count or 0),
+            )
