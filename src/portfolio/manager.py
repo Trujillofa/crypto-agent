@@ -189,16 +189,11 @@ class PortfolioManager:
     async def _fetch_open_positions(self) -> list[asyncpg.Record]:
         if self._conn is None:
             return []
-        if self._symbol_prefix:
-            return await self._conn.fetch(
-                "SELECT * FROM positions WHERE status = $1 AND symbol LIKE $2 ORDER BY entry_time DESC",
-                "open",
-                f"{self._symbol_prefix}%",
-            )
+        # Use agent_id column for filtering
         return await self._conn.fetch(
-            "SELECT * FROM positions WHERE status = $1 AND symbol NOT LIKE $2 ORDER BY entry_time DESC",
+            "SELECT * FROM positions WHERE status = $1 AND agent_id = $2 ORDER BY entry_time DESC",
             "open",
-            "%::%",
+            self._agent_id,
         )
 
     def _row_to_position(self, row: asyncpg.Record) -> Position | None:
@@ -247,7 +242,7 @@ class PortfolioManager:
         async with self._conn.transaction():
             position_id = await self._conn.fetchval(
                 """
-                INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status)
+                INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status, agent_id)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING id
                 """,
