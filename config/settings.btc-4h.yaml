@@ -1,0 +1,104 @@
+mode: paper
+agent_id: btc-4h
+log_level: INFO
+
+trading:
+  pairs:
+    - BTCUSDT
+  timeframe: 4h
+
+ingest:
+  use_websocket: true
+
+database:
+  host: timescaledb
+  port: 5432
+  name: marketdata
+  user: trading
+  password: ""
+
+telegram:
+  enabled: true
+  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
+  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
+  rate_limit_seconds: 5
+  allowed_updates:
+    - message
+
+ai:
+  enabled: true
+  provider: xai
+  model: grok-4-1-fast-reasoning
+  polling_interval: 1.0
+  max_history: 10
+  allowed_chat_ids: []
+  api_key: ""
+
+prometheus:
+  port: 8000
+
+trading_execution:
+  enabled: true  # Futures demo trading via demo-fapi.binance.com
+  api_key: ""  # Set via BINANCE_API_KEY environment variable
+  api_secret: ""  # Set via BINANCE_API_SECRET environment variable
+  test_mode: true  # Set to false for live trading
+  order_size_usdt: 100.0  # 1% of $10k paper balance
+  # Fixed SL/TP as fallback only (ATR-based is primary)
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.05
+  # ATR-based SL/TP (primary)
+  sl_atr_multiplier: 2.0   # SL = entry - 2.0 * ATR(14)
+  tp_atr_multiplier: 4.5   # TP = entry + 4.5 * ATR(14)
+  trailing_activate_atr: 1.5  # activate trailing after +1.5 * ATR profit
+  trailing_offset_atr: 1.0    # trail SL at highest - 1.0 * ATR
+  # ATR-based position sizing
+  use_atr_sizing: true         # size by (equity × risk_pct) / (atr × multiplier) instead of flat USDT
+  atr_multiplier: 1.0          # stop distance multiplier for sizing calc
+  risk_per_trade_pct: 0.02     # 2% of current equity risked per trade
+
+futures:
+  enabled: true  # Futures demo trading enabled
+  symbols:
+    - BTCUSDT
+  default_leverage: 3  # Conservative default
+  max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
+  margin_mode: isolated  # isolated only for MVP
+  position_mode: one-way  # one-way only for MVP
+  test_mode: true  # Use demo.binance.com for paper trading
+  liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
+
+strategy:
+  evaluation_interval_seconds: 14400
+  cooldown_candles: 1
+  default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
+  strategies:
+    - name: rsi_reversal
+      config:
+        rsi_period: 7
+        oversold_threshold: 35
+        overbought_threshold: 65
+    - name: macd_histogram
+      config:
+        min_histogram_threshold: 0.0001
+        use_atr_filter: true
+        atr_min_pct: 0.003
+    - name: bollinger_bounce
+      config:
+        band_distance_threshold: 0.003
+        rsi_oversold: 35
+        rsi_overbought: 65
+    - name: cci_breakout
+      config:
+        cci_buy_threshold: 100
+        cci_sell_threshold: -100
+        atr_min_pct: 0.005
+    - name: vwap_reversion
+      config:
+        vwap_atr_multiplier: 1.5
+        rsi_oversold: 40
+        rsi_overbought: 60
+  aggregator:
+    min_agreement: 1
+    buy_threshold: 1.1          # used when price <= EMA200 (downtrend/unknown)
+    buy_threshold_uptrend: 1.1  # used when price > EMA200 — matches base (WFO-optimal; lower to test aggression)
+    sell_threshold: -1.0
