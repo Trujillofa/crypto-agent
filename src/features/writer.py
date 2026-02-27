@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -42,6 +43,7 @@ class IndicatorWriter:
         self._logger = get_logger(self.__class__.__name__)
         self._connected = False
         self._conn: asyncpg.Connection | None = None
+        self._db_lock = asyncio.Lock()
 
     async def __aenter__(self) -> "IndicatorWriter":
         await self._connect()
@@ -54,8 +56,9 @@ class IndicatorWriter:
         self._connected = False
 
     async def count_rows(self, table: str) -> int:
-        if self._conn is None:
-            return 0
+        async with self._db_lock:
+            if self._conn is None:
+                return 0
         # Validate table name to prevent SQL injection
         valid_tables = {"indicators"}
         if table not in valid_tables:
@@ -65,9 +68,10 @@ class IndicatorWriter:
         return int(count or 0)
 
     async def write_indicators(self, indicator: StoredIndicator) -> None:
-        if not self._connected:
-            raise RuntimeError("IndicatorWriter connection not initialized")
-        await self._insert_row(indicator)
+        async with self._db_lock:
+            if not self._connected:
+                raise RuntimeError("IndicatorWriter connection not initialized")
+            await self._insert_row(indicator)
 
     async def _connect(self) -> None:
         host = str(self._config.get("host", "localhost"))

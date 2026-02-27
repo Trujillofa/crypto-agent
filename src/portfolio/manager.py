@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from datetime import datetime, timezone
 
@@ -23,6 +24,7 @@ class PortfolioManager:
         self._conn: asyncpg.Connection | None = None
         self._connected = False
         self._positions: dict[tuple[str, str], Position] = {}
+        self._db_lock = asyncio.Lock()
 
     async def __aenter__(self) -> "PortfolioManager":
         await self._connect()
@@ -235,16 +237,17 @@ class PortfolioManager:
         Returns:
             The created Position
         """
-        entry_time = datetime.now(timezone.utc)
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
-        scoped_symbol = self._scope_symbol(symbol)
+        async with self._db_lock:
+            entry_time = datetime.now(timezone.utc)
+            if self._conn is None:
+                raise RuntimeError("Database connection missing")
+            scoped_symbol = self._scope_symbol(symbol)
 
-        async with self._conn.transaction():
-            position_id = await self._conn.fetchval(
+            async with self._conn.transaction():
+                position_id = await self._conn.fetchval(
                 """
                 INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status, agent_id)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING id
                 """,
                 scoped_symbol,
@@ -253,12 +256,13 @@ class PortfolioManager:
                 price,
                 quantity,
                 "open",
+                self._agent_id,
             )
 
             await self._conn.execute(
                 """
-                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, position_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, position_id, agent_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 entry_time,
                 scoped_symbol,
@@ -268,6 +272,7 @@ class PortfolioManager:
                 price,
                 order_id,
                 position_id,
+                self._agent_id,
             )
 
         position = Position(
@@ -304,18 +309,19 @@ class PortfolioManager:
         Raises:
             ValueError: If no open position exists for symbol
         """
-        key = self._position_key(symbol, market)
-        if key not in self._positions:
-            raise ValueError(f"No open position for {symbol}")
+        async with self._db_lock:
+            key = self._position_key(symbol, market)
+            if key not in self._positions:
+                raise ValueError(f"No open position for {symbol}")
 
-        position = self._positions[key]
-        exit_time = datetime.now(timezone.utc)
-        realized_pnl = position.close(price, exit_time)
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
+            position = self._positions[key]
+            exit_time = datetime.now(timezone.utc)
+            realized_pnl = position.close(price, exit_time)
+            if self._conn is None:
+                raise RuntimeError("Database connection missing")
 
-        async with self._conn.transaction():
-            await self._conn.execute(
+            async with self._conn.transaction():
+                await self._conn.execute(
                 """
                 UPDATE positions
                 SET status = $1, exit_time = $2, exit_price = $3, realized_pnl = $4
@@ -375,8 +381,9 @@ class PortfolioManager:
 
     async def get_portfolio_summary(self) -> PortfolioSummary:
         """Get portfolio summary statistics."""
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
+        async with self._db_lock:
+            if self._conn is None:
+                raise RuntimeError("Database connection missing")
 
         # Filter by agent_id instead of symbol pattern
         agent_filter = "agent_id = $1"

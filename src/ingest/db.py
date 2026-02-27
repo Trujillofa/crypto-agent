@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Mapping
 
@@ -17,6 +18,7 @@ class TimescaleWriter:
         self._logger = get_logger(self.__class__.__name__)
         self._connected = False
         self._conn: asyncpg.Connection | None = None
+        self._db_lock = asyncio.Lock()
 
     async def __aenter__(self) -> "TimescaleWriter":
         await self._connect()
@@ -32,8 +34,9 @@ class TimescaleWriter:
         return self._connected
 
     async def count_rows(self, table: str) -> int:
-        if self._conn is None:
-            return 0
+        async with self._db_lock:
+            if self._conn is None:
+                return 0
         # Validate table name to prevent SQL injection
         valid_tables = {"ohlcv"}
         if table not in valid_tables:
@@ -43,8 +46,9 @@ class TimescaleWriter:
         return int(count or 0)
 
     async def write_ohlcv(self, candle: Ohlcv) -> None:
-        start_time = time.perf_counter()
-        await self._insert_row(candle)
+        async with self._db_lock:
+            start_time = time.perf_counter()
+            await self._insert_row(candle)
         elapsed = time.perf_counter() - start_time
         self._metrics.insert_latency_seconds.set(elapsed)
 
