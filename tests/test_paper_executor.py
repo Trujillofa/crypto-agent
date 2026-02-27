@@ -32,7 +32,10 @@ def _make_config(**overrides) -> PaperTradingConfig:
     return PaperTradingConfig(**defaults)
 
 
-def _make_executor(config: PaperTradingConfig | None = None) -> PaperExecutor:
+def _make_executor(
+    config: PaperTradingConfig | None = None,
+    agent_id: str = "default",
+) -> PaperExecutor:
     config = config or _make_config()
     risk_manager = MagicMock()
     risk_manager.is_trading_allowed.return_value = (True, "")
@@ -51,6 +54,7 @@ def _make_executor(config: PaperTradingConfig | None = None) -> PaperExecutor:
         metrics=metrics,
         notifier=notifier,
         portfolio_manager=portfolio_manager,
+        agent_id=agent_id,
     )
 
 
@@ -324,3 +328,15 @@ class TestOnSignalEntryPath:
         assert pos.high_water_mark == pytest.approx(50000.0)
         assert pos.sl_price == pytest.approx(50000.0 * 0.98)
         assert pos.tp_price == pytest.approx(50000.0 * 1.05)
+
+    @pytest.mark.asyncio
+    async def test_buy_scopes_position_key_when_agent_id_set(self):
+        executor = _make_executor(agent_id="agent2")
+        signal = self._make_buy_signal(atr=0.0)
+
+        await executor.on_signal(signal)
+
+        assert "agent2::BTCUSDT:spot" in executor._positions
+        executor._risk_manager.register_open_position.assert_called_once()
+        call_args = executor._risk_manager.register_open_position.call_args[0]
+        assert call_args[0] == "agent2::BTCUSDT:spot"

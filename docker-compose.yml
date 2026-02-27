@@ -90,6 +90,29 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  agent_2:
+    build: .
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - AGENT_ID=agent2
+      - SETTINGS_PATH=config/settings.agent2.yaml
+    volumes:
+      - ./:/app
+    command: ["python", "-m", "src.main"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
 volumes:
   timescaledb-data:
   grafana-data:

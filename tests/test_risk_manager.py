@@ -134,6 +134,20 @@ class TestRiskManager:
 
         config_path.unlink()
 
+    def test_default_state_path_keeps_legacy_for_default_agent(self) -> None:
+        manager = RiskManager(
+            config_path=Path("/nonexistent/path.yaml"),
+            agent_id="default",
+        )
+        assert manager._state_path == Path("data/risk_state.json")
+
+    def test_default_state_path_scopes_for_non_default_agent(self) -> None:
+        manager = RiskManager(
+            config_path=Path("/nonexistent/path.yaml"),
+            agent_id="agent-2",
+        )
+        assert manager._state_path == Path("data/risk_state_agent-2.json")
+
     def test_is_trading_allowed_initial(self) -> None:
         """Test trading is allowed initially."""
         manager = self._make_manager()

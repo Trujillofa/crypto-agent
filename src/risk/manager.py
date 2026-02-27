@@ -71,14 +71,20 @@ class RiskManager:
         config_path: Path | None = None,
         notifier: TelegramNotifier | None = None,
         state_path: Path | None = None,
+        agent_id: str = "default",
         paper_mode: bool = False,
     ) -> None:
         self._logger = get_logger(self.__class__.__name__)
         self._config = self._load_config(config_path)
         self._notifier = notifier or TelegramNotifier()
-        self._state_path = state_path or Path("data/risk_state.json")
+        self._agent_id = self._normalize_agent_id(agent_id)
+        self._state_path = state_path or self._default_state_path(self._agent_id)
         self._paper_mode = paper_mode
-        self._logger.info("Risk manager initialized")
+        self._logger.info(
+            "Risk manager initialized (agent_id=%s, state=%s)",
+            self._agent_id,
+            self._state_path,
+        )
 
         # Trading state tracking
         self._positions: dict[str, dict[str, Any]] = {}
@@ -106,6 +112,21 @@ class RiskManager:
 
         # Pending notifications (for async sending)
         self._pending_notifications: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+
+    @staticmethod
+    def _normalize_agent_id(agent_id: str) -> str:
+        normalized = "".join(
+            ch if (ch.isalnum() or ch in {"-", "_"}) else "_"
+            for ch in (agent_id or "default").strip()
+        ).strip("_")
+        return normalized or "default"
+
+    @staticmethod
+    def _default_state_path(agent_id: str) -> Path:
+        # Keep backward-compatible default file path for single-agent runs.
+        if agent_id == "default":
+            return Path("data/risk_state.json")
+        return Path(f"data/risk_state_{agent_id}.json")
 
     def _load_config(self, config_path: Path | None = None) -> RiskConfig:
         """Load risk configuration from YAML file."""

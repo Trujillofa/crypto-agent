@@ -1,5 +1,5 @@
 mode: paper
-agent_id: default
+agent_id: agent2
 log_level: INFO
 
 trading:

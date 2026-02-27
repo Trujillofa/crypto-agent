@@ -90,6 +90,7 @@ class PaperExecutor:
         notifier: TelegramNotifier | None = None,
         portfolio_manager: PortfolioManager | None = None,
         db_config: Mapping[str, object] | None = None,
+        agent_id: str = "default",
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -98,6 +99,8 @@ class PaperExecutor:
         self._portfolio_manager = portfolio_manager
         self._db_config = db_config
         self._db_conn: asyncpg.Connection | None = None
+        self._agent_id = self._normalize_agent_id(agent_id)
+        self._position_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
         self._logger = get_logger("PaperExecutor")
 
         # Simulated state
@@ -107,6 +110,31 @@ class PaperExecutor:
         self._realized_pnl: float = 0.0
         self._total_fees: float = 0.0
         self._running = False
+
+    @staticmethod
+    def _normalize_agent_id(agent_id: str) -> str:
+        normalized = "".join(
+            ch if (ch.isalnum() or ch in {"-", "_"}) else "_"
+            for ch in (agent_id or "default").strip()
+        ).strip("_")
+        return normalized or "default"
+
+    def _position_key(self, symbol: str, market_tag: str) -> str:
+        raw = f"{symbol}:{market_tag}"
+        if not self._position_prefix:
+            return raw
+        return f"{self._position_prefix}{raw}"
+
+    def _parse_position_key(self, pos_key: str) -> tuple[str, str]:
+        raw_key = pos_key
+        if self._position_prefix and raw_key.startswith(self._position_prefix):
+            raw_key = raw_key[len(self._position_prefix) :]
+
+        if ":" not in raw_key:
+            return raw_key, "spot"
+
+        symbol, market_tag = raw_key.rsplit(":", 1)
+        return symbol, market_tag
 
     async def __aenter__(self) -> PaperExecutor:
         if not self._config.enabled:
@@ -120,14 +148,7 @@ class PaperExecutor:
         restored_count = 0
         if self._portfolio_manager:
             for pos in self._portfolio_manager.get_all_positions():
-                # Determine market tag and check if it matches our config
-                if ":" in pos.symbol:
-                    # Format: "SYMBOL:market" (e.g. "BTCUSDT:spot")
-                    symbol_base, market_tag = pos.symbol.split(":", 1)
-                else:
-                    # Legacy or simple format
-                    symbol_base = pos.symbol
-                    market_tag = "spot"
+                symbol_base, market_tag = self._parse_position_key(pos.symbol)
 
                 # Filter out positions that shouldn't be managed by this executor
                 # (Simulated logic: if we have futures config, we manage futures; always manage spot)
@@ -146,7 +167,8 @@ class PaperExecutor:
                 )
 
                 # Add to simulated state
-                self._positions[pos.symbol] = paper_pos
+                position_key = self._position_key(symbol_base, market_tag)
+                self._positions[position_key] = paper_pos
                 restored_count += 1
 
                 # Adjust balance (deduct margin used)
@@ -217,10 +239,7 @@ class PaperExecutor:
             if position is None:
                 continue
 
-            # Determine market tag from pos_key (e.g. "BTCUSDT:spot" -> "spot")
-            parts = pos_key.split(":")
-            symbol = parts[0]
-            market_tag = parts[1] if len(parts) > 1 else "spot"
+            symbol, market_tag = self._parse_position_key(pos_key)
             is_futures = market_tag == "futures"
 
             # Fetch latest price from DB
@@ -333,7 +352,7 @@ class PaperExecutor:
             return
 
         for market_tag in ("spot", "futures"):
-            pos_key = f"{symbol}:{market_tag}"
+            pos_key = self._position_key(symbol, market_tag)
             position = self._positions.get(pos_key)
             if position is None:
                 continue
@@ -430,7 +449,7 @@ class PaperExecutor:
     async def _handle_buy(
         self, signal: Signal, market_tag: str, is_futures: bool
     ) -> None:
-        pos_key = f"{signal.symbol}:{market_tag}"
+        pos_key = self._position_key(signal.symbol, market_tag)
 
         if pos_key in self._positions:
             self._logger.info(
@@ -571,7 +590,7 @@ class PaperExecutor:
     async def _handle_sell(
         self, signal: Signal, market_tag: str, is_futures: bool
     ) -> None:
-        pos_key = f"{signal.symbol}:{market_tag}"
+        pos_key = self._position_key(signal.symbol, market_tag)
         position = self._positions.get(pos_key)
 
         if position is None:
@@ -652,7 +671,9 @@ class PaperExecutor:
         """Return current positions for status reporting."""
         result = {}
         for key, pos in self._positions.items():
-            result[key] = {
+            symbol, market_tag = self._parse_position_key(key)
+            display_key = f"{symbol}:{market_tag}"
+            result[display_key] = {
                 "side": pos.side,
                 "quantity": pos.quantity,
                 "entry_price": pos.entry_price,

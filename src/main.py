@@ -84,6 +84,7 @@ class AISettings:
 
 @dataclass(frozen=True)
 class Settings:
+    agent_id: str
     mode: str
     log_level: str
     trading_pairs: list[str]
@@ -104,6 +105,9 @@ def load_settings(config_path: Path) -> Settings:
         raw = cast(object, yaml.safe_load(file_handle))
 
     root = _as_mapping(raw, "root configuration")
+    agent_id = _as_str(root.get("agent_id"), "agent_id", default="").strip()
+    if not agent_id:
+        agent_id = os.getenv("AGENT_ID", "default").strip() or "default"
     trading = _as_mapping(root.get("trading"), "trading section")
     database = _as_mapping(root.get("database"), "database section")
     prometheus = _as_mapping(root.get("prometheus"), "prometheus section")
@@ -386,6 +390,7 @@ def load_settings(config_path: Path) -> Settings:
     )
 
     return Settings(
+        agent_id=agent_id,
         mode=global_mode,
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
         trading_pairs=trading_pairs,
@@ -540,7 +545,8 @@ def _resolve_strategy_config(
 
 
 async def run() -> None:
-    settings = load_settings(Path("config/settings.yaml"))
+    settings_path = Path(os.getenv("SETTINGS_PATH", "config/settings.yaml"))
+    settings = load_settings(settings_path)
     configure_logger(settings.log_level)
 
     auto_migrate = _as_bool(
@@ -552,6 +558,7 @@ async def run() -> None:
     # Initialize risk manager
     risk_manager = RiskManager(
         Path("config/risk.yaml"),
+        agent_id=settings.agent_id,
         paper_mode=settings.mode == "paper",
     )
 
@@ -613,7 +620,7 @@ async def run() -> None:
     )
 
     # Initialize portfolio manager for position tracking
-    portfolio_manager = PortfolioManager(settings.database)
+    portfolio_manager = PortfolioManager(settings.database, agent_id=settings.agent_id)
 
     telegram_notifier = TelegramNotifier(settings.telegram)
 
@@ -690,6 +697,7 @@ async def run() -> None:
             notifier=telegram_notifier,
             portfolio_manager=portfolio_manager,
             db_config=settings.database,
+            agent_id=settings.agent_id,
         )
         get_logger("main").info(
             "Paper mode: using internal PaperExecutor (no Binance API)"

@@ -48,3 +48,35 @@ async def test_portfolio_manager_open_close():
             assert closed_position.realized_pnl == pytest.approx(19.58)
             assert pnl == pytest.approx(19.58)
             assert manager.has_position("BTCUSDT") is False
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_scopes_symbols_for_non_default_agent():
+    """Non-default agents must write scoped position symbols."""
+    manager = PortfolioManager({}, agent_id="agent2")
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch = AsyncMock(return_value=[])
+    mock_conn.fetchval = AsyncMock(return_value=1)
+
+    @asynccontextmanager
+    async def _mock_transaction():
+        yield
+
+    mock_conn.transaction = _mock_transaction
+
+    with patch(
+        "src.portfolio.manager.asyncpg.connect",
+        new_callable=AsyncMock,
+        return_value=mock_conn,
+    ):
+        async with manager:
+            await manager.open_position(
+                symbol="BTCUSDT:spot",
+                quantity=1.0,
+                price=100.0,
+            )
+
+            insert_call = mock_conn.fetchval.call_args
+            assert insert_call is not None
+            assert insert_call.args[1] == "agent2::BTCUSDT:spot"

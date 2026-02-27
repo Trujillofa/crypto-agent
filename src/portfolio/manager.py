@@ -14,8 +14,11 @@ from src.utils.logger import get_logger
 class PortfolioManager:
     """Manages positions and trade history with database persistence."""
 
-    def __init__(self, config: Mapping[str, object]) -> None:
+    def __init__(self, config: Mapping[str, object], agent_id: str = "default") -> None:
         self._config = config
+        self._agent_id = self._normalize_agent_id(agent_id)
+        # Keep legacy (unscoped) symbols for default single-agent mode.
+        self._symbol_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
         self._logger = get_logger(self.__class__.__name__)
         self._conn: asyncpg.Connection | None = None
         self._connected = False
@@ -28,8 +31,29 @@ class PortfolioManager:
         return self
 
     @staticmethod
-    def _position_key(symbol: str, market: str) -> tuple[str, str]:
-        return (market, symbol)
+    def _normalize_agent_id(agent_id: str) -> str:
+        normalized = "".join(
+            ch if (ch.isalnum() or ch in {"-", "_"}) else "_"
+            for ch in (agent_id or "default").strip()
+        ).strip("_")
+        return normalized or "default"
+
+    def _scope_symbol(self, symbol: str) -> str:
+        if not self._symbol_prefix:
+            return symbol
+        if symbol.startswith(self._symbol_prefix):
+            return symbol
+        return f"{self._symbol_prefix}{symbol}"
+
+    def _descope_symbol(self, symbol: str) -> str | None:
+        if not self._symbol_prefix:
+            return symbol if "::" not in symbol else None
+        if symbol.startswith(self._symbol_prefix):
+            return symbol[len(self._symbol_prefix) :]
+        return None
+
+    def _position_key(self, symbol: str, market: str) -> tuple[str, str]:
+        return (market, self._scope_symbol(symbol))
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._conn is not None:
@@ -51,7 +75,10 @@ class PortfolioManager:
             password=password,
         )
         self._connected = True
-        self._logger.info("PortfolioManager: Connected to TimescaleDB via asyncpg")
+        self._logger.info(
+            "PortfolioManager: Connected to TimescaleDB via asyncpg (agent_id=%s)",
+            self._agent_id,
+        )
 
     async def _ensure_schema(self) -> None:
         if not self._connected or self._conn is None:
@@ -98,23 +125,42 @@ class PortfolioManager:
         rows = await self._fetch_open_positions()
         for row in rows:
             position = self._row_to_position(row)
+            if position is None:
+                continue
             market = str(row.get("market") or "spot")
             self._positions[self._position_key(position.symbol, market)] = position
-        self._logger.info(f"Loaded {len(self._positions)} open positions")
+        self._logger.info(
+            "Loaded %d open positions for agent '%s'",
+            len(self._positions),
+            self._agent_id,
+        )
 
     async def _normalize_open_positions(self) -> None:
         if self._conn is None:
             return
 
-        duplicates = await self._conn.fetch(
-            """
-            SELECT market, symbol, ARRAY_AGG(id ORDER BY entry_time DESC, id DESC) AS ids
-            FROM positions
-            WHERE status = 'open'
-            GROUP BY market, symbol
-            HAVING COUNT(*) > 1
-            """
-        )
+        if self._symbol_prefix:
+            duplicates = await self._conn.fetch(
+                """
+                SELECT market, symbol, ARRAY_AGG(id ORDER BY entry_time DESC, id DESC) AS ids
+                FROM positions
+                WHERE status = 'open' AND symbol LIKE $1
+                GROUP BY market, symbol
+                HAVING COUNT(*) > 1
+                """,
+                f"{self._symbol_prefix}%",
+            )
+        else:
+            duplicates = await self._conn.fetch(
+                """
+                SELECT market, symbol, ARRAY_AGG(id ORDER BY entry_time DESC, id DESC) AS ids
+                FROM positions
+                WHERE status = 'open' AND symbol NOT LIKE $1
+                GROUP BY market, symbol
+                HAVING COUNT(*) > 1
+                """,
+                "%::%",
+            )
 
         for row in duplicates:
             ids = list(row["ids"])
@@ -143,16 +189,28 @@ class PortfolioManager:
     async def _fetch_open_positions(self) -> list[asyncpg.Record]:
         if self._conn is None:
             return []
+        if self._symbol_prefix:
+            return await self._conn.fetch(
+                "SELECT * FROM positions WHERE status = $1 AND symbol LIKE $2 ORDER BY entry_time DESC",
+                "open",
+                f"{self._symbol_prefix}%",
+            )
         return await self._conn.fetch(
-            "SELECT * FROM positions WHERE status = $1 ORDER BY entry_time DESC",
+            "SELECT * FROM positions WHERE status = $1 AND symbol NOT LIKE $2 ORDER BY entry_time DESC",
             "open",
+            "%::%",
         )
 
-    def _row_to_position(self, row: asyncpg.Record) -> Position:
+    def _row_to_position(self, row: asyncpg.Record) -> Position | None:
         """Convert database row to Position object."""
+        scoped_symbol = str(row["symbol"])
+        symbol = self._descope_symbol(scoped_symbol)
+        if symbol is None:
+            return None
+
         return Position(
             id=row["id"],
-            symbol=row["symbol"],
+            symbol=symbol,
             entry_time=row["entry_time"],
             entry_price=float(row["entry_price"]),
             quantity=float(row["quantity"]),
@@ -184,6 +242,7 @@ class PortfolioManager:
         entry_time = datetime.now(timezone.utc)
         if self._conn is None:
             raise RuntimeError("Database connection missing")
+        scoped_symbol = self._scope_symbol(symbol)
 
         async with self._conn.transaction():
             position_id = await self._conn.fetchval(
@@ -192,7 +251,7 @@ class PortfolioManager:
                 VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING id
                 """,
-                symbol,
+                scoped_symbol,
                 market,
                 entry_time,
                 price,
@@ -206,7 +265,7 @@ class PortfolioManager:
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 """,
                 entry_time,
-                symbol,
+                scoped_symbol,
                 market,
                 "BUY",
                 quantity,
@@ -278,7 +337,7 @@ class PortfolioManager:
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 """,
                 exit_time,
-                symbol,
+                self._scope_symbol(symbol),
                 market,
                 "SELL",
                 position.quantity,
@@ -321,22 +380,36 @@ class PortfolioManager:
         if self._conn is None:
             raise RuntimeError("Database connection missing")
 
-        total_positions = await self._conn.fetchval("SELECT COUNT(*) FROM positions")
+        symbol_clause = "symbol LIKE $1" if self._symbol_prefix else "symbol NOT LIKE $1"
+        symbol_param = f"{self._symbol_prefix}%" if self._symbol_prefix else "%::%"
+
+        total_positions = await self._conn.fetchval(
+            f"SELECT COUNT(*) FROM positions WHERE {symbol_clause}",
+            symbol_param,
+        )
         open_positions = await self._conn.fetchval(
-            "SELECT COUNT(*) FROM positions WHERE status = 'open'"
+            f"SELECT COUNT(*) FROM positions WHERE status = 'open' AND {symbol_clause}",
+            symbol_param,
         )
         closed_positions = await self._conn.fetchval(
-            "SELECT COUNT(*) FROM positions WHERE status = 'closed'"
+            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND {symbol_clause}",
+            symbol_param,
         )
-        total_trades = await self._conn.fetchval("SELECT COUNT(*) FROM trades")
+        total_trades = await self._conn.fetchval(
+            f"SELECT COUNT(*) FROM trades WHERE {symbol_clause}",
+            symbol_param,
+        )
         total_realized_pnl = await self._conn.fetchval(
-            "SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed'"
+            f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed' AND {symbol_clause}",
+            symbol_param,
         )
         win_count = await self._conn.fetchval(
-            "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0"
+            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl > 0 AND {symbol_clause}",
+            symbol_param,
         )
         loss_count = await self._conn.fetchval(
-            "SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0"
+            f"SELECT COUNT(*) FROM positions WHERE status = 'closed' AND realized_pnl < 0 AND {symbol_clause}",
+            symbol_param,
         )
 
         # Calculate unrealized PnL for open positions
