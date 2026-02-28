@@ -56,11 +56,11 @@ async def main():
         return
 
     db_config = {
-        "host": os.getenv("DB_HOST", "localhost"),
-        "port": int(os.getenv("DB_PORT", 5432)),
-        "name": os.getenv("DB_NAME", "marketdata"),
-        "user": os.getenv("DB_USER", "trading"),
-        "password": os.getenv("DB_PASSWORD", "trading"),
+        "host": str(os.getenv("DB_HOST", settings.database.get("host", "localhost"))),
+        "port": int(os.getenv("DB_PORT", int(settings.database.get("port", 5432)))),
+        "name": str(os.getenv("DB_NAME", settings.database.get("name", "marketdata"))),
+        "user": str(os.getenv("DB_USER", settings.database.get("user", "trading"))),
+        "password": str(os.getenv("DB_PASSWORD", settings.database.get("password", ""))),
     }
 
     config = BacktestConfig(

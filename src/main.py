@@ -46,6 +46,7 @@ from src.strategy import (
 from src.strategy.signals import Signal
 from src.strategy.lifecycle import LifecycleManager
 from src.utils.logger import configure_logger, get_logger
+from src.db import close_pool, init_pool
 
 
 @dataclass(frozen=True)
@@ -111,24 +112,18 @@ def load_settings(config_path: Path) -> Settings:
     trading = _as_mapping(root.get("trading"), "trading section")
     database = _as_mapping(root.get("database"), "database section")
     prometheus = _as_mapping(root.get("prometheus"), "prometheus section")
-    trading_exec = _as_mapping(
-        root.get("trading_execution"), "trading_execution section"
-    )
+    trading_exec = _as_mapping(root.get("trading_execution"), "trading_execution section")
     strategy = _as_mapping(root.get("strategy"), "strategy section")
     ingest = _as_mapping(root.get("ingest"), "ingest section")
     telegram = _as_mapping(root.get("telegram"), "telegram section")
     ai = _as_mapping(root.get("ai"), "ai section")
 
     # Check if test_mode is enabled first
-    test_mode = _as_bool(
-        trading_exec.get("test_mode"), "trading_execution.test_mode", default=True
-    )
+    test_mode = _as_bool(trading_exec.get("test_mode"), "trading_execution.test_mode", default=True)
 
     # Use testnet API keys when in test mode, otherwise use production keys
     if test_mode:
-        api_key = _as_str(
-            trading_exec.get("api_key"), "trading_execution.api_key", default=""
-        )
+        api_key = _as_str(trading_exec.get("api_key"), "trading_execution.api_key", default="")
         if not api_key:
             api_key = os.getenv("BINANCE_TESTNET_API_KEY", "").strip()
 
@@ -138,9 +133,7 @@ def load_settings(config_path: Path) -> Settings:
         if not api_secret:
             api_secret = os.getenv("BINANCE_TESTNET_API_SECRET", "").strip()
     else:
-        api_key = _as_str(
-            trading_exec.get("api_key"), "trading_execution.api_key", default=""
-        )
+        api_key = _as_str(trading_exec.get("api_key"), "trading_execution.api_key", default="")
         if not api_key:
             api_key = os.getenv("BINANCE_API_KEY", "").strip()
 
@@ -162,9 +155,7 @@ def load_settings(config_path: Path) -> Settings:
         api_key=api_key,
         api_secret=api_secret,
         test_mode=test_mode,
-        enabled=_as_bool(
-            trading_exec.get("enabled"), "trading_execution.enabled", default=False
-        ),
+        enabled=_as_bool(trading_exec.get("enabled"), "trading_execution.enabled", default=False),
         symbols=trading_pairs,
         order_size_usdt=_as_float(
             trading_exec.get("order_size_usdt"),
@@ -222,15 +213,11 @@ def load_settings(config_path: Path) -> Settings:
             "strategy.cooldown_candles",
             default=3,
         ),
-        strategies=_as_list_of_mappings(
-            strategy.get("strategies"), "strategy.strategies"
-        ),
+        strategies=_as_list_of_mappings(strategy.get("strategies"), "strategy.strategies"),
         aggregator=_as_mapping(strategy.get("aggregator"), "strategy.aggregator"),
     )
 
-    telegram_bot_token = _as_str(
-        telegram.get("bot_token"), "telegram.bot_token", default=""
-    )
+    telegram_bot_token = _as_str(telegram.get("bot_token"), "telegram.bot_token", default="")
     if not telegram_bot_token:
         telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
@@ -261,9 +248,7 @@ def load_settings(config_path: Path) -> Settings:
     if not ai_api_key:
         ai_api_key = os.getenv("XAI_API_KEY", "").strip()
 
-    ai_allowed_chat_ids = _as_str_list(
-        ai.get("allowed_chat_ids"), "ai.allowed_chat_ids"
-    )
+    ai_allowed_chat_ids = _as_str_list(ai.get("allowed_chat_ids"), "ai.allowed_chat_ids")
     if not ai_allowed_chat_ids and telegram_chat_id:
         ai_allowed_chat_ids = [telegram_chat_id]
 
@@ -296,18 +281,12 @@ def load_settings(config_path: Path) -> Settings:
     # Parse and validate futures configuration
     futures = _as_mapping(root.get("futures"), "futures section")
     if futures:
-        futures_enabled = _as_bool(
-            futures.get("enabled"), "futures.enabled", default=False
-        )
+        futures_enabled = _as_bool(futures.get("enabled"), "futures.enabled", default=False)
         if futures_enabled:
             # Validate leverage limits (hard cap at 20x)
-            leverage = _as_int(
-                futures.get("max_leverage"), "futures.max_leverage", default=10
-            )
+            leverage = _as_int(futures.get("max_leverage"), "futures.max_leverage", default=10)
             if leverage > 20:
-                raise ValueError(
-                    f"futures.max_leverage={leverage} exceeds hard safety cap of 20x"
-                )
+                raise ValueError(f"futures.max_leverage={leverage} exceeds hard safety cap of 20x")
 
             # Validate margin mode (isolated only for MVP)
             margin_mode = _as_str(
@@ -366,18 +345,14 @@ def load_settings(config_path: Path) -> Settings:
             default_leverage=_as_int(
                 futures.get("default_leverage"), "futures.default_leverage", default=5
             ),
-            max_leverage=_as_int(
-                futures.get("max_leverage"), "futures.max_leverage", default=10
-            ),
+            max_leverage=_as_int(futures.get("max_leverage"), "futures.max_leverage", default=10),
             margin_mode=_as_str(
                 futures.get("margin_mode"), "futures.margin_mode", default="isolated"
             ),
             position_mode=_as_str(
                 futures.get("position_mode"), "futures.position_mode", default="one-way"
             ),
-            test_mode=_as_bool(
-                futures.get("test_mode"), "futures.test_mode", default=True
-            ),
+            test_mode=_as_bool(futures.get("test_mode"), "futures.test_mode", default=True),
             liquidation_buffer_pct=_as_float(
                 futures.get("liquidation_buffer_pct"),
                 "futures.liquidation_buffer_pct",
@@ -385,9 +360,7 @@ def load_settings(config_path: Path) -> Settings:
             ),
         )
 
-    exit_rules = _as_mapping(
-        trading_exec.get("exit_rules"), "trading_execution.exit_rules"
-    )
+    exit_rules = _as_mapping(trading_exec.get("exit_rules"), "trading_execution.exit_rules")
 
     return Settings(
         agent_id=agent_id,
@@ -399,16 +372,12 @@ def load_settings(config_path: Path) -> Settings:
             **database,
             "password": db_password,
         },
-        prometheus_port=_as_int(
-            prometheus.get("port"), "prometheus.port", default=8000
-        ),
+        prometheus_port=_as_int(prometheus.get("port"), "prometheus.port", default=8000),
         trading_execution=trading_config,
         strategy=strategy_config,
         telegram=telegram_config,
         ai=ai_settings,
-        use_websocket=_as_bool(
-            ingest.get("use_websocket"), "ingest.use_websocket", default=False
-        ),
+        use_websocket=_as_bool(ingest.get("use_websocket"), "ingest.use_websocket", default=False),
         futures=futures_config,
         exit_rules=exit_rules,
     )
@@ -537,9 +506,7 @@ def _resolve_strategy_config(
         strategy_configs.append(config)
 
     aggregator_config = (
-        strategy_settings.aggregator
-        if strategy_settings.aggregator
-        else default_aggregator_config
+        strategy_settings.aggregator if strategy_settings.aggregator else default_aggregator_config
     )
     return strategy_classes, strategy_configs, aggregator_config
 
@@ -548,6 +515,7 @@ async def run() -> None:
     settings_path = Path(os.getenv("SETTINGS_PATH", "config/settings.yaml"))
     settings = load_settings(settings_path)
     configure_logger(settings.log_level)
+    await init_pool(settings.database)
 
     auto_migrate = _as_bool(
         settings.database.get("auto_migrate"),
@@ -574,6 +542,7 @@ async def run() -> None:
             )
         else:
             logger.error("Trading blocked: %s", reason)
+            await close_pool()
             return
 
     # Initialize metrics
@@ -589,8 +558,10 @@ async def run() -> None:
             result = await asyncio.to_thread(migrate.run_migrations)
         except Exception as exc:  # noqa: BLE001
             logger.error("Auto-migration failed: %s", exc)
+            await close_pool()
             raise
         if result != 0:
+            await close_pool()
             raise RuntimeError("Auto-migration failed. See logs for details.")
 
     # Start Prometheus metrics server
@@ -604,9 +575,7 @@ async def run() -> None:
             settings.trading_pairs, settings.timeframe, ingest_metrics
         )
     else:
-        ingestor = BinanceIngestor(
-            settings.trading_pairs, settings.timeframe, ingest_metrics
-        )
+        ingestor = BinanceIngestor(settings.trading_pairs, settings.timeframe, ingest_metrics)
 
     # Initialize indicator pipeline
     indicator_writer = IndicatorWriter(settings.database)
@@ -628,13 +597,9 @@ async def run() -> None:
     if settings.ai.enabled:
         logger = get_logger("main")
         if not settings.telegram.enabled:
-            logger.warning(
-                "AI overseer enabled but telegram.enabled=false; overseer disabled"
-            )
+            logger.warning("AI overseer enabled but telegram.enabled=false; overseer disabled")
         elif not settings.telegram.bot_token:
-            logger.warning(
-                "AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled"
-            )
+            logger.warning("AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled")
         else:
             xai_client = None
             if settings.ai.api_key:
@@ -643,9 +608,7 @@ async def run() -> None:
                     model=settings.ai.model,
                 )
             else:
-                logger.warning(
-                    "AI overseer running without XAI_API_KEY; /ask will be unavailable"
-                )
+                logger.warning("AI overseer running without XAI_API_KEY; /ask will be unavailable")
 
             overseer_agent = OverseerAgent(
                 mode=settings.mode,
@@ -668,9 +631,7 @@ async def run() -> None:
     if use_paper:
         # Internal paper trading — no Binance API calls for execution
         futures_symbols = (
-            settings.futures.symbols
-            if settings.futures and settings.futures.enabled
-            else []
+            settings.futures.symbols if settings.futures and settings.futures.enabled else []
         )
         futures_leverage = (
             settings.futures.default_leverage
@@ -699,9 +660,7 @@ async def run() -> None:
             db_config=settings.database,
             agent_id=settings.agent_id,
         )
-        get_logger("main").info(
-            "Paper mode: using internal PaperExecutor (no Binance API)"
-        )
+        get_logger("main").info("Paper mode: using internal PaperExecutor (no Binance API)")
     else:
         # Live mode — real Binance API executors
         trading_executor = TradingExecutor(
@@ -789,9 +748,7 @@ async def run() -> None:
                     "run migration 004 and baseline_strategies.py to enable lifecycle gating"
                 )
     except Exception as exc:
-        get_logger("lifecycle").debug(
-            "Lifecycle check skipped (table may not exist): %s", exc
-        )
+        get_logger("lifecycle").debug("Lifecycle check skipped (table may not exist): %s", exc)
 
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 
@@ -859,10 +816,7 @@ async def run() -> None:
                 await paper_executor.on_signal(signal)
 
                 # Mirror to futures if applicable
-                if (
-                    signal.symbol in paper_futures_symbols
-                    and signal.trading_mode != "futures"
-                ):
+                if signal.symbol in paper_futures_symbols and signal.trading_mode != "futures":
                     mirrored = Signal(
                         type=signal.type,
                         symbol=signal.symbol,
@@ -927,9 +881,7 @@ async def run() -> None:
                             )
                         await futures_executor.on_signal(mirrored_signal)
 
-            strategy_task = asyncio.create_task(
-                strategy_engine.run(on_signal=on_signal_router)
-            )
+            strategy_task = asyncio.create_task(strategy_engine.run(on_signal=on_signal_router))
 
             # Start futures executor and mark price monitoring
             futures_task = asyncio.create_task(futures_executor.run())
@@ -989,8 +941,7 @@ async def run() -> None:
                 telegram_notifier.is_configured(),
                 "paper" if paper_executor else "live",
                 "enabled"
-                if futures_executor
-                or (paper_executor and paper_executor._config.futures_symbols)
+                if futures_executor or (paper_executor and paper_executor._config.futures_symbols)
                 else "disabled",
                 "enabled" if overseer_agent else "disabled",
             )
@@ -1039,6 +990,8 @@ async def run() -> None:
                 await futures_task
             if futures_ingest_task:
                 await futures_ingest_task
+
+        await close_pool()
 
 
 def main() -> None:
