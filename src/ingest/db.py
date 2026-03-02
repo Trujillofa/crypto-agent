@@ -28,9 +28,6 @@ class TimescaleWriter:
         """Check if the database is connected (thread-safe)."""
         return is_connected()
 
-    async def check_connection(self) -> bool:
-        return await is_connected()
-
     async def count_rows(self, table: str) -> int:
         async with self._db_lock:
             # Validate table name to prevent SQL injection
