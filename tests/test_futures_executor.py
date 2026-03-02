@@ -127,8 +127,15 @@ class TestFuturesTradingExecutor:
         mock_client.place_order = AsyncMock(
             side_effect=[
                 _make_order(order_id="entry", side="BUY", status="FILLED"),
-                _make_order(order_id="sl_order", side="SELL", reduce_only=True, order_type="STOP_MARKET"),
-                _make_order(order_id="tp_order", side="SELL", reduce_only=True, order_type="TAKE_PROFIT_MARKET"),
+                _make_order(
+                    order_id="sl_order", side="SELL", reduce_only=True, order_type="STOP_MARKET"
+                ),
+                _make_order(
+                    order_id="tp_order",
+                    side="SELL",
+                    reduce_only=True,
+                    order_type="TAKE_PROFIT_MARKET",
+                ),
             ]
         )
         executor._client = mock_client

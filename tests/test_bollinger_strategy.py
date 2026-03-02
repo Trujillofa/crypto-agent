@@ -1,4 +1,5 @@
 import pytest
+
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.signals import SignalType
 

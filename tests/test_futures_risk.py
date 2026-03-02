@@ -185,9 +185,7 @@ futures_limits:
 
     def test_check_margin_usage_no_balance(self, risk_manager):
         """Test margin usage with no available balance."""
-        allowed, reason = risk_manager.check_margin_usage(
-            used_margin=1000.0, available_balance=0.0
-        )
+        allowed, reason = risk_manager.check_margin_usage(used_margin=1000.0, available_balance=0.0)
 
         assert allowed is False
         assert "No available balance" in reason
@@ -222,26 +220,20 @@ futures_limits:
 
     def test_calculate_position_size_with_leverage_valid(self, risk_manager):
         """Test position size calculation with valid leverage."""
-        allowed, margin_required, reason = (
-            risk_manager.calculate_position_size_with_leverage(
-                notional_value_usdt=10000.0, leverage=10, available_balance=2000.0
-            )
+        allowed, margin_required, reason = risk_manager.calculate_position_size_with_leverage(
+            notional_value_usdt=10000.0, leverage=10, available_balance=2000.0
         )
 
         assert allowed is True
         assert margin_required == 1000.0  # 10000 / 10
         assert "Margin required: 1000.00" in reason
 
-    def test_calculate_position_size_with_leverage_insufficient_margin(
-        self, risk_manager
-    ):
+    def test_calculate_position_size_with_leverage_insufficient_margin(self, risk_manager):
         """Test position size calculation with insufficient margin."""
-        allowed, margin_required, reason = (
-            risk_manager.calculate_position_size_with_leverage(
-                notional_value_usdt=10000.0,
-                leverage=10,
-                available_balance=500.0,  # Need 1000, have 500
-            )
+        allowed, margin_required, reason = risk_manager.calculate_position_size_with_leverage(
+            notional_value_usdt=10000.0,
+            leverage=10,
+            available_balance=500.0,  # Need 1000, have 500
         )
 
         assert allowed is False
@@ -250,12 +242,10 @@ futures_limits:
 
     def test_calculate_position_size_with_leverage_exceeds_limit(self, risk_manager):
         """Test position size calculation with leverage exceeding limit."""
-        allowed, margin_required, reason = (
-            risk_manager.calculate_position_size_with_leverage(
-                notional_value_usdt=10000.0,
-                leverage=50,  # Exceeds 20x hard cap
-                available_balance=10000.0,
-            )
+        allowed, margin_required, reason = risk_manager.calculate_position_size_with_leverage(
+            notional_value_usdt=10000.0,
+            leverage=50,  # Exceeds 20x hard cap
+            available_balance=10000.0,
         )
 
         assert allowed is False

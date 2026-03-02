@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -137,8 +137,8 @@ class TestParseKline:
         ]
         ohlcv = ingestor._parse_kline("BTCUSDT", raw)
 
-        assert ohlcv.open_time.tzinfo == timezone.utc
-        assert ohlcv.close_time.tzinfo == timezone.utc
+        assert ohlcv.open_time.tzinfo == UTC
+        assert ohlcv.close_time.tzinfo == UTC
 
     def test_parse_kline_invalid_data_raises(self, ingestor: BinanceIngestor) -> None:
         """Test parsing kline with invalid data types raises error."""
@@ -164,7 +164,7 @@ class TestToDatetime:
         assert dt.year == 2024
         assert dt.month == 1
         assert dt.day == 1
-        assert dt.tzinfo == timezone.utc
+        assert dt.tzinfo == UTC
 
     def test_to_datetime_float(self) -> None:
         """Test float millisecond epoch conversion."""
@@ -212,9 +212,7 @@ class TestFetchKlines:
     """Test suite for kline fetching."""
 
     @pytest.mark.asyncio
-    async def test_fetch_klines_no_session_raises(
-        self, ingestor: BinanceIngestor
-    ) -> None:
+    async def test_fetch_klines_no_session_raises(self, ingestor: BinanceIngestor) -> None:
         """Test fetch without session raises error."""
         with pytest.raises(RuntimeError, match="Session not initialized"):
             await ingestor._fetch_klines("BTCUSDT")
@@ -257,9 +255,7 @@ class TestPollLatest:
     """Test suite for poll latest functionality."""
 
     @pytest.mark.asyncio
-    async def test_poll_latest_no_session_raises(
-        self, ingestor: BinanceIngestor
-    ) -> None:
+    async def test_poll_latest_no_session_raises(self, ingestor: BinanceIngestor) -> None:
         """Test poll without session raises error."""
         with pytest.raises(RuntimeError, match="Session not initialized"):
             await ingestor._poll_latest(AsyncMock())
@@ -286,9 +282,7 @@ class TestPollLatest:
         ]
 
         async with ingestor:
-            with patch.object(
-                ingestor, "_fetch_klines", new=AsyncMock(return_value=mock_klines)
-            ):
+            with patch.object(ingestor, "_fetch_klines", new=AsyncMock(return_value=mock_klines)):
                 await ingestor._poll_latest(callback)
 
         # Should be called twice (BTCUSDT and ETHUSDT)

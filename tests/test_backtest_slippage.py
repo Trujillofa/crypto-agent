@@ -1,5 +1,6 @@
 import pytest
-from src.backtest.engine import BacktestEngine, BacktestConfig
+
+from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType

@@ -1,4 +1,5 @@
 import pytest
+
 from src.strategy.momentum_strategy import MomentumStrategy
 from src.strategy.signals import SignalType
 

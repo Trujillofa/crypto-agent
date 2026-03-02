@@ -1,4 +1,5 @@
 import pytest
+
 from src.strategy.rsi_reversal import RSIReversalStrategy
 from src.strategy.signals import SignalType
 

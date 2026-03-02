@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -36,8 +36,8 @@ def sample_ohlcv() -> Ohlcv:
     return Ohlcv(
         symbol="BTCUSDT",
         timeframe="1m",
-        open_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-        close_time=datetime(2024, 1, 1, 0, 0, 59, tzinfo=timezone.utc),
+        open_time=datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC),
+        close_time=datetime(2024, 1, 1, 0, 0, 59, tzinfo=UTC),
         open_price=45000.0,
         high_price=46000.0,
         low_price=44000.0,
@@ -82,9 +82,7 @@ class TestTimescaleWriter:
         """Test connection failure raises exception."""
         writer = TimescaleWriter(db_config, metrics)
 
-        with patch(
-            "src.ingest.db.asyncpg.connect", side_effect=Exception("Connection failed")
-        ):
+        with patch("src.ingest.db.asyncpg.connect", side_effect=Exception("Connection failed")):
             with pytest.raises(Exception, match="Connection failed"):
                 await writer._connect()
 
@@ -157,9 +155,7 @@ class TestTimescaleWriter:
         with pytest.raises(Exception, match="DB Error"):
             await writer.write_ohlcv(sample_ohlcv)
 
-    async def test_count_rows(
-        self, db_config: dict[str, object], metrics: IngestMetrics
-    ) -> None:
+    async def test_count_rows(self, db_config: dict[str, object], metrics: IngestMetrics) -> None:
         """Test counting rows."""
         writer = TimescaleWriter(db_config, metrics)
         mock_conn = AsyncMock()

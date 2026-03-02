@@ -34,16 +34,12 @@ async def test_portfolio_manager_open_close():
         async with manager:
             assert manager.has_position("BTCUSDT") is False
 
-            position = await manager.open_position(
-                symbol="BTCUSDT", quantity=2.0, price=100.0
-            )
+            position = await manager.open_position(symbol="BTCUSDT", quantity=2.0, price=100.0)
             assert position.entry_price == 100.0
             assert position.quantity == 2.0
             assert manager.has_position("BTCUSDT") is True
 
-            closed_position, pnl = await manager.close_position(
-                symbol="BTCUSDT", price=110.0
-            )
+            closed_position, pnl = await manager.close_position(symbol="BTCUSDT", price=110.0)
             assert closed_position.is_closed is True
             assert closed_position.realized_pnl == pytest.approx(19.58)
             assert pnl == pytest.approx(19.58)

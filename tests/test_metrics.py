@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 
 from src.ingest.metrics import (
+    MAX_CARDINALITY,
     Counter,
     Gauge,
     LabelValidator,
-    MAX_CARDINALITY,
     MetricKey,
     MetricsRegistry,
 )

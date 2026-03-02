@@ -1,4 +1,5 @@
 import pytest
+
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.signals import Signal, SignalType
 
@@ -6,9 +7,7 @@ from src.strategy.signals import Signal, SignalType
 class TestSignalAggregator:
     @pytest.fixture
     def aggregator(self):
-        return SignalAggregator(
-            {"buy_threshold": 0.5, "sell_threshold": -0.5, "min_agreement": 1}
-        )
+        return SignalAggregator({"buy_threshold": 0.5, "sell_threshold": -0.5, "min_agreement": 1})
 
     def _create_signal(
         self,

@@ -1,6 +1,7 @@
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.ingest.metrics import IngestMetrics
 from src.ingest.websocket import BinanceWebSocketIngestor
@@ -17,9 +18,7 @@ class TestBinanceWebSocketIngestor:
 
     @pytest.mark.asyncio
     async def test_websocket_kline_parsing(self, metrics):
-        ingestor = BinanceWebSocketIngestor(
-            symbols=["BTCUSDT"], timeframe="1m", metrics=metrics
-        )
+        ingestor = BinanceWebSocketIngestor(symbols=["BTCUSDT"], timeframe="1m", metrics=metrics)
 
         on_candle = AsyncMock()
 
