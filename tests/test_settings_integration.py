@@ -81,7 +81,7 @@ def test_settings_telegram_config():
 def test_settings_resolves_new_strategy_registry_entries():
     """Configured strategy names resolve to the expected strategy classes."""
     settings = load_settings(Path("config/settings.yaml"))
-    strategy_classes, strategy_configs, _ = _resolve_strategy_config(settings.strategy)
+    strategy_classes, strategy_configs, _, _per_symbol = _resolve_strategy_config(settings.strategy)
 
     assert len(strategy_classes) == len(settings.strategy.strategies)
     assert len(strategy_configs) == len(settings.strategy.strategies)

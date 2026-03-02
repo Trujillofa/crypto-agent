@@ -55,6 +55,8 @@ class StrategySettings:
     cooldown_candles: int = 3
     strategies: list[Mapping[str, object]] = field(default_factory=list)
     aggregator: Mapping[str, object] = field(default_factory=dict)
+    # Per-symbol aggregator overrides
+    per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -214,6 +216,9 @@ def load_settings(config_path: Path) -> Settings:
         ),
         strategies=_as_list_of_mappings(strategy.get("strategies"), "strategy.strategies"),
         aggregator=_as_mapping(strategy.get("aggregator"), "strategy.aggregator"),
+        per_symbol_aggregator_config=_parse_per_symbol_aggregator(
+            strategy.get("per_symbol_aggregator_config"), "strategy.per_symbol_aggregator_config"
+        ),
     )
 
     telegram_bot_token = _as_str(telegram.get("bot_token"), "telegram.bot_token", default="")
@@ -390,6 +395,22 @@ def _as_mapping(value: object, field: str) -> Mapping[str, object]:
     raise ValueError(f"Expected mapping for {field}")
 
 
+def _parse_per_symbol_aggregator(value: object, field: str) -> Mapping[str, Mapping[str, object]]:
+    """Parse per-symbol aggregator config from YAML."""
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError(f"Expected mapping for {field}")
+    result: dict[str, dict[str, object]] = {}
+    for symbol, config in value.items():
+        if not isinstance(symbol, str):
+            raise ValueError(f"Expected string key for symbol in {field}")
+        if not isinstance(config, Mapping):
+            raise ValueError(f"Expected mapping config for symbol {symbol} in {field}")
+        result[symbol] = dict(config)
+    return result
+
+
 def _as_str(value: object, field: str, default: str) -> str:
     if value is None:
         return default
@@ -453,7 +474,12 @@ def _as_bool(value: object, field: str, default: bool) -> bool:
 
 def _resolve_strategy_config(
     strategy_settings: StrategySettings,
-) -> tuple[list[type[BaseStrategy]], list[Mapping[str, object]], Mapping[str, object]]:
+) -> tuple[
+    list[type[BaseStrategy]],
+    list[Mapping[str, object]],
+    Mapping[str, object],
+    Mapping[str, Mapping[str, object]],
+]:
     default_strategy_classes = [
         SimpleMACrossoverStrategy,
         RSIReversalStrategy,
@@ -507,7 +533,12 @@ def _resolve_strategy_config(
     aggregator_config = (
         strategy_settings.aggregator if strategy_settings.aggregator else default_aggregator_config
     )
-    return strategy_classes, strategy_configs, aggregator_config
+    return (
+        strategy_classes,
+        strategy_configs,
+        aggregator_config,
+        strategy_settings.per_symbol_aggregator_config,
+    )
 
 
 async def run() -> None:
@@ -713,8 +744,8 @@ async def run() -> None:
 
     # Initialize indicator reader and strategy engine
     indicator_reader = IndicatorReader(settings.database)
-    strategy_classes, strategy_configs, aggregator_config = _resolve_strategy_config(
-        settings.strategy
+    strategy_classes, strategy_configs, aggregator_config, per_symbol_agg_config = (
+        _resolve_strategy_config(settings.strategy)
     )
     engine_config = EngineConfig(
         symbols=settings.trading_pairs,
@@ -726,6 +757,7 @@ async def run() -> None:
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
+        per_symbol_aggregator_config=per_symbol_agg_config,
     )
 
     # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB

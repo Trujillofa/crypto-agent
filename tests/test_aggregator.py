@@ -86,3 +86,85 @@ class TestSignalAggregator:
         ]
         result = agg.aggregate("BTCUSDT", signals)
         assert result.trading_mode == "spot"
+
+    def test_per_symbol_buy_threshold_override(self, aggregator):
+        """Per-symbol buy_threshold should override default."""
+        signals = [self._create_signal(SignalType.BUY, 0.8)]
+        # Default buy_threshold is 0.5, so 0.8 should trigger BUY
+        result = aggregator.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.BUY
+
+        # Override with higher threshold - same signal should now HOLD
+        symbol_config = {"buy_threshold": 1.0}
+        result = aggregator.aggregate("BTCUSDT", signals, symbol_config=symbol_config)
+        assert result.type == SignalType.HOLD
+
+    def test_per_symbol_sell_threshold_override(self, aggregator):
+        """Per-symbol sell_threshold should override default."""
+        signals = [
+            self._create_signal(SignalType.SELL, 0.8),
+            self._create_signal(SignalType.SELL, 0.3),
+        ]
+        # Default sell_threshold is -0.5, so -1.1 should trigger SELL
+        result = aggregator.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.SELL
+
+        # Override with more conservative threshold - same signal should now HOLD
+        symbol_config = {"sell_threshold": -2.0}
+        result = aggregator.aggregate("BTCUSDT", signals, symbol_config=symbol_config)
+        assert result.type == SignalType.HOLD
+
+    def test_per_symbol_min_agreement_override(self, aggregator):
+        """Per-symbol min_agreement should override default."""
+        signals = [self._create_signal(SignalType.BUY, 1.0)]
+        # Default min_agreement is 1, so single BUY should trigger
+        result = aggregator.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.BUY
+
+        # Override with min_agreement=2 - single BUY should now HOLD
+        symbol_config = {"min_agreement": 2}
+        result = aggregator.aggregate("BTCUSDT", signals, symbol_config=symbol_config)
+        assert result.type == SignalType.HOLD
+        assert "Insufficient agreement" in result.reason
+
+    def test_per_symbol_buy_threshold_uptrend_override(self, aggregator):
+        """Per-symbol buy_threshold_uptrend should override default when in uptrend."""
+        signals = [self._create_signal(SignalType.BUY, 0.6)]
+        # Default buy_threshold is 0.5, 0.6 should trigger BUY in uptrend
+        result = aggregator.aggregate("BTCUSDT", signals, ema_200=40000.0)
+        assert result.type == SignalType.BUY
+
+        # Override with higher uptrend threshold - same signal should now HOLD
+        symbol_config = {"buy_threshold_uptrend": 1.0}
+        result = aggregator.aggregate(
+            "BTCUSDT", signals, ema_200=40000.0, symbol_config=symbol_config
+        )
+        assert result.type == SignalType.HOLD
+        # Should still respect default threshold when not in uptrend (price < EMA200)
+        # Override both thresholds to ensure HOLD
+        symbol_config = {"buy_threshold_uptrend": 1.0, "buy_threshold": 1.0}
+        result = aggregator.aggregate(
+            "BTCUSDT", signals, ema_200=60000.0, symbol_config=symbol_config
+        )
+        assert result.type == SignalType.HOLD
+
+    def test_empty_symbol_config_uses_defaults(self, aggregator):
+        """Empty symbol_config should use all default thresholds."""
+        signals = [self._create_signal(SignalType.BUY, 0.8)]
+        result = aggregator.aggregate("BTCUSDT", signals, symbol_config={})
+        assert result.type == SignalType.BUY
+
+    def test_none_symbol_config_uses_defaults(self, aggregator):
+        """None symbol_config should use all default thresholds."""
+        signals = [self._create_signal(SignalType.BUY, 0.8)]
+        result = aggregator.aggregate("BTCUSDT", signals, symbol_config=None)
+        assert result.type == SignalType.BUY
+
+    def test_partial_symbol_config_mixed_with_defaults(self, aggregator):
+        """Partial symbol_config should override only specified values."""
+        signals = [self._create_signal(SignalType.BUY, 0.8)]
+        # Override only min_agreement, use defaults for thresholds
+        symbol_config = {"min_agreement": 2}
+        result = aggregator.aggregate("BTCUSDT", signals, symbol_config=symbol_config)
+        assert result.type == SignalType.HOLD
+        assert "Insufficient agreement" in result.reason

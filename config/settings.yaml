@@ -102,3 +102,14 @@ strategy:
     buy_threshold: 1.1          # used when price <= EMA200 (downtrend/unknown)
     buy_threshold_uptrend: 1.1  # used when price > EMA200 — matches base (WFO-optimal; lower to test aggression)
     sell_threshold: -1.0
+  # Per-symbol aggregator overrides (key = symbol, value = aggregator config)
+  # These override the global aggregator settings for specific symbols
+  per_symbol_aggregator_config:
+    SOLUSDT:
+      min_agreement: 1
+      buy_threshold: 1.1
+      sell_threshold: -1.0
+    BNBUSDT:
+      min_agreement: 1
+      buy_threshold: 1.1
+      sell_threshold: -0.5
