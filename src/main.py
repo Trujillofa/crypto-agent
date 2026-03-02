@@ -11,7 +11,7 @@ from typing import cast
 
 import yaml
 
-from src.db import close_pool, init_pool, is_connected
+from src.db import close_pool, init_pool, is_connected, update_health_status
 from src.execution import (
     FuturesTradingConfig,
     FuturesTradingExecutor,
@@ -966,7 +966,7 @@ async def run() -> None:
             risk_summary = risk_manager.get_risk_summary()
             logger.info(
                 "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s executor=%s futures=%s ai=%s",
-                writer.is_connected(),
+                is_connected(),
                 ohlcv_rows,
                 indicator_rows,
                 indicator_ready,
@@ -982,11 +982,22 @@ async def run() -> None:
                 "enabled" if overseer_agent else "disabled",
             )
 
+        async def health_monitor_loop() -> None:
+            """Periodically probe the database for health status."""
+            while True:
+                await update_health_status()
+                await asyncio.sleep(5)
+
+        # Proactively update health status once before logging
+        await update_health_status()
         await _log_startup_diagnostics()
+
+        health_task = asyncio.create_task(health_monitor_loop())
 
         await stop_event.wait()
 
         # Cancel all tasks
+        health_task.cancel()
         ingest_task.cancel()
         risk_task.cancel()
         indicator_task.cancel()
@@ -1012,6 +1023,7 @@ async def run() -> None:
             futures_executor.stop()
 
         with contextlib.suppress(asyncio.CancelledError):
+            await health_task
             await ingest_task
             await risk_task
             await indicator_task
