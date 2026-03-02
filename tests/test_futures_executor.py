@@ -347,6 +347,9 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
+        # Verify get_position was called with market="futures"
+        mock_pm.get_position.assert_called_once_with("BTCUSDT", market="futures")
+
         mock_client.place_order.assert_called_once()
         call_kwargs = mock_client.place_order.call_args.kwargs
         assert call_kwargs["symbol"] == "BTCUSDT"
@@ -416,6 +419,9 @@ class TestFuturesTradingExecutor:
         )
 
         await executor.on_signal(signal)
+
+        # Verify get_position was called with market="futures"
+        mock_pm.get_position.assert_called_once_with("BTCUSDT", market="futures")
 
         # Both SL and TP orders cancelled before market close
         assert mock_client.cancel_order.call_count == 2
@@ -642,3 +648,73 @@ class TestFuturesTradingExecutor:
             await executor.place_futures_order("BTCUSDT", "BUY", 0.01)
 
         assert "Leverage" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_sell_with_one_way_mode_both_side(self, executor):
+        """SELL signal with one-way mode (position_side='BOTH') correctly normalizes side."""
+        from src.portfolio.models import Position
+
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(
+            return_value=[
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="BOTH",  # One-way mode
+                    position_amt=0.01,  # Positive = LONG
+                    entry_price=49000.0,
+                    mark_price=50000.0,
+                    liquidation_price=45000.0,
+                    leverage=5,
+                    isolated_margin=100.0,
+                    unrealized_pnl=100.0,
+                    notional_value=500.0,
+                )
+            ]
+        )
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(
+                total_margin_balance=10000.0,
+                available_balance=5000.0,
+            )
+        )
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(order_id="close", side="SELL", reduce_only=True)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        # Mock PortfolioManager with agent-owned LONG position
+        mock_pm = MagicMock()
+        mock_pm.get_position = MagicMock(
+            return_value=Position(
+                symbol="BTCUSDT",
+                quantity=0.01,
+                entry_price=49000.0,
+                position_side="LONG",
+            )
+        )
+        executor._portfolio_manager = mock_pm
+
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.80,
+            reason="EMA divergence",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        # Verify get_position was called with market="futures"
+        mock_pm.get_position.assert_called_once_with("BTCUSDT", market="futures")
+
+        # Should close position despite exchange reporting "BOTH" side
+        mock_client.place_order.assert_called_once()
+        call_kwargs = mock_client.place_order.call_args.kwargs
+        assert call_kwargs["symbol"] == "BTCUSDT"
+        assert call_kwargs["side"] == "SELL"
+        assert call_kwargs["position_side"] == "BOTH"  # one-way mode
+        assert call_kwargs["reduce_only"] is True
+        assert call_kwargs["quantity"] == 0.01  # Agent-owned quantity

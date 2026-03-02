@@ -453,7 +453,9 @@ class FuturesTradingExecutor:
                 agent_position_qty = 0.0
                 agent_position_side = None
                 if self._portfolio_manager is not None:
-                    agent_pos = self._portfolio_manager.get_position(signal.symbol)
+                    agent_pos = self._portfolio_manager.get_position(
+                        signal.symbol, market="futures"
+                    )
                     if agent_pos is not None:
                         agent_position_qty = agent_pos.quantity
                         agent_position_side = agent_pos.position_side or "LONG"
@@ -477,7 +479,14 @@ class FuturesTradingExecutor:
                 exchange_entry_price = 0.0
                 if current_position is not None:
                     exchange_position_qty = abs(current_position.position_amt)
-                    exchange_position_side = current_position.position_side
+                    # Normalize position side: handle BOTH (one-way mode) by inferring from position_amt
+                    raw_side = current_position.position_side
+                    if raw_side not in {"LONG", "SHORT"}:
+                        if current_position.position_amt > 0:
+                            raw_side = "LONG"
+                        elif current_position.position_amt < 0:
+                            raw_side = "SHORT"
+                    exchange_position_side = raw_side
                     exchange_entry_price = current_position.entry_price
 
                 # Step 4: Safety checks before closing
