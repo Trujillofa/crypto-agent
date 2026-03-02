@@ -16,6 +16,7 @@ from src.utils.logger import get_logger
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
+_health_status: bool = False  # Thread-safe status flag
 
 
 async def init_pool(config: Mapping[str, object]) -> asyncpg.Pool:
@@ -75,20 +76,32 @@ async def close_pool() -> None:
             logger.info("Async connection pool closed")
 
 
-async def is_connected() -> bool:
-    """Check if the database pool is connected and responding.
+async def update_health_status() -> bool:
+    """Update the global health status flag by probing the database.
 
-    Returns:
-        True if connected and query succeeds, False otherwise.
+    MUST be called from the main event loop.
     """
+    global _health_status
     if _pool is None:
+        _health_status = False
         return False
     try:
         async with _pool.acquire(timeout=2.0) as conn:
             await conn.fetchval("SELECT 1")
+            _health_status = True
             return True
     except Exception:  # noqa: BLE001
+        _health_status = False
         return False
+
+
+def is_connected() -> bool:
+    """Check if the database pool is connected (thread-safe).
+
+    This returns the last cached health status from update_health_status().
+    Safe to call from any thread (e.g., MetricsServer thread).
+    """
+    return _health_status
 
 
 def get_pool() -> asyncpg.Pool:

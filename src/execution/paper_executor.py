@@ -1,5 +1,3 @@
-"""Internal paper trading executor — simulates fills without Binance API."""
-
 from __future__ import annotations
 
 import asyncio
@@ -8,8 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-import asyncpg
-
+from src.db.pool import get_pool
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
@@ -98,7 +95,6 @@ class PaperExecutor:
         self._notifier = notifier or TelegramNotifier()
         self._portfolio_manager = portfolio_manager
         self._db_config = db_config
-        self._db_conn: asyncpg.Connection | None = None
         self._agent_id = self._normalize_agent_id(agent_id)
         self._position_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
         self._logger = get_logger("PaperExecutor")
@@ -191,9 +187,6 @@ class PaperExecutor:
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         self._running = False
-        if self._db_conn:
-            await self._db_conn.close()
-            self._db_conn = None
         await self._notifier.__aexit__(exc_type, exc, tb)
         self._metrics.stop_trading()
         self._logger.info(
@@ -206,10 +199,6 @@ class PaperExecutor:
 
     async def run(self) -> None:
         """Monitor open positions and trigger exits (trailing stop, TP, time stop)."""
-        if not self._db_conn:
-            self._logger.info("Exit monitor not started (no DB connection)")
-            return
-
         self._running = True
         self._logger.info("Exit monitor started: check every %ds", self._config.exit_check_interval)
 
@@ -302,15 +291,15 @@ class PaperExecutor:
 
     async def _fetch_latest_price(self, symbol: str) -> float | None:
         """Fetch the most recent close price from ohlcv table."""
-        if not self._db_conn:
-            return None
         try:
-            row = await self._db_conn.fetchrow(
-                "SELECT close_price FROM ohlcv WHERE symbol = $1 ORDER BY time DESC LIMIT 1",
-                symbol,
-            )
-            if row:
-                return float(row["close_price"])
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT close_price FROM ohlcv WHERE symbol = $1 ORDER BY time DESC LIMIT 1",
+                    symbol,
+                )
+                if row:
+                    return float(row["close_price"])
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Price fetch failed for %s: %s", symbol, exc)
         return None

@@ -25,10 +25,8 @@ class TimescaleWriter:
         pass
 
     def is_connected(self) -> bool:
-        # This is now a sync wrapper for the async is_connected check
-        # For simplicity in current main.py usage, we'll return a cached status or just True
-        # but the actual writes will use the pool which handles reconnection.
-        return True
+        """Check if the database is connected (thread-safe)."""
+        return is_connected()
 
     async def check_connection(self) -> bool:
         return await is_connected()

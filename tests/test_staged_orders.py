@@ -1,8 +1,5 @@
 """Tests for staged order queue."""
 
-import pytest
-from datetime import datetime, timezone
-
 from src.execution.staged import (
     OrderStage,
     StagedOrder,
@@ -104,7 +101,7 @@ class TestStagedOrderQueue:
     def test_get_ready(self):
         queue = StagedOrderQueue()
         o1 = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        o2 = queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
+        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
 
         queue.commit(o1.id)
 
@@ -150,7 +147,7 @@ class TestStagedOrderQueue:
     def test_get_stats(self):
         queue = StagedOrderQueue()
         o1 = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        o2 = queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
+        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
 
         queue.commit(o1.id)
 

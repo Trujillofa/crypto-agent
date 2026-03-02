@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -28,76 +28,17 @@ class TestIndicatorReaderInit:
         """Test initialization with config."""
         reader = IndicatorReader(db_config)
         assert reader._config == db_config
-        assert reader._connected is False
-        assert reader._conn is None
 
 
 class TestAsyncContextManager:
     """Test suite for async context manager."""
 
     @pytest.mark.asyncio
-    async def test_aenter_connects(self, db_config: dict[str, object]) -> None:
-        """Test __aenter__ establishes connection."""
+    async def test_context_manager(self, db_config: dict[str, object]) -> None:
+        """Test async context manager works."""
         reader = IndicatorReader(db_config)
-
-        mock_conn = AsyncMock()
-        with patch(
-            "src.features.reader.asyncpg.connect",
-            new_callable=AsyncMock,
-            return_value=mock_conn,
-        ):
-            async with reader:
-                assert reader._connected is True
-                assert reader._conn is mock_conn
-
-    @pytest.mark.asyncio
-    async def test_aexit_closes_connection(self, db_config: dict[str, object]) -> None:
-        """Test __aexit__ closes connection."""
-        reader = IndicatorReader(db_config)
-        mock_conn = AsyncMock()
-
-        with patch(
-            "src.features.reader.asyncpg.connect",
-            new_callable=AsyncMock,
-            return_value=mock_conn,
-        ):
-            async with reader:
-                pass
-
-        mock_conn.close.assert_called_once()
-        assert reader._connected is False
-
-
-class TestConnectAsyncpg:
-    """Test suite for asyncpg connection."""
-
-    @pytest.mark.asyncio
-    async def test_connect_success(self, db_config: dict[str, object]) -> None:
-        """Test successful asyncpg connection."""
-        reader = IndicatorReader(db_config)
-        mock_conn = AsyncMock()
-
-        with patch(
-            "src.features.reader.asyncpg.connect",
-            new_callable=AsyncMock,
-            return_value=mock_conn,
-        ):
-            await reader._connect()
-
-        assert reader._connected is True
-        assert reader._conn is mock_conn
-
-    @pytest.mark.asyncio
-    async def test_connect_failure(self, db_config: dict[str, object]) -> None:
-        """Test connection failure raises exception."""
-        reader = IndicatorReader(db_config)
-
-        with patch(
-            "src.features.reader.asyncpg.connect",
-            side_effect=Exception("PG unavailable"),
-        ):
-            with pytest.raises(Exception, match="PG unavailable"):
-                await reader._connect()
+        async with reader as r:
+            assert r is reader
 
 
 class TestFetchLatest:
@@ -107,7 +48,9 @@ class TestFetchLatest:
     async def test_fetch_latest_returns_rows(self, db_config: dict[str, object]) -> None:
         """Test fetching latest rows returns oldest-first with dict format."""
         reader = IndicatorReader(db_config)
+        mock_pool = MagicMock()
         mock_conn = AsyncMock()
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
 
         # Simulate two rows returned from DB (DESC order, will be reversed)
         mock_rows = [
@@ -160,11 +103,10 @@ class TestFetchLatest:
                 "cci": None,
             },
         ]
-        mock_conn.fetch = AsyncMock(return_value=mock_rows)
-        reader._conn = mock_conn
-        reader._connected = True
+        mock_conn.fetch.return_value = mock_rows
 
-        rows = await reader.fetch_latest("BTCUSDT", "1m", limit=2)
+        with patch("src.features.reader.get_pool", return_value=mock_pool):
+            rows = await reader.fetch_latest("BTCUSDT", "1m", limit=2)
 
         assert len(rows) == 2
         # Should be oldest-first (reversed from DESC)
@@ -177,18 +119,11 @@ class TestFetchLatest:
     async def test_fetch_empty_table(self, db_config: dict[str, object]) -> None:
         """Test fetching from empty table returns empty list."""
         reader = IndicatorReader(db_config)
+        mock_pool = MagicMock()
         mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[])
-        reader._conn = mock_conn
-        reader._connected = True
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_conn.fetch.return_value = []
 
-        rows = await reader.fetch_latest("BTCUSDT", "1m", limit=2)
+        with patch("src.features.reader.get_pool", return_value=mock_pool):
+            rows = await reader.fetch_latest("BTCUSDT", "1m", limit=2)
         assert rows == []
-
-    @pytest.mark.asyncio
-    async def test_fetch_not_connected_raises(self, db_config: dict[str, object]) -> None:
-        """Test fetching when not connected raises RuntimeError."""
-        reader = IndicatorReader(db_config)
-
-        with pytest.raises(RuntimeError, match="not initialized"):
-            await reader.fetch_latest("BTCUSDT", "1m", limit=2)
