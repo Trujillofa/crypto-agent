@@ -75,6 +75,22 @@ async def close_pool() -> None:
             logger.info("Async connection pool closed")
 
 
+async def is_connected() -> bool:
+    """Check if the database pool is connected and responding.
+
+    Returns:
+        True if connected and query succeeds, False otherwise.
+    """
+    if _pool is None:
+        return False
+    try:
+        async with _pool.acquire(timeout=2.0) as conn:
+            await conn.fetchval("SELECT 1")
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def get_pool() -> asyncpg.Pool:
     """Get the current connection pool.
 

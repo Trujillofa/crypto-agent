@@ -5,8 +5,7 @@ import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-import asyncpg
-
+from src.db.pool import get_pool
 from src.features.metrics import IndicatorMetrics
 from src.features.technical import compute_indicators
 from src.features.writer import IndicatorWriter, StoredIndicator
@@ -32,7 +31,6 @@ class IndicatorComputer:
         self._metrics = metrics
         self._compute_interval = compute_interval
         self._logger = get_logger(self.__class__.__name__)
-        self._conn: asyncpg.Connection | None = None
         self._running = False
         self._db_lock = asyncio.Lock()
 
@@ -42,9 +40,6 @@ class IndicatorComputer:
         self._metrics.start_computation_loop()
         self._logger.info("Starting indicator computation loop...")
 
-        # Initialize connection
-        await self._connect()
-
         try:
             while self._running:
                 await self._compute_all_symbols()
@@ -53,30 +48,7 @@ class IndicatorComputer:
             self._logger.info("Indicator computation loop cancelled")
         finally:
             self._metrics.stop_computation_loop()
-            if self._conn is not None:
-                await self._conn.close()
             self._logger.info("Indicator computation loop stopped")
-
-    async def _connect(self) -> None:
-        """Connect to TimescaleDB for reading OHLCV data."""
-        host = str(self._config.get("host", "localhost"))
-        port = int(self._config.get("port", 5432))
-        database = str(self._config.get("name", "marketdata"))
-        user = str(self._config.get("user", "trading"))
-        password = str(self._config.get("password", ""))
-
-        try:
-            self._conn = await asyncpg.connect(
-                host=host,
-                port=port,
-                database=database,
-                user=user,
-                password=password,
-            )
-            self._logger.info("IndicatorComputer: Connected to TimescaleDB via asyncpg")
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error("Failed to connect to TimescaleDB: %s", exc)
-            raise
 
     async def _compute_all_symbols(self) -> None:
         """Compute indicators for all configured symbols."""
@@ -182,9 +154,6 @@ class IndicatorComputer:
 
     async def _read_ohlcv(self, symbol: str, limit: int) -> dict[str, list]:
         """Read OHLCV data from TimescaleDB."""
-        if self._conn is None:
-            raise RuntimeError("Database connection not initialized")
-
         query = """
             SELECT time, open_price, high_price, low_price, close_price, volume
             FROM ohlcv
@@ -193,7 +162,9 @@ class IndicatorComputer:
             LIMIT $3
         """
 
-        rows = await self._conn.fetch(query, symbol, self._timeframe, limit)
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, symbol, self._timeframe, limit)
 
         if not rows:
             return {}

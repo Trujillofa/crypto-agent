@@ -11,7 +11,7 @@ from typing import cast
 
 import yaml
 
-from src.db import close_pool, init_pool
+from src.db import close_pool, init_pool, is_connected
 from src.execution import (
     FuturesTradingConfig,
     FuturesTradingExecutor,
@@ -595,7 +595,9 @@ async def run() -> None:
             raise RuntimeError("Auto-migration failed. See logs for details.")
 
     # Start Prometheus metrics server
-    MetricsServer(ingest_metrics.registry).start(settings.prometheus_port)
+    MetricsServer(ingest_metrics.registry, is_connected_cb=is_connected).start(
+        settings.prometheus_port
+    )
 
     # Initialize OHLCV writer and ingestor
     writer = TimescaleWriter(settings.database, ingest_metrics)

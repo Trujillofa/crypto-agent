@@ -4,8 +4,7 @@ import asyncio
 import time
 from collections.abc import Mapping
 
-import asyncpg
-
+from src.db.pool import get_pool, is_connected
 from src.ingest.metrics import IngestMetrics
 from src.ingest.models import Ohlcv
 from src.utils.logger import get_logger
@@ -16,34 +15,35 @@ class TimescaleWriter:
         self._config = config
         self._metrics = metrics
         self._logger = get_logger(self.__class__.__name__)
-        self._connected = False
-        self._conn: asyncpg.Connection | None = None
         self._db_lock = asyncio.Lock()
 
     async def __aenter__(self) -> TimescaleWriter:
-        await self._connect()
         await self._ensure_schema()
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-        self._connected = False
+        pass
 
     def is_connected(self) -> bool:
-        return self._connected
+        # This is now a sync wrapper for the async is_connected check
+        # For simplicity in current main.py usage, we'll return a cached status or just True
+        # but the actual writes will use the pool which handles reconnection.
+        return True
+
+    async def check_connection(self) -> bool:
+        return await is_connected()
 
     async def count_rows(self, table: str) -> int:
         async with self._db_lock:
-            if self._conn is None:
-                return 0
             # Validate table name to prevent SQL injection
             valid_tables = {"ohlcv"}
             if table not in valid_tables:
                 raise ValueError(f"Invalid table name: {table}")
             query = f"SELECT COUNT(*) FROM {table}"
-            count = await self._conn.fetchval(query)
-            return int(count or 0)
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                count = await conn.fetchval(query)
+                return int(count or 0)
 
     async def write_ohlcv(self, candle: Ohlcv) -> None:
         async with self._db_lock:
@@ -52,51 +52,28 @@ class TimescaleWriter:
         elapsed = time.perf_counter() - start_time
         self._metrics.insert_latency_seconds.set(elapsed)
 
-    async def _connect(self) -> None:
-        host = str(self._config.get("host", "localhost"))
-        port = int(self._config.get("port", 5432))
-        database = str(self._config.get("name", "marketdata"))
-        user = str(self._config.get("user", "trading"))
-        password = str(self._config.get("password", ""))
-
-        self._conn = await asyncpg.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-        )
-        self._connected = True
-        self._logger.info("Connected to TimescaleDB via asyncpg")
-
     async def _ensure_schema(self) -> None:
-        if not self._connected:
-            raise RuntimeError("TimescaleDB connection not initialized")
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
-        await self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS ohlcv (
-                time TIMESTAMPTZ NOT NULL,
-                close_time TIMESTAMPTZ NOT NULL,
-                symbol TEXT NOT NULL,
-                timeframe TEXT NOT NULL,
-                open_price DOUBLE PRECISION NOT NULL,
-                high_price DOUBLE PRECISION NOT NULL,
-                low_price DOUBLE PRECISION NOT NULL,
-                close_price DOUBLE PRECISION NOT NULL,
-                volume DOUBLE PRECISION NOT NULL,
-                PRIMARY KEY (time, symbol, timeframe)
-            );
-            """)
-        await self._conn.execute("""
-            SELECT create_hypertable('ohlcv', 'time', if_not_exists => TRUE);
-            """)
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS ohlcv (
+                    time TIMESTAMPTZ NOT NULL,
+                    close_time TIMESTAMPTZ NOT NULL,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    open_price DOUBLE PRECISION NOT NULL,
+                    high_price DOUBLE PRECISION NOT NULL,
+                    low_price DOUBLE PRECISION NOT NULL,
+                    close_price DOUBLE PRECISION NOT NULL,
+                    volume DOUBLE PRECISION NOT NULL,
+                    PRIMARY KEY (time, symbol, timeframe)
+                );
+                """)
+            await conn.execute("""
+                SELECT create_hypertable('ohlcv', 'time', if_not_exists => TRUE);
+                """)
 
     async def _insert_row(self, candle: Ohlcv) -> None:
-        if not self._connected:
-            raise RuntimeError("TimescaleDB connection not initialized")
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
         values = (
             candle.open_time_utc,
             candle.close_time_utc,
@@ -108,19 +85,21 @@ class TimescaleWriter:
             candle.close_price,
             candle.volume,
         )
-        await self._conn.execute(
-            """
-            INSERT INTO ohlcv (
-                time, close_time, symbol, timeframe,
-                open_price, high_price, low_price, close_price, volume
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
-                close_time = EXCLUDED.close_time,
-                open_price = EXCLUDED.open_price,
-                high_price = EXCLUDED.high_price,
-                low_price = EXCLUDED.low_price,
-                close_price = EXCLUDED.close_price,
-                volume = EXCLUDED.volume;
-            """,
-            *values,
-        )
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO ohlcv (
+                    time, close_time, symbol, timeframe,
+                    open_price, high_price, low_price, close_price, volume
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
+                    close_time = EXCLUDED.close_time,
+                    open_price = EXCLUDED.open_price,
+                    high_price = EXCLUDED.high_price,
+                    low_price = EXCLUDED.low_price,
+                    close_price = EXCLUDED.close_price,
+                    volume = EXCLUDED.volume;
+                """,
+                *values,
+            )

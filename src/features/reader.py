@@ -3,32 +3,27 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 
-import asyncpg
-
+from src.db.pool import get_pool
 from src.utils.logger import get_logger
 
 
 class IndicatorReader:
     """Read latest indicators from database for strategy evaluation.
 
-    Uses asyncpg for async database access.
+    Uses a shared connection pool for efficient database access.
     """
 
     def __init__(self, config: Mapping[str, object]) -> None:
         self._config = config
         self._logger = get_logger(self.__class__.__name__)
-        self._connected = False
-        self._conn: asyncpg.Connection | None = None
         self._db_lock = asyncio.Lock()
 
     async def __aenter__(self) -> IndicatorReader:
-        await self._connect()
+        # Pool is managed globally
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
-        if self._conn is not None:
-            await self._conn.close()
-        self._connected = False
+        pass
 
     async def fetch_latest(
         self,
@@ -36,21 +31,8 @@ class IndicatorReader:
         timeframe: str,
         limit: int = 2,
     ) -> list[dict[str, float]]:
-        """Fetch latest N indicator rows for symbol+timeframe, oldest-first.
-
-        Args:
-            symbol: Trading pair symbol
-            timeframe: Timeframe (e.g., "1m", "5m", "1h")
-            limit: Maximum number of rows to fetch (default: 2)
-
-        Returns:
-            List of dicts with keys: ema_12, ema_26, close_price.
-            Sorted oldest to newest (time ASC).
-            Empty list if no data.
-        """
+        """Fetch latest N indicator rows for symbol+timeframe, oldest-first."""
         async with self._db_lock:
-            if not self._connected:
-                raise RuntimeError("IndicatorReader connection not initialized")
             return await self._fetch_rows(symbol, timeframe, limit)
 
     async def fetch_range(
@@ -60,47 +42,14 @@ class IndicatorReader:
         start_time: str,
         end_time: str,
     ) -> list[dict[str, float]]:
-        """Fetch all indicator rows for symbol+timeframe within a time range.
-
-        Args:
-            symbol: Trading pair symbol
-            timeframe: Timeframe (e.g., "1m", "5m")
-            start_time: ISO 8601 start timestamp
-            end_time: ISO 8601 end timestamp
-
-        Returns:
-            List of dicts with indicator keys, sorted oldest to newest (time ASC).
-        """
+        """Fetch all indicator rows for symbol+timeframe within a time range."""
         async with self._db_lock:
-            if not self._connected:
-                raise RuntimeError("IndicatorReader connection not initialized")
             return await self._fetch_range_rows(symbol, timeframe, start_time, end_time)
-
-    async def _connect(self) -> None:
-        """Connect to TimescaleDB via asyncpg."""
-        host = str(self._config.get("host", "localhost"))
-        port = int(self._config.get("port", 5432))
-        database = str(self._config.get("name", "marketdata"))
-        user = str(self._config.get("user", "trading"))
-        password = str(self._config.get("password", ""))
-
-        self._conn = await asyncpg.connect(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-        )
-        self._connected = True
-        self._logger.info("IndicatorReader: Connected to TimescaleDB via asyncpg")
 
     async def _fetch_range_rows(
         self, symbol: str, timeframe: str, start_time: str, end_time: str
     ) -> list[dict[str, float]]:
         """Fetch rows from database for a specific time range."""
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
-
         query = """
             SELECT
                 i.time,
@@ -144,9 +93,11 @@ class IndicatorReader:
                 return val
             return datetime.fromisoformat(val)
 
-        rows = await self._conn.fetch(
-            query, symbol, timeframe, _parse_dt(start_time), _parse_dt(end_time)
-        )
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                query, symbol, timeframe, _parse_dt(start_time), _parse_dt(end_time)
+            )
 
         if not rows:
             return []
@@ -155,7 +106,7 @@ class IndicatorReader:
         for row in rows:
             results.append(
                 {
-                    "time": row["time"],  # Include time for backtesting
+                    "time": row["time"],
                     "ema_12": (float(row["ema_12"]) if row["ema_12"] is not None else 0.0),
                     "ema_26": (float(row["ema_26"]) if row["ema_26"] is not None else 0.0),
                     "close_price": float(row["close_price"]),
@@ -202,11 +153,6 @@ class IndicatorReader:
 
     async def _fetch_rows(self, symbol: str, timeframe: str, limit: int) -> list[dict[str, float]]:
         """Fetch rows from database."""
-        if self._conn is None:
-            raise RuntimeError("Database connection missing")
-
-        # JOIN with ohlcv table to get close_price
-        # Use DESC ordering and reverse to get oldest-first
         query = """
             SELECT
                 i.time,
@@ -241,7 +187,9 @@ class IndicatorReader:
             LIMIT $3
         """
 
-        rows = await self._conn.fetch(query, symbol, timeframe, limit)
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(query, symbol, timeframe, limit)
 
         if not rows:
             return []

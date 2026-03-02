@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
@@ -261,11 +262,18 @@ class IngestMetrics:
 
 
 class MetricsServer:
-    def __init__(self, registry: MetricsRegistry) -> None:
+    def __init__(
+        self,
+        registry: MetricsRegistry,
+        is_connected_cb: Callable[[], Awaitable[bool]] | None = None,
+    ) -> None:
         self._registry = registry
+        self._is_connected_cb = is_connected_cb
 
     def start(self, port: int) -> Thread:
         registry = self._registry
+        is_connected_cb = self._is_connected_cb
+        import asyncio
 
         class MetricsHandler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802
@@ -295,9 +303,27 @@ class MetricsServer:
                     self.end_headers()
                     self.wfile.write(payload)
                     return
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"ok")
+
+                # Health/Ready checks
+                healthy = True
+                if is_connected_cb:
+                    try:
+                        # Use a new event loop if necessary or run_coroutine_threadsafe
+                        # Since this is a simple sync handler in a thread, we use a trick:
+                        loop = asyncio.new_event_loop()
+                        healthy = loop.run_until_complete(is_connected_cb())
+                        loop.close()
+                    except Exception:  # noqa: BLE001
+                        healthy = False
+
+                if healthy:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"ok")
+                else:
+                    self.send_response(503)
+                    self.end_headers()
+                    self.wfile.write(b"unhealthy")
 
             def log_message(self, format: str, *args: object) -> None:  # noqa: A002
                 return
