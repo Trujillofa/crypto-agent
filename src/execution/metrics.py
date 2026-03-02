@@ -109,12 +109,8 @@ class ExecutionMetrics:
         self, symbol: str, order_type: str, status: str, latency_seconds: float
     ) -> None:
         """Record an order placement."""
-        self.orders_placed.labels(
-            symbol=symbol, order_type=order_type, status=status
-        ).inc()
-        self.order_latency.labels(symbol=symbol, order_type=order_type).observe(
-            latency_seconds
-        )
+        self.orders_placed.labels(symbol=symbol, order_type=order_type, status=status).inc()
+        self.order_latency.labels(symbol=symbol, order_type=order_type).observe(latency_seconds)
 
     def record_order_cancelled(self, symbol: str, reason: str) -> None:
         """Record an order cancellation."""
@@ -156,9 +152,7 @@ class ExecutionMetrics:
         self.account_balance.labels(type="total_wallet").set(total_wallet)
         self.account_balance.labels(type="available").set(available)
 
-    def update_open_orders(
-        self, open_orders: list[tuple[str, int]]
-    ) -> None:  # (symbol, count)
+    def update_open_orders(self, open_orders: list[tuple[str, int]]) -> None:  # (symbol, count)
         """Update open orders metrics."""
         self.open_orders.clear()
         for symbol, count in open_orders:

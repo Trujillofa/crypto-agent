@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from src.notifications.telegram import AlertLevel, TelegramNotifier
 from src.overseer.prompts import build_system_prompt
@@ -61,10 +61,8 @@ class OverseerAgent:
                 raise
             except Exception as exc:
                 consecutive_errors += 1
-                backoff = min(self._poll_interval_seconds * (2 ** consecutive_errors), max_backoff)
-                self._logger.error(
-                    "AI overseer loop error (retry in %.0fs): %s", backoff, exc
-                )
+                backoff = min(self._poll_interval_seconds * (2**consecutive_errors), max_backoff)
+                self._logger.error("AI overseer loop error (retry in %.0fs): %s", backoff, exc)
                 await asyncio.sleep(backoff)
 
     def stop(self) -> None:
@@ -134,9 +132,7 @@ class OverseerAgent:
         summary = await self._portfolio_manager.get_portfolio_summary()
         risk = self._risk_manager.get_risk_summary()
         active_breakers = [
-            name
-            for name, active in risk.get("circuit_breakers", {}).items()
-            if bool(active)
+            name for name, active in risk.get("circuit_breakers", {}).items() if bool(active)
         ]
         breakers = ", ".join(active_breakers) if active_breakers else "none"
         kill_switch = "ON" if risk.get("kill_switch_active") else "OFF"
@@ -154,9 +150,7 @@ class OverseerAgent:
     def _cmd_risk(self) -> str:
         risk = self._risk_manager.get_risk_summary()
         active_breakers = [
-            name
-            for name, active in risk.get("circuit_breakers", {}).items()
-            if bool(active)
+            name for name, active in risk.get("circuit_breakers", {}).items() if bool(active)
         ]
         breakers = ", ".join(active_breakers) if active_breakers else "none"
 
@@ -214,9 +208,7 @@ class OverseerAgent:
         positions = self._portfolio_manager.get_all_positions()
 
         active_breakers = [
-            name
-            for name, active in risk.get("circuit_breakers", {}).items()
-            if bool(active)
+            name for name, active in risk.get("circuit_breakers", {}).items() if bool(active)
         ]
         breaker_text = ", ".join(active_breakers) if active_breakers else "none"
         positions_text = ", ".join(
@@ -239,16 +231,13 @@ class OverseerAgent:
                 f"realized_pnl={summary.total_realized_pnl:.2f}"
             ),
             "positions": positions_text,
-            "as_of": datetime.now(timezone.utc).isoformat(),
+            "as_of": datetime.now(UTC).isoformat(),
         }
 
     def _append_history(self, chat_id: str, role: str, content: str) -> None:
         if self._max_history == 0:
             return
-        if (
-            chat_id not in self._chat_history
-            and len(self._chat_history) >= self._max_tracked_chats
-        ):
+        if chat_id not in self._chat_history and len(self._chat_history) >= self._max_tracked_chats:
             oldest_chat_id = next(iter(self._chat_history))
             self._chat_history.pop(oldest_chat_id, None)
         history = self._chat_history.setdefault(chat_id, [])
@@ -268,9 +257,8 @@ class OverseerAgent:
 
     def _cmd_reset(self) -> str:
         risk_before = self._risk_manager.get_risk_summary()
-        was_blocked = (
-            risk_before.get("kill_switch_active")
-            or any(risk_before.get("circuit_breakers", {}).values())
+        was_blocked = risk_before.get("kill_switch_active") or any(
+            risk_before.get("circuit_breakers", {}).values()
         )
         if not was_blocked:
             return "<b>Reset:</b> No active blocks. Trading is already allowed."

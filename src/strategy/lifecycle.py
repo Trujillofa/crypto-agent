@@ -1,5 +1,5 @@
-from typing import List
 import asyncpg
+
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,7 +29,7 @@ class LifecycleManager:
         )
         return row["status"] if row else "unknown"
 
-    async def is_live(self, strategies: List[str]) -> bool:
+    async def is_live(self, strategies: list[str]) -> bool:
         """Check if all strategies are 'live'."""
         for name in strategies:
             status = await self.get_strategy_status(name)

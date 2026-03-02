@@ -7,14 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import (
     PaperExecutor,
     PaperPosition,
     PaperTradingConfig,
 )
-from src.execution.metrics import ExecutionMetrics
-from src.risk.manager import RiskManager
-from src.strategy.signals import SignalType
+from src.strategy.signals import Signal, SignalType
 
 
 def _make_config(**overrides) -> PaperTradingConfig:
@@ -61,15 +60,21 @@ def _make_executor(
 class TestPaperPositionHWM:
     def test_hwm_defaults_to_entry_price(self):
         pos = PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.01,
-            entry_price=50000.0, open_time=time.time(),
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.01,
+            entry_price=50000.0,
+            open_time=time.time(),
         )
         assert pos.high_water_mark == 50000.0
 
     def test_hwm_explicit_value(self):
         pos = PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.01,
-            entry_price=50000.0, open_time=time.time(),
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.01,
+            entry_price=50000.0,
+            open_time=time.time(),
             high_water_mark=51000.0,
         )
         assert pos.high_water_mark == 51000.0
@@ -78,8 +83,11 @@ class TestPaperPositionHWM:
 class TestEvaluateExit:
     def _make_position(self, entry_price=50000.0, hwm=50000.0, open_time=None):
         return PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.01,
-            entry_price=entry_price, open_time=open_time or time.time(),
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.01,
+            entry_price=entry_price,
+            open_time=open_time or time.time(),
             high_water_mark=hwm,
         )
 
@@ -125,7 +133,8 @@ class TestEvaluateExit:
         executor = _make_executor(_make_config(time_stop_minutes=60))
         # Position opened 61 minutes ago
         pos = self._make_position(
-            entry_price=50000.0, hwm=50000.0,
+            entry_price=50000.0,
+            hwm=50000.0,
             open_time=time.time() - 61 * 60,
         )
         result = executor._evaluate_exit(pos, current_price=50000.0, now=time.time())
@@ -136,7 +145,8 @@ class TestEvaluateExit:
         executor = _make_executor(_make_config(time_stop_minutes=60))
         # Position opened 30 minutes ago
         pos = self._make_position(
-            entry_price=50000.0, hwm=50000.0,
+            entry_price=50000.0,
+            hwm=50000.0,
             open_time=time.time() - 30 * 60,
         )
         result = executor._evaluate_exit(pos, current_price=50000.0, now=time.time())
@@ -145,7 +155,8 @@ class TestEvaluateExit:
     def test_no_exit_when_conditions_not_met(self):
         executor = _make_executor()
         pos = self._make_position(
-            entry_price=50000.0, hwm=50100.0,
+            entry_price=50000.0,
+            hwm=50100.0,
             open_time=time.time() - 10 * 60,
         )
         # Price is within all thresholds
@@ -155,10 +166,12 @@ class TestEvaluateExit:
     def test_trailing_stop_priority_over_take_profit(self):
         """When both conditions could fire, trailing stop is checked first."""
         # This tests evaluation order: trailing stop checked before TP
-        executor = _make_executor(_make_config(
-            trailing_stop_pct=0.01,  # 1%
-            take_profit_pct=0.001,  # 0.1% (very tight)
-        ))
+        executor = _make_executor(
+            _make_config(
+                trailing_stop_pct=0.01,  # 1%
+                take_profit_pct=0.001,  # 0.1% (very tight)
+            )
+        )
         # Entry 50000, HWM 51000
         # Trail threshold: 51000 * 0.99 = 50490
         # TP threshold: 50000 * 1.001 = 50050
@@ -175,8 +188,11 @@ class TestCheckExits:
         executor = _make_executor()
         # Manually insert a position
         executor._positions["BTCUSDT:spot"] = PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.004,
-            entry_price=50000.0, open_time=time.time(),
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.004,
+            entry_price=50000.0,
+            open_time=time.time(),
             high_water_mark=50000.0,
         )
         # Mock price fetch returning higher price (no exit triggered)
@@ -191,8 +207,11 @@ class TestCheckExits:
     async def test_exit_triggers_sell_and_removes_position(self):
         executor = _make_executor()
         executor._positions["BTCUSDT:spot"] = PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.004,
-            entry_price=50000.0, open_time=time.time(),
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.004,
+            entry_price=50000.0,
+            open_time=time.time(),
             high_water_mark=50500.0,
         )
         # Price dropped below trailing stop: 50500 * 0.995 = 50247.5
@@ -207,8 +226,11 @@ class TestCheckExits:
     async def test_exit_constructs_correct_signal(self):
         executor = _make_executor()
         executor._positions["ETHUSDT:futures"] = PaperPosition(
-            symbol="ETHUSDT", side="LONG", quantity=0.1,
-            entry_price=3000.0, open_time=time.time() - 120 * 60,  # 2 hours ago
+            symbol="ETHUSDT",
+            side="LONG",
+            quantity=0.1,
+            entry_price=3000.0,
+            open_time=time.time() - 120 * 60,  # 2 hours ago
             high_water_mark=3000.0,
         )
         executor._fetch_latest_price = AsyncMock(return_value=3000.0)
@@ -228,8 +250,11 @@ class TestCheckExits:
     async def test_skips_position_when_price_unavailable(self):
         executor = _make_executor()
         executor._positions["BTCUSDT:spot"] = PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.004,
-            entry_price=50000.0, open_time=time.time(),
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.004,
+            entry_price=50000.0,
+            open_time=time.time(),
         )
         executor._fetch_latest_price = AsyncMock(return_value=None)
         await executor._check_exits()
@@ -243,14 +268,20 @@ class TestCheckExits:
         now = time.time()
         # Position 1: should trigger trailing stop
         executor._positions["BTCUSDT:spot"] = PaperPosition(
-            symbol="BTCUSDT", side="LONG", quantity=0.004,
-            entry_price=50000.0, open_time=now,
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.004,
+            entry_price=50000.0,
+            open_time=now,
             high_water_mark=51000.0,
         )
         # Position 2: should NOT trigger (price is fine)
         executor._positions["ETHUSDT:spot"] = PaperPosition(
-            symbol="ETHUSDT", side="LONG", quantity=0.1,
-            entry_price=3000.0, open_time=now,
+            symbol="ETHUSDT",
+            side="LONG",
+            quantity=0.1,
+            entry_price=3000.0,
+            open_time=now,
             high_water_mark=3000.0,
         )
 
@@ -275,8 +306,8 @@ class TestOnSignalEntryPath:
     constructor call-sites are not.
     """
 
-    def _make_buy_signal(self, atr: float = 0.0) -> "Signal":
-        from src.strategy.signals import Signal, SignalType
+    def _make_buy_signal(self, atr: float = 0.0) -> Signal:
+        from src.strategy.signals import SignalType
 
         return Signal(
             type=SignalType.BUY,
@@ -316,9 +347,7 @@ class TestOnSignalEntryPath:
     @pytest.mark.asyncio
     async def test_buy_without_atr_falls_back_to_pct(self):
         """BUY signal with atr_14=0 uses fixed-pct SL/TP fallback."""
-        executor = _make_executor(
-            _make_config(stop_loss_pct=0.02, take_profit_pct=0.05)
-        )
+        executor = _make_executor(_make_config(stop_loss_pct=0.02, take_profit_pct=0.05))
         signal = self._make_buy_signal(atr=0.0)
 
         await executor.on_signal(signal)

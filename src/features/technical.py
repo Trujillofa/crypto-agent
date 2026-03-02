@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class TechnicalIndicators:
     cci: float | None
 
 
-def compute_indicators(data: "OhlcvSeries") -> TechnicalIndicators:
+def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
     close = _as_float_list(data["close"], "close")
     high = _as_float_list(data["high"], "high")
     low = _as_float_list(data["low"], "low")
@@ -82,9 +82,7 @@ def compute_indicators(data: "OhlcvSeries") -> TechnicalIndicators:
     vwap = _vwap(high, low, close, volume)
 
     # Stochastic Oscillator
-    stoch_k, stoch_d = (
-        _stochastic(high, low, close, 14, 3) if len(close) >= 14 else (None, None)
-    )
+    stoch_k, stoch_d = _stochastic(high, low, close, 14, 3) if len(close) >= 14 else (None, None)
 
     # CCI
     cci = _cci(high, low, close, 20) if len(close) >= 20 else None
@@ -244,9 +242,7 @@ def _stochastic(
     return k, d
 
 
-def _cci(
-    high: list[float], low: list[float], close: list[float], period: int
-) -> float | None:
+def _cci(high: list[float], low: list[float], close: list[float], period: int) -> float | None:
     """Commodity Channel Index."""
     if len(close) < period:
         return None

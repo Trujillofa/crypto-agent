@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import asyncpg
 
-from src.portfolio.models import Position, PositionStatus, PortfolioSummary
+from src.portfolio.models import PortfolioSummary, Position, PositionStatus
 from src.utils.logger import get_logger
 
 
@@ -26,7 +26,7 @@ class PortfolioManager:
         self._positions: dict[tuple[str, str], Position] = {}
         self._db_lock = asyncio.Lock()
 
-    async def __aenter__(self) -> "PortfolioManager":
+    async def __aenter__(self) -> PortfolioManager:
         await self._connect()
         await self._ensure_schema()
         await self._load_open_positions()
@@ -238,7 +238,7 @@ class PortfolioManager:
             The created Position
         """
         async with self._db_lock:
-            entry_time = datetime.now(timezone.utc)
+            entry_time = datetime.now(UTC)
             if self._conn is None:
                 raise RuntimeError("Database connection missing")
             scoped_symbol = self._scope_symbol(symbol)
@@ -315,7 +315,7 @@ class PortfolioManager:
                 raise ValueError(f"No open position for {symbol}")
 
             position = self._positions[key]
-            exit_time = datetime.now(timezone.utc)
+            exit_time = datetime.now(UTC)
             realized_pnl = position.close(price, exit_time)
             if self._conn is None:
                 raise RuntimeError("Database connection missing")

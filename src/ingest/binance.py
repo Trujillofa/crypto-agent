@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -33,7 +33,7 @@ class BinanceIngestor:
         self._session: aiohttp.ClientSession | None = None
         self._rate_limiter = rate_limiter or RateLimiter()
 
-    async def __aenter__(self) -> "BinanceIngestor":
+    async def __aenter__(self) -> BinanceIngestor:
         """Initialize aiohttp session with connection pooling."""
         timeout = aiohttp.ClientTimeout(total=30, connect=10)
         connector = aiohttp.TCPConnector(
@@ -98,9 +98,7 @@ class BinanceIngestor:
             payload = list(result)
             candle = self._parse_kline(symbol, payload[-1])
             await on_candle(candle)
-            self._metrics.messages_total.inc(
-                labels={"symbol": symbol, "stream": "klines"}
-            )
+            self._metrics.messages_total.inc(labels={"symbol": symbol, "stream": "klines"})
             self._metrics.last_open_time.set(
                 candle.open_time_utc.timestamp(), labels={"symbol": symbol}
             )
@@ -128,18 +126,14 @@ class BinanceIngestor:
             for entry in klines:
                 candle = self._parse_kline(symbol, entry)
                 await on_candle(candle)
-                self._metrics.messages_total.inc(
-                    labels={"symbol": symbol, "stream": "klines"}
-                )
+                self._metrics.messages_total.inc(labels={"symbol": symbol, "stream": "klines"})
                 self._metrics.last_open_time.set(
                     candle.open_time_utc.timestamp(), labels={"symbol": symbol}
                 )
 
             self._logger.info("Backfilled %d candles for %s", len(klines), symbol)
 
-    async def _fetch_klines(
-        self, symbol: str, limit: int = 100
-    ) -> list[list[str | int | float]]:
+    async def _fetch_klines(self, symbol: str, limit: int = 100) -> list[list[str | int | float]]:
         """Fetch klines from Binance Spot API with rate limiting."""
         if not self._session:
             raise RuntimeError("Session not initialized")
@@ -153,7 +147,7 @@ class BinanceIngestor:
         try:
             async with self._session.get(url, params=params) as response:
                 # Update rate limiter from response headers
-                headers = {k: v for k, v in response.headers.items()}
+                headers = dict(response.headers.items())
                 self._rate_limiter.update_from_response(headers)
 
                 if response.status == 429:  # Rate limited
@@ -196,7 +190,7 @@ class BinanceIngestor:
     @staticmethod
     def _to_datetime(ms_since_epoch: int | float) -> datetime:
         """Convert milliseconds since epoch to datetime."""
-        return datetime.fromtimestamp(float(ms_since_epoch) / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(float(ms_since_epoch) / 1000, tz=UTC)
 
     @staticmethod
     def _to_float(value: str | int | float) -> float:

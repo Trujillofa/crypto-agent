@@ -56,9 +56,7 @@ class TradingExecutor:
 
     async def __aenter__(self) -> TradingExecutor:
         if not self._config.enabled:
-            self._logger.info(
-                "TradingExecutor disabled (trading_execution.enabled=false)"
-            )
+            self._logger.info("TradingExecutor disabled (trading_execution.enabled=false)")
             return self
 
         if not self._config.api_key or not self._config.api_secret:
@@ -87,9 +85,7 @@ class TradingExecutor:
     async def run(self) -> None:
         """Main trading loop."""
         if not self._config.enabled:
-            self._logger.info(
-                "Trading executor loop skipped (no strategy engine configured)"
-            )
+            self._logger.info("Trading executor loop skipped (no strategy engine configured)")
             return
 
         self._running = True
@@ -129,16 +125,12 @@ class TradingExecutor:
                 open_orders_data.append((symbol, len(orders)))
             except Exception as exc:  # noqa: BLE001
                 self._logger.error("Failed to get open orders for %s: %s", symbol, exc)
-                self._metrics.record_api_error(
-                    "get_open_orders", str(type(exc).__name__)
-                )
+                self._metrics.record_api_error("get_open_orders", str(type(exc).__name__))
 
         if open_orders_data:
             self._metrics.update_open_orders(open_orders_data)
 
-    async def _wait_for_fill(
-        self, symbol: str, order_id: str, timeout: float = 5.0
-    ) -> OrderInfo:
+    async def _wait_for_fill(self, symbol: str, order_id: str, timeout: float = 5.0) -> OrderInfo:
         """Poll order status until filled or timeout.
 
         Args:
@@ -309,9 +301,7 @@ class TradingExecutor:
                 status="FAILED",
                 latency_seconds=elapsed,
             )
-            self._metrics.record_api_error(
-                "place_market_order", str(type(exc).__name__)
-            )
+            self._metrics.record_api_error("place_market_order", str(type(exc).__name__))
             raise
 
     async def place_limit_order(
@@ -572,23 +562,17 @@ class TradingExecutor:
                         )
                         return
 
-                    order = await self.place_market_order(
-                        signal.symbol, "SELL", balance
-                    )
+                    order = await self.place_market_order(signal.symbol, "SELL", balance)
                     if order.status == "FILLED":
                         filled_quantity = (
-                            order.executed_quantity
-                            if order.executed_quantity > 0
-                            else balance
+                            order.executed_quantity if order.executed_quantity > 0 else balance
                         )
                         filled_price = order.executed_price or (
                             float(order.price) if order.price else signal.price
                         )
                         pnl = None
                         if entry_price is not None and position_qty is not None:
-                            pnl_quantity = (
-                                filled_quantity if filled_quantity > 0 else position_qty
-                            )
+                            pnl_quantity = filled_quantity if filled_quantity > 0 else position_qty
                             pnl = (filled_price - entry_price) * pnl_quantity
                         await self._notifier.send_trade_alert(
                             symbol=signal.symbol,
@@ -613,6 +597,5 @@ class TradingExecutor:
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Signal rejected: %s — %s", signal, exc)
             await self._notifier.send_alert(
-                f"<b>Signal rejected</b> [spot]\n"
-                f"{signal.symbol} {signal.type.value} — {exc}"
+                f"<b>Signal rejected</b> [spot]\n" f"{signal.symbol} {signal.type.value} — {exc}"
             )

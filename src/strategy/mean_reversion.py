@@ -27,9 +27,7 @@ class MeanReversionStrategy(BaseStrategy):
         self._z_exit_threshold = float(self._config.get("z_exit_threshold", 0.25))
         self._max_hold_bars = int(self._config.get("max_hold_bars", 24))
         self._price_key = str(self._config.get("price_key", "close_price"))
-        self._pair_price_key = str(
-            self._config.get("pair_price_key", "pair_close_price")
-        )
+        self._pair_price_key = str(self._config.get("pair_price_key", "pair_close_price"))
         self._pair_symbol = str(self._config.get("pair_symbol", ""))
         self._use_log_prices = bool(self._config.get("use_log_prices", True))
         self._min_std = float(self._config.get("min_spread_std", 1e-8))
@@ -52,9 +50,7 @@ class MeanReversionStrategy(BaseStrategy):
 
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
         if self._price_key not in indicators:
-            raise ValueError(
-                f"Missing required indicator for {symbol}: {self._price_key}"
-            )
+            raise ValueError(f"Missing required indicator for {symbol}: {self._price_key}")
 
         current_price = self._coerce_float(indicators.get(self._price_key))
         if current_price is None or current_price <= 0:
@@ -97,9 +93,7 @@ class MeanReversionStrategy(BaseStrategy):
 
         intercept, hedge_ratio = self._fit_ols(list(base_series), list(pair_series))
         if hedge_ratio is None:
-            return self._hold(
-                symbol, current_price, "Pair variance too low for regression"
-            )
+            return self._hold(symbol, current_price, "Pair variance too low for regression")
 
         residuals = self._compute_residuals(
             list(base_series), list(pair_series), intercept, hedge_ratio
@@ -114,9 +108,7 @@ class MeanReversionStrategy(BaseStrategy):
             )
 
         spread_mean = sum(residuals) / len(residuals)
-        spread_var = sum((value - spread_mean) ** 2 for value in residuals) / len(
-            residuals
-        )
+        spread_var = sum((value - spread_mean) ** 2 for value in residuals) / len(residuals)
         spread_std = math.sqrt(spread_var)
         if spread_std <= self._min_std:
             return self._hold(symbol, current_price, "Spread variance too low")
@@ -268,9 +260,7 @@ class MeanReversionStrategy(BaseStrategy):
             },
         )
 
-    def _fit_ols(
-        self, y_series: list[float], x_series: list[float]
-    ) -> tuple[float, float | None]:
+    def _fit_ols(self, y_series: list[float], x_series: list[float]) -> tuple[float, float | None]:
         x_mean = sum(x_series) / len(x_series)
         y_mean = sum(y_series) / len(y_series)
 
@@ -278,10 +268,7 @@ class MeanReversionStrategy(BaseStrategy):
         if sxx <= self._min_std:
             return 0.0, None
 
-        sxy = sum(
-            (x - x_mean) * (y - y_mean)
-            for x, y in zip(x_series, y_series, strict=False)
-        )
+        sxy = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_series, y_series, strict=False))
         beta = sxy / sxx
         intercept = y_mean - beta * x_mean
         return intercept, beta
@@ -293,9 +280,7 @@ class MeanReversionStrategy(BaseStrategy):
         intercept: float,
         beta: float,
     ) -> list[float]:
-        return [
-            y - (intercept + beta * x) for y, x in zip(y_series, x_series, strict=False)
-        ]
+        return [y - (intercept + beta * x) for y, x in zip(y_series, x_series, strict=False)]
 
     def _adf_t_stat(self, series: list[float]) -> float | None:
         if len(series) < self._adf_min_samples:
@@ -314,15 +299,11 @@ class MeanReversionStrategy(BaseStrategy):
         if sxx <= self._min_std:
             return None
 
-        sxy = sum(
-            (x - x_mean) * (y - y_mean) for x, y in zip(x_lag, y_diff, strict=False)
-        )
+        sxy = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_lag, y_diff, strict=False))
         beta = sxy / sxx
         alpha = y_mean - beta * x_mean
 
-        residuals = [
-            y - (alpha + beta * x) for x, y in zip(x_lag, y_diff, strict=False)
-        ]
+        residuals = [y - (alpha + beta * x) for x, y in zip(x_lag, y_diff, strict=False)]
         dof = sample_count - 2
         if dof <= 0:
             return None

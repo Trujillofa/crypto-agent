@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-
 import pytest
+
 from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine

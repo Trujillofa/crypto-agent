@@ -49,9 +49,7 @@ class LabelValidator:
         # Truncate long values
         if len(value) > 64:
             value = value[:64]
-            self._logger.warning(
-                f"Label '{label_name}' value truncated: {original_value[:20]}..."
-            )
+            self._logger.warning(f"Label '{label_name}' value truncated: {original_value[:20]}...")
 
         # Remove invalid characters
         value = INVALID_LABEL_CHARS.sub("_", value)
@@ -66,24 +64,19 @@ class LabelValidator:
 
         return value
 
-    def _validate_against_set(
-        self, label_name: str, value: str, allowed_set: set[str]
-    ) -> str:
+    def _validate_against_set(self, label_name: str, value: str, allowed_set: set[str]) -> str:
         """Validate a label value against an allowed set."""
         if value not in allowed_set:
             if value not in self._warned_labels:
                 self._logger.warning(
-                    f"Label '{label_name}' has unknown value '{value}'. "
-                    f"Allowed: {allowed_set}"
+                    f"Label '{label_name}' has unknown value '{value}'. Allowed: {allowed_set}"
                 )
                 self._warned_labels.add(value)
             # Return a sanitized fallback
             return "unknown"
         return value
 
-    def check_cardinality(
-        self, metric_name: str, label_values: tuple[str, ...]
-    ) -> bool:
+    def check_cardinality(self, metric_name: str, label_values: tuple[str, ...]) -> bool:
         """Check if adding this label combination would exceed cardinality limits."""
         cache_key = f"{metric_name}:{label_values}"
 
@@ -111,7 +104,7 @@ class MetricKey:
     labels: tuple[tuple[str, str], ...]
 
     @staticmethod
-    def from_labels(labels: dict[str, str]) -> "MetricKey":
+    def from_labels(labels: dict[str, str]) -> MetricKey:
         return MetricKey(tuple(sorted(labels.items())))
 
     def render(self) -> str:
@@ -129,14 +122,12 @@ class Counter:
     values: dict[MetricKey, int] = field(default_factory=dict)
     _validator: LabelValidator = field(default_factory=LabelValidator, repr=False)
 
-    def with_labels(self, **labels: str) -> "Counter":
+    def with_labels(self, **labels: str) -> Counter:
         if set(labels.keys()) != set(self.label_names):
             raise ValueError("Counter labels do not match")
 
         # Sanitize label values
-        sanitized = {
-            k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()
-        }
+        sanitized = {k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()}
 
         # Check cardinality
         label_values = tuple(sanitized.values())
@@ -151,9 +142,7 @@ class Counter:
         labels = labels or {}
 
         # Sanitize label values
-        sanitized = {
-            k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()
-        }
+        sanitized = {k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()}
 
         # Check cardinality
         label_values = tuple(sanitized.values())
@@ -172,14 +161,12 @@ class Gauge:
     values: dict[MetricKey, float] = field(default_factory=dict)
     _validator: LabelValidator = field(default_factory=LabelValidator, repr=False)
 
-    def with_labels(self, **labels: str) -> "Gauge":
+    def with_labels(self, **labels: str) -> Gauge:
         if set(labels.keys()) != set(self.label_names):
             raise ValueError("Gauge labels do not match")
 
         # Sanitize label values
-        sanitized = {
-            k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()
-        }
+        sanitized = {k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()}
 
         # Check cardinality
         label_values = tuple(sanitized.values())
@@ -194,9 +181,7 @@ class Gauge:
         labels = labels or {}
 
         # Sanitize label values
-        sanitized = {
-            k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()
-        }
+        sanitized = {k: self._validator.sanitize_label_value(k, v) for k, v in labels.items()}
 
         # Check cardinality
         label_values = tuple(sanitized.values())
@@ -250,7 +235,7 @@ class IngestMetrics:
         default_factory=lambda: Gauge(
             "ingest_insert_latency_seconds",
             "Database insert latency in seconds",
-            tuple(),
+            (),
         )
     )
     last_open_time: Gauge = field(

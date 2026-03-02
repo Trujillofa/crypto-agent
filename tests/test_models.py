@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 
 from src.ingest.models import Ohlcv
 
@@ -13,7 +12,7 @@ class TestOhlcv:
 
     def test_ohlcv_creation(self) -> None:
         """Test basic OHLCV creation."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="BTCUSDT",
             timeframe="1m",
@@ -36,7 +35,7 @@ class TestOhlcv:
 
     def test_ohlcv_price_relationships(self) -> None:
         """Test that high >= open/close/low and low <= open/close/high."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="BTCUSDT",
             timeframe="1m",
@@ -58,7 +57,7 @@ class TestOhlcv:
 
     def test_ohlcv_zero_volume(self) -> None:
         """Test OHLCV with zero volume."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="ETHUSDT",
             timeframe="1h",
@@ -75,7 +74,7 @@ class TestOhlcv:
 
     def test_ohlcv_different_timeframes(self) -> None:
         """Test OHLCV with various timeframes."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         timeframes = ["1m", "5m", "15m", "1h", "4h", "1d"]
 
         for tf in timeframes:
@@ -94,7 +93,7 @@ class TestOhlcv:
 
     def test_ohlcv_different_symbols(self) -> None:
         """Test OHLCV with various trading pairs."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
         for symbol in symbols:
@@ -113,7 +112,7 @@ class TestOhlcv:
 
     def test_ohlcv_negative_values(self) -> None:
         """Test OHLCV with negative price movement (loss)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="BTCUSDT",
             timeframe="1m",
@@ -131,7 +130,7 @@ class TestOhlcv:
 
     def test_ohlcv_positive_values(self) -> None:
         """Test OHLCV with positive price movement (gain)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="BTCUSDT",
             timeframe="1m",
@@ -149,7 +148,7 @@ class TestOhlcv:
 
     def test_ohlcv_body_size(self) -> None:
         """Test OHLCV body size calculation."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="BTCUSDT",
             timeframe="1m",
@@ -167,7 +166,7 @@ class TestOhlcv:
 
     def test_ohlcv_wick_size(self) -> None:
         """Test OHLCV wick calculations."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         candle = Ohlcv(
             symbol="BTCUSDT",
             timeframe="1m",

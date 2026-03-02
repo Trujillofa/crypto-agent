@@ -1,6 +1,7 @@
 import pytest
-from src.strategy.vwap_strategy import VWAPReversionStrategy
+
 from src.strategy.signals import SignalType
+from src.strategy.vwap_strategy import VWAPReversionStrategy
 
 
 class TestVWAPReversionStrategy:
@@ -14,17 +15,23 @@ class TestVWAPReversionStrategy:
     @pytest.mark.asyncio
     async def test_missing_vwap_raises(self, strategy):
         with pytest.raises(ValueError, match="Missing required indicator"):
-            await strategy.evaluate("BTCUSDT", {"close_price": 50000.0, "atr_14": 500.0, "rsi_14": 35.0})
+            await strategy.evaluate(
+                "BTCUSDT", {"close_price": 50000.0, "atr_14": 500.0, "rsi_14": 35.0}
+            )
 
     @pytest.mark.asyncio
     async def test_missing_atr14_raises(self, strategy):
         with pytest.raises(ValueError, match="Missing required indicator"):
-            await strategy.evaluate("BTCUSDT", {"vwap": 51000.0, "close_price": 50000.0, "rsi_14": 35.0})
+            await strategy.evaluate(
+                "BTCUSDT", {"vwap": 51000.0, "close_price": 50000.0, "rsi_14": 35.0}
+            )
 
     @pytest.mark.asyncio
     async def test_missing_rsi14_raises(self, strategy):
         with pytest.raises(ValueError, match="Missing required indicator"):
-            await strategy.evaluate("BTCUSDT", {"vwap": 51000.0, "close_price": 50000.0, "atr_14": 500.0})
+            await strategy.evaluate(
+                "BTCUSDT", {"vwap": 51000.0, "close_price": 50000.0, "atr_14": 500.0}
+            )
 
     @pytest.mark.asyncio
     async def test_missing_close_price_raises(self, strategy):

@@ -71,7 +71,7 @@ class PaperTradingConfig:
     exit_check_interval: int = 5  # seconds between exit checks
     # ATR-based position sizing
     use_atr_sizing: bool = False  # if True, size by (equity × risk_pct) / (atr × multiplier)
-    atr_multiplier: float = 1.0   # stop distance multiplier for sizing calc
+    atr_multiplier: float = 1.0  # stop distance multiplier for sizing calc
     risk_per_trade_pct: float = 0.02  # fraction of equity risked per trade
 
 
@@ -211,9 +211,7 @@ class PaperExecutor:
             return
 
         self._running = True
-        self._logger.info(
-            "Exit monitor started: check every %ds", self._config.exit_check_interval
-        )
+        self._logger.info("Exit monitor started: check every %ds", self._config.exit_check_interval)
 
         while self._running:
             try:
@@ -258,7 +256,10 @@ class PaperExecutor:
 
             self._logger.info(
                 "Exit triggered for %s: %s (price=%.4f, entry=%.4f, hwm=%.4f)",
-                pos_key, exit_reason, current_price, position.entry_price,
+                pos_key,
+                exit_reason,
+                current_price,
+                position.entry_price,
                 position.high_water_mark,
             )
 
@@ -293,7 +294,9 @@ class PaperExecutor:
         # Time stop: position open longer than configured minutes
         elapsed_minutes = (now - position.open_time) / 60
         if elapsed_minutes >= self._config.time_stop_minutes:
-            return f"TIME_STOP (open={elapsed_minutes:.0f}m, limit={self._config.time_stop_minutes}m)"
+            return (
+                f"TIME_STOP (open={elapsed_minutes:.0f}m, limit={self._config.time_stop_minutes}m)"
+            )
 
         return None
 
@@ -344,9 +347,7 @@ class PaperExecutor:
                 f"{signal.symbol} {signal.type.value} — {exc}"
             )
 
-    async def on_tick(
-        self, symbol: str, price: float, indicators: dict[str, float]
-    ) -> None:
+    async def on_tick(self, symbol: str, price: float, indicators: dict[str, float]) -> None:
         """Check SL/TP/trailing for all positions of this symbol. Called every cycle."""
         if not self._config.enabled:
             return
@@ -417,8 +418,12 @@ class PaperExecutor:
         if reason is None:
             return False
 
-        sl_info = f"sl={position.sl_price:.4f}" if atr > 0 else f"sl_pct={self._config.stop_loss_pct}"
-        tp_info = f"tp={position.tp_price:.4f}" if atr > 0 else f"tp_pct={self._config.take_profit_pct}"
+        sl_info = (
+            f"sl={position.sl_price:.4f}" if atr > 0 else f"sl_pct={self._config.stop_loss_pct}"
+        )
+        tp_info = (
+            f"tp={position.tp_price:.4f}" if atr > 0 else f"tp_pct={self._config.take_profit_pct}"
+        )
         self._logger.info(
             "Paper %s triggered for %s [%s]: entry=%.4f current=%.4f (%s, %s)",
             reason,
@@ -446,9 +451,7 @@ class PaperExecutor:
         await self._handle_sell(exit_signal, market_tag, is_futures)
         return True
 
-    async def _handle_buy(
-        self, signal: Signal, market_tag: str, is_futures: bool
-    ) -> None:
+    async def _handle_buy(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
         pos_key = self._position_key(signal.symbol, market_tag)
 
         if pos_key in self._positions:
@@ -490,8 +493,7 @@ class PaperExecutor:
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             await self._notifier.send_alert(
-                f"<b>Paper signal blocked</b> [{market_tag}]\n"
-                f"{signal.symbol} BUY — {reason}"
+                f"<b>Paper signal blocked</b> [{market_tag}]\n" f"{signal.symbol} BUY — {reason}"
             )
             return
 
@@ -500,7 +502,9 @@ class PaperExecutor:
         if len(self._positions) >= max_positions:
             self._logger.info(
                 "BUY blocked: max open positions (%d) reached for %s [%s]",
-                max_positions, signal.symbol, market_tag,
+                max_positions,
+                signal.symbol,
+                market_tag,
             )
             await self._notifier.send_alert(
                 f"<b>Paper signal blocked</b> [{market_tag}]\n"
@@ -509,9 +513,7 @@ class PaperExecutor:
             return
 
         # Simulate fill with fee
-        fee_rate = (
-            self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
-        )
+        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
         fee = order_usdt * fee_rate
         self._balance -= margin_needed + fee
         self._total_fees += fee
@@ -524,8 +526,16 @@ class PaperExecutor:
             tp_price = entry_price + self._config.tp_atr_multiplier * atr_14
         else:
             # Fallback to fixed pct
-            sl_price = entry_price * (1 - self._config.stop_loss_pct) if self._config.stop_loss_pct > 0 else 0.0
-            tp_price = entry_price * (1 + self._config.take_profit_pct) if self._config.take_profit_pct > 0 else 0.0
+            sl_price = (
+                entry_price * (1 - self._config.stop_loss_pct)
+                if self._config.stop_loss_pct > 0
+                else 0.0
+            )
+            tp_price = (
+                entry_price * (1 + self._config.take_profit_pct)
+                if self._config.take_profit_pct > 0
+                else 0.0
+            )
 
         self._positions[pos_key] = PaperPosition(
             symbol=signal.symbol,
@@ -542,7 +552,9 @@ class PaperExecutor:
 
         # Register with risk manager for position limit tracking
         self._risk_manager.register_open_position(
-            pos_key, order_usdt, signal.price,
+            pos_key,
+            order_usdt,
+            signal.price,
         )
 
         # Record in portfolio DB for overseer visibility
@@ -557,7 +569,11 @@ class PaperExecutor:
                 self._logger.warning("Portfolio DB write failed (buy): %s", exc)
 
         leverage_text = f" ({self._config.futures_leverage}x)" if is_futures else ""
-        atr_text = f", ATR={atr_14:.4f}, SL={sl_price:.4f}, TP={tp_price:.4f}" if atr_14 > 0 else " (fixed % SL/TP)"
+        atr_text = (
+            f", ATR={atr_14:.4f}, SL={sl_price:.4f}, TP={tp_price:.4f}"
+            if atr_14 > 0
+            else " (fixed % SL/TP)"
+        )
         self._logger.info(
             "Paper BUY %s [%s%s]: qty=%.6f @ %.4f (%.2f USDT, fee=%.2f%s)",
             signal.symbol,
@@ -587,16 +603,12 @@ class PaperExecutor:
             market=f"paper-{market_tag}{leverage_text}",
         )
 
-    async def _handle_sell(
-        self, signal: Signal, market_tag: str, is_futures: bool
-    ) -> None:
+    async def _handle_sell(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
         pos_key = self._position_key(signal.symbol, market_tag)
         position = self._positions.get(pos_key)
 
         if position is None:
-            self._logger.debug(
-                "SELL ignored: no %s position for %s", market_tag, signal.symbol
-            )
+            self._logger.debug("SELL ignored: no %s position for %s", market_tag, signal.symbol)
             return
 
         # Calculate PnL with fees
@@ -604,9 +616,7 @@ class PaperExecutor:
         if is_futures:
             gross_pnl *= self._config.futures_leverage
 
-        fee_rate = (
-            self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
-        )
+        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
         sell_notional = position.quantity * signal.price
         fee = sell_notional * fee_rate
         net_pnl = gross_pnl - fee

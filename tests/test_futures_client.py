@@ -9,9 +9,9 @@ import pytest
 
 from src.execution.futures_client import (
     BinanceFuturesClient,
-    FuturesOrderInfo,
-    FuturesAccountInfo,
     FundingRateInfo,
+    FuturesAccountInfo,
+    FuturesOrderInfo,
 )
 
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import logging
+import math
+import random
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-import logging
-import math
-import random
 from typing import Protocol
 
 try:
@@ -126,17 +126,15 @@ def _safe_float(value: object, default: float = 0.0) -> float:
 
 
 def _reset_env(env: object) -> tuple[list[float], dict[str, float]]:
-    result = getattr(env, "reset")()
+    result = env.reset()
     if isinstance(result, tuple) and len(result) == 2:
         state, info = result
         return list(state), dict(info)
     return list(result), {}
 
 
-def _step_env(
-    env: object, action: int
-) -> tuple[list[float], float, bool, bool, dict[str, float]]:
-    result = getattr(env, "step")(action)
+def _step_env(env: object, action: int) -> tuple[list[float], float, bool, bool, dict[str, float]]:
+    result = env.step(action)
     if isinstance(result, tuple) and len(result) == 5:
         next_state, reward, terminated, truncated, info = result
         return (
@@ -211,9 +209,7 @@ class TradingGymEnv(_EnvBase):
         info = self._build_info(sharpe=0.0)
         return state, info
 
-    def step(
-        self, action: int
-    ) -> tuple[list[float], float, bool, bool, dict[str, float]]:
+    def step(self, action: int) -> tuple[list[float], float, bool, bool, dict[str, float]]:
         if action not in (0, 1, 2):
             raise ValueError(f"invalid action={action}; expected 0/1/2")
 
@@ -234,9 +230,7 @@ class TradingGymEnv(_EnvBase):
 
         self._equity = self._cash + self._units * next_price
         period_return = (
-            (self._equity - previous_equity) / previous_equity
-            if previous_equity > 0
-            else 0.0
+            (self._equity - previous_equity) / previous_equity if previous_equity > 0 else 0.0
         )
         self._rolling_returns.append(period_return)
 
@@ -343,8 +337,7 @@ class PPOBaselineAgent:
         self._logger = get_logger(self.__class__.__name__)
 
         self._policy_w = [
-            [self._rng.uniform(-0.01, 0.01) for _ in range(state_dim)]
-            for _ in range(action_dim)
+            [self._rng.uniform(-0.01, 0.01) for _ in range(state_dim)] for _ in range(action_dim)
         ]
         self._policy_b = [0.0 for _ in range(action_dim)]
 
@@ -430,10 +423,7 @@ class PPOBaselineAgent:
                 + self._config.gamma * next_value * non_terminal
                 - rollout.values[idx]
             )
-            gae = (
-                delta
-                + self._config.gamma * self._config.gae_lambda * non_terminal * gae
-            )
+            gae = delta + self._config.gamma * self._config.gae_lambda * non_terminal * gae
             advantages[idx] = gae
             returns[idx] = rollout.values[idx] + gae
             next_value = rollout.values[idx]
@@ -584,9 +574,7 @@ def evaluate_agent(env: TradingGymEnv, agent: PPOBaselineAgent) -> PaperTestMetr
         final_sharpe = info.get("sharpe", final_sharpe)
 
     final_equity = env.final_equity
-    total_return_pct = (
-        (final_equity - env.initial_capital) / env.initial_capital
-    ) * 100
+    total_return_pct = ((final_equity - env.initial_capital) / env.initial_capital) * 100
     return PaperTestMetrics(
         final_equity=final_equity,
         total_return_pct=total_return_pct,
@@ -673,8 +661,7 @@ def paper_test_from_rows(
         rl=rl_metrics,
         buy_hold=buy_hold_metrics,
         outperformed=rl_metrics.total_return_pct > buy_hold_metrics.total_return_pct,
-        delta_return_pct=rl_metrics.total_return_pct
-        - buy_hold_metrics.total_return_pct,
+        delta_return_pct=rl_metrics.total_return_pct - buy_hold_metrics.total_return_pct,
         delta_sharpe=rl_metrics.sharpe_ratio - buy_hold_metrics.sharpe_ratio,
         training_curve=training_curve,
     )

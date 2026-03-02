@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 @dataclass(frozen=True)
@@ -18,11 +18,11 @@ class Ohlcv:
 
     @property
     def open_time_utc(self) -> datetime:
-        return self.open_time.astimezone(timezone.utc)
+        return self.open_time.astimezone(UTC)
 
     @property
     def close_time_utc(self) -> datetime:
-        return self.close_time.astimezone(timezone.utc)
+        return self.close_time.astimezone(UTC)
 
     @property
     def change_percent(self) -> float:

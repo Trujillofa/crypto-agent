@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from src.rl.agent import (
-    PPOBaselineAgent,
-    PPOConfig,
     PaperTestComparison,
     PaperTestMetrics,
+    PPOBaselineAgent,
+    PPOConfig,
     TradingGymEnv,
     paper_test_from_rows,
     paper_test_vs_buy_hold,

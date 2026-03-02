@@ -35,10 +35,10 @@ class FuturesTradingConfig:
     order_size_usdt: float = 100.0
     liquidation_buffer_pct: float = 5.0
     # SL/TP — ATR-based (primary) with fixed-pct fallback
-    sl_atr_multiplier: float = 2.0   # SL = entry - mult * ATR(14)
-    tp_atr_multiplier: float = 4.5   # TP = entry + mult * ATR(14)
-    stop_loss_pct: float = 0.03      # fallback if ATR unavailable
-    take_profit_pct: float = 0.06    # fallback if ATR unavailable
+    sl_atr_multiplier: float = 2.0  # SL = entry - mult * ATR(14)
+    tp_atr_multiplier: float = 4.5  # TP = entry + mult * ATR(14)
+    stop_loss_pct: float = 0.03  # fallback if ATR unavailable
+    take_profit_pct: float = 0.06  # fallback if ATR unavailable
 
 
 class FuturesTradingExecutor:
@@ -104,9 +104,7 @@ class FuturesTradingExecutor:
         for symbol in self._config.symbols:
             try:
                 await self._client.set_leverage(symbol, self._config.default_leverage)
-                self._logger.info(
-                    "Set leverage %dx for %s", self._config.default_leverage, symbol
-                )
+                self._logger.info("Set leverage %dx for %s", self._config.default_leverage, symbol)
             except Exception as exc:
                 self._logger.warning("Failed to set leverage for %s: %s", symbol, exc)
 
@@ -208,9 +206,7 @@ class FuturesTradingExecutor:
                     self._sl_tp_orders.pop(symbol, None)
 
             except Exception as exc:
-                self._logger.error(
-                    "Failed to get position risk for %s: %s", symbol, exc
-                )
+                self._logger.error("Failed to get position risk for %s: %s", symbol, exc)
 
     async def place_futures_order(
         self,
@@ -275,9 +271,7 @@ class FuturesTradingExecutor:
             self._metrics.record_risk_block(symbol, margin_reason)
             raise RuntimeError(f"Margin check failed: {margin_reason}")
 
-        request_position_side = (
-            "BOTH" if self._active_position_mode == "one-way" else position_side
-        )
+        request_position_side = "BOTH" if self._active_position_mode == "one-way" else position_side
 
         # Place order
         start_time = time.perf_counter()
@@ -364,9 +358,7 @@ class FuturesTradingExecutor:
                 status="FAILED",
                 latency_seconds=elapsed,
             )
-            self._metrics.record_api_error(
-                "place_futures_order", str(type(exc).__name__)
-            )
+            self._metrics.record_api_error("place_futures_order", str(type(exc).__name__))
             raise
 
     async def on_signal(self, signal: Signal) -> None:
@@ -418,13 +410,6 @@ class FuturesTradingExecutor:
                     current_position = pos
                     break
 
-            has_long_position = False
-            if current_position is not None:
-                if self._active_position_mode == "one-way":
-                    has_long_position = current_position.position_amt > 0
-                else:
-                    has_long_position = current_position.position_side == "LONG"
-
             if signal.type == SignalType.BUY:
                 if current_position is not None:
                     # Already have a position with active SL/TP — skip
@@ -444,9 +429,7 @@ class FuturesTradingExecutor:
                     )
                     if order.status == "FILLED":
                         entry_price = (
-                            float(order.price)
-                            if order.price and order.price > 0
-                            else signal.price
+                            float(order.price) if order.price and order.price > 0 else signal.price
                         )
                         filled_qty = order.executed_quantity if order.executed_quantity > 0 else qty
                         atr_14 = float(signal.indicators.get("atr_14") or 0.0)
@@ -479,12 +462,8 @@ class FuturesTradingExecutor:
                             if order.executed_quantity > 0
                             else abs(current_position.position_amt)
                         )
-                        filled_price = (
-                            float(order.price) if order.price else signal.price
-                        )
-                        pnl = (
-                            filled_price - current_position.entry_price
-                        ) * filled_quantity
+                        filled_price = float(order.price) if order.price else signal.price
+                        pnl = (filled_price - current_position.entry_price) * filled_quantity
                         await self._notifier.send_trade_alert(
                             symbol=signal.symbol,
                             side="SELL",
@@ -508,8 +487,7 @@ class FuturesTradingExecutor:
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Futures signal rejected: %s — %s", signal, exc)
             await self._notifier.send_alert(
-                f"<b>Signal rejected</b> [futures]\n"
-                f"{signal.symbol} {signal.type.value} — {exc}"
+                f"<b>Signal rejected</b> [futures]\n{signal.symbol} {signal.type.value} — {exc}"
             )
 
     def _calculate_quantity(self, symbol: str, price: float) -> float:
@@ -608,7 +586,10 @@ class FuturesTradingExecutor:
                     # Order may already be filled or cancelled by the exchange — fine
                     self._logger.debug(
                         "Cancel %s order %s for %s (may already be closed): %s",
-                        label, order_id, symbol, exc,
+                        label,
+                        order_id,
+                        symbol,
+                        exc,
                     )
 
     def stop(self) -> None:

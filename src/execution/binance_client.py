@@ -6,7 +6,7 @@ import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 import aiohttp
@@ -107,9 +107,7 @@ class BinancePrivateClient:
                     }
                     break
 
-        self._logger.info(
-            "Loaded LOT_SIZE filters for %d symbols", len(self._symbol_filters)
-        )
+        self._logger.info("Loaded LOT_SIZE filters for %d symbols", len(self._symbol_filters))
 
     def format_quantity(self, symbol: str, quantity: float) -> str:
         """Round quantity to the symbol's LOT_SIZE stepSize.
@@ -198,15 +196,11 @@ class BinancePrivateClient:
                 {k: "***" if k == "signature" else v for k, v in params.items()},
             )
 
-            async with self._session.post(
-                url, headers=headers, data=query_string
-            ) as response:
+            async with self._session.post(url, headers=headers, data=query_string) as response:
                 return await self._handle_response(response)
         except BinanceApiError as exc:
             if signed and _retry and exc.code == -1021:
-                self._logger.warning(
-                    "Binance timestamp rejected. Resyncing time and retrying."
-                )
+                self._logger.warning("Binance timestamp rejected. Resyncing time and retrying.")
                 await self._sync_time(force=True)
                 return await self._request(
                     method,
@@ -217,9 +211,7 @@ class BinancePrivateClient:
                 )
             raise
 
-    async def _handle_response(
-        self, response: aiohttp.ClientResponse
-    ) -> dict[str, Any]:
+    async def _handle_response(self, response: aiohttp.ClientResponse) -> dict[str, Any]:
         """Handle API response and check for errors."""
         data = await response.json()
 
@@ -241,10 +233,7 @@ class BinancePrivateClient:
     async def _sync_time(self, force: bool) -> None:
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        if (
-            not force
-            and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds
-        ):
+        if not force and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds:
             return
 
         url = f"{self._base_url}/api/v3/time"
@@ -255,13 +244,9 @@ class BinancePrivateClient:
                 local_time = int(time.time() * 1000)
                 self._time_offset_ms = server_time - local_time
                 self._last_time_sync = time.time()
-                self._logger.debug(
-                    "Synced Binance server time. Offset=%sms", self._time_offset_ms
-                )
+                self._logger.debug("Synced Binance server time. Offset=%sms", self._time_offset_ms)
 
-    async def _get_lot_size_filter(
-        self, symbol: str
-    ) -> tuple[Decimal, Decimal, Decimal]:
+    async def _get_lot_size_filter(self, symbol: str) -> tuple[Decimal, Decimal, Decimal]:
         cached = self._lot_size_cache.get(symbol)
         if cached is not None:
             return cached
@@ -374,11 +359,7 @@ class BinancePrivateClient:
                     side=order_data.get("side", ""),
                     order_type=order_data.get("type", ""),
                     quantity=float(order_data.get("origQty", 0)),
-                    price=(
-                        float(order_data.get("price", 0))
-                        if order_data.get("price")
-                        else None
-                    ),
+                    price=(float(order_data.get("price", 0)) if order_data.get("price") else None),
                     status=order_data.get("status", ""),
                     executed_quantity=float(order_data.get("executedQty", 0)),
                     create_time=int(order_data.get("time", 0)),

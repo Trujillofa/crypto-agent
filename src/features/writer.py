@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -45,7 +45,7 @@ class IndicatorWriter:
         self._conn: asyncpg.Connection | None = None
         self._db_lock = asyncio.Lock()
 
-    async def __aenter__(self) -> "IndicatorWriter":
+    async def __aenter__(self) -> IndicatorWriter:
         await self._connect()
         await self._ensure_schema()
         return self

@@ -12,7 +12,6 @@ from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
-
 _TIMEFRAME_SECONDS = {
     "1m": 60,
     "5m": 300,
@@ -51,9 +50,7 @@ class StrategyEngine:
         self._strategies: dict[str, list[BaseStrategy]] = {}
         self._running = False
         self._last_signal_time: dict[str, float] = {}
-        self._aggregator = SignalAggregator(
-            config.aggregator_config, config.default_trading_mode
-        )
+        self._aggregator = SignalAggregator(config.aggregator_config, config.default_trading_mode)
 
         for symbol in config.symbols:
             self._strategies[symbol] = []
@@ -68,7 +65,7 @@ class StrategyEngine:
             strategy_names = [s.get_name() for s in self._strategies[symbol]]
             self._logger.info(f"Initialized strategies for {symbol}: {strategy_names}")
 
-    async def __aenter__(self) -> "StrategyEngine":
+    async def __aenter__(self) -> StrategyEngine:
         self._running = True
         self._logger.info("StrategyEngine started")
         return self
@@ -194,9 +191,7 @@ class StrategyEngine:
                             self._config.timeframe,
                         )
                     else:
-                        cooldown_seconds = (
-                            self._config.cooldown_candles * timeframe_seconds
-                        )
+                        cooldown_seconds = self._config.cooldown_candles * timeframe_seconds
                         last_signal_time = self._last_signal_time.get(symbol)
                         now = time.time()
                         if last_signal_time is not None:
@@ -238,9 +233,7 @@ class StrategyEngine:
         """
         rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
         if len(rows) < 2:
-            self._logger.info(
-                "Warming up %s: need 2 indicator rows, have %d", symbol, len(rows)
-            )
+            self._logger.info("Warming up %s: need 2 indicator rows, have %d", symbol, len(rows))
             return None
         latest = rows[-1]
         required_keys = ("ema_12", "ema_26", "ema_200", "close_price")

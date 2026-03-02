@@ -129,9 +129,7 @@ class TestStrategyEngineSignalFlow:
     """Test StrategyEngine signal generation and callback."""
 
     @pytest.mark.asyncio
-    async def test_evaluate_buy_signal_triggers_callback(
-        self, mock_reader, engine_config
-    ):
+    async def test_evaluate_buy_signal_triggers_callback(self, mock_reader, engine_config):
         """BUY signal from strategy triggers callback."""
         # First warmup the strategy (set initial state)
         mock_reader.fetch_latest.return_value = [
@@ -185,9 +183,7 @@ class TestStrategyEngineSignalFlow:
         assert signal.symbol == "BTCUSDT"
 
     @pytest.mark.asyncio
-    async def test_evaluate_sell_signal_triggers_callback(
-        self, mock_reader, engine_config
-    ):
+    async def test_evaluate_sell_signal_triggers_callback(self, mock_reader, engine_config):
         """SELL signal from strategy triggers callback."""
         # First warmup the strategy with data
         mock_reader.fetch_latest.return_value = [
@@ -288,9 +284,7 @@ class TestTradingExecutorOnSignal:
             await executor.__aenter__()
 
     @pytest.mark.asyncio
-    async def test_on_signal_buy_uses_quote_qty(
-        self, trading_config, risk_manager, metrics
-    ):
+    async def test_on_signal_buy_uses_quote_qty(self, trading_config, risk_manager, metrics):
         """BUY signal uses quoteOrderQty (order_size_usdt)."""
         executor = TradingExecutor(trading_config, risk_manager, metrics)
 
@@ -300,9 +294,7 @@ class TestTradingExecutorOnSignal:
             self._client.__aexit__ = AsyncMock()
 
         with (
-            patch.object(
-                executor, "place_market_order", new_callable=AsyncMock
-            ) as mock_order,
+            patch.object(executor, "place_market_order", new_callable=AsyncMock) as mock_order,
             patch.object(executor, "__aenter__", new=mock_init),
         ):
             mock_order.return_value = OrderInfo(
@@ -333,9 +325,7 @@ class TestTradingExecutorOnSignal:
             mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0)
 
     @pytest.mark.asyncio
-    async def test_on_signal_sell_queries_balance(
-        self, trading_config, risk_manager, metrics
-    ):
+    async def test_on_signal_sell_queries_balance(self, trading_config, risk_manager, metrics):
         """SELL signal queries asset balance."""
         executor = TradingExecutor(trading_config, risk_manager, metrics)
 
@@ -347,9 +337,7 @@ class TestTradingExecutorOnSignal:
             self._client.__aexit__ = AsyncMock()
 
         with (
-            patch.object(
-                executor, "place_market_order", new_callable=AsyncMock
-            ) as mock_order,
+            patch.object(executor, "place_market_order", new_callable=AsyncMock) as mock_order,
             patch.object(executor, "__aenter__", new=mock_init),
         ):
             mock_order.return_value = OrderInfo(
@@ -383,9 +371,7 @@ class TestTradingExecutorOnSignal:
             mock_order.assert_called_once_with("BTCUSDT", "SELL", 0.5)
 
     @pytest.mark.asyncio
-    async def test_on_signal_sell_no_balance_skips(
-        self, trading_config, risk_manager, metrics
-    ):
+    async def test_on_signal_sell_no_balance_skips(self, trading_config, risk_manager, metrics):
         """SELL signal with 0 balance skips order placement."""
         executor = TradingExecutor(trading_config, risk_manager, metrics)
 
@@ -396,9 +382,7 @@ class TestTradingExecutorOnSignal:
             self._client.__aexit__ = AsyncMock()
 
         with (
-            patch.object(
-                executor, "place_market_order", new_callable=AsyncMock
-            ) as mock_order,
+            patch.object(executor, "place_market_order", new_callable=AsyncMock) as mock_order,
             patch.object(executor, "__aenter__", new=mock_init),
         ):
             await executor.__aenter__(executor)
@@ -459,9 +443,7 @@ class TestTradingExecutorOnSignal:
             self._client.__aexit__ = AsyncMock()
 
         with (
-            patch.object(
-                executor, "place_market_order", new_callable=AsyncMock
-            ) as mock_order,
+            patch.object(executor, "place_market_order", new_callable=AsyncMock) as mock_order,
             patch.object(executor, "__aenter__", new=mock_init),
         ):
             mock_order.side_effect = RuntimeError("Trading blocked: Daily loss limit")
@@ -484,9 +466,7 @@ class TestTradingExecutorOnSignal:
             mock_order.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_paper_mode_no_real_orders(
-        self, trading_config, risk_manager, metrics
-    ):
+    async def test_paper_mode_no_real_orders(self, trading_config, risk_manager, metrics):
         """Paper mode uses test_mode for all operations."""
         assert trading_config.test_mode is True
 
@@ -514,9 +494,7 @@ class TestTradingExecutorOnSignal:
         )
 
         # Mock place_market_order to verify it's called
-        with patch.object(
-            executor, "place_market_order", new_callable=AsyncMock
-        ) as mock_order:
+        with patch.object(executor, "place_market_order", new_callable=AsyncMock) as mock_order:
             mock_order.return_value = OrderInfo(
                 order_id="MOCK",
                 symbol="BTCUSDT",

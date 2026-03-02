@@ -104,9 +104,7 @@ class TestFetchLatest:
     """Test suite for fetch_latest method."""
 
     @pytest.mark.asyncio
-    async def test_fetch_latest_returns_rows(
-        self, db_config: dict[str, object]
-    ) -> None:
+    async def test_fetch_latest_returns_rows(self, db_config: dict[str, object]) -> None:
         """Test fetching latest rows returns oldest-first with dict format."""
         reader = IndicatorReader(db_config)
         mock_conn = AsyncMock()
@@ -188,9 +186,7 @@ class TestFetchLatest:
         assert rows == []
 
     @pytest.mark.asyncio
-    async def test_fetch_not_connected_raises(
-        self, db_config: dict[str, object]
-    ) -> None:
+    async def test_fetch_not_connected_raises(self, db_config: dict[str, object]) -> None:
         """Test fetching when not connected raises RuntimeError."""
         reader = IndicatorReader(db_config)
 

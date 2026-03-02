@@ -1,5 +1,6 @@
 import pytest
-from src.backtest.engine import BacktestEngine, BacktestConfig
+
+from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
@@ -15,9 +16,7 @@ class AlwaysBuyStrategy(BaseStrategy):
         if price == 101.0:
             return Signal(SignalType.BUY, symbol, price, 1.0, "Buy Trigger", indicators)
         elif price == 103.0:
-            return Signal(
-                SignalType.SELL, symbol, price, 1.0, "Sell Trigger", indicators
-            )
+            return Signal(SignalType.SELL, symbol, price, 1.0, "Sell Trigger", indicators)
 
         return Signal(SignalType.HOLD, symbol, price, 0.0, "Hold", indicators)
 
@@ -66,9 +65,7 @@ class TestBacktestATR:
         engine = BacktestEngine(config, reader)
 
         # Add a second candle to close it
-        data.append(
-            {"time": "2023-01-01T00:01:00", "close_price": 105.0, "atr_14": 2.0}
-        )
+        data.append({"time": "2023-01-01T00:01:00", "close_price": 105.0, "atr_14": 2.0})
 
         config.strategy_classes = [BuyOnceStrategy]
         result = await engine.run()

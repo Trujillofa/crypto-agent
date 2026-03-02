@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class PositionStatus(Enum):
@@ -104,9 +104,7 @@ class Position:
             # Spot and futures LONG use same calculation
             raw_pnl = (current_price - self.entry_price) * self.quantity
 
-        fees = (
-            self.entry_price * self.quantity + current_price * self.quantity
-        ) * self.fee_rate
+        fees = (self.entry_price * self.quantity + current_price * self.quantity) * self.fee_rate
         return raw_pnl - fees
 
     def close(self, exit_price: float, exit_time: datetime | None = None) -> float:
@@ -126,7 +124,7 @@ class Position:
             Realized profit/loss
         """
         self.exit_price = exit_price
-        self.exit_time = exit_time or datetime.now(timezone.utc)
+        self.exit_time = exit_time or datetime.now(UTC)
         self.status = PositionStatus.CLOSED
 
         # Futures SHORT positions have inverse PnL calculation
@@ -136,16 +134,12 @@ class Position:
             # Spot and futures LONG use same calculation
             raw_pnl = (exit_price - self.entry_price) * self.quantity
 
-        fees = (
-            self.entry_price * self.quantity + exit_price * self.quantity
-        ) * self.fee_rate
+        fees = (self.entry_price * self.quantity + exit_price * self.quantity) * self.fee_rate
         self.realized_pnl = raw_pnl - fees
 
         return self.realized_pnl
 
-    def calculate_liquidation_price(
-        self, maintenance_margin_rate: float = 0.005
-    ) -> float:
+    def calculate_liquidation_price(self, maintenance_margin_rate: float = 0.005) -> float:
         """Calculate the liquidation price for a futures position.
 
         Formula (isolated margin, one-way mode):
@@ -165,22 +159,16 @@ class Position:
             raise ValueError("Leverage must be >= 1 for futures position")
 
         if self.position_side not in ("LONG", "SHORT"):
-            raise ValueError(
-                "Liquidation price only applies to futures LONG/SHORT positions"
-            )
+            raise ValueError("Liquidation price only applies to futures LONG/SHORT positions")
 
         leverage_factor = 1 / self.leverage
 
         if self.position_side == "LONG":
             # For LONG: liq = entry * (1 - 1/leverage + maintenance_margin)
-            liq_price = self.entry_price * (
-                1 - leverage_factor + maintenance_margin_rate
-            )
+            liq_price = self.entry_price * (1 - leverage_factor + maintenance_margin_rate)
         else:  # SHORT
             # For SHORT: liq = entry * (1 + 1/leverage - maintenance_margin)
-            liq_price = self.entry_price * (
-                1 + leverage_factor - maintenance_margin_rate
-            )
+            liq_price = self.entry_price * (1 + leverage_factor - maintenance_margin_rate)
 
         self.liquidation_price = liq_price
         return liq_price

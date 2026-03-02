@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
@@ -292,9 +292,7 @@ class BacktestEngine:
         profit_factor = (
             (gross_profit / gross_loss)
             if gross_loss > 0
-            else float("inf")
-            if gross_profit > 0
-            else 0.0
+            else float("inf") if gross_profit > 0 else 0.0
         )
 
         avg_win = (gross_profit / len(wins)) if wins else 0.0
@@ -336,9 +334,20 @@ class BacktestEngine:
 
                 # Annualize based on configured timeframe
                 _tf_minutes = {
-                    "1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30,
-                    "1h": 60, "2h": 120, "4h": 240, "6h": 360, "8h": 480,
-                    "12h": 720, "1d": 1440, "3d": 4320, "1w": 10080,
+                    "1m": 1,
+                    "3m": 3,
+                    "5m": 5,
+                    "15m": 15,
+                    "30m": 30,
+                    "1h": 60,
+                    "2h": 120,
+                    "4h": 240,
+                    "6h": 360,
+                    "8h": 480,
+                    "12h": 720,
+                    "1d": 1440,
+                    "3d": 4320,
+                    "1w": 10080,
                 }
                 tf_min = _tf_minutes.get(self._config.timeframe, 1)
                 periods_per_year = int(365 * 24 * 60 / tf_min)

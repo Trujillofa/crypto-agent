@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
-import asyncio
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -134,9 +134,7 @@ class RiskManager:
             config_path = Path("config/risk.yaml")
 
         if not config_path.exists():
-            self._logger.warning(
-                f"Risk config not found at {config_path}, using defaults"
-            )
+            self._logger.warning(f"Risk config not found at {config_path}, using defaults")
             return RiskConfig()
 
         with config_path.open("r", encoding="utf-8") as f:
@@ -165,28 +163,18 @@ class RiskManager:
             self._consecutive_losses = state.get("consecutive_losses", 0)
             self._api_error_count = state.get("api_error_count", 0)
             self._kill_switch_triggered = state.get("kill_switch_triggered", False)
-            self._kill_switch_triggered_at = state.get(
-                "kill_switch_triggered_at", 0.0
-            )
-            self._circuit_breakers = state.get(
-                "circuit_breakers", self._circuit_breakers
-            )
+            self._kill_switch_triggered_at = state.get("kill_switch_triggered_at", 0.0)
+            self._circuit_breakers = state.get("circuit_breakers", self._circuit_breakers)
             self._last_reset = state.get("last_reset", time.time())
             updated_at = state.get("updated_at")
             if updated_at:
                 try:
                     updated_timestamp = datetime.fromisoformat(updated_at)
                     if updated_timestamp.tzinfo is None:
-                        updated_timestamp = updated_timestamp.replace(
-                            tzinfo=timezone.utc
-                        )
-                    age_seconds = (
-                        datetime.now(timezone.utc) - updated_timestamp
-                    ).total_seconds()
+                        updated_timestamp = updated_timestamp.replace(tzinfo=UTC)
+                    age_seconds = (datetime.now(UTC) - updated_timestamp).total_seconds()
                     if age_seconds >= 86400:
-                        self._logger.info(
-                            "Risk state older than 24h; resetting daily metrics"
-                        )
+                        self._logger.info("Risk state older than 24h; resetting daily metrics")
                         self._daily_pnl = 0.0
                         self._consecutive_losses = 0
                         self._api_error_count = 0
@@ -217,7 +205,7 @@ class RiskManager:
                 "kill_switch_triggered_at": self._kill_switch_triggered_at,
                 "circuit_breakers": self._circuit_breakers,
                 "last_reset": self._last_reset,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(UTC).isoformat(),
             }
             with self._state_path.open("w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
@@ -249,9 +237,7 @@ class RiskManager:
                 )
 
         # Check position size vs portfolio percentage
-        max_position_value = (
-            portfolio_value * self._config.position_limits.max_position_pct
-        )
+        max_position_value = portfolio_value * self._config.position_limits.max_position_pct
 
         if quantity_usdt > max_position_value:
             return False, (
@@ -261,9 +247,7 @@ class RiskManager:
 
         return True, "OK"
 
-    def register_open_position(
-        self, symbol: str, quantity_usdt: float, price: float
-    ) -> None:
+    def register_open_position(self, symbol: str, quantity_usdt: float, price: float) -> None:
         """Register a newly opened position in risk manager."""
         self._positions[symbol] = {
             "entry_price": price,
@@ -316,14 +300,9 @@ class RiskManager:
             else 0
         )
         warning_threshold = self._config.loss_limits.max_drawdown_pct * 0.75
-        if (
-            drawdown >= warning_threshold
-            and drawdown < self._config.loss_limits.max_drawdown_pct
-        ):
+        if drawdown >= warning_threshold and drawdown < self._config.loss_limits.max_drawdown_pct:
             if not self._stale_anchor_warning_emitted:
-                max_daily_loss_abs = (
-                    portfolio_value * self._config.loss_limits.max_daily_loss_pct
-                )
+                max_daily_loss_abs = portfolio_value * self._config.loss_limits.max_daily_loss_pct
                 if abs(self._daily_pnl) <= max_daily_loss_abs:
                     self._logger.warning(
                         "Possible stale drawdown anchor: peak_balance=%.2f current_balance=%.2f drawdown=%.2f%%",
@@ -351,9 +330,7 @@ class RiskManager:
         self._logger.warning(f"API error recorded (count: {self._api_error_count})")
 
         if self._api_error_count >= self._config.circuit_breakers.api_errors:
-            self._logger.error(
-                f"API error circuit breaker: {self._api_error_count} errors"
-            )
+            self._logger.error(f"API error circuit breaker: {self._api_error_count} errors")
             self._trigger_circuit_breaker("api_errors")
 
     def record_latency(self, latency_ms: float) -> None:
@@ -437,7 +414,7 @@ class RiskManager:
     ) -> None:
         self._kill_switch_triggered = False
         self._kill_switch_triggered_at = 0.0
-        self._circuit_breakers = {k: False for k in self._circuit_breakers}
+        self._circuit_breakers = dict.fromkeys(self._circuit_breakers, False)
         if reset_counters:
             self._consecutive_losses = 0
             self._api_error_count = 0
@@ -588,9 +565,7 @@ class RiskManager:
 
         return True, "OK"
 
-    def check_margin_usage(
-        self, used_margin: float, available_balance: float
-    ) -> tuple[bool, str]:
+    def check_margin_usage(self, used_margin: float, available_balance: float) -> tuple[bool, str]:
         """Check if margin usage is within safe limits.
 
         Warns if margin usage exceeds configured threshold.
@@ -616,9 +591,7 @@ class RiskManager:
 
         return True, f"Margin usage: {margin_usage_pct:.1f}%"
 
-    def check_futures_daily_loss(
-        self, daily_pnl: float, account_value: float
-    ) -> tuple[bool, str]:
+    def check_futures_daily_loss(self, daily_pnl: float, account_value: float) -> tuple[bool, str]:
         """Check if futures daily loss is within limits.
 
         Separate from spot daily loss tracking.

@@ -20,7 +20,7 @@ class TimescaleWriter:
         self._conn: asyncpg.Connection | None = None
         self._db_lock = asyncio.Lock()
 
-    async def __aenter__(self) -> "TimescaleWriter":
+    async def __aenter__(self) -> TimescaleWriter:
         await self._connect()
         await self._ensure_schema()
         return self

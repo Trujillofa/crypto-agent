@@ -242,7 +242,7 @@ class TestRiskManager:
         manager = self._make_manager(config_path=config_path)
         manager._peak_balance = 10000
 
-        for i in range(3):
+        for _i in range(3):
             manager.record_trade("BTCUSDT", pnl=-10, portfolio_value=10000)
 
         assert manager._circuit_breakers["consecutive_losses"] is True
@@ -463,8 +463,6 @@ class TestRiskManager:
             manager.record_trade("BTCUSDT", pnl=0.0, portfolio_value=5300.0)
 
         warnings = [
-            r.message
-            for r in caplog.records
-            if "Possible stale drawdown anchor" in r.message
+            r.message for r in caplog.records if "Possible stale drawdown anchor" in r.message
         ]
         assert len(warnings) == 1

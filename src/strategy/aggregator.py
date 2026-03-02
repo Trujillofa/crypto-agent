@@ -25,9 +25,7 @@ class SignalAggregator:
         self._sell_threshold = float(self._config.get("sell_threshold", -0.5))
         self._min_agreement = int(self._config.get("min_agreement", 1))
 
-    def aggregate(
-        self, symbol: str, signals: list[Signal], ema_200: float | None = None
-    ) -> Signal:
+    def aggregate(self, symbol: str, signals: list[Signal], ema_200: float | None = None) -> Signal:
         """Process a list of signals and return a single consolidated signal."""
         if not signals:
             return self._create_hold(symbol, 0.0, "No signals provided")
@@ -38,9 +36,7 @@ class SignalAggregator:
 
         # Dynamic buy threshold: more aggressive in confirmed uptrend (price > EMA200)
         in_uptrend = ema_200 is not None and current_price > ema_200
-        effective_buy_threshold = (
-            self._buy_threshold_uptrend if in_uptrend else self._buy_threshold
-        )
+        effective_buy_threshold = self._buy_threshold_uptrend if in_uptrend else self._buy_threshold
 
         total_score = 0.0
         active_signals = 0
@@ -71,12 +67,16 @@ class SignalAggregator:
             if total_score >= effective_buy_threshold:
                 final_type = SignalType.BUY
                 final_confidence = min(abs(total_score), 1.0)
-                final_reason = f"Consensus BUY | Score: {total_score:.2f} | Sources: {', '.join(reasons)}"
+                final_reason = (
+                    f"Consensus BUY | Score: {total_score:.2f} | Sources: {', '.join(reasons)}"
+                )
 
             elif total_score <= self._sell_threshold:
                 final_type = SignalType.SELL
                 final_confidence = min(abs(total_score), 1.0)
-                final_reason = f"Consensus SELL | Score: {total_score:.2f} | Sources: {', '.join(reasons)}"
+                final_reason = (
+                    f"Consensus SELL | Score: {total_score:.2f} | Sources: {', '.join(reasons)}"
+                )
             else:
                 if reasons:
                     final_reason += f" | Mixed/Weak Signals: {', '.join(reasons)}"

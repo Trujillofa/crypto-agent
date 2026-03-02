@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from src.execution.executor import TradingExecutor, TradingConfig
+
 from src.execution.binance_client import OrderInfo
-from src.risk.manager import RiskManager
+from src.execution.executor import TradingConfig, TradingExecutor
 from src.execution.metrics import ExecutionMetrics
 from src.portfolio.manager import PortfolioManager
+from src.risk.manager import RiskManager
 
 
 class MockBinanceClient:
@@ -33,9 +35,7 @@ async def test_place_market_order_polling():
     """Test that place_market_order polls for fill if not immediately filled."""
 
     # Setup mocks
-    config = TradingConfig(
-        api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"]
-    )
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"])
     risk_manager = MagicMock(spec=RiskManager)
     risk_manager.is_trading_allowed.return_value = (True, "")
     risk_manager.check_position_limit.return_value = (True, "")
@@ -123,9 +123,7 @@ async def test_place_limit_order_polling_timeout():
     """Test that place_limit_order polling times out gracefully."""
 
     # Setup mocks
-    config = TradingConfig(
-        api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"]
-    )
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"])
     risk_manager = MagicMock(spec=RiskManager)
     risk_manager.is_trading_allowed.return_value = (True, "")
     risk_manager.check_position_limit.return_value = (True, "")
@@ -178,9 +176,7 @@ async def test_place_limit_order_polling_timeout():
 @pytest.mark.asyncio
 async def test_duplicate_order_prevention():
     """Test that existing position blocks new BUY order."""
-    config = TradingConfig(
-        api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"]
-    )
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"])
     risk_manager = MagicMock(spec=RiskManager)
     risk_manager.is_trading_allowed.return_value = (True, "")
     metrics = MagicMock(spec=ExecutionMetrics)
@@ -213,9 +209,7 @@ async def test_duplicate_order_prevention():
 @pytest.mark.asyncio
 async def test_on_signal_sell_uses_removesuffix():
     """SELL signal uses removesuffix for base asset parsing."""
-    config = TradingConfig(
-        api_key="key", api_secret="secret", enabled=True, symbols=["BUSDUSDT"]
-    )
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BUSDUSDT"])
     risk_manager = MagicMock(spec=RiskManager)
     metrics = MagicMock(spec=ExecutionMetrics)
     notifier = MagicMock()
@@ -227,8 +221,8 @@ async def test_on_signal_sell_uses_removesuffix():
     mock_client.normalize_sell_quantity.return_value = "1.5"
     executor._client = mock_client
 
-    from src.strategy.signals import Signal, SignalType
     from src.execution.binance_client import OrderInfo
+    from src.strategy.signals import Signal, SignalType
 
     signal = Signal(
         type=SignalType.SELL,
@@ -262,9 +256,7 @@ async def test_on_signal_sell_uses_removesuffix():
 
 @pytest.mark.asyncio
 async def test_on_signal_sell_skips_dust_balance_silently():
-    config = TradingConfig(
-        api_key="key", api_secret="secret", enabled=True, symbols=["XRPUSDT"]
-    )
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["XRPUSDT"])
     risk_manager = MagicMock(spec=RiskManager)
     metrics = MagicMock(spec=ExecutionMetrics)
     notifier = MagicMock()

@@ -164,9 +164,7 @@ class TestGetUpdates:
     async def test_get_updates_success(self, notifier: TelegramNotifier) -> None:
         mock_response = MagicMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"ok": True, "result": [{"update_id": 7}]}
-        )
+        mock_response.json = AsyncMock(return_value={"ok": True, "result": [{"update_id": 7}]})
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock()
 
@@ -197,9 +195,7 @@ class TestSpecializedAlerts:
     @pytest.mark.asyncio
     async def test_send_kill_switch_alert(self, notifier: TelegramNotifier) -> None:
         """Test kill switch alert format."""
-        with patch.object(
-            notifier, "send_alert", new=AsyncMock(return_value=True)
-        ) as mock_send:
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
             await notifier.send_kill_switch_alert("Test reason")
             mock_send.assert_called_once()
             args, _kwargs = mock_send.call_args
@@ -210,9 +206,7 @@ class TestSpecializedAlerts:
     @pytest.mark.asyncio
     async def test_send_circuit_breaker_alert(self, notifier: TelegramNotifier) -> None:
         """Test circuit breaker alert format."""
-        with patch.object(
-            notifier, "send_alert", new=AsyncMock(return_value=True)
-        ) as mock_send:
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
             await notifier.send_circuit_breaker_alert("consecutive_losses")
             mock_send.assert_called_once()
             args, _kwargs = mock_send.call_args
@@ -223,9 +217,7 @@ class TestSpecializedAlerts:
     @pytest.mark.asyncio
     async def test_send_trade_alert(self, notifier: TelegramNotifier) -> None:
         """Test trade alert format."""
-        with patch.object(
-            notifier, "send_alert", new=AsyncMock(return_value=True)
-        ) as mock_send:
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
             await notifier.send_trade_alert(
                 symbol="BTCUSDT",
                 side="BUY",
@@ -243,9 +235,7 @@ class TestSpecializedAlerts:
     @pytest.mark.asyncio
     async def test_send_daily_summary(self, notifier: TelegramNotifier) -> None:
         """Test daily summary alert format."""
-        with patch.object(
-            notifier, "send_alert", new=AsyncMock(return_value=True)
-        ) as mock_send:
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
             await notifier.send_daily_summary(
                 total_pnl=500.0,
                 trades_count=10,
