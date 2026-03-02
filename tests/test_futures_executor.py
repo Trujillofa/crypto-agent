@@ -292,6 +292,8 @@ class TestFuturesTradingExecutor:
     @pytest.mark.asyncio
     async def test_on_signal_sell_closes_long(self, executor):
         """SELL signal closes LONG position with reduceOnly."""
+        from src.portfolio.models import Position
+
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(
             return_value=[
@@ -321,6 +323,18 @@ class TestFuturesTradingExecutor:
         executor._client = mock_client
         executor._notifier = AsyncMock()
 
+        # Mock PortfolioManager with agent-owned position
+        mock_pm = MagicMock()
+        mock_pm.get_position = MagicMock(
+            return_value=Position(
+                symbol="BTCUSDT",
+                quantity=0.01,
+                entry_price=49000.0,
+                position_side="LONG",
+            )
+        )
+        executor._portfolio_manager = mock_pm
+
         signal = Signal(
             type=SignalType.SELL,
             symbol="BTCUSDT",
@@ -339,11 +353,13 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["side"] == "SELL"
         assert call_kwargs["position_side"] == "BOTH"  # one-way mode default
         assert call_kwargs["reduce_only"] is True
-        assert call_kwargs["quantity"] == 0.01
+        assert call_kwargs["quantity"] == 0.01  # Agent-owned quantity, not full exchange position
 
     @pytest.mark.asyncio
     async def test_sell_cancels_sl_tp_before_close(self, executor):
         """SELL signal cancels tracked SL/TP orders before placing the market close."""
+        from src.portfolio.models import Position
+
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(
             return_value=[
@@ -370,6 +386,18 @@ class TestFuturesTradingExecutor:
         mock_client.cancel_order = AsyncMock(return_value={"orderId": "cancelled"})
         executor._client = mock_client
         executor._notifier = AsyncMock()
+
+        # Mock PortfolioManager with agent-owned position
+        mock_pm = MagicMock()
+        mock_pm.get_position = MagicMock(
+            return_value=Position(
+                symbol="BTCUSDT",
+                quantity=0.005,
+                entry_price=700.0,
+                position_side="LONG",
+            )
+        )
+        executor._portfolio_manager = mock_pm
 
         # Pre-populate tracked SL/TP order IDs (as if a prior BUY placed them)
         executor._sl_tp_orders["BTCUSDT"] = {

@@ -436,53 +436,152 @@ class FuturesTradingExecutor:
                         await self._place_sl_tp_orders(
                             signal.symbol, entry_price, filled_qty, atr_14
                         )
-                    await self._notifier.send_trade_alert(
-                        symbol=signal.symbol,
-                        side="BUY",
-                        quantity=self._config.order_size_usdt,
-                        price=signal.price,
-                        pnl=None,
-                        market="futures",
-                    )
-
-            elif signal.type == SignalType.SELL:
-                # Close LONG position: cancel exchange SL/TP orders first, then market close
-                if current_position and current_position.position_side == "LONG":
-                    await self._cancel_sl_tp_orders(signal.symbol)
-                    await self.place_futures_order(
-                        symbol=signal.symbol,
-                        side="SELL",
-                        quantity=abs(current_position.position_amt),
-                        position_side="LONG",
-                        reduce_only=True,
-                    )
-                    if order.status == "FILLED":
-                        filled_quantity = (
-                            order.executed_quantity
-                            if order.executed_quantity > 0
-                            else abs(current_position.position_amt)
-                        )
-                        filled_price = float(order.price) if order.price else signal.price
-                        pnl = (filled_price - current_position.entry_price) * filled_quantity
                         await self._notifier.send_trade_alert(
                             symbol=signal.symbol,
-                            side="SELL",
-                            quantity=filled_quantity,
-                            price=filled_price,
-                            pnl=pnl,
+                            side="BUY",
+                            quantity=filled_qty,
+                            price=entry_price,
+                            pnl=None,
                             market="futures",
                         )
-                    else:
-                        self._logger.info(
-                            "Futures SELL order not filled yet for %s (status: %s)",
-                            signal.symbol,
-                            order.status,
-                        )
-                else:
-                    self._logger.info(
-                        "SELL signal but no LONG position for %s. Ignoring.",
+
+            elif signal.type == SignalType.SELL:
+                # FAIL-SAFE: Close only agent-owned position amount, not full account position
+                # This prevents one agent from closing other agents' positions in shared accounts
+
+                # Step 1: Get agent-owned position from PortfolioManager
+                agent_position_qty = 0.0
+                agent_position_side = None
+                if self._portfolio_manager is not None:
+                    agent_pos = self._portfolio_manager.get_position(signal.symbol)
+                    if agent_pos is not None:
+                        agent_position_qty = agent_pos.quantity
+                        agent_position_side = agent_pos.position_side or "LONG"
+
+                # Step 2: Validate we have a recorded position to close
+                if agent_position_qty <= 0:
+                    self._logger.warning(
+                        "SELL refused: No agent-owned position recorded for %s. "
+                        "Exchange may have untracked positions from other agents.",
                         signal.symbol,
                     )
+                    await self._notifier.send_alert(
+                        f"<b>Signal rejected</b> [futures]\n"
+                        f"{signal.symbol} SELL — No agent-owned position to close"
+                    )
+                    return
+
+                # Step 3: Get exchange position and validate alignment
+                exchange_position_qty = 0.0
+                exchange_position_side = None
+                exchange_entry_price = 0.0
+                if current_position is not None:
+                    exchange_position_qty = abs(current_position.position_amt)
+                    exchange_position_side = current_position.position_side
+                    exchange_entry_price = current_position.entry_price
+
+                # Step 4: Safety checks before closing
+                if exchange_position_side != agent_position_side:
+                    self._logger.error(
+                        "SELL refused: Position side mismatch for %s. " "Agent: %s, Exchange: %s",
+                        signal.symbol,
+                        agent_position_side,
+                        exchange_position_side,
+                    )
+                    await self._notifier.send_alert(
+                        f"<b>Signal rejected</b> [futures]\n"
+                        f"{signal.symbol} SELL — Position side mismatch "
+                        f"(agent: {agent_position_side}, exchange: {exchange_position_side})"
+                    )
+                    return
+
+                if exchange_position_qty < agent_position_qty:
+                    self._logger.error(
+                        "SELL refused: Exchange position smaller than agent-owned for %s. "
+                        "Agent owns: %.4f, Exchange has: %.4f. "
+                        "Possible position reduction by another agent.",
+                        signal.symbol,
+                        agent_position_qty,
+                        exchange_position_qty,
+                    )
+                    await self._notifier.send_alert(
+                        f"<b>Signal rejected</b> [futures]\n"
+                        f"{signal.symbol} SELL — Exchange position (%.4f) smaller than agent-owned (%.4f)"
+                        % (exchange_position_qty, agent_position_qty)
+                    )
+                    return
+
+                # Step 5: Check for untracked exchange positions (other agents)
+                if exchange_position_qty > agent_position_qty:
+                    untracked_qty = exchange_position_qty - agent_position_qty
+                    self._logger.error(
+                        "SELL refused: Untracked exchange position detected for %s. "
+                        "Exchange total: %.4f, Agent-owned: %.4f, Untracked: %.4f. "
+                        "Shared account without proper isolation.",
+                        signal.symbol,
+                        exchange_position_qty,
+                        agent_position_qty,
+                        untracked_qty,
+                    )
+                    await self._notifier.send_alert(
+                        f"<b>Signal rejected</b> [futures]\n"
+                        f"{signal.symbol} SELL — Shared account detected "
+                        f"({untracked_qty:.4f} untracked qty). "
+                        f"Use separate accounts for multi-agent futures."
+                    )
+                    return
+
+                # Step 6: Safe to close — cancel SL/TP first, then close with agent-owned quantity
+                self._logger.info(
+                    "SELL approved: Closing agent-owned position for %s (qty: %.4f)",
+                    signal.symbol,
+                    agent_position_qty,
+                )
+
+                await self._cancel_sl_tp_orders(signal.symbol)
+                order = await self.place_futures_order(
+                    symbol=signal.symbol,
+                    side="SELL",
+                    quantity=agent_position_qty,  # Use agent-owned qty, not full exchange position
+                    position_side="LONG",
+                    reduce_only=True,
+                )
+
+                if order.status == "FILLED":
+                    filled_quantity = (
+                        order.executed_quantity
+                        if order.executed_quantity > 0
+                        else agent_position_qty
+                    )
+                    filled_price = float(order.price) if order.price else signal.price
+                    pnl = (filled_price - exchange_entry_price) * filled_quantity
+
+                    self._logger.info(
+                        "Futures position closed: %s SELL (qty: %.4f, pnl: %.2f)",
+                        signal.symbol,
+                        filled_quantity,
+                        pnl,
+                    )
+
+                    await self._notifier.send_trade_alert(
+                        symbol=signal.symbol,
+                        side="SELL",
+                        quantity=filled_quantity,
+                        price=filled_price,
+                        pnl=pnl,
+                        market="futures",
+                    )
+                else:
+                    self._logger.warning(
+                        "Futures SELL order not filled for %s (status: %s)",
+                        signal.symbol,
+                        order.status,
+                    )
+            else:
+                self._logger.info(
+                    "SELL signal but no LONG position for %s. Ignoring.",
+                    signal.symbol,
+                )
 
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Futures signal rejected: %s — %s", signal, exc)
