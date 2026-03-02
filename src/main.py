@@ -217,8 +217,7 @@ def load_settings(config_path: Path) -> Settings:
         strategies=_as_list_of_mappings(strategy.get("strategies"), "strategy.strategies"),
         aggregator=_as_mapping(strategy.get("aggregator"), "strategy.aggregator"),
         per_symbol_aggregator_config=_parse_per_symbol_aggregator(
-            strategy.get("per_symbol_aggregator_config"),
-            "strategy.per_symbol_aggregator_config"
+            strategy.get("per_symbol_aggregator_config"), "strategy.per_symbol_aggregator_config"
         ),
     )
 
@@ -396,9 +395,7 @@ def _as_mapping(value: object, field: str) -> Mapping[str, object]:
     raise ValueError(f"Expected mapping for {field}")
 
 
-def _parse_per_symbol_aggregator(
-    value: object, field: str
-) -> Mapping[str, Mapping[str, object]]:
+def _parse_per_symbol_aggregator(value: object, field: str) -> Mapping[str, Mapping[str, object]]:
     """Parse per-symbol aggregator config from YAML."""
     if value is None:
         return {}
@@ -477,7 +474,12 @@ def _as_bool(value: object, field: str, default: bool) -> bool:
 
 def _resolve_strategy_config(
     strategy_settings: StrategySettings,
-) -> tuple[list[type[BaseStrategy]], list[Mapping[str, object]], Mapping[str, object], Mapping[str, Mapping[str, object]]]:
+) -> tuple[
+    list[type[BaseStrategy]],
+    list[Mapping[str, object]],
+    Mapping[str, object],
+    Mapping[str, Mapping[str, object]],
+]:
     default_strategy_classes = [
         SimpleMACrossoverStrategy,
         RSIReversalStrategy,
@@ -531,7 +533,12 @@ def _resolve_strategy_config(
     aggregator_config = (
         strategy_settings.aggregator if strategy_settings.aggregator else default_aggregator_config
     )
-    return strategy_classes, strategy_configs, aggregator_config, strategy_settings.per_symbol_aggregator_config
+    return (
+        strategy_classes,
+        strategy_configs,
+        aggregator_config,
+        strategy_settings.per_symbol_aggregator_config,
+    )
 
 
 async def run() -> None:
@@ -737,8 +744,8 @@ async def run() -> None:
 
     # Initialize indicator reader and strategy engine
     indicator_reader = IndicatorReader(settings.database)
-    strategy_classes, strategy_configs, aggregator_config, per_symbol_agg_config = _resolve_strategy_config(
-        settings.strategy
+    strategy_classes, strategy_configs, aggregator_config, per_symbol_agg_config = (
+        _resolve_strategy_config(settings.strategy)
     )
     engine_config = EngineConfig(
         symbols=settings.trading_pairs,

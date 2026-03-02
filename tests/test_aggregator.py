@@ -136,13 +136,18 @@ class TestSignalAggregator:
 
         # Override with higher uptrend threshold - same signal should now HOLD
         symbol_config = {"buy_threshold_uptrend": 1.0}
-        result = aggregator.aggregate("BTCUSDT", signals, ema_200=40000.0, symbol_config=symbol_config)
+        result = aggregator.aggregate(
+            "BTCUSDT", signals, ema_200=40000.0, symbol_config=symbol_config
+        )
         assert result.type == SignalType.HOLD
         # Should still respect default threshold when not in uptrend (price < EMA200)
         # Override both thresholds to ensure HOLD
         symbol_config = {"buy_threshold_uptrend": 1.0, "buy_threshold": 1.0}
-        result = aggregator.aggregate("BTCUSDT", signals, ema_200=60000.0, symbol_config=symbol_config)
+        result = aggregator.aggregate(
+            "BTCUSDT", signals, ema_200=60000.0, symbol_config=symbol_config
+        )
         assert result.type == SignalType.HOLD
+
     def test_empty_symbol_config_uses_defaults(self, aggregator):
         """Empty symbol_config should use all default thresholds."""
         signals = [self._create_signal(SignalType.BUY, 0.8)]
