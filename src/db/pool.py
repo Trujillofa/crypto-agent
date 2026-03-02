@@ -85,9 +85,7 @@ def get_pool() -> asyncpg.Pool:
         RuntimeError: If pool hasn't been initialized.
     """
     if _pool is None:
-        raise RuntimeError(
-            "Database pool not initialized. Call init_pool(config) first."
-        )
+        raise RuntimeError("Database pool not initialized. Call init_pool(config) first.")
     return _pool
 
 
@@ -114,7 +112,7 @@ class DatabasePool:
         self._config = config
         self._logger = get_logger(self.__class__.__name__)
 
-    async def __aenter__(self) -> "DatabasePool":
+    async def __aenter__(self) -> DatabasePool:
         await init_pool(self._config)
         return self
 

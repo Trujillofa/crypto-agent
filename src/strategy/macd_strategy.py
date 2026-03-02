@@ -20,9 +20,7 @@ class MACDHistogramStrategy(BaseStrategy):
         super().__init__(config)
         self._logger = get_logger(self.__class__.__name__)
 
-        self._min_hist_threshold = float(
-            self._config.get("min_histogram_threshold", 0.0)
-        )
+        self._min_hist_threshold = float(self._config.get("min_histogram_threshold", 0.0))
         self._use_atr_filter = bool(self._config.get("use_atr_filter", True))
         self._atr_min_pct = float(self._config.get("atr_min_pct", 0.005))  # 0.5%
 
@@ -94,7 +92,9 @@ class MACDHistogramStrategy(BaseStrategy):
                 if not is_low_volatility:
                     signal_type = SignalType.SELL
                     confidence = base_confidence + strength_bonus
-                    reason = f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
+                    reason = (
+                        f"Bearish MACD Crossover (Hist: {hist_current:.4f}, Conf: {confidence:.2f})"
+                    )
                 else:
                     reason += " - Low Volatility"
             else:

@@ -246,9 +246,7 @@ class BinanceFuturesClient:
                 )
             raise
 
-    async def _handle_response(
-        self, response: aiohttp.ClientResponse
-    ) -> dict[str, Any]:
+    async def _handle_response(self, response: aiohttp.ClientResponse) -> dict[str, Any]:
         """Handle API response and check for errors."""
         data = await response.json()
 
@@ -270,10 +268,7 @@ class BinanceFuturesClient:
     async def _sync_time(self, force: bool) -> None:
         if self._session is None:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        if (
-            not force
-            and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds
-        ):
+        if not force and (time.time() - self._last_time_sync) < self._time_sync_interval_seconds:
             return
 
         url = f"{self._base_url}/fapi/v1/time"
@@ -395,9 +390,7 @@ class BinanceFuturesClient:
         """
         formatted_qty = self.format_quantity(symbol, quantity)
         if formatted_qty == "0":
-            raise BinanceFuturesApiError(
-                -1, f"Quantity {quantity} below minimum for {symbol}"
-            )
+            raise BinanceFuturesApiError(-1, f"Quantity {quantity} below minimum for {symbol}")
 
         params = {
             "symbol": symbol,

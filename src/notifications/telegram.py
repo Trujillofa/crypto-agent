@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -72,7 +72,7 @@ class TelegramNotifier:
             allowed_updates=("message",),
         )
 
-    async def __aenter__(self) -> "TelegramNotifier":
+    async def __aenter__(self) -> TelegramNotifier:
         """Initialize aiohttp session."""
         timeout = aiohttp.ClientTimeout(total=30)
         self._session = aiohttp.ClientSession(timeout=timeout)
@@ -86,9 +86,7 @@ class TelegramNotifier:
 
     def is_configured(self) -> bool:
         """Check if Telegram is properly configured."""
-        return bool(
-            self._config.enabled and self._config.bot_token and self._config.chat_id
-        )
+        return bool(self._config.enabled and self._config.bot_token and self._config.chat_id)
 
     async def send_alert(
         self,
@@ -167,7 +165,7 @@ class TelegramNotifier:
 <b>KILL SWITCH ACTIVATED</b>
 
 <b>Reason:</b> {reason}
-<b>Time:</b> {datetime.now(timezone.utc).isoformat()}
+<b>Time:</b> {datetime.now(UTC).isoformat()}
 
 All trading has been halted. Manual intervention required.
         """.strip()
@@ -192,7 +190,7 @@ All trading has been halted. Manual intervention required.
 <b>CIRCUIT BREAKER TRIGGERED</b>
 
 <b>Breaker:</b> {breaker_name}
-<b>Time:</b> {datetime.now(timezone.utc).isoformat()}
+<b>Time:</b> {datetime.now(UTC).isoformat()}
 {f"<b>Details:</b> {details}" if details else ""}
 
 Trading may be paused until conditions normalize.
@@ -262,7 +260,7 @@ Trading may be paused until conditions normalize.
 <b>Total PnL:</b> {pnl_emoji}{total_pnl:.2f} USDT
 <b>Trades:</b> {trades_count}
 <b>Win Rate:</b> {win_rate:.1f}%
-<b>Date:</b> {datetime.now(timezone.utc).date().isoformat()}
+<b>Date:</b> {datetime.now(UTC).date().isoformat()}
         """.strip()
 
         return await self.send_alert(message, AlertLevel.INFO)
@@ -296,9 +294,7 @@ Trading may be paused until conditions normalize.
         allowed_updates: list[str],
     ) -> list[dict[str, Any]]:
         if not self._session:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=35)
-            ) as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=35)) as session:
                 return await self._do_get_updates(
                     session,
                     offset,
@@ -362,16 +358,13 @@ Trading may be paused until conditions normalize.
                 )
                 if response.status in (401, 403):
                     raise RuntimeError(
-                        f"Telegram auth failed ({response.status}). "
-                        "Check TELEGRAM_BOT_TOKEN."
+                        f"Telegram auth failed ({response.status}). " "Check TELEGRAM_BOT_TOKEN."
                     )
                 return []
 
             body = await response.json()
             if not body.get("ok"):
-                self._logger.error(
-                    "Telegram API getUpdates returned ok=false: %s", body
-                )
+                self._logger.error("Telegram API getUpdates returned ok=false: %s", body)
                 return []
 
             result = body.get("result", [])

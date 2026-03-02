@@ -7,46 +7,45 @@ import signal
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-
 from typing import cast
 
 import yaml
 
-from src.ingest.binance import BinanceIngestor
-from src.ingest.websocket import BinanceWebSocketIngestor
-from src.ingest.db import TimescaleWriter
-from src.ingest.metrics import IngestMetrics, MetricsServer
-from src.features import IndicatorComputer, IndicatorWriter
-from src.features.reader import IndicatorReader
-from src.features.metrics import IndicatorMetrics
+from src.db import close_pool, init_pool
 from src.execution import (
-    TradingExecutor,
-    TradingConfig,
-    FuturesTradingExecutor,
     FuturesTradingConfig,
+    FuturesTradingExecutor,
+    TradingConfig,
+    TradingExecutor,
 )
 from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
+from src.features import IndicatorComputer, IndicatorWriter
+from src.features.metrics import IndicatorMetrics
+from src.features.reader import IndicatorReader
+from src.ingest.binance import BinanceIngestor
+from src.ingest.db import TimescaleWriter
+from src.ingest.metrics import IngestMetrics, MetricsServer
+from src.ingest.websocket import BinanceWebSocketIngestor
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.overseer import OverseerAgent, XAIClient
 from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
 from src.strategy import (
-    StrategyEngine,
-    EngineConfig,
     BaseStrategy,
-    SimpleMACrossoverStrategy,
-    RSIReversalStrategy,
-    MACDHistogramStrategy,
     BollingerBounceStrategy,
-    MomentumStrategy,
     CCIBreakoutStrategy,
+    EngineConfig,
+    MACDHistogramStrategy,
+    MomentumStrategy,
+    RSIReversalStrategy,
+    SimpleMACrossoverStrategy,
+    StrategyEngine,
     VWAPReversionStrategy,
 )
-from src.strategy.signals import Signal
 from src.strategy.lifecycle import LifecycleManager
+from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
-from src.db import close_pool, init_pool
 
 
 @dataclass(frozen=True)
@@ -435,8 +434,8 @@ def _as_float(value: object, field: str, default: float) -> float:
     if isinstance(value, str):
         try:
             return float(value)
-        except ValueError:
-            raise ValueError(f"Expected float for {field}")
+        except ValueError as err:
+            raise ValueError(f"Expected float for {field}") from err
     raise ValueError(f"Expected float for {field}")
 
 
@@ -940,9 +939,12 @@ async def run() -> None:
                 risk_summary,
                 telegram_notifier.is_configured(),
                 "paper" if paper_executor else "live",
-                "enabled"
-                if futures_executor or (paper_executor and paper_executor._config.futures_symbols)
-                else "disabled",
+                (
+                    "enabled"
+                    if futures_executor
+                    or (paper_executor and paper_executor._config.futures_symbols)
+                    else "disabled"
+                ),
                 "enabled" if overseer_agent else "disabled",
             )
 

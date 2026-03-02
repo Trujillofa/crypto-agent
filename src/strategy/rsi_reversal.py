@@ -23,9 +23,7 @@ class RSIReversalStrategy(BaseStrategy):
         self._logger = get_logger(self.__class__.__name__)
 
         self._oversold_threshold = float(self._config.get("oversold_threshold", 30.0))
-        self._overbought_threshold = float(
-            self._config.get("overbought_threshold", 70.0)
-        )
+        self._overbought_threshold = float(self._config.get("overbought_threshold", 70.0))
         self._rsi_period = int(self._config.get("rsi_period", 14))
 
         # Track previous RSI values for crossover detection
@@ -64,10 +62,7 @@ class RSIReversalStrategy(BaseStrategy):
         )
 
         # Crossover Up (Bullish Reversal): Previous < 30 and Current >= 30
-        if (
-            rsi_previous < self._oversold_threshold
-            and rsi_current >= self._oversold_threshold
-        ):
+        if rsi_previous < self._oversold_threshold and rsi_current >= self._oversold_threshold:
             depth = self._oversold_threshold - rsi_previous
             confidence = 0.5 + (depth / 30.0) * 0.5
             confidence = min(0.95, confidence)
@@ -82,8 +77,7 @@ class RSIReversalStrategy(BaseStrategy):
 
         # Crossover Down (Bearish Reversal): Previous > 70 and Current <= 70
         elif (
-            rsi_previous > self._overbought_threshold
-            and rsi_current <= self._overbought_threshold
+            rsi_previous > self._overbought_threshold and rsi_current <= self._overbought_threshold
         ):
             excess = rsi_previous - self._overbought_threshold
             confidence = 0.5 + (excess / 30.0) * 0.5

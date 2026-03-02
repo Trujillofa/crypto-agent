@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable, Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -41,7 +41,7 @@ class BinanceWebSocketIngestor:
         self._running: bool = False
         self._mark_price_callback: Callable[[str, float], Awaitable[None]] | None = None
 
-    async def __aenter__(self) -> "BinanceWebSocketIngestor":
+    async def __aenter__(self) -> BinanceWebSocketIngestor:
         """Initialize aiohttp session."""
         self._session = aiohttp.ClientSession()
         self._logger.info("aiohttp session initialized for WebSocket")
@@ -142,9 +142,7 @@ class BinanceWebSocketIngestor:
                 candle = self._parse_kline(symbol, kline)
                 await on_candle(candle)
 
-                self._metrics.messages_total.inc(
-                    labels={"symbol": symbol, "stream": "kline_ws"}
-                )
+                self._metrics.messages_total.inc(labels={"symbol": symbol, "stream": "kline_ws"})
                 self._metrics.last_open_time.set(
                     candle.open_time_utc.timestamp(), labels={"symbol": symbol}
                 )
@@ -165,9 +163,7 @@ class BinanceWebSocketIngestor:
         mark_price = float(data.get("p", 0))
         funding_rate = float(data.get("r", 0))
 
-        self._metrics.messages_total.inc(
-            labels={"symbol": symbol, "stream": "mark_price"}
-        )
+        self._metrics.messages_total.inc(labels={"symbol": symbol, "stream": "mark_price"})
 
         # Callback for liquidation monitoring
         if self._mark_price_callback:
@@ -201,4 +197,4 @@ class BinanceWebSocketIngestor:
     @staticmethod
     def _to_datetime(ms_since_epoch: int) -> datetime:
         """Convert milliseconds since epoch to datetime."""
-        return datetime.fromtimestamp(ms_since_epoch / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(ms_since_epoch / 1000, tz=UTC)

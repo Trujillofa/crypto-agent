@@ -14,9 +14,7 @@ class BollingerBounceStrategy(BaseStrategy):
         super().__init__(config)
         self._logger = get_logger(self.__class__.__name__)
 
-        self._band_dist_threshold = float(
-            self._config.get("band_distance_threshold", 0.0)
-        )
+        self._band_dist_threshold = float(self._config.get("band_distance_threshold", 0.0))
         self._rsi_oversold = float(self._config.get("rsi_oversold", 30.0))
         self._rsi_overbought = float(self._config.get("rsi_overbought", 70.0))
 
@@ -49,9 +47,7 @@ class BollingerBounceStrategy(BaseStrategy):
 
         signal_type = SignalType.HOLD
         confidence = 0.0
-        reason = (
-            f"BB Dist (L/U): {bb_lower_dist:.4f}/{bb_upper_dist:.4f}, RSI: {rsi:.2f}"
-        )
+        reason = f"BB Dist (L/U): {bb_lower_dist:.4f}/{bb_upper_dist:.4f}, RSI: {rsi:.2f}"
 
         if bb_lower_dist <= self._band_dist_threshold:
             if rsi < self._rsi_oversold:

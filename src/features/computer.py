@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import asyncpg
 
+from src.features.metrics import IndicatorMetrics
 from src.features.technical import compute_indicators
 from src.features.writer import IndicatorWriter, StoredIndicator
-from src.features.metrics import IndicatorMetrics
 from src.utils.logger import get_logger
 
 
@@ -129,9 +129,9 @@ class IndicatorComputer:
                 if isinstance(latest_time_value, datetime):
                     latest_time = latest_time_value
                 else:
-                    latest_time = datetime.now(timezone.utc)
+                    latest_time = datetime.now(UTC)
             else:
-                latest_time = datetime.now(timezone.utc)
+                latest_time = datetime.now(UTC)
 
             # Update Prometheus metrics
             self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)

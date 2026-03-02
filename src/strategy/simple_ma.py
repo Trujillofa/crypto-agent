@@ -23,9 +23,7 @@ class SimpleMACrossoverStrategy(BaseStrategy):
         # Strategy parameters from config or defaults
         self._ema_short_period = int(self._config.get("ema_short_period", 12))
         self._ema_long_period = int(self._config.get("ema_long_period", 26))
-        self._confidence_threshold = float(
-            self._config.get("confidence_threshold", 0.6)
-        )
+        self._confidence_threshold = float(self._config.get("confidence_threshold", 0.6))
 
         # Track previous EMAs for crossover detection
         self._previous_ema_short: dict[str, float] = {}
@@ -54,9 +52,7 @@ class SimpleMACrossoverStrategy(BaseStrategy):
 
         missing = [k for k in required_indicators if k not in indicators]
         if missing:
-            raise ValueError(
-                f"Missing required indicators for {symbol}: {', '.join(missing)}"
-            )
+            raise ValueError(f"Missing required indicators for {symbol}: {', '.join(missing)}")
 
         # Get current values
         ema_short_current = indicators[f"ema_{self._ema_short_period}"]
@@ -82,14 +78,12 @@ class SimpleMACrossoverStrategy(BaseStrategy):
         # Detect crossovers
         # Crossover up: short EMA was below long, now above
         crossover_up = (
-            ema_short_previous < ema_long_previous
-            and ema_short_current > ema_long_current
+            ema_short_previous < ema_long_previous and ema_short_current > ema_long_current
         )
 
         # Crossover down: short EMA was above long, now below
         crossover_down = (
-            ema_short_previous > ema_long_previous
-            and ema_short_current < ema_long_current
+            ema_short_previous > ema_long_previous and ema_short_current < ema_long_current
         )
 
         # EMA(50) trend gate: only allow signals in trend direction
