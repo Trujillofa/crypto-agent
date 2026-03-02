@@ -44,7 +44,7 @@ All agents MUST read and follow **`CLAUDE.md`** in this project root. It contain
 
 - **SSH alias**: `ssh crypto-agent` (configured in `~/.ssh/config`)
 - **Deploy directory**: `/opt/crypto-agent`
-- **Current branch**: `feat/tune-strategy-config`
+- **Current branch**: `main`
 - **Fallback SSH**: `ssh root@46.225.119.221` (uses `~/.ssh/id_ed25519`)
 
 ### Deployment Commands
