@@ -34,6 +34,7 @@ from src.risk.manager import RiskManager
 from src.strategy import (
     BaseStrategy,
     BollingerBounceStrategy,
+    BreakoutRetestStrategy,
     CCIBreakoutStrategy,
     EngineConfig,
     MACDHistogramStrategy,
@@ -41,6 +42,7 @@ from src.strategy import (
     RSIReversalStrategy,
     SimpleMACrossoverStrategy,
     StrategyEngine,
+    TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
 from src.strategy.lifecycle import LifecycleManager
@@ -172,6 +174,26 @@ def load_settings(config_path: Path) -> Settings:
             trading_exec.get("take_profit_pct"),
             "trading_execution.take_profit_pct",
             default=0.03,
+        ),
+        sl_atr_multiplier=_as_float(
+            trading_exec.get("sl_atr_multiplier"),
+            "trading_execution.sl_atr_multiplier",
+            default=2.0,
+        ),
+        tp_atr_multiplier=_as_float(
+            trading_exec.get("tp_atr_multiplier"),
+            "trading_execution.tp_atr_multiplier",
+            default=4.5,
+        ),
+        trailing_activate_atr=_as_float(
+            trading_exec.get("trailing_activate_atr"),
+            "trading_execution.trailing_activate_atr",
+            default=1.5,
+        ),
+        trailing_offset_atr=_as_float(
+            trading_exec.get("trailing_offset_atr"),
+            "trading_execution.trailing_offset_atr",
+            default=1.0,
         ),
         use_atr_sizing=_as_bool(
             trading_exec.get("use_atr_sizing"),
@@ -337,6 +359,13 @@ def load_settings(config_path: Path) -> Settings:
                 order_size_usdt=trading_config.order_size_usdt,
                 stop_loss_pct=trading_config.stop_loss_pct,
                 take_profit_pct=trading_config.take_profit_pct,
+                sl_atr_multiplier=trading_config.sl_atr_multiplier,
+                tp_atr_multiplier=trading_config.tp_atr_multiplier,
+                trailing_activate_atr=trading_config.trailing_activate_atr,
+                trailing_offset_atr=trading_config.trailing_offset_atr,
+                use_atr_sizing=trading_config.use_atr_sizing,
+                atr_multiplier=trading_config.atr_multiplier,
+                risk_per_trade_pct=trading_config.risk_per_trade_pct,
             )
 
     # Parse futures configuration
@@ -509,6 +538,8 @@ def _resolve_strategy_config(
 
     strategy_registry: dict[str, type[BaseStrategy]] = {
         "simple_ma": SimpleMACrossoverStrategy,
+        "breakout_retest": BreakoutRetestStrategy,
+        "trend_pullback": TrendPullbackStrategy,
         "rsi_reversal": RSIReversalStrategy,
         "macd_histogram": MACDHistogramStrategy,
         "bollinger_bounce": BollingerBounceStrategy,
@@ -679,6 +710,10 @@ async def run() -> None:
             futures_leverage=futures_leverage,
             stop_loss_pct=settings.trading_execution.stop_loss_pct,
             take_profit_pct=settings.trading_execution.take_profit_pct,
+            sl_atr_multiplier=settings.trading_execution.sl_atr_multiplier,
+            tp_atr_multiplier=settings.trading_execution.tp_atr_multiplier,
+            trailing_activate_atr=settings.trading_execution.trailing_activate_atr,
+            trailing_offset_atr=settings.trading_execution.trailing_offset_atr,
             use_atr_sizing=settings.trading_execution.use_atr_sizing,
             atr_multiplier=settings.trading_execution.atr_multiplier,
             risk_per_trade_pct=settings.trading_execution.risk_per_trade_pct,
@@ -719,6 +754,8 @@ async def run() -> None:
                 position_mode=settings.futures.position_mode,
                 order_size_usdt=settings.trading_execution.order_size_usdt,
                 liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+                sl_atr_multiplier=settings.trading_execution.sl_atr_multiplier,
+                tp_atr_multiplier=settings.trading_execution.tp_atr_multiplier,
                 stop_loss_pct=settings.trading_execution.stop_loss_pct,
                 take_profit_pct=settings.trading_execution.take_profit_pct,
             )

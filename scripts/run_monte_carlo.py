@@ -11,6 +11,7 @@ same deterministic backtest with different seeds, which produces zero variance.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import math
 import os
@@ -19,18 +20,21 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
 from src.utils.logger import configure_logger
 
-SYMBOL = "SOLUSDT"
-TIMEFRAME = "4h"
-START = "2024-01-01"
-END = "2026-02-24"
-N_BOOTSTRAP = 2000
+DEFAULT_SYMBOL = "SOLUSDT"
+DEFAULT_TIMEFRAME = "4h"
+DEFAULT_START = "2024-01-01"
+DEFAULT_END = "2026-02-24"
+DEFAULT_BOOTSTRAP = 2000
 RANDOM_SEED = 42
 
 
@@ -77,6 +81,11 @@ def _percentile(values: list[float], p: float) -> float:
 
 
 def _write_report(
+    symbol: str,
+    timeframe: str,
+    start: str,
+    end: str,
+    bootstrap_iterations: int,
     baseline: dict,
     trade_returns: list[float],
     bootstrap_results: list[dict],
@@ -94,19 +103,17 @@ def _write_report(
     win_std = math.sqrt(sum((x - win_mean) ** 2 for x in win_vals) / len(win_vals))
 
     sharpe_mean = sum(sharpe_vals) / len(sharpe_vals)
-    sharpe_std = math.sqrt(
-        sum((x - sharpe_mean) ** 2 for x in sharpe_vals) / len(sharpe_vals)
-    )
+    sharpe_std = math.sqrt(sum((x - sharpe_mean) ** 2 for x in sharpe_vals) / len(sharpe_vals))
 
     percentile_pct_below_zero = sum(1 for r in ret_vals if r < 0) / len(ret_vals) * 100.0
 
     date_str = datetime.now().strftime("%Y-%m-%d")
 
     with open(report_path, "w") as f:
-        f.write(f"# Monte Carlo Validation (Bootstrap): {SYMBOL} {TIMEFRAME}\n\n")
+        f.write(f"# Monte Carlo Validation (Bootstrap): {symbol} {timeframe}\n\n")
         f.write(f"**Date:** {date_str}\n")
-        f.write(f"**Period:** {START} to {END}\n")
-        f.write(f"**Method:** Bootstrap resampling ({N_BOOTSTRAP} iterations)\n")
+        f.write(f"**Period:** {start} to {end}\n")
+        f.write(f"**Method:** Bootstrap resampling ({bootstrap_iterations} iterations)\n")
         f.write(f"**Trade sample size:** {n_trades} trades per resample\n\n")
 
         f.write("## Baseline (Deterministic Backtest)\n\n")
@@ -118,9 +125,7 @@ def _write_report(
         f.write(f"| Sharpe Ratio | {baseline['sharpe_ratio']:.2f} |\n\n")
 
         f.write("## Bootstrap Distribution\n\n")
-        f.write(
-            "| Metric | Mean | Std | 5th pct | 25th pct | 50th pct | 75th pct | 95th pct |\n"
-        )
+        f.write("| Metric | Mean | Std | 5th pct | 25th pct | 50th pct | 75th pct | 95th pct |\n")
         f.write("|--------|------|-----|---------|----------|----------|----------|----------|\n")
         f.write(
             f"| Return (%) | {ret_mean:.2f} | {ret_std:.2f} | "
@@ -147,9 +152,7 @@ def _write_report(
             f"- **95% CI for total return:** "
             f"[{_percentile(ret_vals, 2.5):.2f}%, {_percentile(ret_vals, 97.5):.2f}%]\n"
         )
-        f.write(
-            f"- **Worst-case 5th percentile return:** {_percentile(ret_vals, 5):.2f}%\n"
-        )
+        f.write(f"- **Worst-case 5th percentile return:** {_percentile(ret_vals, 5):.2f}%\n")
 
         f.write("\n## Interpretation\n\n")
         f.write(
@@ -180,12 +183,38 @@ def _write_report(
             )
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Bootstrap Monte Carlo validation")
+    parser.add_argument("--config", default="config/settings.yaml", help="Config path")
+    parser.add_argument("--symbol", default=DEFAULT_SYMBOL, help="Trading pair")
+    parser.add_argument("--timeframe", default=DEFAULT_TIMEFRAME, help="Timeframe")
+    parser.add_argument("--start", default=DEFAULT_START, help="Start date (ISO 8601)")
+    parser.add_argument("--end", default=DEFAULT_END, help="End date (ISO 8601)")
+    parser.add_argument(
+        "--bootstrap",
+        type=int,
+        default=DEFAULT_BOOTSTRAP,
+        help="Number of bootstrap iterations",
+    )
+    parser.add_argument(
+        "--disable-trend-filter",
+        action="store_true",
+        help="Disable the EMA200 global trend filter for this run",
+    )
+    return parser.parse_args()
+
+
 async def main() -> None:
     configure_logger("WARNING")
+    args = parse_args()
 
-    settings = load_settings(Path("config/settings.yaml"))
+    settings = load_settings(Path(args.config))
     result = _resolve_strategy_config(settings.strategy)
     strategy_classes, strategy_configs, aggregator_config = result[0], result[1], result[2]
+    with Path(args.config).open("r", encoding="utf-8") as file_handle:
+        raw_config = yaml.safe_load(file_handle) or {}
+    trading_exec = raw_config.get("trading_execution", {})
+    exit_rules = trading_exec.get("exit_rules", {}) or {}
 
     db_config = {
         "host": os.getenv("DB_HOST", "localhost"),
@@ -196,27 +225,39 @@ async def main() -> None:
     }
 
     backtest_cfg = BacktestConfig(
-        symbol=SYMBOL,
-        timeframe=TIMEFRAME,
-        start_date=START,
-        end_date=END,
+        symbol=args.symbol,
+        timeframe=args.timeframe,
+        start_date=args.start,
+        end_date=args.end,
         initial_capital=10_000.0,
         fee_rate=0.001,
-        stop_loss_pct=0.02,
-        take_profit_pct=0.05,
+        stop_loss_pct=settings.trading_execution.stop_loss_pct,
+        take_profit_pct=settings.trading_execution.take_profit_pct,
+        sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
+        tp_atr_multiplier=float(trading_exec.get("tp_atr_multiplier", 4.5)),
+        trailing_activate_atr=float(trading_exec.get("trailing_activate_atr", 1.5)),
+        trailing_offset_atr=float(trading_exec.get("trailing_offset_atr", 1.0)),
         slippage_pct=0.001,
-        apply_global_trend_filter=True,
+        use_atr_sizing=settings.trading_execution.use_atr_sizing,
+        atr_multiplier=settings.trading_execution.atr_multiplier,
+        risk_per_trade=settings.trading_execution.risk_per_trade_pct,
+        apply_global_trend_filter=not args.disable_trend_filter,
         allow_short=False,
+        use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
+        ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
     )
 
-    print(f"Running baseline backtest: {SYMBOL} {TIMEFRAME} {START}→{END}")
-    reader = IndicatorReader(db_config)
-    async with reader:
-        engine = BacktestEngine(backtest_cfg, reader)
-        bt_result = await engine.run()
+    print(f"Running baseline backtest: {args.symbol} {args.timeframe} " f"{args.start}→{args.end}")
+    await init_pool(db_config)
+    try:
+        reader = IndicatorReader(db_config)
+        async with reader:
+            bt_result = await BacktestEngine(backtest_cfg, reader).run()
+    finally:
+        await close_pool()
 
     if bt_result.total_trades == 0:
         print("No trades in backtest period. Cannot run bootstrap.")
@@ -224,20 +265,22 @@ async def main() -> None:
 
     trade_returns = [t.return_pct for t in bt_result.trades]
 
-    print(f"Baseline: {bt_result.total_trades} trades | "
-          f"Win Rate {bt_result.win_rate:.1f}% | "
-          f"Return {bt_result.total_return_pct:.2f}% | "
-          f"Sharpe {bt_result.sharpe_ratio:.2f}")
-    print(f"\nRunning {N_BOOTSTRAP} bootstrap iterations...")
+    print(
+        f"Baseline: {bt_result.total_trades} trades | "
+        f"Win Rate {bt_result.win_rate:.1f}% | "
+        f"Return {bt_result.total_return_pct:.2f}% | "
+        f"Sharpe {bt_result.sharpe_ratio:.2f}"
+    )
+    print(f"\nRunning {args.bootstrap} bootstrap iterations...")
 
     rng = random.Random(RANDOM_SEED)
     n_trades = len(trade_returns)
     bootstrap_results = []
-    for i in range(N_BOOTSTRAP):
+    for i in range(args.bootstrap):
         sample = rng.choices(trade_returns, k=n_trades)
         bootstrap_results.append(_compute_bootstrap_metrics(sample))
         if (i + 1) % 500 == 0:
-            print(f"  {i + 1}/{N_BOOTSTRAP} done")
+            print(f"  {i + 1}/{args.bootstrap} done")
 
     ret_vals = [r["total_return_pct"] for r in bootstrap_results]
     win_vals = [r["win_rate"] for r in bootstrap_results]
@@ -246,18 +289,27 @@ async def main() -> None:
     print("\n" + "=" * 60)
     print("BOOTSTRAP RESULTS")
     print("=" * 60)
-    print(f"Return:      {sum(ret_vals)/len(ret_vals):.2f}% ± {math.sqrt(sum((x - sum(ret_vals)/len(ret_vals))**2 for x in ret_vals)/len(ret_vals)):.2f}%")
+    print(
+        f"Return:      {sum(ret_vals)/len(ret_vals):.2f}% ± {math.sqrt(sum((x - sum(ret_vals)/len(ret_vals))**2 for x in ret_vals)/len(ret_vals)):.2f}%"
+    )
     print(f"  5th/95th:  {_percentile(ret_vals, 5):.2f}% / {_percentile(ret_vals, 95):.2f}%")
-    print(f"Win Rate:    {sum(win_vals)/len(win_vals):.1f}% ± {math.sqrt(sum((x - sum(win_vals)/len(win_vals))**2 for x in win_vals)/len(win_vals)):.1f}%")
+    print(
+        f"Win Rate:    {sum(win_vals)/len(win_vals):.1f}% ± {math.sqrt(sum((x - sum(win_vals)/len(win_vals))**2 for x in win_vals)/len(win_vals)):.1f}%"
+    )
     print(f"  5th/95th:  {_percentile(win_vals, 5):.1f}% / {_percentile(win_vals, 95):.1f}%")
-    print(f"Trade Sharpe:{sum(sharpe_vals)/len(sharpe_vals):.2f} ± {math.sqrt(sum((x - sum(sharpe_vals)/len(sharpe_vals))**2 for x in sharpe_vals)/len(sharpe_vals)):.2f}")
+    print(
+        f"Trade Sharpe:{sum(sharpe_vals)/len(sharpe_vals):.2f} ± {math.sqrt(sum((x - sum(sharpe_vals)/len(sharpe_vals))**2 for x in sharpe_vals)/len(sharpe_vals)):.2f}"
+    )
     pct_loss = sum(1 for r in ret_vals if r < 0) / len(ret_vals) * 100
     print(f"P(loss):     {pct_loss:.1f}%")
     if n_trades < 30:
         print(f"\n⚠️  Only {n_trades} trades — wide intervals expected. Directional only.")
 
     date_str = datetime.now().strftime("%Y-%m-%d")
-    report_path = Path("docs/reports") / f"monte-carlo-bootstrap-{SYMBOL.lower()}-{TIMEFRAME}-{date_str}.md"
+    report_path = (
+        Path("docs/reports")
+        / f"monte-carlo-bootstrap-{args.symbol.lower()}-{args.timeframe}-{date_str}.md"
+    )
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     baseline_dict = {
@@ -267,7 +319,17 @@ async def main() -> None:
         "max_drawdown_pct": bt_result.max_drawdown * 100,
         "sharpe_ratio": bt_result.sharpe_ratio,
     }
-    _write_report(baseline_dict, trade_returns, bootstrap_results, report_path)
+    _write_report(
+        args.symbol,
+        args.timeframe,
+        args.start,
+        args.end,
+        args.bootstrap,
+        baseline_dict,
+        trade_returns,
+        bootstrap_results,
+        report_path,
+    )
     print(f"\nReport saved: {report_path}")
 
 

@@ -1,38 +1,28 @@
 #!/usr/bin/env python3
-import asyncio
 import argparse
+import asyncio
 import os
 import sys
-from datetime import datetime
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
-from src.strategy.macd_strategy import MACDHistogramStrategy
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
+from src.strategy.macd_strategy import MACDHistogramStrategy
 from src.strategy.momentum_strategy import MomentumStrategy
 
 
 async def main():
     parser = argparse.ArgumentParser(description="Run crypto strategy backtest")
-    parser.add_argument(
-        "--symbol", type=str, required=True, help="Trading pair (e.g. BTCUSDT)"
-    )
-    parser.add_argument(
-        "--timeframe", type=str, default="1m", help="Timeframe (e.g. 1m, 5m, 1h)"
-    )
-    parser.add_argument(
-        "--start", type=str, required=True, help="Start date (ISO 8601)"
-    )
+    parser.add_argument("--symbol", type=str, required=True, help="Trading pair (e.g. BTCUSDT)")
+    parser.add_argument("--timeframe", type=str, default="1m", help="Timeframe (e.g. 1m, 5m, 1h)")
+    parser.add_argument("--start", type=str, required=True, help="Start date (ISO 8601)")
     parser.add_argument("--end", type=str, required=True, help="End date (ISO 8601)")
-    parser.add_argument(
-        "--capital", type=float, default=10000.0, help="Initial capital"
-    )
-    parser.add_argument(
-        "--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)"
-    )
+    parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital")
+    parser.add_argument("--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)")
 
     args = parser.parse_args()
 
@@ -71,10 +61,13 @@ async def main():
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
     print(f"Strategies: {[s.__name__ for s in strategies]}")
 
-    reader = IndicatorReader(db_config)
-    async with reader:
-        engine = BacktestEngine(config, reader)
-        result = await engine.run()
+    await init_pool(db_config)
+    try:
+        reader = IndicatorReader(db_config)
+        async with reader:
+            result = await BacktestEngine(config, reader).run()
+    finally:
+        await close_pool()
 
     print("\n" + "=" * 40)
     print("BACKTEST RESULTS")

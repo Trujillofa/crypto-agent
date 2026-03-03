@@ -10,9 +10,11 @@ import yaml
 
 from src.main import _resolve_strategy_config, load_settings
 from src.strategy import (
+    BreakoutRetestStrategy,
     CCIBreakoutStrategy,
     Signal,
     SignalType,
+    TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
 
@@ -87,6 +89,28 @@ def test_settings_resolves_new_strategy_registry_entries():
     assert len(strategy_configs) == len(settings.strategy.strategies)
     assert CCIBreakoutStrategy in strategy_classes
     assert VWAPReversionStrategy in strategy_classes
+
+
+def test_replacement_config_resolves_trend_pullback():
+    settings = load_settings(Path("config/settings.sol_trend_pullback.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert strategy_classes == [TrendPullbackStrategy]
+    assert len(strategy_configs) == 1
+    assert aggregator_config["buy_threshold"] == 0.45
+
+
+def test_replacement_config_resolves_breakout_retest():
+    settings = load_settings(Path("config/settings.sol_breakout_retest.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert strategy_classes == [BreakoutRetestStrategy]
+    assert len(strategy_configs) == 1
+    assert aggregator_config["buy_threshold"] == 0.45
 
 
 @pytest.mark.asyncio

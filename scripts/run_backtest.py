@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-import asyncio
 import argparse
+import asyncio
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
+import yaml
+
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
+from src.main import _resolve_strategy_config, load_settings
 from src.utils.logger import configure_logger
-from src.main import load_settings, _resolve_strategy_config
-from pathlib import Path
 
 
 async def main():
@@ -25,10 +28,10 @@ async def main():
     parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital")
     parser.add_argument("--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)")
     parser.add_argument(
-        "--sl", type=float, default=0.0, help="Stop loss percentage (e.g. 0.01 for 1%%)"
+        "--sl", type=float, default=None, help="Stop loss percentage (e.g. 0.01 for 1%%)"
     )
     parser.add_argument(
-        "--tp", type=float, default=0.0, help="Take profit percentage (e.g. 0.02 for 2%%)"
+        "--tp", type=float, default=None, help="Take profit percentage (e.g. 0.02 for 2%%)"
     )
     parser.add_argument(
         "--config", type=str, default="config/settings.yaml", help="Path to config file"
@@ -37,6 +40,11 @@ async def main():
         "--allow-short",
         action="store_true",
         help="Enable short trading",
+    )
+    parser.add_argument(
+        "--disable-trend-filter",
+        action="store_true",
+        help="Disable the EMA200 global trend filter for this backtest run",
     )
 
     args = parser.parse_args()
@@ -52,8 +60,7 @@ async def main():
         print(f"Loaded configuration from {args.config}")
     except Exception as e:
         print(f"Failed to load config from {args.config}: {e}")
-        # Fallback to defaults or exit? Let's exit to enforce config usage.
-        return
+        raise SystemExit(1) from e
 
     db_config = {
         "host": str(os.getenv("DB_HOST", settings.database.get("host", "localhost"))),
@@ -62,6 +69,12 @@ async def main():
         "user": str(os.getenv("DB_USER", settings.database.get("user", "trading"))),
         "password": str(os.getenv("DB_PASSWORD", settings.database.get("password", ""))),
     }
+    stop_loss_pct = settings.trading_execution.stop_loss_pct if args.sl is None else args.sl
+    take_profit_pct = settings.trading_execution.take_profit_pct if args.tp is None else args.tp
+    with Path(args.config).open("r", encoding="utf-8") as file_handle:
+        raw_config = yaml.safe_load(file_handle) or {}
+    trading_exec = raw_config.get("trading_execution", {})
+    exit_rules = trading_exec.get("exit_rules", {}) or {}
 
     config = BacktestConfig(
         symbol=args.symbol,
@@ -70,8 +83,18 @@ async def main():
         end_date=datetime.fromisoformat(args.end),
         initial_capital=args.capital,
         fee_rate=args.fee,
-        stop_loss_pct=args.sl,
-        take_profit_pct=args.tp,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
+        tp_atr_multiplier=float(trading_exec.get("tp_atr_multiplier", 4.5)),
+        trailing_activate_atr=float(trading_exec.get("trailing_activate_atr", 1.5)),
+        trailing_offset_atr=float(trading_exec.get("trailing_offset_atr", 1.0)),
+        use_atr_sizing=settings.trading_execution.use_atr_sizing,
+        atr_multiplier=settings.trading_execution.atr_multiplier,
+        risk_per_trade=settings.trading_execution.risk_per_trade_pct,
+        apply_global_trend_filter=not args.disable_trend_filter,
+        use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
+        ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
@@ -81,12 +104,31 @@ async def main():
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
     print(f"Strategies: {[s.__name__ for s in strategy_classes]}")
     print(f"Aggregator Config: {aggregator_config}")
+    print(
+        f"Risk Config: SL={stop_loss_pct:.4f}, TP={take_profit_pct:.4f}, "
+        f"ATR sizing={settings.trading_execution.use_atr_sizing}, "
+        f"ATR multiplier={settings.trading_execution.atr_multiplier:.2f}, "
+        f"Risk/trade={settings.trading_execution.risk_per_trade_pct:.4f}"
+    )
+    print(
+        "Exit Model: "
+        f"executor_like={config.use_executor_exit_model}, "
+        f"ignore_signal_sells={config.ignore_signal_sells}, "
+        f"atr_sl={config.sl_atr_multiplier:.2f}, "
+        f"atr_tp={config.tp_atr_multiplier:.2f}, "
+        f"trail_activate={config.trailing_activate_atr:.2f}, "
+        f"trail_offset={config.trailing_offset_atr:.2f}"
+    )
+    print(f"Trend Filter: {not args.disable_trend_filter}")
     print(f"Allow Short: {args.allow_short}")
 
-    reader = IndicatorReader(db_config)
-    async with reader:
-        engine = BacktestEngine(config, reader)
-        result = await engine.run()
+    await init_pool(db_config)
+    try:
+        reader = IndicatorReader(db_config)
+        async with reader:
+            result = await BacktestEngine(config, reader).run()
+    finally:
+        await close_pool()
 
     print("\n" + "=" * 40)
     print("BACKTEST RESULTS")

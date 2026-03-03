@@ -22,12 +22,18 @@ class BacktestConfig:
     fee_rate: float = 0.001  # 0.1%
     stop_loss_pct: float = 0.0  # 0.0 = disabled
     take_profit_pct: float = 0.0  # 0.0 = disabled
+    sl_atr_multiplier: float = 2.0
+    tp_atr_multiplier: float = 4.5
+    trailing_activate_atr: float = 1.5
+    trailing_offset_atr: float = 1.0
     slippage_pct: float = 0.001  # 0.1% slippage per trade
     risk_per_trade: float = 0.02  # 2% risk of equity per trade (used if use_atr_sizing=True)
     use_atr_sizing: bool = False
     atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
     apply_global_trend_filter: bool = True
     allow_short: bool = False
+    use_executor_exit_model: bool = False
+    ignore_signal_sells: bool = False
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
@@ -79,6 +85,10 @@ class BacktestEngine:
         self._position_entry_price = 0.0
         self._position_entry_fee = 0.0
         self._position_entry_time = ""
+        self._position_atr = 0.0
+        self._position_sl_price = 0.0
+        self._position_tp_price = 0.0
+        self._position_high_water_mark = 0.0
         self._equity_curve: list[float] = []
         self._trades: list[Trade] = []
 
@@ -113,29 +123,12 @@ class BacktestEngine:
             low_price = row.get("low_price", current_price)
 
             if self._position_qty != 0:
-                if self._config.stop_loss_pct > 0:
-                    if self._position_qty > 0:
-                        sl_price = self._position_entry_price * (1 - self._config.stop_loss_pct)
-                        if low_price <= sl_price:
-                            self._close_position(current_time, sl_price, reason="STOP_LOSS")
-                            continue
-                    else:
-                        sl_price = self._position_entry_price * (1 + self._config.stop_loss_pct)
-                        if high_price >= sl_price:
-                            self._close_position(current_time, sl_price, reason="STOP_LOSS")
-                            continue
-
-                if self._config.take_profit_pct > 0:
-                    if self._position_qty > 0:
-                        tp_price = self._position_entry_price * (1 + self._config.take_profit_pct)
-                        if high_price >= tp_price:
-                            self._close_position(current_time, tp_price, reason="TAKE_PROFIT")
-                            continue
-                    else:
-                        tp_price = self._position_entry_price * (1 - self._config.take_profit_pct)
-                        if low_price <= tp_price:
-                            self._close_position(current_time, tp_price, reason="TAKE_PROFIT")
-                            continue
+                if self._config.use_executor_exit_model:
+                    if self._check_executor_exit(current_time, high_price, low_price):
+                        continue
+                else:
+                    if self._check_fixed_exit(current_time, high_price, low_price):
+                        continue
 
             signals = []
             for strategy in strategies:
@@ -189,10 +182,65 @@ class BacktestEngine:
                 self._close_position(timestamp, price, reason="SIGNAL")
 
         elif signal.type == SignalType.SELL:
-            if self._position_qty > 0:
+            if self._position_qty > 0 and not self._config.ignore_signal_sells:
                 self._close_position(timestamp, price, reason="SIGNAL")
             elif self._position_qty == 0 and self._config.allow_short:
                 self._open_short(timestamp, price, atr)
+
+    def _check_fixed_exit(self, timestamp: str, high_price: float, low_price: float) -> bool:
+        if self._config.stop_loss_pct > 0:
+            if self._position_qty > 0:
+                sl_price = self._position_entry_price * (1 - self._config.stop_loss_pct)
+                if low_price <= sl_price:
+                    self._close_position(timestamp, sl_price, reason="STOP_LOSS")
+                    return True
+            else:
+                sl_price = self._position_entry_price * (1 + self._config.stop_loss_pct)
+                if high_price >= sl_price:
+                    self._close_position(timestamp, sl_price, reason="STOP_LOSS")
+                    return True
+
+        if self._config.take_profit_pct > 0:
+            if self._position_qty > 0:
+                tp_price = self._position_entry_price * (1 + self._config.take_profit_pct)
+                if high_price >= tp_price:
+                    self._close_position(timestamp, tp_price, reason="TAKE_PROFIT")
+                    return True
+            else:
+                tp_price = self._position_entry_price * (1 - self._config.take_profit_pct)
+                if low_price <= tp_price:
+                    self._close_position(timestamp, tp_price, reason="TAKE_PROFIT")
+                    return True
+        return False
+
+    def _check_executor_exit(self, timestamp: str, high_price: float, low_price: float) -> bool:
+        if self._position_qty <= 0:
+            return self._check_fixed_exit(timestamp, high_price, low_price)
+
+        if self._position_atr > 0:
+            if high_price > self._position_high_water_mark:
+                self._position_high_water_mark = high_price
+
+            trailing_activation = (
+                self._position_entry_price + self._config.trailing_activate_atr * self._position_atr
+            )
+            if self._position_high_water_mark >= trailing_activation:
+                trailing_sl = (
+                    self._position_high_water_mark
+                    - self._config.trailing_offset_atr * self._position_atr
+                )
+                if trailing_sl > self._position_sl_price:
+                    self._position_sl_price = trailing_sl
+
+            if self._position_sl_price > 0 and low_price <= self._position_sl_price:
+                self._close_position(timestamp, self._position_sl_price, reason="STOP_LOSS")
+                return True
+            if self._position_tp_price > 0 and high_price >= self._position_tp_price:
+                self._close_position(timestamp, self._position_tp_price, reason="TAKE_PROFIT")
+                return True
+            return False
+
+        return self._check_fixed_exit(timestamp, high_price, low_price)
 
     def _calculate_entry_qty(self, entry_price: float, atr: float) -> float:
         if entry_price <= 0:
@@ -218,6 +266,22 @@ class BacktestEngine:
         self._position_entry_price = entry_price
         self._position_entry_fee = fee
         self._position_entry_time = timestamp
+        self._position_atr = atr if atr > 0 else 0.0
+        self._position_high_water_mark = entry_price
+        if self._config.use_executor_exit_model and atr > 0:
+            self._position_sl_price = entry_price - self._config.sl_atr_multiplier * atr
+            self._position_tp_price = entry_price + self._config.tp_atr_multiplier * atr
+        else:
+            self._position_sl_price = (
+                entry_price * (1 - self._config.stop_loss_pct)
+                if self._config.stop_loss_pct > 0
+                else 0.0
+            )
+            self._position_tp_price = (
+                entry_price * (1 + self._config.take_profit_pct)
+                if self._config.take_profit_pct > 0
+                else 0.0
+            )
 
     def _open_short(self, timestamp: str, price: float, atr: float) -> None:
         entry_price = price * (1 - self._config.slippage_pct)
@@ -230,6 +294,10 @@ class BacktestEngine:
         self._position_entry_price = entry_price
         self._position_entry_fee = fee
         self._position_entry_time = timestamp
+        self._position_atr = atr if atr > 0 else 0.0
+        self._position_sl_price = 0.0
+        self._position_tp_price = 0.0
+        self._position_high_water_mark = entry_price
 
     def _close_position(self, timestamp: str, price: float, reason: str = "SIGNAL") -> None:
         is_long = self._position_qty > 0
@@ -267,10 +335,17 @@ class BacktestEngine:
         )
 
         self._trades.append(trade)
+        self._reset_position()
+
+    def _reset_position(self) -> None:
         self._position_qty = 0.0
         self._position_entry_price = 0.0
         self._position_entry_fee = 0.0
         self._position_entry_time = ""
+        self._position_atr = 0.0
+        self._position_sl_price = 0.0
+        self._position_tp_price = 0.0
+        self._position_high_water_mark = 0.0
 
     def _calculate_metrics(self) -> BacktestResult:
         import math
@@ -292,7 +367,9 @@ class BacktestEngine:
         profit_factor = (
             (gross_profit / gross_loss)
             if gross_loss > 0
-            else float("inf") if gross_profit > 0 else 0.0
+            else float("inf")
+            if gross_profit > 0
+            else 0.0
         )
 
         avg_win = (gross_profit / len(wins)) if wins else 0.0
