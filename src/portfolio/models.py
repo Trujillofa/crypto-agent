@@ -25,6 +25,7 @@ class Position:
     Attributes:
         id: Unique position identifier
         symbol: Trading pair symbol (e.g., BTCUSDT)
+        market: Market type (spot or futures)
         entry_time: When position was opened
         entry_price: Price at entry
         quantity: Amount held (base asset units, always positive for spot)
@@ -44,6 +45,7 @@ class Position:
 
     id: int | None = None
     symbol: str = ""
+    market: str = "spot"
     entry_time: datetime = field(default_factory=_utc_now)
     entry_price: float = 0.0
     quantity: float = 0.0

@@ -36,6 +36,7 @@ async def test_portfolio_manager_open_close():
             position = await manager.open_position(symbol="BTCUSDT", quantity=2.0, price=100.0)
             assert position.entry_price == 100.0
             assert position.quantity == 2.0
+            assert position.market == "spot"
             assert manager.has_position("BTCUSDT") is True
 
             closed_position, pnl = await manager.close_position(symbol="BTCUSDT", price=110.0)
@@ -76,3 +77,36 @@ async def test_portfolio_manager_scopes_symbols_for_non_default_agent():
             # The first argument is the SQL, arguments start from the second element
             # Actually, fetchval arguments are (query, *args)
             assert insert_call.args[1] == "agent2::BTCUSDT:spot"
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_preserves_futures_market():
+    """Futures positions should retain market metadata separately from symbol."""
+    manager = PortfolioManager({})
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.fetch.return_value = []
+    mock_conn.fetchval.return_value = 7
+
+    @asynccontextmanager
+    async def _mock_transaction():
+        yield
+
+    mock_conn.transaction = _mock_transaction
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        async with manager:
+            position = await manager.open_position(
+                symbol="BTCUSDT",
+                quantity=0.01,
+                price=50000.0,
+                market="futures",
+            )
+
+            assert position.market == "futures"
+            insert_call = mock_conn.fetchval.call_args
+            assert insert_call is not None
+            assert insert_call.args[1] == "BTCUSDT"
+            assert insert_call.args[2] == "futures"

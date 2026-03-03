@@ -21,6 +21,7 @@ class TestPositionModel:
         )
 
         # All futures fields should have default values
+        assert position.market == "spot"
         assert position.position_side is None  # Spot position
         assert position.leverage is None
         assert position.margin_type is None
@@ -36,6 +37,7 @@ class TestPositionModel:
         position = Position(
             id=1,
             symbol="BTCUSDT",
+            market="futures",
             entry_price=50000.0,
             quantity=0.1,  # Positive for LONG
             position_side="LONG",
@@ -56,6 +58,7 @@ class TestPositionModel:
         position = Position(
             id=1,
             symbol="BTCUSDT",
+            market="futures",
             entry_price=50000.0,
             quantity=0.1,  # Positive quantity (SHORT indicated by position_side)
             position_side="SHORT",

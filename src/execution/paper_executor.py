@@ -144,7 +144,12 @@ class PaperExecutor:
         restored_count = 0
         if self._portfolio_manager:
             for pos in self._portfolio_manager.get_all_positions():
-                symbol_base, market_tag = self._parse_position_key(pos.symbol)
+                symbol_base = pos.symbol
+                market_tag = pos.market
+                if ":" in pos.symbol and pos.market == "spot":
+                    # Backward-compatible fallback for historical rows that encoded
+                    # market in the symbol suffix instead of the dedicated column.
+                    symbol_base, market_tag = self._parse_position_key(pos.symbol)
 
                 # Filter out positions that shouldn't be managed by this executor
                 # (Simulated logic: if we have futures config, we manage futures; always manage spot)
@@ -550,9 +555,10 @@ class PaperExecutor:
         if self._portfolio_manager:
             try:
                 await self._portfolio_manager.open_position(
-                    symbol=pos_key,
+                    symbol=signal.symbol,
                     quantity=quantity,
                     price=signal.price,
+                    market=market_tag,
                 )
             except Exception as exc:  # noqa: BLE001
                 self._logger.warning("Portfolio DB write failed (buy): %s", exc)
@@ -630,8 +636,9 @@ class PaperExecutor:
         if self._portfolio_manager:
             try:
                 await self._portfolio_manager.close_position(
-                    symbol=pos_key,
+                    symbol=signal.symbol,
                     price=signal.price,
+                    market=market_tag,
                 )
             except Exception as exc:  # noqa: BLE001
                 self._logger.warning("Portfolio DB write failed (sell): %s", exc)

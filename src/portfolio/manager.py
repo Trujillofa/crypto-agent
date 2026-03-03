@@ -184,6 +184,7 @@ class PortfolioManager:
         return Position(
             id=row["id"],
             symbol=symbol,
+            market=str(row.get("market") or "spot"),
             entry_time=row["entry_time"],
             entry_price=float(row["entry_price"]),
             quantity=float(row["quantity"]),
@@ -243,6 +244,7 @@ class PortfolioManager:
             position = Position(
                 id=position_id,
                 symbol=symbol,
+                market=market,
                 entry_time=entry_time,
                 entry_price=price,
                 quantity=quantity,

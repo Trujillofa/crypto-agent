@@ -13,6 +13,7 @@ from src.execution.paper_executor import (
     PaperPosition,
     PaperTradingConfig,
 )
+from src.portfolio.models import Position
 from src.strategy.signals import Signal, SignalType
 
 
@@ -46,6 +47,7 @@ def _make_executor(
     notifier.__aenter__ = AsyncMock(return_value=notifier)
     notifier.__aexit__ = AsyncMock(return_value=False)
     portfolio_manager = MagicMock()
+    portfolio_manager.open_position = AsyncMock()
     portfolio_manager.close_position = AsyncMock()
     return PaperExecutor(
         config=config,
@@ -369,3 +371,65 @@ class TestOnSignalEntryPath:
         executor._risk_manager.register_open_position.assert_called_once()
         call_args = executor._risk_manager.register_open_position.call_args[0]
         assert call_args[0] == "agent2::BTCUSDT:spot"
+
+    @pytest.mark.asyncio
+    async def test_buy_records_market_separately_in_portfolio_manager(self):
+        executor = _make_executor()
+        signal = self._make_buy_signal(atr=0.0)
+
+        await executor.on_signal(signal)
+
+        executor._portfolio_manager.open_position.assert_awaited_once_with(
+            symbol="BTCUSDT",
+            quantity=pytest.approx(0.004),
+            price=50000.0,
+            market="spot",
+        )
+
+    @pytest.mark.asyncio
+    async def test_futures_restore_uses_market_field_without_symbol_suffix(self):
+        executor = _make_executor(
+            _make_config(futures_symbols=["BTCUSDT"]),
+            agent_id="agent2",
+        )
+        executor._portfolio_manager.get_all_positions.return_value = [
+            Position(
+                symbol="BTCUSDT",
+                market="futures",
+                quantity=0.01,
+                entry_price=50000.0,
+                position_side="LONG",
+            )
+        ]
+
+        async with executor:
+            assert "agent2::BTCUSDT:futures" in executor._positions
+
+    @pytest.mark.asyncio
+    async def test_futures_sell_records_market_separately_in_portfolio_manager(self):
+        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"]))
+        executor._positions["BTCUSDT:futures"] = PaperPosition(
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.01,
+            entry_price=50000.0,
+            open_time=time.time(),
+            high_water_mark=50000.0,
+        )
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50500.0,
+            confidence=1.0,
+            reason="test",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor._handle_sell(signal, market_tag="futures", is_futures=True)
+
+        executor._portfolio_manager.close_position.assert_awaited_once_with(
+            symbol="BTCUSDT",
+            price=50500.0,
+            market="futures",
+        )
