@@ -179,8 +179,8 @@ class CooldownGuard(Guard):
         portfolio_value: float,
         context: dict[str, Any],
     ) -> GuardResponse:
-        last_time = self._last_trade_time.get(symbol, 0)
-        elapsed = time.time() - last_time
+        last_time = self._last_trade_time.get(symbol, 0.0)
+        elapsed = time.monotonic() - last_time
 
         if elapsed < self.cooldown_seconds:
             remaining = self.cooldown_seconds - elapsed
@@ -199,7 +199,7 @@ class CooldownGuard(Guard):
         )
 
     def record_trade(self, symbol: str) -> None:
-        self._last_trade_time[symbol] = time.time()
+        self._last_trade_time[symbol] = time.monotonic()
 
     def reset(self) -> None:
         self._last_trade_time.clear()
