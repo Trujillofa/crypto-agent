@@ -1,0 +1,29 @@
+groups:
+  - name: trading-agent-resilience
+    rules:
+      - alert: WebSocketStale
+        expr: max by (instance, stream) (ingest_websocket_last_message_age_seconds{job="trading-agent"}) > 240
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket stream stale ({{ $labels.stream }})"
+          description: "No websocket messages for >240s (2x expected 120s staleness window) on {{ $labels.instance }}."
+
+      - alert: WebSocketReconnectSpike
+        expr: increase(ingest_websocket_reconnects_total{job="trading-agent"}[5m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket reconnect spike ({{ $labels.stream }})"
+          description: "More than 3 reconnects in 5 minutes on {{ $labels.instance }}."
+
+      - alert: ApiRateLimitHeadroomLow
+        expr: (ingest_api_rate_limit_remaining{job="trading-agent"} / 2400) < 0.2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API rate-limit headroom low"
+          description: "Remaining Binance API weight is below 20% on {{ $labels.instance }}."

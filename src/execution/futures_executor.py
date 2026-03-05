@@ -321,6 +321,7 @@ class FuturesTradingExecutor:
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
                             market="futures",
+                            closing_side=side,
                         )
                     self._logger.info(
                         "Futures position closed: %s %s (qty: %.4f)",
@@ -337,6 +338,7 @@ class FuturesTradingExecutor:
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
                             market="futures",
+                            position_side="SHORT" if side == "SELL" else "LONG",
                         )
                     self._logger.info(
                         "Futures position opened: %s %s %s (qty: %.4f, leverage: %dx)",
@@ -433,7 +435,7 @@ class FuturesTradingExecutor:
                         )
                         filled_qty = order.executed_quantity if order.executed_quantity > 0 else qty
                         atr_14 = float(signal.indicators.get("atr_14") or 0.0)
-                        await self._place_sl_tp_orders(
+                        sl_price, tp_price = await self._place_sl_tp_orders(
                             signal.symbol, entry_price, filled_qty, atr_14
                         )
                         await self._notifier.send_trade_alert(
@@ -443,6 +445,8 @@ class FuturesTradingExecutor:
                             price=entry_price,
                             pnl=None,
                             market="futures",
+                            stop_loss=sl_price if sl_price > 0 else None,
+                            take_profit=tp_price if tp_price > 0 else None,
                         )
 
             elif signal.type == SignalType.SELL:
@@ -614,7 +618,7 @@ class FuturesTradingExecutor:
         entry_price: float,
         quantity: float,
         atr_14: float,
-    ) -> None:
+    ) -> tuple[float, float]:
         """Place exchange-side STOP_MARKET (SL) and TAKE_PROFIT_MARKET (TP) orders.
 
         Uses ATR-based levels when atr_14 > 0, falls back to fixed percentage otherwise.
@@ -676,6 +680,7 @@ class FuturesTradingExecutor:
             "sl_order_id": sl_order_id,
             "tp_order_id": tp_order_id,
         }
+        return sl_price, tp_price
 
     async def _cancel_sl_tp_orders(self, symbol: str) -> None:
         """Cancel tracked SL/TP orders for a symbol before a manual close."""

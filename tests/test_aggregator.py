@@ -63,7 +63,7 @@ class TestSignalAggregator:
         signals = [self._create_signal(SignalType.BUY, 1.0)]
         result = agg.aggregate("BTCUSDT", signals)
         assert result.type == SignalType.HOLD
-        assert "Insufficient agreement" in result.reason
+        assert "Insufficient BUY agreement" in result.reason
 
         signals.append(self._create_signal(SignalType.BUY, 1.0))
         result = agg.aggregate("BTCUSDT", signals)
@@ -125,7 +125,31 @@ class TestSignalAggregator:
         symbol_config = {"min_agreement": 2}
         result = aggregator.aggregate("BTCUSDT", signals, symbol_config=symbol_config)
         assert result.type == SignalType.HOLD
-        assert "Insufficient agreement" in result.reason
+        assert "Insufficient BUY agreement" in result.reason
+
+    def test_sell_min_agreement_blocks_single_sell_vote(self):
+        agg = SignalAggregator(
+            {
+                "buy_threshold": 0.5,
+                "sell_threshold": -0.5,
+                "min_agreement": 1,
+                "sell_min_agreement": 2,
+            }
+        )
+        signals = [self._create_signal(SignalType.SELL, 0.9)]
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.HOLD
+        assert "Insufficient SELL agreement" in result.reason
+
+    def test_per_symbol_sell_min_agreement_override(self, aggregator):
+        signals = [self._create_signal(SignalType.SELL, 0.9)]
+        result = aggregator.aggregate(
+            "BTCUSDT",
+            signals,
+            symbol_config={"sell_min_agreement": 2},
+        )
+        assert result.type == SignalType.HOLD
+        assert "Insufficient SELL agreement" in result.reason
 
     def test_per_symbol_buy_threshold_uptrend_override(self, aggregator):
         """Per-symbol buy_threshold_uptrend should override default when in uptrend."""
@@ -167,4 +191,48 @@ class TestSignalAggregator:
         symbol_config = {"min_agreement": 2}
         result = aggregator.aggregate("BTCUSDT", signals, symbol_config=symbol_config)
         assert result.type == SignalType.HOLD
-        assert "Insufficient agreement" in result.reason
+        assert "Insufficient BUY agreement" in result.reason
+
+    def test_btc_regime_filter_blocks_alt_buy_when_btc_dumping(self):
+        agg = SignalAggregator(
+            {
+                "buy_threshold": 0.5,
+                "btc_regime_filter_enabled": True,
+                "btc_reference_symbol": "BTCUSDT",
+                "btc_dump_threshold_pct": -1.0,
+                "btc_dump_require_below_ema200": True,
+            }
+        )
+        signals = [self._create_signal(SignalType.BUY, 0.8)]
+        result = agg.aggregate(
+            "SOLUSDT",
+            signals,
+            market_context={
+                "btc_change_pct": -1.2,
+                "btc_price": 90000.0,
+                "btc_ema_200": 92000.0,
+            },
+        )
+        assert result.type == SignalType.HOLD
+        assert "Blocked by BTC Regime Filter" in result.reason
+
+    def test_btc_regime_filter_does_not_block_btc_symbol(self):
+        agg = SignalAggregator(
+            {
+                "buy_threshold": 0.5,
+                "btc_regime_filter_enabled": True,
+                "btc_reference_symbol": "BTCUSDT",
+                "btc_dump_threshold_pct": -1.0,
+            }
+        )
+        signals = [self._create_signal(SignalType.BUY, 0.8)]
+        result = agg.aggregate(
+            "BTCUSDT",
+            signals,
+            market_context={
+                "btc_change_pct": -2.0,
+                "btc_price": 89000.0,
+                "btc_ema_200": 91000.0,
+            },
+        )
+        assert result.type == SignalType.BUY

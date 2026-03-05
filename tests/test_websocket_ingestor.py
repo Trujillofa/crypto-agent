@@ -14,6 +14,9 @@ class TestBinanceWebSocketIngestor:
         m.messages_total = MagicMock()
         m.errors_total = MagicMock()
         m.last_open_time = MagicMock()
+        m.websocket_latency_ms = MagicMock()
+        m.websocket_last_message_age_seconds = MagicMock()
+        m.websocket_reconnects_total = MagicMock()
         return m
 
     @pytest.mark.asyncio

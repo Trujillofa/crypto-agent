@@ -67,6 +67,7 @@ class PortfolioManager:
                     id SERIAL PRIMARY KEY,
                     symbol TEXT NOT NULL,
                     market TEXT NOT NULL DEFAULT 'spot',
+                    position_side TEXT,
                     entry_time TIMESTAMPTZ NOT NULL,
                     entry_price DOUBLE PRECISION NOT NULL,
                     quantity DOUBLE PRECISION NOT NULL,
@@ -93,6 +94,7 @@ class PortfolioManager:
             await conn.execute(
                 "ALTER TABLE positions ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'spot'"
             )
+            await conn.execute("ALTER TABLE positions ADD COLUMN IF NOT EXISTS position_side TEXT")
             await conn.execute(
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'spot'"
             )
@@ -192,6 +194,7 @@ class PortfolioManager:
             exit_time=row.get("exit_time"),
             exit_price=float(row["exit_price"]) if row.get("exit_price") else None,
             realized_pnl=float(row["realized_pnl"]) if row.get("realized_pnl") else None,
+            position_side=str(row["position_side"]) if row.get("position_side") else None,
         )
 
     async def open_position(
@@ -201,23 +204,35 @@ class PortfolioManager:
         price: float,
         order_id: str | None = None,
         market: str = "spot",
+        position_side: str | None = None,
     ) -> Position:
         """Open a new position."""
         async with self._db_lock:
             entry_time = datetime.now(UTC)
             scoped_symbol = self._scope_symbol(symbol)
             pool = get_pool()
+            open_trade_side = "SELL" if position_side == "SHORT" else "BUY"
 
             async with pool.acquire() as conn:
                 async with conn.transaction():
                     position_id = await conn.fetchval(
                         """
-                        INSERT INTO positions (symbol, market, entry_time, entry_price, quantity, status, agent_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        INSERT INTO positions (
+                            symbol,
+                            market,
+                            position_side,
+                            entry_time,
+                            entry_price,
+                            quantity,
+                            status,
+                            agent_id
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                         RETURNING id
                         """,
                         scoped_symbol,
                         market,
+                        position_side,
                         entry_time,
                         price,
                         quantity,
@@ -233,7 +248,7 @@ class PortfolioManager:
                         entry_time,
                         scoped_symbol,
                         market,
-                        "BUY",
+                        open_trade_side,
                         quantity,
                         price,
                         order_id,
@@ -249,6 +264,7 @@ class PortfolioManager:
                 entry_price=price,
                 quantity=quantity,
                 status=PositionStatus.OPEN,
+                position_side=position_side,
             )
 
             self._positions[self._position_key(symbol, market)] = position
@@ -262,6 +278,8 @@ class PortfolioManager:
         price: float,
         order_id: str | None = None,
         market: str = "spot",
+        closing_side: str | None = None,
+        realized_pnl_override: float | None = None,
     ) -> tuple[Position, float]:
         """Close an existing position."""
         async with self._db_lock:
@@ -271,8 +289,18 @@ class PortfolioManager:
 
             position = self._positions[key]
             exit_time = datetime.now(UTC)
-            realized_pnl = position.close(price, exit_time)
+            if realized_pnl_override is None:
+                realized_pnl = position.close(price, exit_time)
+            else:
+                position.exit_price = price
+                position.exit_time = exit_time
+                position.status = PositionStatus.CLOSED
+                position.realized_pnl = realized_pnl_override
+                realized_pnl = realized_pnl_override
             pool = get_pool()
+            close_trade_side = closing_side or (
+                "BUY" if position.position_side == "SHORT" else "SELL"
+            )
 
             async with pool.acquire() as conn:
                 async with conn.transaction():
@@ -297,7 +325,7 @@ class PortfolioManager:
                         exit_time,
                         self._scope_symbol(symbol),
                         market,
-                        "SELL",
+                        close_trade_side,
                         position.quantity,
                         price,
                         order_id,
@@ -358,6 +386,10 @@ class PortfolioManager:
                     f"SELECT COUNT(*) FROM trades WHERE {agent_filter}",
                     agent_param,
                 )
+                last_trade_time = await conn.fetchval(
+                    f"SELECT MAX(time) FROM trades WHERE {agent_filter}",
+                    agent_param,
+                )
                 total_realized_pnl = await conn.fetchval(
                     f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions WHERE status = 'closed' AND {agent_filter}",
                     agent_param,
@@ -376,6 +408,7 @@ class PortfolioManager:
                     open_positions=int(open_positions or 0),
                     closed_positions=int(closed_positions or 0),
                     total_trades=int(total_trades or 0),
+                    last_trade_time=last_trade_time,
                     total_realized_pnl=float(total_realized_pnl or 0),
                     total_unrealized_pnl=0.0,
                     win_count=int(win_count or 0),

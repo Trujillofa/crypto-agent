@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
 
-from src.main import _resolve_strategy_config, load_settings
+from src.main import _build_strategy_registry, _resolve_strategy_config, load_settings
 from src.strategy import (
     BreakoutRetestStrategy,
     CCIBreakoutStrategy,
@@ -111,6 +112,24 @@ def test_replacement_config_resolves_breakout_retest():
     assert strategy_classes == [BreakoutRetestStrategy]
     assert len(strategy_configs) == 1
     assert aggregator_config["buy_threshold"] == 0.45
+
+
+def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
+    real_import_module = importlib.import_module
+
+    def fake_import_module(name: str, package: str | None = None):
+        if name in {"src.strategy.breakout_retest", "src.strategy.trend_pullback"}:
+            raise ImportError(name)
+        return real_import_module(name, package)
+
+    monkeypatch.setattr("src.main.importlib.import_module", fake_import_module)
+
+    strategy_registry = _build_strategy_registry()
+
+    assert "breakout_retest" not in strategy_registry
+    assert "trend_pullback" not in strategy_registry
+    assert strategy_registry["cci_breakout"] is CCIBreakoutStrategy
+    assert strategy_registry["vwap_reversion"] is VWAPReversionStrategy
 
 
 @pytest.mark.asyncio

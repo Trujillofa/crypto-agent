@@ -262,6 +262,7 @@ class PortfolioSummary:
         open_positions: Number of open positions
         closed_positions: Number of closed positions
         total_trades: Total number of trades
+        last_trade_time: Timestamp of the most recent recorded trade
         total_realized_pnl: Sum of all realized PnL
         total_unrealized_pnl: Sum of unrealized PnL for open positions
         win_count: Number of winning trades
@@ -272,6 +273,7 @@ class PortfolioSummary:
     open_positions: int = 0
     closed_positions: int = 0
     total_trades: int = 0
+    last_trade_time: datetime | None = None
     total_realized_pnl: float = 0.0
     total_unrealized_pnl: float = 0.0
     win_count: int = 0

@@ -129,6 +129,38 @@ class TestStrategyEngineSignalFlow:
     """Test StrategyEngine signal generation and callback."""
 
     @pytest.mark.asyncio
+    async def test_first_cycle_primes_crossover_state_from_previous_row(
+        self, mock_reader, engine_config
+    ):
+        """First evaluation after restart should not miss a valid crossover."""
+        mock_reader.fetch_latest.return_value = [
+            {
+                "ema_12": 49000.0,
+                "ema_26": 50000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+            },
+            {
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50600.0,
+            },
+        ]
+
+        engine = StrategyEngine(engine_config, mock_reader)
+        callback = AsyncMock()
+
+        await engine._evaluate_all(on_signal=callback)
+
+        callback.assert_called_once()
+        signal: Signal = callback.call_args[0][0]
+        assert signal.type == SignalType.BUY
+        assert signal.symbol == "BTCUSDT"
+
+    @pytest.mark.asyncio
     async def test_evaluate_buy_signal_triggers_callback(self, mock_reader, engine_config):
         """BUY signal from strategy triggers callback."""
         # First warmup the strategy (set initial state)

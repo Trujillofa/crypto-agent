@@ -387,6 +387,85 @@ class TestOnSignalEntryPath:
         )
 
     @pytest.mark.asyncio
+    async def test_futures_sell_from_flat_opens_short_position(self):
+        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"]))
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.8,
+            reason="Test short",
+            indicators={"atr_14": 250.0},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        pos = executor._positions.get("BTCUSDT:futures")
+        assert pos is not None
+        assert pos.side == "SHORT"
+        assert pos.sl_price == pytest.approx(50000.0 + 2.0 * 250.0)
+        assert pos.tp_price == pytest.approx(50000.0 - 4.5 * 250.0)
+        executor._portfolio_manager.open_position.assert_awaited_once_with(
+            symbol="BTCUSDT",
+            quantity=pytest.approx(0.004),
+            price=50000.0,
+            market="futures",
+            position_side="SHORT",
+        )
+
+    @pytest.mark.asyncio
+    async def test_spot_sell_from_flat_is_still_ignored(self):
+        executor = _make_executor()
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.8,
+            reason="No spot shorting",
+            indicators={},
+            trading_mode="spot",
+        )
+
+        await executor.on_signal(signal)
+
+        assert "BTCUSDT:spot" not in executor._positions
+        executor._portfolio_manager.open_position.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_short_close_records_buy_trade_alert(self):
+        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"]))
+        executor._positions["BTCUSDT:futures"] = PaperPosition(
+            symbol="BTCUSDT",
+            side="SHORT",
+            quantity=0.01,
+            entry_price=50000.0,
+            open_time=time.time(),
+            high_water_mark=49500.0,
+        )
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=49000.0,
+            confidence=1.0,
+            reason="take profit",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor._handle_sell(signal, market_tag="futures", is_futures=True)
+
+        executor._portfolio_manager.close_position.assert_awaited_once_with(
+            symbol="BTCUSDT",
+            price=49000.0,
+            market="futures",
+            closing_side="BUY",
+            realized_pnl_override=pytest.approx(29.804),
+        )
+        executor._notifier.send_trade_alert.assert_awaited_once()
+        assert executor._notifier.send_trade_alert.await_args.kwargs["side"] == "BUY"
+
+    @pytest.mark.asyncio
     async def test_futures_restore_uses_market_field_without_symbol_suffix(self):
         executor = _make_executor(
             _make_config(futures_symbols=["BTCUSDT"]),
@@ -432,4 +511,6 @@ class TestOnSignalEntryPath:
             symbol="BTCUSDT",
             price=50500.0,
             market="futures",
+            closing_side="SELL",
+            realized_pnl_override=pytest.approx(14.798),
         )

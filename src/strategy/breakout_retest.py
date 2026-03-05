@@ -139,18 +139,20 @@ class BreakoutRetestStrategy(BaseStrategy):
             and close_price > previous_close
             and rsi_14 >= self._reclaim_rsi_level
             and macd_hist >= self._retest_min_macd_hist
-            # Both RSI and MACD must show momentum improvement (was: or)
-            and rsi_14 > previous_rsi
-            and macd_hist > previous_macd_hist
-            # Must reclaim above levels by minimum margin
-            and reclaim_above_vwap >= self._min_reclaim_above_levels_pct
-            and reclaim_above_ema50 >= self._min_reclaim_above_levels_pct
+            # Momentum should not deteriorate during reclaim confirmation.
+            and rsi_14 >= previous_rsi
+            and macd_hist >= previous_macd_hist
+            # Must reclaim above both anchors, with minimum margin on at least one.
+            and reclaim_above_vwap > 0
+            and reclaim_above_ema50 > 0
+            and max(reclaim_above_vwap, reclaim_above_ema50) >= self._min_reclaim_above_levels_pct
             and ema50_extension_pct <= self._max_extension_after_retest_pct
         )
 
         if (
             in_uptrend
             and armed_bars_remaining > 0
+            and not breakout_impulse
             and retest_zone
             and reclaim_confirmed
             and not self._entered_this_arm.get(symbol, False)

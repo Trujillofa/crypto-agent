@@ -1,7 +1,9 @@
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.notifications.telegram import TelegramPollingConflict
 from src.overseer.agent import OverseerAgent
 
 
@@ -103,11 +105,16 @@ class TestOverseerAgent:
 
     @pytest.mark.asyncio
     async def test_cmd_status(self, overseer, mock_telegram):
+        timestamp = datetime(2026, 3, 4, 15, 25, tzinfo=UTC)
+        overseer._portfolio_manager.get_portfolio_summary.return_value.last_trade_time = timestamp
         result = await overseer._cmd_status()
         assert "AI Overseer Status" in result
         assert "<b>Mode:</b> paper" in result
         assert "<b>Kill Switch:</b> OFF" in result
-        assert "<b>Open Positions:</b> 2" in result
+        assert "<b>Open Positions Now:</b> 2" in result
+        assert "<b>Last Trade:</b> 2026-03-04 15:25 UTC" in result
+        assert "<b>Lifetime Trades:</b> 10" in result
+        assert "<b>Realized PnL (Lifetime):</b> 150.50 USDT" in result
 
     @pytest.mark.asyncio
     async def test_cmd_risk(self, overseer):
@@ -192,3 +199,12 @@ class TestOverseerAgent:
         }
         await overseer._handle_update(update)
         mock_telegram.send_alert.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_stops_on_telegram_polling_conflict(self, overseer, mock_telegram):
+        mock_telegram.get_updates.side_effect = TelegramPollingConflict("conflict")
+
+        await overseer.run()
+
+        assert overseer._running is False
+        mock_telegram.get_updates.assert_awaited_once()

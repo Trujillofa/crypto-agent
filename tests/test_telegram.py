@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.notifications.telegram import AlertLevel, TelegramConfig, TelegramNotifier
+from src.notifications.telegram import (
+    AlertLevel,
+    TelegramConfig,
+    TelegramNotifier,
+    TelegramPollingConflict,
+)
 
 
 @pytest.fixture
@@ -188,6 +193,16 @@ class TestGetUpdates:
 
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_get_updates_conflict_raises(self, notifier: TelegramNotifier) -> None:
+        with patch.object(
+            notifier,
+            "_fetch_updates",
+            new=AsyncMock(side_effect=TelegramPollingConflict("Conflict")),
+        ):
+            with pytest.raises(TelegramPollingConflict):
+                await notifier.get_updates()
+
 
 class TestSpecializedAlerts:
     """Test suite for specialized alert methods."""
@@ -231,6 +246,24 @@ class TestSpecializedAlerts:
             assert "BTCUSDT" in call_args[0][0]
             assert "BUY" in call_args[0][0]
             assert "+100.00" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_send_trade_alert_includes_sl_tp(self, notifier: TelegramNotifier) -> None:
+        """Trade alerts should include SL/TP when provided."""
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
+            await notifier.send_trade_alert(
+                symbol="SOLUSDT",
+                side="SELL",
+                quantity=64.45672191528547,
+                price=92.94,
+                market="paper-futures (3x)",
+                stop_loss=99.1457,
+                take_profit=78.9771,
+            )
+            mock_send.assert_called_once()
+            message = mock_send.call_args[0][0]
+            assert "<b>SL:</b> 99.1457" in message
+            assert "<b>TP:</b> 78.9771" in message
 
     @pytest.mark.asyncio
     async def test_send_daily_summary(self, notifier: TelegramNotifier) -> None:

@@ -26,7 +26,7 @@ telegram:
     - message
 
 ai:
-  enabled: true
+  enabled: false
   provider: xai
   model: grok-4-1-fast-reasoning
   polling_interval: 1.0
@@ -55,6 +55,8 @@ trading_execution:
   use_atr_sizing: true         # size by (equity × risk_pct) / (atr × multiplier) instead of flat USDT
   atr_multiplier: 1.0          # stop distance multiplier for sizing calc
   risk_per_trade_pct: 0.02     # 2% of current equity risked per trade
+  exit_rules:
+    time_stop_minutes: 240      # align with 4h strategy cadence (avoid 60m forced exits)
 
 futures:
   enabled: true  # Futures demo trading enabled
@@ -99,6 +101,11 @@ strategy:
         rsi_overbought: 60
   aggregator:
     min_agreement: 1
-    buy_threshold: 1.1          # used when price <= EMA200 (downtrend/unknown)
-    buy_threshold_uptrend: 1.1  # used when price > EMA200 — matches base (WFO-optimal; lower to test aggression)
-    sell_threshold: -1.0
+    buy_threshold: 0.8          # conservative paper-mode lowering to admit strong single-strategy votes
+    buy_threshold_uptrend: 0.8  # keep aligned with base threshold while validating live signal flow
+    sell_threshold: -0.6
+    sell_min_agreement: 2       # require at least two SELL voters before opening futures shorts
+    btc_regime_filter_enabled: true
+    btc_reference_symbol: BTCUSDT
+    btc_dump_threshold_pct: -1.0
+    btc_dump_require_below_ema200: true

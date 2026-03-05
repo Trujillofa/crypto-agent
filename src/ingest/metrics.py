@@ -29,7 +29,15 @@ ALLOWED_SYMBOLS = {
 
 ALLOWED_TIMEFRAMES = {"1m", "5m", "15m", "1h", "4h", "1d"}
 
-ALLOWED_STREAMS = {"klines", "trades", "book", "mark_price", "funding"}
+ALLOWED_STREAMS = {
+    "kline",
+    "kline_ws",
+    "klines",
+    "trades",
+    "book",
+    "mark_price",
+    "funding",
+}
 
 # Label value sanitization patterns
 INVALID_LABEL_CHARS = re.compile(r"[^a-zA-Z0-9_-]")
@@ -253,12 +261,59 @@ class IngestMetrics:
             ("error_type",),
         )
     )
+    websocket_latency_ms: Gauge = field(
+        default_factory=lambda: Gauge(
+            "ingest_websocket_latency_ms",
+            "WebSocket message latency in milliseconds",
+            ("symbol", "stream"),
+        )
+    )
+    websocket_last_message_age_seconds: Gauge = field(
+        default_factory=lambda: Gauge(
+            "ingest_websocket_last_message_age_seconds",
+            "Seconds since last received websocket message",
+            ("stream",),
+        )
+    )
+    websocket_reconnects_total: Counter = field(
+        default_factory=lambda: Counter(
+            "ingest_websocket_reconnects_total",
+            "Total number of websocket reconnect attempts",
+            ("stream",),
+        )
+    )
+    api_rate_limit_remaining: Gauge = field(
+        default_factory=lambda: Gauge(
+            "ingest_api_rate_limit_remaining",
+            "Estimated remaining Binance API weight in current minute window",
+            (),
+        )
+    )
+    api_used_weight_1m: Gauge = field(
+        default_factory=lambda: Gauge(
+            "ingest_api_used_weight_1m",
+            "Binance API used request weight in current minute window",
+            (),
+        )
+    )
 
     def __post_init__(self) -> None:
         self.registry.counters.append(self.messages_total)
         self.registry.gauges.append(self.insert_latency_seconds)
         self.registry.gauges.append(self.last_open_time)
         self.registry.counters.append(self.errors_total)
+        self.registry.gauges.append(self.websocket_latency_ms)
+        self.registry.gauges.append(self.websocket_last_message_age_seconds)
+        self.registry.counters.append(self.websocket_reconnects_total)
+        self.registry.gauges.append(self.api_rate_limit_remaining)
+        self.registry.gauges.append(self.api_used_weight_1m)
+        # Ensure baseline series exist for dashboards and alerts even before first event.
+        self.websocket_last_message_age_seconds.set(0.0, labels={"stream": "kline"})
+        self.websocket_last_message_age_seconds.set(0.0, labels={"stream": "mark_price"})
+        self.websocket_reconnects_total.with_labels(stream="kline")
+        self.websocket_reconnects_total.with_labels(stream="mark_price")
+        self.api_rate_limit_remaining.set(2400.0)
+        self.api_used_weight_1m.set(0.0)
 
 
 class MetricsServer:

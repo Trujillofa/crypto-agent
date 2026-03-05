@@ -52,6 +52,7 @@ class StrategyEngine:
         self._strategies: dict[str, list[BaseStrategy]] = {}
         self._running = False
         self._last_signal_time: dict[str, float] = {}
+        self._primed_symbols: set[str] = set()
         self._aggregator = SignalAggregator(config.aggregator_config, config.default_trading_mode)
 
         for symbol in config.symbols:
@@ -108,12 +109,27 @@ class StrategyEngine:
         evaluated = 0
         skipped = 0
         signals_fired = 0
+        market_context = await self._fetch_market_context()
 
         for symbol in self._config.symbols:
-            indicators = await self._fetch_indicators(symbol)
-            if indicators is None:
+            indicator_rows = await self._fetch_indicator_rows(symbol)
+            if indicator_rows is None:
                 skipped += 1
                 continue
+            if symbol not in self._primed_symbols:
+                previous_row = indicator_rows[0]
+                for strategy in self._strategies.get(symbol, []):
+                    try:
+                        await strategy.evaluate(symbol, previous_row)
+                    except Exception as exc:  # noqa: BLE001
+                        self._logger.error(
+                            "Strategy %s warm-start failed: %s",
+                            strategy.get_name(),
+                            exc,
+                        )
+                self._primed_symbols.add(symbol)
+
+            indicators = indicator_rows[-1]
 
             evaluated += 1
 
@@ -157,6 +173,7 @@ class StrategyEngine:
                     generated_signals,
                     ema_200=indicators.get("ema_200"),
                     symbol_config=symbol_config,
+                    market_context=market_context,
                 )
                 if final_signal.type == SignalType.BUY:
                     price = indicators["close_price"]
@@ -228,14 +245,39 @@ class StrategyEngine:
             signals_fired,
         )
 
-    async def _fetch_indicators(self, symbol: str) -> dict[str, float] | None:
-        """Fetch latest indicators for symbol from database.
+    async def _fetch_market_context(self) -> Mapping[str, float | bool | str | None]:
+        reference_symbol = self._aggregator.get_market_reference_symbol()
+        if not reference_symbol:
+            return {}
+        rows = await self._reader.fetch_latest(reference_symbol, self._config.timeframe, limit=2)
+        if len(rows) < 2:
+            return {}
+
+        previous_row = rows[0]
+        latest_row = rows[-1]
+        previous_price = previous_row.get("close_price")
+        latest_price = latest_row.get("close_price")
+        if not isinstance(previous_price, float) or not isinstance(latest_price, float):
+            return {}
+        if previous_price == 0.0:
+            return {}
+
+        change_pct = ((latest_price - previous_price) / previous_price) * 100.0
+        return {
+            "btc_symbol": reference_symbol,
+            "btc_price": latest_price,
+            "btc_ema_200": latest_row.get("ema_200"),
+            "btc_change_pct": change_pct,
+        }
+
+    async def _fetch_indicator_rows(self, symbol: str) -> list[dict[str, float]] | None:
+        """Fetch the two latest indicator rows for symbol from the database.
 
         Args:
             symbol: Trading pair symbol
 
         Returns:
-            Dict with ema_12, ema_26, ema_200, close_price keys.
+            Two oldest-first rows for crossover-aware strategy evaluation.
             None if insufficient data (< 2 rows for crossover detection).
         """
         rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
@@ -252,7 +294,14 @@ class StrategyEngine:
                 ", ".join(missing),
             )
             return None
-        return latest  # Return latest row (strategy handles crossover via state)
+        return rows
+
+    async def _fetch_indicators(self, symbol: str) -> dict[str, float] | None:
+        """Fetch the latest indicator row for symbol from the database."""
+        rows = await self._fetch_indicator_rows(symbol)
+        if rows is None:
+            return None
+        return rows[-1]
 
     def get_strategy_names(self) -> list[str]:
         """Get names of all active strategies."""

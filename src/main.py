@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import os
 import signal
 from collections.abc import Mapping
@@ -34,7 +35,6 @@ from src.risk.manager import RiskManager
 from src.strategy import (
     BaseStrategy,
     BollingerBounceStrategy,
-    BreakoutRetestStrategy,
     CCIBreakoutStrategy,
     EngineConfig,
     MACDHistogramStrategy,
@@ -42,12 +42,26 @@ from src.strategy import (
     RSIReversalStrategy,
     SimpleMACrossoverStrategy,
     StrategyEngine,
-    TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
 from src.strategy.lifecycle import LifecycleManager
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
+
+
+async def _cancel_background_tasks(
+    *tasks: asyncio.Task[object] | None,
+) -> None:
+    """Cancel and await background tasks, skipping missing optional tasks."""
+    active_tasks = [task for task in tasks if task is not None]
+
+    for task in active_tasks:
+        if not task.done():
+            task.cancel()
+
+    for task in active_tasks:
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 @dataclass(frozen=True)
@@ -534,19 +548,10 @@ def _resolve_strategy_config(
             default_strategy_classes,
             default_strategy_configs,
             default_aggregator_config,
+            strategy_settings.per_symbol_aggregator_config,
         )
 
-    strategy_registry: dict[str, type[BaseStrategy]] = {
-        "simple_ma": SimpleMACrossoverStrategy,
-        "breakout_retest": BreakoutRetestStrategy,
-        "trend_pullback": TrendPullbackStrategy,
-        "rsi_reversal": RSIReversalStrategy,
-        "macd_histogram": MACDHistogramStrategy,
-        "bollinger_bounce": BollingerBounceStrategy,
-        "momentum": MomentumStrategy,
-        "cci_breakout": CCIBreakoutStrategy,
-        "vwap_reversion": VWAPReversionStrategy,
-    }
+    strategy_registry = _build_strategy_registry()
 
     strategy_classes: list[type[BaseStrategy]] = []
     strategy_configs: list[Mapping[str, object]] = []
@@ -570,6 +575,32 @@ def _resolve_strategy_config(
         aggregator_config,
         strategy_settings.per_symbol_aggregator_config,
     )
+
+
+def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
+    strategy_registry: dict[str, type[BaseStrategy]] = {
+        "simple_ma": SimpleMACrossoverStrategy,
+        "rsi_reversal": RSIReversalStrategy,
+        "macd_histogram": MACDHistogramStrategy,
+        "bollinger_bounce": BollingerBounceStrategy,
+        "momentum": MomentumStrategy,
+        "cci_breakout": CCIBreakoutStrategy,
+        "vwap_reversion": VWAPReversionStrategy,
+    }
+
+    optional_strategies = {
+        "breakout_retest": ("src.strategy.breakout_retest", "BreakoutRetestStrategy"),
+        "trend_pullback": ("src.strategy.trend_pullback", "TrendPullbackStrategy"),
+    }
+    for strategy_name, (module_name, class_name) in optional_strategies.items():
+        try:
+            module = importlib.import_module(module_name)
+            strategy_class = getattr(module, class_name)
+        except (ImportError, AttributeError):
+            continue
+        strategy_registry[strategy_name] = strategy_class
+
+    return strategy_registry
 
 
 async def run() -> None:
@@ -717,6 +748,11 @@ async def run() -> None:
             use_atr_sizing=settings.trading_execution.use_atr_sizing,
             atr_multiplier=settings.trading_execution.atr_multiplier,
             risk_per_trade_pct=settings.trading_execution.risk_per_trade_pct,
+            time_stop_minutes=_as_float(
+                settings.exit_rules.get("time_stop_minutes"),
+                "trading_execution.exit_rules.time_stop_minutes",
+                default=240.0,
+            ),
         )
         paper_executor = PaperExecutor(
             config=paper_config,
@@ -1033,22 +1069,6 @@ async def run() -> None:
 
         await stop_event.wait()
 
-        # Cancel all tasks
-        health_task.cancel()
-        ingest_task.cancel()
-        risk_task.cancel()
-        indicator_task.cancel()
-        trading_task.cancel()
-        strategy_task.cancel()
-        if paper_exit_task:
-            paper_exit_task.cancel()
-        if overseer_task:
-            overseer_task.cancel()
-        if futures_task:
-            futures_task.cancel()
-        if futures_ingest_task:
-            futures_ingest_task.cancel()
-
         indicator_computer.stop()
         if paper_executor:
             paper_executor.stop()
@@ -1059,22 +1079,18 @@ async def run() -> None:
         if futures_executor:
             futures_executor.stop()
 
-        with contextlib.suppress(asyncio.CancelledError):
-            await health_task
-            await ingest_task
-            await risk_task
-            await indicator_task
-            if trading_task:
-                await trading_task
-            await strategy_task
-            if paper_exit_task:
-                await paper_exit_task
-            if overseer_task:
-                await overseer_task
-            if futures_task:
-                await futures_task
-            if futures_ingest_task:
-                await futures_ingest_task
+        await _cancel_background_tasks(
+            health_task,
+            ingest_task,
+            risk_task,
+            indicator_task,
+            trading_task,
+            strategy_task,
+            paper_exit_task,
+            overseer_task,
+            futures_task,
+            futures_ingest_task,
+        )
 
         await close_pool()
 

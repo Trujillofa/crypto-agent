@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from typing import Any
@@ -30,6 +32,9 @@ class BinanceWebSocketIngestor:
         metrics: IngestMetrics,
         base_url: str | None = None,
         stream_type: str = "kline",
+        stale_timeout_seconds: float = 120.0,
+        reconnect_base_delay_seconds: float = 1.0,
+        reconnect_max_delay_seconds: float = 30.0,
     ) -> None:
         self._symbols: list[str] = list(symbols)
         self._timeframe: str = timeframe
@@ -37,6 +42,12 @@ class BinanceWebSocketIngestor:
         self._logger = get_logger(self.__class__.__name__)
         self._base_url: str = base_url or self.SPOT_WS_URL
         self._stream_type: str = stream_type
+        self._stale_timeout_seconds: float = max(stale_timeout_seconds, 1.0)
+        self._reconnect_base_delay_seconds: float = max(reconnect_base_delay_seconds, 0.5)
+        self._reconnect_max_delay_seconds: float = max(
+            reconnect_max_delay_seconds,
+            self._reconnect_base_delay_seconds,
+        )
         self._session: aiohttp.ClientSession | None = None
         self._running: bool = False
         self._mark_price_callback: Callable[[str, float], Awaitable[None]] | None = None
@@ -84,17 +95,47 @@ class BinanceWebSocketIngestor:
 
         self._logger.info(f"Connecting to WebSocket stream: {url}")
 
+        reconnect_attempt = 0
         while self._running:
             try:
-                async with self._session.ws_connect(url) as ws:
+                async with self._session.ws_connect(url, heartbeat=30) as ws:
                     self._logger.info("WebSocket connected")
+                    self._metrics.websocket_last_message_age_seconds.set(
+                        0.0, labels={"stream": self._stream_type}
+                    )
+                    reconnect_attempt = 0
+                    last_message_at = time.monotonic()
 
-                    async for msg in ws:
+                    while self._running:
+                        try:
+                            msg = await ws.receive(timeout=self._stale_timeout_seconds)
+                        except TimeoutError:
+                            idle_seconds = time.monotonic() - last_message_at
+                            self._logger.warning(
+                                "WebSocket stale for %.1fs (stream=%s), reconnecting",
+                                idle_seconds,
+                                self._stream_type,
+                            )
+                            self._metrics.errors_total.inc(labels={"error_type": "websocket_stale"})
+                            self._metrics.websocket_last_message_age_seconds.set(
+                                idle_seconds, labels={"stream": self._stream_type}
+                            )
+                            await ws.close()
+                            break
+
+                        last_message_at = time.monotonic()
+                        self._metrics.websocket_last_message_age_seconds.set(
+                            0.0, labels={"stream": self._stream_type}
+                        )
                         if not self._running:
                             break
 
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             await self._handle_message(msg.data, on_candle)
+                        elif msg.type == aiohttp.WSMsgType.PING:
+                            await ws.pong(msg.data)
+                        elif msg.type == aiohttp.WSMsgType.PONG:
+                            continue
                         elif msg.type == aiohttp.WSMsgType.ERROR:
                             self._logger.error(
                                 f"WebSocket connection closed with error: {ws.exception()}"
@@ -107,24 +148,34 @@ class BinanceWebSocketIngestor:
             except Exception as exc:
                 self._logger.error(f"WebSocket connection failed: {exc}")
                 self._metrics.errors_total.inc(labels={"error_type": "websocket_error"})
-                if self._running:
-                    await asyncio.sleep(5)  # Reconnect delay
+            if self._running:
+                reconnect_attempt += 1
+                self._metrics.websocket_reconnects_total.inc(labels={"stream": self._stream_type})
+                delay = self._compute_reconnect_delay(reconnect_attempt)
+                self._logger.info(
+                    "WebSocket reconnect attempt %d in %.2fs (stream=%s)",
+                    reconnect_attempt,
+                    delay,
+                    self._stream_type,
+                )
+                await asyncio.sleep(delay)
 
     async def _handle_message(self, raw_data: str, on_candle: WriteCallback) -> None:
         """Process incoming WebSocket message."""
         try:
             data = json.loads(raw_data)
+            received_at_ms = datetime.now(UTC).timestamp() * 1000.0
 
             # Handle all-markets array (for futures mark price)
             if isinstance(data, list):
                 for item in data:
                     if isinstance(item, dict) and item.get("e") == "markPriceUpdate":
-                        await self._handle_mark_price(item)
+                        await self._handle_mark_price(item, received_at_ms)
                 return
 
             # Handle single mark price update (for futures)
             if data.get("e") == "markPriceUpdate":
-                await self._handle_mark_price(data)
+                await self._handle_mark_price(data, received_at_ms)
                 return
 
             # Check for kline event
@@ -133,6 +184,13 @@ class BinanceWebSocketIngestor:
 
             kline = data.get("k", {})
             symbol = data.get("s")
+            if symbol:
+                self._record_websocket_latency(
+                    symbol=symbol,
+                    stream="kline_ws",
+                    event_time_ms=data.get("E"),
+                    received_at_ms=received_at_ms,
+                )
 
             # Only process closed candles to ensure final data
             # "x": true means the candle is closed
@@ -153,13 +211,20 @@ class BinanceWebSocketIngestor:
             self._logger.error(f"Error handling message: {exc}")
             self._metrics.errors_total.inc(labels={"error_type": "message_processing"})
 
-    async def _handle_mark_price(self, data: dict[str, Any]) -> None:
+    async def _handle_mark_price(self, data: dict[str, Any], received_at_ms: float) -> None:
         """Handle mark price update for futures positions.
 
         Args:
             data: Mark price update event data
         """
         symbol = data.get("s")
+        if symbol:
+            self._record_websocket_latency(
+                symbol=symbol,
+                stream="mark_price",
+                event_time_ms=data.get("E"),
+                received_at_ms=received_at_ms,
+            )
         mark_price = float(data.get("p", 0))
         funding_rate = float(data.get("r", 0))
 
@@ -198,3 +263,29 @@ class BinanceWebSocketIngestor:
     def _to_datetime(ms_since_epoch: int) -> datetime:
         """Convert milliseconds since epoch to datetime."""
         return datetime.fromtimestamp(ms_since_epoch / 1000, tz=UTC)
+
+    def _record_websocket_latency(
+        self,
+        symbol: str,
+        stream: str,
+        event_time_ms: float | int | None,
+        received_at_ms: float,
+    ) -> None:
+        if not event_time_ms:
+            return
+        try:
+            latency_ms = max(0.0, received_at_ms - float(event_time_ms))
+        except (TypeError, ValueError):
+            return
+        self._metrics.websocket_latency_ms.set(
+            latency_ms,
+            labels={"symbol": symbol, "stream": stream},
+        )
+
+    def _compute_reconnect_delay(self, attempt: int) -> float:
+        base_delay = min(
+            self._reconnect_base_delay_seconds * (2 ** max(attempt - 1, 0)),
+            self._reconnect_max_delay_seconds,
+        )
+        jitter = random.uniform(0.0, base_delay * 0.25)
+        return min(base_delay + jitter, self._reconnect_max_delay_seconds)

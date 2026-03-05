@@ -24,6 +24,15 @@ class SignalAggregator:
         )
         self._sell_threshold = float(self._config.get("sell_threshold", -0.5))
         self._min_agreement = int(self._config.get("min_agreement", 1))
+        self._sell_min_agreement = int(self._config.get("sell_min_agreement", self._min_agreement))
+        self._btc_regime_filter_enabled = bool(self._config.get("btc_regime_filter_enabled", False))
+        self._btc_reference_symbol = str(
+            self._config.get("btc_reference_symbol", "BTCUSDT")
+        ).upper()
+        self._btc_dump_threshold_pct = float(self._config.get("btc_dump_threshold_pct", -1.0))
+        self._btc_dump_require_below_ema200 = bool(
+            self._config.get("btc_dump_require_below_ema200", True)
+        )
 
     def aggregate(
         self,
@@ -31,6 +40,7 @@ class SignalAggregator:
         signals: list[Signal],
         ema_200: float | None = None,
         symbol_config: Mapping[str, object] | None = None,
+        market_context: Mapping[str, float | bool | str | None] | None = None,
     ) -> Signal:
         """Process a list of signals and return a single consolidated signal.
 
@@ -39,6 +49,7 @@ class SignalAggregator:
             signals: List of signals from individual strategies.
             ema_200: EMA200 value for trend detection.
             symbol_config: Per-symbol config overrides for aggregator thresholds.
+            market_context: Optional market context (e.g. BTC regime values).
         """
         if not signals:
             return self._create_hold(symbol, 0.0, "No signals provided")
@@ -52,6 +63,10 @@ class SignalAggregator:
         buy_threshold_uptrend = self._buy_threshold_uptrend
         sell_threshold = self._sell_threshold
         min_agreement = self._min_agreement
+        sell_min_agreement = self._sell_min_agreement
+        btc_regime_filter_enabled = self._btc_regime_filter_enabled
+        btc_dump_threshold_pct = self._btc_dump_threshold_pct
+        btc_dump_require_below_ema200 = self._btc_dump_require_below_ema200
 
         if symbol_config:
             buy_threshold = float(symbol_config.get("buy_threshold", buy_threshold))
@@ -60,6 +75,19 @@ class SignalAggregator:
             )
             sell_threshold = float(symbol_config.get("sell_threshold", sell_threshold))
             min_agreement = int(symbol_config.get("min_agreement", min_agreement))
+            sell_min_agreement = int(symbol_config.get("sell_min_agreement", sell_min_agreement))
+            btc_regime_filter_enabled = bool(
+                symbol_config.get("btc_regime_filter_enabled", btc_regime_filter_enabled)
+            )
+            btc_dump_threshold_pct = float(
+                symbol_config.get("btc_dump_threshold_pct", btc_dump_threshold_pct)
+            )
+            btc_dump_require_below_ema200 = bool(
+                symbol_config.get(
+                    "btc_dump_require_below_ema200",
+                    btc_dump_require_below_ema200,
+                )
+            )
 
         # Dynamic buy threshold: more aggressive in confirmed uptrend (price > EMA200)
         in_uptrend = ema_200 is not None and current_price > ema_200
@@ -67,6 +95,8 @@ class SignalAggregator:
 
         total_score = 0.0
         active_signals = 0
+        buy_votes = 0
+        sell_votes = 0
         reasons = []
         all_indicators = {}
 
@@ -75,9 +105,11 @@ class SignalAggregator:
             if sig.type == SignalType.BUY:
                 score = 1.0 * sig.confidence
                 active_signals += 1
+                buy_votes += 1
             elif sig.type == SignalType.SELL:
                 score = -1.0 * sig.confidence
                 active_signals += 1
+                sell_votes += 1
 
             total_score += score
 
@@ -88,28 +120,46 @@ class SignalAggregator:
 
         final_type = SignalType.HOLD
         final_confidence = 0.0
-        final_reason = f"Score: {total_score:.2f} (Active: {active_signals})"
+        final_reason = f"Score: {total_score:.2f} (Active: {active_signals}, BUY: {buy_votes}, SELL: {sell_votes})"
 
-        if active_signals >= min_agreement:
-            if total_score >= effective_buy_threshold:
+        if total_score >= effective_buy_threshold:
+            if buy_votes >= min_agreement:
                 final_type = SignalType.BUY
                 final_confidence = min(abs(total_score), 1.0)
                 final_reason = (
                     f"Consensus BUY | Score: {total_score:.2f} | Sources: {', '.join(reasons)}"
                 )
-
-            elif total_score <= sell_threshold:
+            elif reasons:
+                final_reason += f" | Insufficient BUY agreement (need {min_agreement})"
+        elif total_score <= sell_threshold:
+            if sell_votes >= sell_min_agreement:
                 final_type = SignalType.SELL
                 final_confidence = min(abs(total_score), 1.0)
                 final_reason = (
                     f"Consensus SELL | Score: {total_score:.2f} | Sources: {', '.join(reasons)}"
                 )
-            else:
-                if reasons:
-                    final_reason += f" | Mixed/Weak Signals: {', '.join(reasons)}"
+            elif reasons:
+                final_reason += f" | Insufficient SELL agreement (need {sell_min_agreement})"
         else:
             if reasons:
-                final_reason += " | Insufficient agreement"
+                final_reason += f" | Mixed/Weak Signals: {', '.join(reasons)}"
+
+        if final_type == SignalType.BUY and self._is_buy_blocked_by_btc_regime(
+            symbol=symbol,
+            market_context=market_context,
+            btc_regime_filter_enabled=btc_regime_filter_enabled,
+            btc_dump_threshold_pct=btc_dump_threshold_pct,
+            btc_dump_require_below_ema200=btc_dump_require_below_ema200,
+        ):
+            final_type = SignalType.HOLD
+            final_confidence = 0.0
+            btc_change_pct = market_context.get("btc_change_pct") if market_context else None
+            btc_price = market_context.get("btc_price") if market_context else None
+            btc_ema_200 = market_context.get("btc_ema_200") if market_context else None
+            final_reason = (
+                "Blocked by BTC Regime Filter"
+                f" (btc_change_pct={btc_change_pct}, btc_price={btc_price}, btc_ema_200={btc_ema_200})"
+            )
         return Signal(
             type=final_type,
             symbol=symbol,
@@ -142,3 +192,47 @@ class SignalAggregator:
                 self._default_trading_mode,
             )
         return self._default_trading_mode
+
+    def get_market_reference_symbol(self) -> str | None:
+        if not self._btc_regime_filter_enabled:
+            return None
+        return self._btc_reference_symbol
+
+    def _is_buy_blocked_by_btc_regime(
+        self,
+        symbol: str,
+        market_context: Mapping[str, float | bool | str | None] | None,
+        btc_regime_filter_enabled: bool,
+        btc_dump_threshold_pct: float,
+        btc_dump_require_below_ema200: bool,
+    ) -> bool:
+        if not btc_regime_filter_enabled:
+            return False
+        if symbol.upper() == self._btc_reference_symbol:
+            return False
+        if not market_context:
+            return False
+
+        btc_change_pct = market_context.get("btc_change_pct")
+        btc_price = market_context.get("btc_price")
+        btc_ema_200 = market_context.get("btc_ema_200")
+        if btc_change_pct is None:
+            return False
+
+        try:
+            btc_change_pct_value = float(btc_change_pct)
+        except (TypeError, ValueError):
+            return False
+
+        if btc_change_pct_value > btc_dump_threshold_pct:
+            return False
+
+        if not btc_dump_require_below_ema200:
+            return True
+
+        try:
+            if btc_price is None or btc_ema_200 is None:
+                return False
+            return float(btc_price) < float(btc_ema_200)
+        except (TypeError, ValueError):
+            return False

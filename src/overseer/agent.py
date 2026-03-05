@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
-from src.notifications.telegram import AlertLevel, TelegramNotifier
+from src.notifications.telegram import AlertLevel, TelegramNotifier, TelegramPollingConflict
 from src.overseer.prompts import build_system_prompt
 from src.overseer.xai import XAIClient
 from src.portfolio.manager import PortfolioManager
@@ -56,6 +56,10 @@ class OverseerAgent:
                     if isinstance(update_id, int):
                         self._offset = update_id + 1
                     await self._handle_update(update)
+            except TelegramPollingConflict as exc:
+                self._running = False
+                self._logger.warning("AI overseer disabled: %s", exc)
+                return
             except asyncio.CancelledError:
                 self._logger.info("AI overseer loop cancelled")
                 raise
@@ -136,15 +140,19 @@ class OverseerAgent:
         ]
         breakers = ", ".join(active_breakers) if active_breakers else "none"
         kill_switch = "ON" if risk.get("kill_switch_active") else "OFF"
+        last_trade_text = "never"
+        if summary.last_trade_time is not None:
+            last_trade_text = summary.last_trade_time.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
         return (
             "<b>AI Overseer Status</b>\n"
             f"<b>Mode:</b> {self._mode}\n"
             f"<b>Kill Switch:</b> {kill_switch}\n"
             f"<b>Active Breakers:</b> {breakers}\n"
-            f"<b>Open Positions:</b> {summary.open_positions}\n"
-            f"<b>Total Trades:</b> {summary.total_trades}\n"
-            f"<b>Realized PnL:</b> {summary.total_realized_pnl:.2f} USDT"
+            f"<b>Open Positions Now:</b> {summary.open_positions}\n"
+            f"<b>Last Trade:</b> {last_trade_text}\n"
+            f"<b>Lifetime Trades:</b> {summary.total_trades}\n"
+            f"<b>Realized PnL (Lifetime):</b> {summary.total_realized_pnl:.2f} USDT"
         )
 
     def _cmd_risk(self) -> str:

@@ -149,6 +149,16 @@ class BinanceIngestor:
                 # Update rate limiter from response headers
                 headers = dict(response.headers.items())
                 self._rate_limiter.update_from_response(headers)
+                used_weight = headers.get("X-MBX-USED-WEIGHT-1M")
+                if used_weight is not None:
+                    try:
+                        used_weight_value = float(used_weight)
+                        self._metrics.api_used_weight_1m.set(used_weight_value)
+                        self._metrics.api_rate_limit_remaining.set(
+                            max(0.0, 2400.0 - used_weight_value)
+                        )
+                    except ValueError:
+                        self._logger.debug("Invalid X-MBX-USED-WEIGHT-1M header: %s", used_weight)
 
                 if response.status == 429:  # Rate limited
                     self._rate_limiter.record_error(429)

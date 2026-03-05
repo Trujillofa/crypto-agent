@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -44,6 +45,45 @@ async def test_portfolio_manager_open_close():
             assert closed_position.realized_pnl == pytest.approx(19.58)
             assert pnl == pytest.approx(19.58)
             assert manager.has_position("BTCUSDT") is False
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_close_uses_pnl_override():
+    """close_position should persist supplied PnL override when provided."""
+    manager = PortfolioManager({})
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.fetch.return_value = []
+    mock_conn.fetchval.return_value = 11
+
+    @asynccontextmanager
+    async def _mock_transaction():
+        yield
+
+    mock_conn.transaction = _mock_transaction
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        async with manager:
+            await manager.open_position(
+                symbol="BTCUSDT",
+                quantity=0.1,
+                price=50000.0,
+                market="futures",
+                position_side="SHORT",
+            )
+
+            closed_position, pnl = await manager.close_position(
+                symbol="BTCUSDT",
+                price=49000.0,
+                market="futures",
+                realized_pnl_override=29.804,
+            )
+
+            assert closed_position.is_closed is True
+            assert closed_position.realized_pnl == pytest.approx(29.804)
+            assert pnl == pytest.approx(29.804)
 
 
 @pytest.mark.asyncio
@@ -110,3 +150,77 @@ async def test_portfolio_manager_preserves_futures_market():
             assert insert_call is not None
             assert insert_call.args[1] == "BTCUSDT"
             assert insert_call.args[2] == "futures"
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_persists_short_futures_side():
+    """Short futures positions should store side and close with BUY."""
+    manager = PortfolioManager({})
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.fetch.return_value = []
+    mock_conn.fetchval.return_value = 9
+
+    @asynccontextmanager
+    async def _mock_transaction():
+        yield
+
+    mock_conn.transaction = _mock_transaction
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        async with manager:
+            position = await manager.open_position(
+                symbol="BTCUSDT",
+                quantity=0.01,
+                price=50000.0,
+                market="futures",
+                position_side="SHORT",
+            )
+
+            assert position.position_side == "SHORT"
+
+            open_call = mock_conn.fetchval.call_args
+            assert open_call is not None
+            assert open_call.args[3] == "SHORT"
+
+            await manager.close_position(
+                symbol="BTCUSDT",
+                price=49000.0,
+                market="futures",
+            )
+
+            insert_trade_sql = mock_conn.execute.call_args_list[-1]
+            assert insert_trade_sql.args[4] == "BUY"
+
+
+@pytest.mark.asyncio
+async def test_portfolio_summary_includes_last_trade_time():
+    manager = PortfolioManager({})
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.fetch.return_value = []
+    mock_conn.fetchval.side_effect = [
+        3,
+        1,
+        2,
+        7,
+        datetime(2026, 3, 4, 15, 25, tzinfo=UTC),
+        -101.03,
+        2,
+        1,
+    ]
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        async with manager:
+            summary = await manager.get_portfolio_summary()
+
+    assert summary.total_positions == 3
+    assert summary.open_positions == 1
+    assert summary.closed_positions == 2
+    assert summary.total_trades == 7
+    assert summary.last_trade_time == datetime(2026, 3, 4, 15, 25, tzinfo=UTC)
+    assert summary.total_realized_pnl == pytest.approx(-101.03)

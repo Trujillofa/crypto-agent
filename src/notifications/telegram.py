@@ -32,6 +32,10 @@ class AlertLevel(Enum):
     CRITICAL = "critical"
 
 
+class TelegramPollingConflict(RuntimeError):
+    """Raised when another consumer is already polling getUpdates for this bot."""
+
+
 @dataclass(frozen=True)
 class TelegramConfig:
     """Telegram bot configuration."""
@@ -146,7 +150,7 @@ class TelegramNotifier:
         try:
             updates = await self._fetch_updates(offset, timeout, allowed_updates)
             return updates
-        except RuntimeError:
+        except (RuntimeError, TelegramPollingConflict):
             raise  # Auth errors must propagate for caller backoff
         except Exception as exc:
             self._logger.error("Failed to fetch Telegram updates: %s", exc)
@@ -206,6 +210,8 @@ Trading may be paused until conditions normalize.
         price: float,
         pnl: float | None = None,
         market: str | None = None,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
     ) -> bool:
         """Send trade execution alert.
 
@@ -215,6 +221,8 @@ Trading may be paused until conditions normalize.
             quantity: Trade quantity
             price: Execution price
             pnl: Profit/loss if closing position
+            stop_loss: Stop loss level (if available)
+            take_profit: Take profit level (if available)
 
         Returns:
             True if message was sent successfully
@@ -224,6 +232,8 @@ Trading may be paused until conditions normalize.
             pnl_emoji = "+" if pnl >= 0 else ""
             pnl_text = f"\n<b>PnL:</b> {pnl_emoji}{pnl:.2f} USDT"
         market_text = f"<b>Market:</b> {market}\n" if market else ""
+        sl_text = f"\n<b>SL:</b> {stop_loss:.4f}" if stop_loss is not None else ""
+        tp_text = f"\n<b>TP:</b> {take_profit:.4f}" if take_profit is not None else ""
 
         message = f"""
 <b>Trade Executed</b>
@@ -231,7 +241,7 @@ Trading may be paused until conditions normalize.
 <b>Symbol:</b> {symbol}
 {market_text}<b>Side:</b> {side}
 <b>Quantity:</b> {quantity}
-<b>Price:</b> {price}{pnl_text}
+<b>Price:</b> {price}{sl_text}{tp_text}{pnl_text}
         """.strip()
 
         return await self.send_alert(message, AlertLevel.INFO)
@@ -351,6 +361,10 @@ Trading may be paused until conditions normalize.
         async with session.post(url, json=payload) as response:
             if response.status != 200:
                 error_text = await response.text()
+                if response.status == 409:
+                    raise TelegramPollingConflict(
+                        "Telegram getUpdates conflict: another consumer is polling this bot"
+                    )
                 self._logger.error(
                     "Telegram API getUpdates error: %s - %s",
                     response.status,
