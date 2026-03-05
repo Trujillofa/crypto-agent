@@ -5,7 +5,7 @@ providing an additional safety layer before any exchange interaction.
 
 Workflow:
 1. stage(order)   - Order created and queued for review
-2. commit(hash)   - Order explicitly approved, ready for execution
+2. commit(order_id) -> hash  - Order explicitly approved, ready for execution
 3. push(order)    - Order sent to exchange
 
 Each commit generates an 8-character hash for traceability.
@@ -53,6 +53,8 @@ class StagedOrder:
         created_at: Timestamp when staged
         committed_at: Timestamp when committed
         pushed_at: Timestamp when pushed to exchange
+        filled_at: Timestamp when order was filled
+        exchange_order_id: Exchange order ID (after push)
         exchange_order_id: Exchange order ID (after push)
         error: Error message if failed
         metadata: Additional context
@@ -71,6 +73,7 @@ class StagedOrder:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     committed_at: datetime | None = None
     pushed_at: datetime | None = None
+    filled_at: datetime | None = None
     exchange_order_id: str | None = None
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -91,6 +94,7 @@ class StagedOrder:
             "created_at": self.created_at.isoformat(),
             "committed_at": self.committed_at.isoformat() if self.committed_at else None,
             "pushed_at": self.pushed_at.isoformat() if self.pushed_at else None,
+            "filled_at": self.filled_at.isoformat() if self.filled_at else None,
             "exchange_order_id": self.exchange_order_id,
             "error": self.error,
             "metadata": self.metadata,
@@ -158,6 +162,10 @@ class StagedOrderQueue:
         )
 
         self._orders[order_id] = order
+        # Trim history to max_history
+        if len(self._orders) > self._max_history:
+            oldest_id = next(iter(self._orders))
+            del self._orders[oldest_id]
         self._logger.info(
             "Order staged: %s %s %.4f %s (id=%s, confidence=%.2f)",
             side.value if isinstance(side, SignalType) else side,
@@ -268,7 +276,13 @@ class StagedOrderQueue:
         if new_stage == OrderStage.PUSHED:
             order.pushed_at = datetime.now(timezone.utc)
         if new_stage == OrderStage.FILLED:
-            order.pushed_at = order.pushed_at or datetime.now(timezone.utc)
+            if order.filled_at is None:
+                order.filled_at = datetime.now(timezone.utc)
+            if order.pushed_at is None:
+                self._logger.warning(
+                    "Order %s filled without pushed_at set; missing PUSHED transition.",
+                    order_id,
+                )
 
         self._logger.info(
             "Order stage updated: %s %s -> %s",
