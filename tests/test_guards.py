@@ -1,6 +1,5 @@
 """Tests for guard pipeline."""
 
-import time
 
 from src.execution.guards import (
     CooldownGuard,
@@ -53,9 +52,13 @@ class TestMaxPositionsGuard:
 
 
 class TestCooldownGuard:
-    def test_pass_after_cooldown(self):
-        guard = CooldownGuard(cooldown_seconds=0.5)
-        time.sleep(0.6)
+    def test_pass_after_cooldown(self, monkeypatch):
+        guard = CooldownGuard(cooldown_seconds=60.0)
+        guard.record_trade("BTCUSDT")
+        monkeypatch.setattr(
+            "src.execution.guards.time.monotonic",
+            lambda: guard._last_trade_time["BTCUSDT"] + 61.0,
+        )
         response = guard.check(
             symbol="BTCUSDT",
             side="BUY",
