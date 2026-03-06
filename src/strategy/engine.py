@@ -235,6 +235,12 @@ class StrategyEngine:
                     self._logger.info(f"Consensus Signal: {final_signal}")
                     if on_signal:
                         await on_signal(final_signal)
+                elif non_hold_votes:
+                    self._logger.info(
+                        "Consensus HOLD for %s: %s",
+                        symbol,
+                        final_signal.reason,
+                    )
                 else:
                     self._logger.debug(f"Consensus HOLD: {final_signal.reason}")
 

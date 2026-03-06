@@ -87,3 +87,58 @@ class TestStrategyEngineIntegration:
         assert final_sig.type == SignalType.BUY
         assert final_sig.confidence == 1.0
         assert "Consensus BUY" in final_sig.reason
+
+    @pytest.mark.asyncio
+    async def test_logs_hold_reason_when_buy_is_blocked_by_global_trend_filter(self, caplog):
+        reader = IndicatorReader({})
+        reader._connected = True
+
+        async def _mock_fetch_rows(symbol, timeframe, limit):
+            assert symbol == "BNBUSDT"
+            assert timeframe == "4h"
+            return [
+                {
+                    "close_price": 640.0,
+                    "ema_12": 640.0,
+                    "ema_26": 638.0,
+                    "ema_200": 700.0,
+                },
+                {
+                    "close_price": 650.0,
+                    "ema_12": 650.0,
+                    "ema_26": 640.0,
+                    "ema_200": 700.0,
+                },
+            ]
+
+        reader._fetch_rows = _mock_fetch_rows
+
+        config = EngineConfig(
+            symbols=["BNBUSDT"],
+            timeframe="4h",
+            strategy_classes=[MockStrategy],
+            aggregator_config={
+                "buy_threshold": 0.8,
+                "min_agreement": 1,
+            },
+        )
+
+        engine = StrategyEngine(config, reader)
+        strategy = engine._strategies["BNBUSDT"][0]
+        strategy.signal_to_emit = SignalType.BUY
+        strategy.confidence = 0.9
+
+        received_signals = []
+
+        async def on_signal(sig):
+            received_signals.append(sig)
+
+        with caplog.at_level("INFO"):
+            await engine._evaluate_all(on_signal)
+
+        assert received_signals == []
+        assert "Blocked by Global Trend Filter (Price < EMA200) for BNBUSDT" in caplog.text
+        assert (
+            "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter (Price < EMA200)"
+            in caplog.text
+        )
