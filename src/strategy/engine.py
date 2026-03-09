@@ -36,6 +36,7 @@ class EngineConfig:
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
     # Per-symbol aggregator overrides: {"SOLUSDT": {"min_agreement": 1, "buy_threshold": 1.1, "sell_threshold": -1.0}, ...}
     per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
+    global_trend_filter_enabled: bool = True
 
 
 class StrategyEngine:
@@ -175,7 +176,7 @@ class StrategyEngine:
                     symbol_config=symbol_config,
                     market_context=market_context,
                 )
-                if final_signal.type == SignalType.BUY:
+                if final_signal.type == SignalType.BUY and self._config.global_trend_filter_enabled:
                     price = indicators["close_price"]
                     ema_200 = indicators["ema_200"]
                     if ema_200 is not None and price < ema_200:

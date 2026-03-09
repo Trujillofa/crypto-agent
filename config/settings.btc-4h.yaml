@@ -99,6 +99,7 @@ strategy:
         vwap_atr_multiplier: 1.5
         rsi_oversold: 40
         rsi_overbought: 60
+  global_trend_filter_enabled: false  # BTC agent: strategies already embed trend awareness; let aggregator decide
   aggregator:
     min_agreement: 1
     buy_threshold: 0.8          # conservative paper-mode lowering to admit strong single-strategy votes

@@ -73,6 +73,7 @@ class StrategySettings:
     aggregator: Mapping[str, object] = field(default_factory=dict)
     # Per-symbol aggregator overrides
     per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
+    global_trend_filter_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -254,6 +255,11 @@ def load_settings(config_path: Path) -> Settings:
         aggregator=_as_mapping(strategy.get("aggregator"), "strategy.aggregator"),
         per_symbol_aggregator_config=_parse_per_symbol_aggregator(
             strategy.get("per_symbol_aggregator_config"), "strategy.per_symbol_aggregator_config"
+        ),
+        global_trend_filter_enabled=_as_bool(
+            strategy.get("global_trend_filter_enabled"),
+            "strategy.global_trend_filter_enabled",
+            default=True,
         ),
     )
 
@@ -833,6 +839,7 @@ async def run() -> None:
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
         per_symbol_aggregator_config=per_symbol_agg_config,
+        global_trend_filter_enabled=settings.strategy.global_trend_filter_enabled,
     )
 
     # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB

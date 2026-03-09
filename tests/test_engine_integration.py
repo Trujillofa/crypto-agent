@@ -88,14 +88,12 @@ class TestStrategyEngineIntegration:
         assert final_sig.confidence == 1.0
         assert "Consensus BUY" in final_sig.reason
 
-    @pytest.mark.asyncio
-    async def test_logs_hold_reason_when_buy_is_blocked_by_global_trend_filter(self, caplog):
+    @pytest.fixture
+    def below_ema200_reader(self):
         reader = IndicatorReader({})
         reader._connected = True
 
         async def _mock_fetch_rows(symbol, timeframe, limit):
-            assert symbol == "BNBUSDT"
-            assert timeframe == "4h"
             return [
                 {
                     "close_price": 640.0,
@@ -112,7 +110,12 @@ class TestStrategyEngineIntegration:
             ]
 
         reader._fetch_rows = _mock_fetch_rows
+        return reader
 
+    @pytest.mark.asyncio
+    async def test_logs_hold_reason_when_buy_is_blocked_by_global_trend_filter(
+        self, below_ema200_reader, caplog
+    ):
         config = EngineConfig(
             symbols=["BNBUSDT"],
             timeframe="4h",
@@ -123,7 +126,7 @@ class TestStrategyEngineIntegration:
             },
         )
 
-        engine = StrategyEngine(config, reader)
+        engine = StrategyEngine(config, below_ema200_reader)
         strategy = engine._strategies["BNBUSDT"][0]
         strategy.signal_to_emit = SignalType.BUY
         strategy.confidence = 0.9
@@ -142,3 +145,31 @@ class TestStrategyEngineIntegration:
             "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter (Price < EMA200)"
             in caplog.text
         )
+
+    @pytest.mark.asyncio
+    async def test_global_trend_filter_disabled_allows_buy_below_ema200(self, below_ema200_reader):
+        config = EngineConfig(
+            symbols=["BNBUSDT"],
+            timeframe="4h",
+            strategy_classes=[MockStrategy],
+            aggregator_config={
+                "buy_threshold": 0.8,
+                "min_agreement": 1,
+            },
+            global_trend_filter_enabled=False,
+        )
+
+        engine = StrategyEngine(config, below_ema200_reader)
+        strategy = engine._strategies["BNBUSDT"][0]
+        strategy.signal_to_emit = SignalType.BUY
+        strategy.confidence = 0.9
+
+        received_signals = []
+
+        async def on_signal(sig):
+            received_signals.append(sig)
+
+        await engine._evaluate_all(on_signal)
+
+        assert len(received_signals) == 1
+        assert received_signals[0].type == SignalType.BUY
