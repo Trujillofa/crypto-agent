@@ -103,6 +103,21 @@ def test_replacement_config_resolves_trend_pullback():
     assert aggregator_config["buy_threshold"] == 0.45
 
 
+def test_sparse_replacement_config_resolves_trend_pullback_cluster():
+    settings = load_settings(Path("config/settings.sol_trend_pullback_sparse.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert strategy_classes == [TrendPullbackStrategy]
+    assert len(strategy_configs) == 1
+    assert strategy_configs[0]["rsi_reclaim_level"] == 48
+    assert strategy_configs[0]["min_trend_strength_pct"] == 0.006
+    assert strategy_configs[0]["vwap_pullback_distance_pct"] == 0.05
+    assert aggregator_config["buy_threshold"] == 0.45
+    assert per_symbol["SOLUSDT"]["buy_threshold"] == 0.45
+
+
 def test_replacement_config_resolves_breakout_retest():
     settings = load_settings(Path("config/settings.sol_breakout_retest.yaml"))
     strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
