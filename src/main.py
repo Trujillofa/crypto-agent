@@ -7,6 +7,7 @@ import os
 import signal
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -1061,11 +1062,32 @@ async def run() -> None:
                 await update_health_status()
                 await asyncio.sleep(5)
 
+        async def daily_summary_loop() -> None:
+            """Send a daily trading summary via Telegram at midnight UTC."""
+            while True:
+                now = datetime.now(UTC)
+                next_midnight = now.replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ) + timedelta(days=1)
+                wait_seconds = (next_midnight - now).total_seconds()
+                await asyncio.sleep(wait_seconds)
+                try:
+                    total_pnl, trades_count, win_rate = await portfolio_manager.get_today_stats()
+                    await telegram_notifier.send_daily_summary(
+                        total_pnl=total_pnl,
+                        trades_count=trades_count,
+                        win_rate=win_rate,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger = get_logger("main")
+                    logger.warning("Failed to send daily summary: %s", exc)
+
         # Proactively update health status once before logging
         await update_health_status()
         await _log_startup_diagnostics()
 
         health_task = asyncio.create_task(health_monitor_loop())
+        daily_summary_task = asyncio.create_task(daily_summary_loop())
 
         await stop_event.wait()
 
@@ -1081,6 +1103,7 @@ async def run() -> None:
 
         await _cancel_background_tasks(
             health_task,
+            daily_summary_task,
             ingest_task,
             risk_task,
             indicator_task,

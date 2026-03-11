@@ -47,6 +47,9 @@ class TelegramConfig:
     allowed_updates: tuple[str, ...] = ("message",)
 
 
+_TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+
+
 class TelegramNotifier:
     """Async Telegram notification service."""
 
@@ -55,7 +58,6 @@ class TelegramNotifier:
         self._config = config or self._load_config_from_env()
         self._last_message_time: float = 0
         self._session: aiohttp.ClientSession | None = None
-        self._message_queue: asyncio.Queue[tuple[str, AlertLevel]] = asyncio.Queue()
 
         if not self._config.enabled:
             self._logger.info("Telegram notifications disabled")
@@ -117,11 +119,15 @@ class TelegramNotifier:
 
         # Rate limiting
         if respect_rate_limit:
-            now = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            now = loop.time()
             time_since_last = now - self._last_message_time
             if time_since_last < self._config.rate_limit_seconds:
                 wait_time = self._config.rate_limit_seconds - time_since_last
                 await asyncio.sleep(wait_time)
+            # Claim the send slot before yielding to the event loop so that
+            # concurrent callers don't both pass the rate-limit check.
+            self._last_message_time = asyncio.get_running_loop().time()
 
         formatted_message = self._format_message(message, level)
 
@@ -131,8 +137,6 @@ class TelegramNotifier:
                 parse_mode,
                 target_chat_id,
             )
-            if respect_rate_limit:
-                self._last_message_time = asyncio.get_event_loop().time()
             return success
         except Exception as exc:
             self._logger.error(f"Failed to send Telegram alert: {exc}")
@@ -190,12 +194,12 @@ All trading has been halted. Manual intervention required.
         Returns:
             True if message was sent successfully
         """
+        details_line = f"\n<b>Details:</b> {details}" if details else ""
         message = f"""
 <b>CIRCUIT BREAKER TRIGGERED</b>
 
 <b>Breaker:</b> {breaker_name}
-<b>Time:</b> {datetime.now(UTC).isoformat()}
-{f"<b>Details:</b> {details}" if details else ""}
+<b>Time:</b> {datetime.now(UTC).isoformat()}{details_line}
 
 Trading may be paused until conditions normalize.
         """.strip()
@@ -326,6 +330,10 @@ Trading may be paused until conditions normalize.
         chat_id: str,
     ) -> bool:
         """Execute the actual HTTP request to Telegram API."""
+        if len(text) > _TELEGRAM_MAX_MESSAGE_LENGTH:
+            truncation_notice = "\n\n[message truncated]"
+            text = text[: _TELEGRAM_MAX_MESSAGE_LENGTH - len(truncation_notice)] + truncation_notice
+
         url = f"https://api.telegram.org/bot{self._config.bot_token}/sendMessage"
         payload = {
             "chat_id": chat_id,
