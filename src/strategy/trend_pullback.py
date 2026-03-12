@@ -44,10 +44,31 @@ class TrendPullbackStrategy(BaseStrategy):
         self._continuation_min_macd_hist = float(
             self._config.get("continuation_min_macd_hist", -0.01)
         )
+        self._deep_reclaim_enabled = bool(self._config.get("deep_reclaim_enabled", False))
+        self._deep_reclaim_rsi_level = float(self._config.get("deep_reclaim_rsi_level", 50.0))
+        self._deep_reclaim_min_macd_hist = float(
+            self._config.get("deep_reclaim_min_macd_hist", -0.005)
+        )
+        self._deep_reclaim_max_ema50_extension_pct = float(
+            self._config.get("deep_reclaim_max_ema50_extension_pct", 0.03)
+        )
+        self._deep_reclaim_max_vwap_distance_pct = float(
+            self._config.get("deep_reclaim_max_vwap_distance_pct", 0.03)
+        )
+        self._deep_reclaim_arm_window_bars = int(
+            self._config.get("deep_reclaim_arm_window_bars", 3)
+        )
+        self._deep_reclaim_arm_max_ema50_distance_pct = float(
+            self._config.get("deep_reclaim_arm_max_ema50_distance_pct", 0.03)
+        )
+        self._deep_reclaim_arm_max_vwap_distance_pct = float(
+            self._config.get("deep_reclaim_arm_max_vwap_distance_pct", 0.05)
+        )
 
         self._previous_rsi: dict[str, float] = {}
         self._previous_macd_hist: dict[str, float] = {}
         self._previous_close: dict[str, float] = {}
+        self._deep_reclaim_armed_bars_remaining: dict[str, int] = {}
 
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
         required_indicators = {
@@ -126,8 +147,45 @@ class TrendPullbackStrategy(BaseStrategy):
             and continuation_not_extended
             and continuation_momentum
         )
+        armed_bars_remaining = self._deep_reclaim_armed_bars_remaining.get(symbol, 0)
+        deep_reclaim_pullback_zone = (
+            self._deep_reclaim_enabled
+            and strong_trend
+            and (close_price <= ema_50 or close_price <= vwap)
+            and distance_from_ema50_pct <= self._deep_reclaim_arm_max_ema50_distance_pct
+            and distance_from_vwap_pct <= self._deep_reclaim_arm_max_vwap_distance_pct
+        )
+        deep_reclaim_setup = armed_bars_remaining > 0 and not deep_reclaim_pullback_zone
+        deep_reclaim_reclaimed = close_price >= ema_50 and close_price >= vwap
+        deep_reclaim_not_extended = (
+            0.0 <= ema50_extension_pct <= self._deep_reclaim_max_ema50_extension_pct
+            and distance_from_vwap_pct <= self._deep_reclaim_max_vwap_distance_pct
+        )
+        deep_reclaim_momentum = (
+            rsi_14 >= self._deep_reclaim_rsi_level
+            and macd_hist >= self._deep_reclaim_min_macd_hist
+            and price_recovered
+            and rsi_14 > previous_rsi
+            and macd_hist >= previous_macd_hist
+        )
+        deep_reclaim_entry = (
+            self._deep_reclaim_enabled
+            and strong_trend
+            and deep_reclaim_setup
+            and deep_reclaim_reclaimed
+            and deep_reclaim_not_extended
+            and deep_reclaim_momentum
+        )
+        next_armed_bars_remaining = 0
+        if self._deep_reclaim_enabled and in_uptrend:
+            if deep_reclaim_pullback_zone:
+                next_armed_bars_remaining = self._deep_reclaim_arm_window_bars
+            elif armed_bars_remaining > 0:
+                next_armed_bars_remaining = armed_bars_remaining - 1
+        self._deep_reclaim_armed_bars_remaining[symbol] = next_armed_bars_remaining
 
         if pullback_entry:
+            self._deep_reclaim_armed_bars_remaining[symbol] = 0
             trend_bonus = min(0.2, max(0.0, trend_strength_pct) * 5)
             atr_bonus = min(0.1, max(0.0, atr_pct - self._min_atr_pct) * 8)
             confidence = min(0.9, 0.55 + trend_bonus + atr_bonus)
@@ -154,6 +212,7 @@ class TrendPullbackStrategy(BaseStrategy):
             )
 
         if continuation_entry:
+            self._deep_reclaim_armed_bars_remaining[symbol] = 0
             trend_bonus = min(
                 0.2, max(0.0, trend_strength_pct - self._strong_trend_strength_pct) * 6
             )
@@ -181,6 +240,36 @@ class TrendPullbackStrategy(BaseStrategy):
                 },
             )
 
+        if deep_reclaim_entry:
+            self._deep_reclaim_armed_bars_remaining[symbol] = 0
+            trend_bonus = min(
+                0.2, max(0.0, trend_strength_pct - self._strong_trend_strength_pct) * 5
+            )
+            momentum_bonus = min(0.1, max(0.0, rsi_14 - self._deep_reclaim_rsi_level) / 20)
+            confidence = min(0.85, 0.53 + trend_bonus + momentum_bonus)
+            return Signal(
+                type=SignalType.BUY,
+                symbol=symbol,
+                price=close_price,
+                confidence=confidence,
+                reason=(
+                    "Trend deep reclaim confirmed: "
+                    f"price={close_price:.2f} ema50={ema_50:.2f} ema200={ema_200:.2f} "
+                    f"vwap={vwap:.2f} prev_close={previous_close:.2f} "
+                    f"rsi={rsi_14:.2f} prev_rsi={previous_rsi:.2f} "
+                    f"macd_hist={macd_hist:.4f} prev_macd_hist={previous_macd_hist:.4f} "
+                    f"armed_bars={armed_bars_remaining}"
+                ),
+                indicators={
+                    "ema_50": ema_50,
+                    "ema_200": ema_200,
+                    "vwap": vwap,
+                    "rsi_14": rsi_14,
+                    "atr_pct": atr_pct,
+                    "macd_hist": macd_hist,
+                },
+            )
+
         return Signal(
             type=SignalType.HOLD,
             symbol=symbol,
@@ -190,6 +279,9 @@ class TrendPullbackStrategy(BaseStrategy):
                 f"No trend pullback setup: trend={in_uptrend} near_ema50={near_ema50} "
                 f"near_vwap={near_vwap} recovery_ok={recovery_ok} "
                 f"strong_trend={strong_trend} continuation_entry={continuation_entry} "
+                f"deep_reclaim_pullback_zone={deep_reclaim_pullback_zone} "
+                f"deep_reclaim_entry={deep_reclaim_entry} "
+                f"deep_reclaim_armed_bars={next_armed_bars_remaining} "
                 f"rsi_reclaimed={rsi_reclaimed} macd_recovered={macd_recovered} "
                 f"price_recovered={price_recovered}"
             ),
