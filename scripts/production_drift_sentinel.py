@@ -21,6 +21,7 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
     collect_remote_repo_snapshot,
     collect_remote_service_snapshot,
     collect_remote_signal_snapshot,
+    collect_remote_watched_service_snapshot,
     collect_repo_snapshot,
     report_to_json,
 )
@@ -33,6 +34,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--remote-dir", default="/opt/crypto-agent", help="Remote repo path")
     parser.add_argument("--signal-stale-hours", type=int, default=24)
     parser.add_argument("--log-tail", type=int, default=500)
+    parser.add_argument(
+        "--watch-service",
+        help="Optional docker compose service to inspect separately (for example: agent_sol_sparse)",
+    )
     parser.add_argument("--local-only", action="store_true", help="Skip remote checks")
     parser.add_argument("--json", action="store_true", help="Print JSON output")
     parser.add_argument(
@@ -114,6 +119,27 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
     else:
         lines.append("- Signal snapshot unavailable")
 
+    if report.watched_service_snapshot is not None:
+        lines.append("")
+        lines.append("## Watched Service")
+        lines.append("")
+        lines.append(f"- Service: {report.watched_service_snapshot.service}")
+        lines.append(f"- Exists: {report.watched_service_snapshot.exists}")
+        lines.append(f"- Running: {report.watched_service_snapshot.running}")
+        lines.append(f"- Strategy cycle seen: {report.watched_service_snapshot.saw_strategy_cycle}")
+        lines.append(
+            f"- Consensus signals in lookback: {report.watched_service_snapshot.signal_count}"
+        )
+        lines.append(
+            f"- Last consensus signal: {report.watched_service_snapshot.last_signal_at or 'none'}"
+        )
+        lines.append(
+            f"- Paper order logs in lookback: {report.watched_service_snapshot.paper_order_count}"
+        )
+        lines.append(
+            f"- Last paper order log: {report.watched_service_snapshot.last_paper_order_at or 'none'}"
+        )
+
     lines.append("")
     lines.append("## Findings")
     lines.append("")
@@ -149,6 +175,7 @@ def main() -> int:
     remote_config_hashes: dict[str, str] = {}
     service_snapshot = None
     signal_snapshot = None
+    watched_service_snapshot = None
     remote_error = None
 
     if not args.local_only:
@@ -162,6 +189,14 @@ def main() -> int:
                 service_snapshot,
                 tail_lines=args.log_tail,
             )
+            if args.watch_service:
+                watched_service_snapshot = collect_remote_watched_service_snapshot(
+                    args.remote_host,
+                    args.remote_dir,
+                    service_snapshot,
+                    args.watch_service,
+                    tail_lines=args.log_tail,
+                )
         except Exception as exc:  # noqa: BLE001
             remote_error = str(exc)
 
@@ -173,6 +208,7 @@ def main() -> int:
         remote_config_hashes=remote_config_hashes,
         service_snapshot=service_snapshot,
         signal_snapshot=signal_snapshot,
+        watched_service_snapshot=watched_service_snapshot,
         remote_error=remote_error,
         signal_stale_hours=args.signal_stale_hours,
         remote_checks_enabled=not args.local_only,
@@ -198,6 +234,7 @@ def main() -> int:
         remote_config_hashes=remote_config_hashes,
         service_snapshot=service_snapshot,
         signal_snapshot=signal_snapshot,
+        watched_service_snapshot=watched_service_snapshot,
         findings=findings,
     )
 
