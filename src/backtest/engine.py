@@ -364,13 +364,12 @@ class BacktestEngine:
 
         gross_profit = sum(t.pnl for t in wins)
         gross_loss = abs(sum(t.pnl for t in losses))
-        profit_factor = (
-            (gross_profit / gross_loss)
-            if gross_loss > 0
-            else float("inf")
-            if gross_profit > 0
-            else 0.0
-        )
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        elif gross_profit > 0:
+            profit_factor = float("inf")
+        else:
+            profit_factor = 0.0
 
         avg_win = (gross_profit / len(wins)) if wins else 0.0
         avg_loss = (gross_loss / len(losses)) if losses else 0.0
