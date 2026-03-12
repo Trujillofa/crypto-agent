@@ -96,8 +96,8 @@ def test_decide_status_marks_only_improvements_as_keep() -> None:
 
 def test_results_log_header_is_not_duplicated(tmp_path: Path) -> None:
     results_path = tmp_path / "results.tsv"
-    first_row = {field: "" for field in RESULTS_FIELDNAMES}
-    second_row = {field: "" for field in RESULTS_FIELDNAMES}
+    first_row = dict.fromkeys(RESULTS_FIELDNAMES, "")
+    second_row = dict.fromkeys(RESULTS_FIELDNAMES, "")
     first_row["run_id"] = "run-1"
     second_row["run_id"] = "run-2"
     first_row["score"] = "10.0"

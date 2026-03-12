@@ -76,7 +76,7 @@ class Guard(ABC):
 
     def reset(self) -> None:
         """Reset guard state (e.g., cooldown timer)."""
-        pass
+        return None
 
 
 @dataclass
