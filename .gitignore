@@ -50,6 +50,11 @@ htmlcov/
 
 # Data (local only, not committed)
 data/
+research/run.log
+research/last_result.json
+research/archive/
+research/candidates/
+research/resolved/
 
 # Docker volumes / local state
 *.log

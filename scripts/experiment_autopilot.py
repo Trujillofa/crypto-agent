@@ -48,7 +48,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="Bootstrap random seed")
     parser.add_argument("--initial-capital", type=float, default=10000.0, help="Initial capital")
 
-    parser.add_argument("--min-trades", type=int, default=20)
+    parser.add_argument(
+        "--min-trades",
+        type=int,
+        default=0,
+        help="Minimum full-period trades gate (0 disables this gate)",
+    )
+    parser.add_argument(
+        "--min-wfo-trades",
+        type=int,
+        default=20,
+        help="Minimum aggregate walk-forward trades gate",
+    )
     parser.add_argument("--min-wfo-sharpe", type=float, default=0.5)
     parser.add_argument("--max-drawdown-pct", type=float, default=10.0)
     parser.add_argument("--max-bootstrap-p-loss-pct", type=float, default=25.0)
@@ -174,6 +185,7 @@ def _render_markdown(
     lines.append("| Metric | Value |")
     lines.append("|---|---:|")
     lines.append(f"| WFO windows | {summary.wfo_windows} |")
+    lines.append(f"| Aggregate WFO trades | {summary.wfo_total_trades} |")
     lines.append(f"| Mean OOS Sharpe | {summary.wfo_mean_sharpe:.2f} |")
     lines.append(f"| Compound OOS return | {summary.wfo_total_return_pct:.2f}% |")
     lines.append(f"| Bootstrap P(loss) | {summary.bootstrap_p_loss_pct:.2f}% |")
@@ -201,6 +213,7 @@ def _render_markdown(
     lines.append("## Gate Thresholds")
     lines.append("")
     lines.append(f"- min_trades: {gates.min_trades}")
+    lines.append(f"- min_wfo_trades: {gates.min_wfo_trades}")
     lines.append(f"- min_wfo_sharpe: {gates.min_wfo_sharpe}")
     lines.append(f"- max_drawdown_pct: {gates.max_drawdown_pct}")
     lines.append(f"- max_bootstrap_p_loss_pct: {gates.max_bootstrap_p_loss_pct}")
@@ -313,6 +326,7 @@ async def main() -> None:
 
         oos_returns = [window.total_return_pct for window in window_results]
         oos_sharpes = [window.sharpe_ratio for window in window_results]
+        wfo_total_trades = sum(window.total_trades for window in window_results)
 
         summary_seed = ExperimentSummary(
             symbol=symbol,
@@ -325,6 +339,7 @@ async def main() -> None:
             max_drawdown_pct=baseline.max_drawdown * 100.0,
             sharpe_ratio=baseline.sharpe_ratio,
             wfo_windows=len(window_results),
+            wfo_total_trades=wfo_total_trades,
             wfo_mean_sharpe=mean(oos_sharpes) if oos_sharpes else 0.0,
             wfo_total_return_pct=compound_returns_pct(oos_returns),
             bootstrap_p_loss_pct=bootstrap_p_loss_pct,
@@ -335,6 +350,7 @@ async def main() -> None:
 
         gates = GateConfig(
             min_trades=args.min_trades,
+            min_wfo_trades=args.min_wfo_trades,
             min_wfo_sharpe=args.min_wfo_sharpe,
             max_drawdown_pct=args.max_drawdown_pct,
             max_bootstrap_p_loss_pct=args.max_bootstrap_p_loss_pct,
@@ -343,11 +359,10 @@ async def main() -> None:
         )
 
         failures = evaluate_gates(summary_seed, gates)
-        summary = ExperimentSummary(
-            **asdict(summary_seed),
-            passes_gates=not failures,
-            failure_reasons=failures,
-        )
+        summary_payload = asdict(summary_seed)
+        summary_payload["passes_gates"] = not failures
+        summary_payload["failure_reasons"] = failures
+        summary = ExperimentSummary(**summary_payload)
 
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         prefix = Path(args.output_prefix)
@@ -382,6 +397,7 @@ async def main() -> None:
     print(f"Baseline trades: {summary.total_trades}")
     print(f"Baseline return: {summary.total_return_pct:.2f}%")
     print(f"OOS windows: {summary.wfo_windows}")
+    print(f"Aggregate WFO trades: {summary.wfo_total_trades}")
     print(f"OOS mean Sharpe: {summary.wfo_mean_sharpe:.2f}")
     print(f"Bootstrap P(loss): {summary.bootstrap_p_loss_pct:.2f}%")
     print(f"Profit concentration: {summary.profit_concentration_pct:.2f}%")

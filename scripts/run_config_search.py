@@ -71,6 +71,7 @@ class CandidateMetrics:
     max_drawdown_pct: float
     sharpe_ratio: float
     wfo_windows: int
+    wfo_total_trades: int
     wfo_mean_sharpe: float
     wfo_total_return_pct: float
     bootstrap_p_loss_pct: float
@@ -120,8 +121,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-trades",
         type=int,
+        default=0,
+        help="Minimum full-period trades gate (0 disables this gate)",
+    )
+    parser.add_argument(
+        "--min-wfo-trades",
+        type=int,
         default=20,
-        help="Minimum total trades gate",
+        help="Minimum aggregate walk-forward trades gate",
     )
     parser.add_argument(
         "--min-wfo-sharpe",
@@ -611,6 +618,7 @@ async def _run_wfo_windows(
     current = start_dt
     window_returns: list[float] = []
     window_sharpes: list[float] = []
+    window_trade_counts: list[int] = []
 
     while current + timedelta(days=(train_months + test_months) * 30 + 1) < end_dt:
         train_end = current + timedelta(days=train_months * 30)
@@ -631,10 +639,11 @@ async def _run_wfo_windows(
         result = await _run_backtest(cfg, reader)
         window_returns.append(result.total_return_pct)
         window_sharpes.append(result.sharpe_ratio)
+        window_trade_counts.append(result.total_trades)
         current = train_end
 
     if not window_returns:
-        return 0, 0.0, 0.0, 100.0
+        return 0, 0, 0.0, 0.0, 100.0
 
     compound = 1.0
     for value in window_returns:
@@ -646,7 +655,13 @@ async def _run_wfo_windows(
         concentration = max(positive_returns) / sum(positive_returns) * 100.0
     else:
         concentration = 100.0
-    return len(window_returns), mean_sharpe, total_return_pct, concentration
+    return (
+        len(window_returns),
+        sum(window_trade_counts),
+        mean_sharpe,
+        total_return_pct,
+        concentration,
+    )
 
 
 async def _evaluate_candidate(
@@ -692,6 +707,7 @@ async def _evaluate_candidate(
         )
         (
             wfo_windows,
+            wfo_total_trades,
             wfo_mean_sharpe,
             wfo_total_return_pct,
             profit_concentration_pct,
@@ -712,8 +728,10 @@ async def _evaluate_candidate(
         )
 
         failure_reasons: list[str] = []
-        if full_result.total_trades < int(gates["min_trades"]):
+        if gates["min_trades"] > 0 and full_result.total_trades < int(gates["min_trades"]):
             failure_reasons.append("trades")
+        if wfo_total_trades < int(gates["min_wfo_trades"]):
+            failure_reasons.append("wfo_trades")
         if full_result.max_drawdown * 100 > gates["max_drawdown_pct"]:
             failure_reasons.append("drawdown")
         if wfo_total_return_pct <= gates["min_oos_return_pct"]:
@@ -737,6 +755,7 @@ async def _evaluate_candidate(
             max_drawdown_pct=full_result.max_drawdown * 100,
             sharpe_ratio=full_result.sharpe_ratio,
             wfo_windows=wfo_windows,
+            wfo_total_trades=wfo_total_trades,
             wfo_mean_sharpe=wfo_mean_sharpe,
             wfo_total_return_pct=wfo_total_return_pct,
             bootstrap_p_loss_pct=bootstrap_p_loss_pct,
@@ -795,6 +814,7 @@ async def main() -> None:
 
         gates = {
             "min_trades": float(args.min_trades),
+            "min_wfo_trades": float(args.min_wfo_trades),
             "min_wfo_sharpe": args.min_wfo_sharpe,
             "max_drawdown_pct": args.max_drawdown_pct,
             "max_bootstrap_p_loss_pct": args.max_bootstrap_p_loss_pct,
@@ -809,6 +829,7 @@ async def main() -> None:
         print(
             "Gates: "
             f"min_trades={args.min_trades}, "
+            f"min_wfo_trades={args.min_wfo_trades}, "
             f"min_wfo_sharpe={args.min_wfo_sharpe}, "
             f"max_drawdown_pct={args.max_drawdown_pct}, "
             f"max_bootstrap_p_loss_pct={args.max_bootstrap_p_loss_pct}, "
@@ -837,6 +858,7 @@ async def main() -> None:
                 print(
                     f"[{index}/{len(candidates)}] {result.name}: "
                     f"pass={result.passes_gates} "
+                    f"wfo_trades={result.wfo_total_trades} "
                     f"return={result.total_return_pct:.2f}% "
                     f"wfo={result.wfo_total_return_pct:.2f}% "
                     f"sharpe={result.sharpe_ratio:.2f} "
@@ -866,6 +888,7 @@ async def main() -> None:
         print(
             f"{metric.name}: pass={metric.passes_gates} "
             f"trades={metric.total_trades} "
+            f"wfo_trades={metric.wfo_total_trades} "
             f"return={metric.total_return_pct:.2f}% "
             f"wfo={metric.wfo_total_return_pct:.2f}% "
             f"wfo_sharpe={metric.wfo_mean_sharpe:.2f} "

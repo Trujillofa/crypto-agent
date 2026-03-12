@@ -9,7 +9,8 @@ from datetime import datetime
 class GateConfig:
     """Validation gates for experiment acceptance."""
 
-    min_trades: int = 20
+    min_trades: int = 0
+    min_wfo_trades: int = 20
     min_wfo_sharpe: float = 0.5
     max_drawdown_pct: float = 10.0
     max_bootstrap_p_loss_pct: float = 25.0
@@ -57,6 +58,7 @@ class ExperimentSummary:
     max_drawdown_pct: float
     sharpe_ratio: float
     wfo_windows: int
+    wfo_total_trades: int
     wfo_mean_sharpe: float
     wfo_total_return_pct: float
     bootstrap_p_loss_pct: float
@@ -176,15 +178,21 @@ def evaluate_gates(summary: ExperimentSummary, gates: GateConfig) -> list[str]:
     """Return gate failure reasons. Empty means pass."""
     failures: list[str] = []
 
-    if summary.total_trades < gates.min_trades:
+    if gates.min_trades > 0 and summary.total_trades < gates.min_trades:
         failures.append(f"min_trades failed ({summary.total_trades} < {gates.min_trades})")
 
     if summary.wfo_windows == 0:
         failures.append("wfo_windows failed (no OOS windows built)")
-    elif summary.wfo_mean_sharpe < gates.min_wfo_sharpe:
-        failures.append(
-            "min_wfo_sharpe failed " f"({summary.wfo_mean_sharpe:.2f} < {gates.min_wfo_sharpe:.2f})"
-        )
+    else:
+        if summary.wfo_total_trades < gates.min_wfo_trades:
+            failures.append(
+                "min_wfo_trades failed " f"({summary.wfo_total_trades} < {gates.min_wfo_trades})"
+            )
+        if summary.wfo_mean_sharpe < gates.min_wfo_sharpe:
+            failures.append(
+                "min_wfo_sharpe failed "
+                f"({summary.wfo_mean_sharpe:.2f} < {gates.min_wfo_sharpe:.2f})"
+            )
 
     if summary.max_drawdown_pct > gates.max_drawdown_pct:
         failures.append(
