@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from src.db.pool import get_pool
 from src.portfolio.models import PortfolioSummary, Position, PositionStatus
@@ -414,3 +414,48 @@ class PortfolioManager:
                     win_count=int(win_count or 0),
                     loss_count=int(loss_count or 0),
                 )
+
+    async def get_today_stats(self) -> tuple[float, int, float]:
+        """Return today's (total_pnl, trades_count, win_rate_pct) for daily summary.
+
+        Queries positions closed since the start of the current UTC day.
+        """
+        return await self.get_daily_stats(datetime.now(UTC).date())
+
+    async def get_daily_stats(self, day: date) -> tuple[float, int, float]:
+        """Return stats for a specific UTC calendar day."""
+        async with self._db_lock:
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                day_start = datetime.combine(day, datetime.min.time(), tzinfo=UTC)
+                day_end = day_start + timedelta(days=1)
+                agent_filter = "agent_id = $1"
+                agent_param = self._agent_id
+
+                total_pnl = await conn.fetchval(
+                    f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions"
+                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND {agent_filter}",
+                    agent_param,
+                    day_start,
+                    day_end,
+                )
+                trades_count = await conn.fetchval(
+                    f"SELECT COUNT(*) FROM positions"
+                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND {agent_filter}",
+                    agent_param,
+                    day_start,
+                    day_end,
+                )
+                wins = await conn.fetchval(
+                    f"SELECT COUNT(*) FROM positions"
+                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND realized_pnl > 0 AND {agent_filter}",
+                    agent_param,
+                    day_start,
+                    day_end,
+                )
+
+                total_pnl_f = float(total_pnl or 0)
+                trades_count_i = int(trades_count or 0)
+                wins_i = int(wins or 0)
+                win_rate = (wins_i / trades_count_i * 100.0) if trades_count_i > 0 else 0.0
+                return total_pnl_f, trades_count_i, win_rate

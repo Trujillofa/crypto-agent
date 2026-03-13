@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -156,6 +158,40 @@ class TestSendAlert:
 
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_rate_limit_slot_claimed_before_send(self, notifier: TelegramNotifier) -> None:
+        """Rate-limit timestamp is updated before yielding, so concurrent callers queue."""
+        send_times: list[float] = []
+
+        def make_mock_response(*_args: object, **_kwargs: object) -> MagicMock:
+            mock_response = MagicMock()
+            mock_response.status = 200
+
+            async def _aenter(self_: object) -> MagicMock:
+                send_times.append(asyncio.get_running_loop().time())
+                return mock_response
+
+            mock_response.__aenter__ = _aenter
+            mock_response.__aexit__ = AsyncMock()
+            return mock_response
+
+        config = TelegramConfig(bot_token="t", chat_id="c", enabled=True, rate_limit_seconds=1)
+        notifier2 = TelegramNotifier(config=config)
+
+        async with notifier2:
+            with patch.object(
+                notifier2._session,
+                "post",
+                side_effect=make_mock_response,
+            ):
+                t1 = asyncio.create_task(notifier2.send_alert("msg1"))
+                t2 = asyncio.create_task(notifier2.send_alert("msg2"))
+                await asyncio.gather(t1, t2)
+
+        # Both sent, but the second one must have been delayed by ≥1 s
+        assert len(send_times) == 2
+        assert send_times[1] - send_times[0] >= 1.0
+
 
 class TestGetUpdates:
     @pytest.mark.asyncio
@@ -230,6 +266,27 @@ class TestSpecializedAlerts:
             assert args[1] == AlertLevel.WARNING
 
     @pytest.mark.asyncio
+    async def test_send_circuit_breaker_alert_no_blank_line_when_no_details(
+        self, notifier: TelegramNotifier
+    ) -> None:
+        """Circuit breaker alert without details must not have a blank line mid-message."""
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
+            await notifier.send_circuit_breaker_alert("max_drawdown")
+            message: str = mock_send.call_args[0][0]
+            # No consecutive blank lines should appear
+            assert "\n\n\n" not in message
+
+    @pytest.mark.asyncio
+    async def test_send_circuit_breaker_alert_with_details(
+        self, notifier: TelegramNotifier
+    ) -> None:
+        """Circuit breaker alert with details should include the details line."""
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
+            await notifier.send_circuit_breaker_alert("max_drawdown", details="Loss 20%")
+            message: str = mock_send.call_args[0][0]
+            assert "<b>Details:</b> Loss 20%" in message
+
+    @pytest.mark.asyncio
     async def test_send_trade_alert(self, notifier: TelegramNotifier) -> None:
         """Test trade alert format."""
         with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
@@ -273,12 +330,14 @@ class TestSpecializedAlerts:
                 total_pnl=500.0,
                 trades_count=10,
                 win_rate=60.0,
+                summary_date=date(2026, 3, 12),
             )
             mock_send.assert_called_once()
             call_args = mock_send.call_args
             assert "Daily Trading Summary" in call_args[0][0]
             assert "+500.00" in call_args[0][0]
             assert "60.0%" in call_args[0][0]
+            assert "2026-03-12" in call_args[0][0]
 
 
 class TestFormatMessage:
@@ -298,3 +357,54 @@ class TestFormatMessage:
         """Test CRITICAL level formatting."""
         result = notifier._format_message("test", AlertLevel.CRITICAL)
         assert "🚨" in result
+
+
+class TestMessageTruncation:
+    """Test Telegram's 4096-character message-length limit enforcement."""
+
+    @pytest.mark.asyncio
+    async def test_long_message_is_truncated(self, notifier: TelegramNotifier) -> None:
+        """Messages longer than 4096 chars must be truncated before being sent."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+
+        long_message = "x" * 5000
+
+        async with notifier:
+            mock_post = patch.object(notifier._session, "post", return_value=mock_response)
+            with mock_post as mocked:
+                await notifier.send_alert(long_message, respect_rate_limit=False)
+                _url, call_kwargs = mocked.call_args[0][0], mocked.call_args[1]
+
+        sent_text: str = call_kwargs["json"]["text"]
+        assert len(sent_text) <= 4096
+        assert "[message truncated]" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_short_message_is_not_truncated(self, notifier: TelegramNotifier) -> None:
+        """Messages within the 4096-char limit must be sent unmodified."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock()
+
+        short_message = "hello world"
+
+        async with notifier:
+            mock_post = patch.object(notifier._session, "post", return_value=mock_response)
+            with mock_post as mocked:
+                await notifier.send_alert(short_message, respect_rate_limit=False)
+                call_kwargs = mocked.call_args[1]
+
+        sent_text: str = call_kwargs["json"]["text"]
+        assert "[message truncated]" not in sent_text
+
+
+class TestNotifierInit:
+    """Tests for TelegramNotifier initialisation."""
+
+    def test_no_message_queue_attribute(self, notifier: TelegramNotifier) -> None:
+        """TelegramNotifier must not have the unused _message_queue attribute."""
+        assert not hasattr(notifier, "_message_queue")
