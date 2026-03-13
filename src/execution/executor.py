@@ -517,9 +517,28 @@ class TradingExecutor:
             if i < num_slices - 1:
                 await asyncio.sleep(interval_seconds)
 
-        total_filled = sum(o.executed_quantity for o in filled_orders if o.status == "FILLED")
+        try:
+            if side == "BUY":
+                # For BUY TWAPs, input quantities are in quote units (e.g., USDT).
+                # Convert filled base quantity to quote using executed_price.
+                total_filled = sum(
+                    o.executed_price * o.executed_quantity
+                    for o in filled_orders
+                    if o.status == "FILLED"
+                )
+            else:
+                # For SELL TWAPs, quantities are already in base units.
+                total_filled = sum(
+                    o.executed_quantity for o in filled_orders if o.status == "FILLED"
+                )
+        except AttributeError:
+            # Fallback if executed_price is not available on OrderInfo
+            total_filled = sum(
+                o.executed_quantity for o in filled_orders if o.status == "FILLED"
+            )
+
         self._logger.info(
-            "TWAP complete: %d/%d slices filled, total qty=%.6f",
+            "TWAP complete: %d/%d slices filled, total filled=%.6f",
             len(filled_orders), num_slices, total_filled,
         )
 
