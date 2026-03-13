@@ -9,12 +9,21 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from src.main import _build_strategy_registry, _resolve_strategy_config, load_settings
+from src.main import (
+    _build_strategy_registry,
+    _resolve_strategy_config,
+    _wire_optional_strategy_dependencies,
+    load_settings,
+)
 from src.strategy import (
     BreakoutRetestStrategy,
     CCIBreakoutStrategy,
+    EngineConfig,
+    MacroVolatilityStrategy,
+    SentimentMeanReversionStrategy,
     Signal,
     SignalType,
+    StrategyEngine,
     TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
@@ -129,6 +138,19 @@ def test_replacement_config_resolves_breakout_retest():
     assert aggregator_config["buy_threshold"] == 0.45
 
 
+def test_sentiment_macro_config_resolves_sentiment_strategy_only():
+    settings = load_settings(Path("config/settings.sentiment_macro.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert strategy_classes == [SentimentMeanReversionStrategy]
+    assert len(strategy_configs) == 1
+    assert settings.telegram.enabled is False
+    assert settings.ai.enabled is True
+    assert aggregator_config["buy_threshold"] == 0.6
+
+
 def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
     real_import_module = importlib.import_module
 
@@ -147,11 +169,36 @@ def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
     assert strategy_registry["vwap_reversion"] is VWAPReversionStrategy
 
 
+def test_wire_optional_strategy_dependencies_sets_sentiment_scorer_and_leaves_macro_unwired():
+    reader = MagicMock()
+    engine = StrategyEngine(
+        EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[SentimentMeanReversionStrategy, MacroVolatilityStrategy],
+            strategy_configs=[{}, {}],
+        ),
+        reader,
+    )
+
+    _wire_optional_strategy_dependencies(engine, xai_client=object())
+
+    strategies = engine._strategies["BTCUSDT"]  # pylint: disable=protected-access
+    sentiment = next(
+        strategy for strategy in strategies if isinstance(strategy, SentimentMeanReversionStrategy)
+    )
+    macro = next(
+        strategy for strategy in strategies if isinstance(strategy, MacroVolatilityStrategy)
+    )
+
+    assert sentiment._scorer is not None  # pylint: disable=protected-access
+    assert macro._event_feed is None  # pylint: disable=protected-access
+
+
 @pytest.mark.asyncio
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""
     from src.features.reader import IndicatorReader
-    from src.strategy import EngineConfig, SimpleMACrossoverStrategy, StrategyEngine
+    from src.strategy import SimpleMACrossoverStrategy
 
     # Mock database config
     db_config = {
