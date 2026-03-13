@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -287,3 +288,89 @@ async def test_on_signal_sell_skips_dust_balance_silently():
     mock_client.normalize_sell_quantity.assert_called_once_with("XRPUSDT", 0.0292)
     executor.place_market_order.assert_not_called()
     notifier.send_trade_alert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_place_twap_order_splits_into_equal_slices():
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"])
+    risk_manager = MagicMock(spec=RiskManager)
+    metrics = MagicMock(spec=ExecutionMetrics)
+    executor = TradingExecutor(config, risk_manager, metrics)
+
+    filled_order = OrderInfo(
+        order_id="123",
+        symbol="BTCUSDT",
+        side="BUY",
+        order_type="MARKET",
+        quantity=20.0,
+        price=None,
+        status="FILLED",
+        executed_quantity=20.0,
+        create_time=int(time.time() * 1000),
+    )
+    executor.place_market_order = AsyncMock(return_value=filled_order)
+
+    orders = await executor.place_twap_order(
+        "BTCUSDT",
+        "BUY",
+        total_quantity=100.0,
+        num_slices=5,
+        interval_seconds=0.01,
+    )
+
+    assert len(orders) == 5
+    assert executor.place_market_order.await_count == 5
+    for call in executor.place_market_order.await_args_list:
+        assert call.args == ("BTCUSDT", "BUY", 20.0)
+
+
+@pytest.mark.asyncio
+async def test_place_twap_order_aborts_after_first_failed_slice():
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"])
+    risk_manager = MagicMock(spec=RiskManager)
+    metrics = MagicMock(spec=ExecutionMetrics)
+    executor = TradingExecutor(config, risk_manager, metrics)
+
+    filled_order = OrderInfo(
+        order_id="123",
+        symbol="BTCUSDT",
+        side="BUY",
+        order_type="MARKET",
+        quantity=50.0,
+        price=None,
+        status="FILLED",
+        executed_quantity=50.0,
+        create_time=int(time.time() * 1000),
+    )
+
+    call_count = 0
+
+    async def side_effect(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 3:
+            raise RuntimeError("Trading blocked")
+        return filled_order
+
+    executor.place_market_order = AsyncMock(side_effect=side_effect)
+
+    orders = await executor.place_twap_order(
+        "BTCUSDT",
+        "BUY",
+        total_quantity=100.0,
+        num_slices=5,
+        interval_seconds=0.01,
+    )
+
+    assert len(orders) == 2
+
+
+@pytest.mark.asyncio
+async def test_place_twap_order_rejects_non_positive_quantity():
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BTCUSDT"])
+    risk_manager = MagicMock(spec=RiskManager)
+    metrics = MagicMock(spec=ExecutionMetrics)
+    executor = TradingExecutor(config, risk_manager, metrics)
+
+    with pytest.raises(ValueError, match="total_quantity must be positive"):
+        await executor.place_twap_order("BTCUSDT", "BUY", total_quantity=0.0)
