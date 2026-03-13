@@ -57,7 +57,7 @@ class SafetyGuard:
         Returns:
             True if trading is now paused
         """
-        now = time.time()
+        now = time.monotonic()
         self._api_errors.append((now, status_code))
 
         # Clean old errors outside the window
