@@ -1066,17 +1066,21 @@ async def run() -> None:
             """Send a daily trading summary via Telegram at midnight UTC."""
             while True:
                 now = datetime.now(UTC)
-                next_midnight = now.replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                ) + timedelta(days=1)
+                next_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
+                    days=1
+                )
                 wait_seconds = (next_midnight - now).total_seconds()
                 await asyncio.sleep(wait_seconds)
                 try:
-                    total_pnl, trades_count, win_rate = await portfolio_manager.get_today_stats()
+                    summary_date = (next_midnight - timedelta(days=1)).date()
+                    total_pnl, trades_count, win_rate = await portfolio_manager.get_daily_stats(
+                        summary_date
+                    )
                     await telegram_notifier.send_daily_summary(
                         total_pnl=total_pnl,
                         trades_count=trades_count,
                         win_rate=win_rate,
+                        summary_date=summary_date,
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger = get_logger("main")

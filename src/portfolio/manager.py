@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from src.db.pool import get_pool
 from src.portfolio.models import PortfolioSummary, Position, PositionStatus
@@ -420,32 +420,38 @@ class PortfolioManager:
 
         Queries positions closed since the start of the current UTC day.
         """
+        return await self.get_daily_stats(datetime.now(UTC).date())
+
+    async def get_daily_stats(self, day: date) -> tuple[float, int, float]:
+        """Return stats for a specific UTC calendar day."""
         async with self._db_lock:
             pool = get_pool()
             async with pool.acquire() as conn:
-                today_start = datetime.now(UTC).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
+                day_start = datetime.combine(day, datetime.min.time(), tzinfo=UTC)
+                day_end = day_start + timedelta(days=1)
                 agent_filter = "agent_id = $1"
                 agent_param = self._agent_id
 
                 total_pnl = await conn.fetchval(
                     f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions"
-                    f" WHERE status = 'closed' AND exit_time >= $2 AND {agent_filter}",
+                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND {agent_filter}",
                     agent_param,
-                    today_start,
+                    day_start,
+                    day_end,
                 )
                 trades_count = await conn.fetchval(
                     f"SELECT COUNT(*) FROM positions"
-                    f" WHERE status = 'closed' AND exit_time >= $2 AND {agent_filter}",
+                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND {agent_filter}",
                     agent_param,
-                    today_start,
+                    day_start,
+                    day_end,
                 )
                 wins = await conn.fetchval(
                     f"SELECT COUNT(*) FROM positions"
-                    f" WHERE status = 'closed' AND exit_time >= $2 AND realized_pnl > 0 AND {agent_filter}",
+                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND realized_pnl > 0 AND {agent_filter}",
                     agent_param,
-                    today_start,
+                    day_start,
+                    day_end,
                 )
 
                 total_pnl_f = float(total_pnl or 0)

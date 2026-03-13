@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any
 
@@ -255,6 +255,7 @@ Trading may be paused until conditions normalize.
         total_pnl: float,
         trades_count: int,
         win_rate: float,
+        summary_date: date,
     ) -> bool:
         """Send daily trading summary.
 
@@ -262,6 +263,7 @@ Trading may be paused until conditions normalize.
             total_pnl: Total profit/loss for the day
             trades_count: Number of trades executed
             win_rate: Winning trade percentage
+            summary_date: UTC day covered by the summary
 
         Returns:
             True if message was sent successfully
@@ -274,7 +276,7 @@ Trading may be paused until conditions normalize.
 <b>Total PnL:</b> {pnl_emoji}{total_pnl:.2f} USDT
 <b>Trades:</b> {trades_count}
 <b>Win Rate:</b> {win_rate:.1f}%
-<b>Date:</b> {datetime.now(UTC).date().isoformat()}
+<b>Date:</b> {summary_date.isoformat()}
         """.strip()
 
         return await self.send_alert(message, AlertLevel.INFO)

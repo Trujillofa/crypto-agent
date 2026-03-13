@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -158,9 +159,7 @@ class TestSendAlert:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_rate_limit_slot_claimed_before_send(
-        self, notifier: TelegramNotifier
-    ) -> None:
+    async def test_rate_limit_slot_claimed_before_send(self, notifier: TelegramNotifier) -> None:
         """Rate-limit timestamp is updated before yielding, so concurrent callers queue."""
         send_times: list[float] = []
 
@@ -176,9 +175,7 @@ class TestSendAlert:
             mock_response.__aexit__ = AsyncMock()
             return mock_response
 
-        config = TelegramConfig(
-            bot_token="t", chat_id="c", enabled=True, rate_limit_seconds=1
-        )
+        config = TelegramConfig(bot_token="t", chat_id="c", enabled=True, rate_limit_seconds=1)
         notifier2 = TelegramNotifier(config=config)
 
         async with notifier2:
@@ -333,12 +330,14 @@ class TestSpecializedAlerts:
                 total_pnl=500.0,
                 trades_count=10,
                 win_rate=60.0,
+                summary_date=date(2026, 3, 12),
             )
             mock_send.assert_called_once()
             call_args = mock_send.call_args
             assert "Daily Trading Summary" in call_args[0][0]
             assert "+500.00" in call_args[0][0]
             assert "60.0%" in call_args[0][0]
+            assert "2026-03-12" in call_args[0][0]
 
 
 class TestFormatMessage:
