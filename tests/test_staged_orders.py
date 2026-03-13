@@ -42,6 +42,7 @@ class TestStagedOrder:
         assert data["quantity"] == 0.01
         assert data["stage"] == "staged"
         assert data["signal_confidence"] == 0.75
+        assert data["filled_at"] is None
 
 
 class TestStagedOrderQueue:
@@ -154,6 +155,41 @@ class TestStagedOrderQueue:
         stats = queue.get_stats()
         assert stats["staged"] == 1
         assert stats["committed"] == 1
+
+    def test_stage_trims_oldest_when_history_limit_exceeded(self):
+        queue = StagedOrderQueue(max_history=2)
+        first = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
+        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
+        third = queue.stage(symbol="SOLUSDT", side=SignalType.BUY, quantity=0.2)
+
+        assert first.id not in queue._orders
+        assert third.id in queue._orders
+        assert len(queue._orders) == 2
+
+    def test_update_stage_filled_sets_filled_at_without_overwriting_pushed_at(self):
+        queue = StagedOrderQueue()
+        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
+        queue.update_stage(order.id, OrderStage.PUSHED, exchange_order_id="12345")
+        pushed_at = queue._orders[order.id].pushed_at
+
+        success = queue.update_stage(order.id, OrderStage.FILLED)
+
+        assert success is True
+        updated = queue._orders[order.id]
+        assert updated.stage == OrderStage.FILLED
+        assert updated.filled_at is not None
+        assert updated.pushed_at == pushed_at
+
+    def test_update_stage_filled_without_pushed_logs_warning(self):
+        queue = StagedOrderQueue()
+        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
+
+        success = queue.update_stage(order.id, OrderStage.FILLED)
+
+        assert success is True
+        updated = queue._orders[order.id]
+        assert updated.pushed_at is None
+        assert updated.filled_at is not None
 
 
 class TestGlobalQueue:
