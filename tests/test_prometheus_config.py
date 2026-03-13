@@ -13,7 +13,11 @@ def test_prometheus_uses_file_sd_for_agent_targets() -> None:
         raw = yaml.safe_load(file_handle)
 
     scrape_configs = raw["scrape_configs"]
-    trading_agent_job = next(job for job in scrape_configs if job["job_name"] == "trading-agent")
+    trading_agent_job = next(
+        (job for job in scrape_configs if job["job_name"] == "trading-agent"),
+        None,
+    )
+    assert trading_agent_job is not None, "Prometheus config is missing scrape_config with job_name 'trading-agent'"
 
     assert "static_configs" not in trading_agent_job
     assert trading_agent_job["file_sd_configs"] == [
