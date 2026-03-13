@@ -20,7 +20,7 @@ database:
   password: ""
 
 telegram:
-  enabled: true
+  enabled: false
   bot_token: ""
   chat_id: ""
   rate_limit_seconds: 5
@@ -81,12 +81,9 @@ strategy:
         sentiment_gate_threshold: 35.0
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
-    - name: macro_volatility
-      config:
-        min_surprise_pct: 0.3
-        strong_surprise_pct: 1.0
-        min_atr_pct: 0.003
-        require_momentum_confirmation: true
+    # MacroVolatilityStrategy is intentionally not enabled in this sample.
+    # The class is available, but it needs a real macro event provider before it
+    # can produce signals in runtime. Add it only once that provider exists.
   global_trend_filter_enabled: true
   aggregator:
     min_agreement: 1

@@ -48,7 +48,6 @@ from src.strategy import (
     VWAPReversionStrategy,
 )
 from src.strategy.lifecycle import LifecycleManager
-from src.strategy.macro_volatility import MacroEventFeed
 from src.strategy.sentiment_mean_reversion import SentimentScorer
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
@@ -616,6 +615,43 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
     return strategy_registry
 
 
+def _wire_optional_strategy_dependencies(
+    strategy_engine: StrategyEngine,
+    xai_client: XAIClient | None,
+) -> None:
+    """Attach optional external dependencies to configured strategies.
+
+    SentimentMeanReversion can use xAI directly when available. MacroVolatility
+    is intentionally left without a feed until a real macro event provider is
+    integrated, so it should not be advertised as operational by default.
+    """
+    logger = get_logger("strategy_wiring")
+    sentiment_scorer = SentimentScorer(xai_client=xai_client) if xai_client is not None else None
+    has_sentiment_strategy = False
+    has_macro_strategy = False
+
+    for symbol_strategies in strategy_engine._strategies.values():  # pylint: disable=protected-access
+        for strategy in symbol_strategies:
+            if isinstance(strategy, SentimentMeanReversionStrategy):
+                has_sentiment_strategy = True
+                if sentiment_scorer is not None:
+                    strategy.set_scorer(sentiment_scorer)
+            elif isinstance(strategy, MacroVolatilityStrategy):
+                has_macro_strategy = True
+
+    if has_sentiment_strategy and sentiment_scorer is None:
+        logger.warning(
+            "SentimentMeanReversionStrategy configured without XAI_API_KEY; "
+            "using neutral sentiment fallback"
+        )
+
+    if has_macro_strategy:
+        logger.warning(
+            "MacroVolatilityStrategy configured without a macro event provider; "
+            "it will remain HOLD until events are injected"
+        )
+
+
 async def run() -> None:
     settings_path = Path(os.getenv("SETTINGS_PATH", "config/settings.yaml"))
     settings = load_settings(settings_path)
@@ -701,22 +737,24 @@ async def run() -> None:
     telegram_notifier = TelegramNotifier(settings.telegram)
 
     overseer_agent = None
+    xai_client = None
     if settings.ai.enabled:
         logger = get_logger("main")
+        if settings.ai.api_key:
+            xai_client = XAIClient(
+                api_key=settings.ai.api_key,
+                model=settings.ai.model,
+            )
+        else:
+            logger.warning(
+                "AI features enabled without XAI_API_KEY; sentiment falls back to neutral"
+            )
+
         if not settings.telegram.enabled:
             logger.warning("AI overseer enabled but telegram.enabled=false; overseer disabled")
         elif not settings.telegram.bot_token:
             logger.warning("AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled")
         else:
-            xai_client = None
-            if settings.ai.api_key:
-                xai_client = XAIClient(
-                    api_key=settings.ai.api_key,
-                    model=settings.ai.model,
-                )
-            else:
-                logger.warning("AI overseer running without XAI_API_KEY; /ask will be unavailable")
-
             overseer_agent = OverseerAgent(
                 mode=settings.mode,
                 poll_interval_seconds=settings.ai.polling_interval,
@@ -872,24 +910,7 @@ async def run() -> None:
 
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 
-    # WIRED: Inject dependencies for new strategies
-    # This ensures they have access to external data (xAI, Macro Events) if configured
-    if overseer_agent and overseer_agent.xai_client:
-        scorer = SentimentScorer(xai_client=overseer_agent.xai_client)
-        # Inject into all instances
-        # Accessing private member _strategies is pragmatic here for dependency injection
-        for symbol_strategies in strategy_engine._strategies.values():  # pylint: disable=protected-access
-            for strategy in symbol_strategies:
-                if isinstance(strategy, SentimentMeanReversionStrategy):
-                    strategy.set_scorer(scorer)
-
-    # WIRED: Inject Macro Feed
-    # For now, this is an empty feed, but it provides the necessary interface
-    macro_feed = MacroEventFeed()
-    for symbol_strategies in strategy_engine._strategies.values():  # pylint: disable=protected-access
-        for strategy in symbol_strategies:
-            if isinstance(strategy, MacroVolatilityStrategy):
-                strategy.set_event_feed(macro_feed)
+    _wire_optional_strategy_dependencies(strategy_engine, xai_client)
 
     stop_event = asyncio.Event()
 
