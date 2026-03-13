@@ -54,7 +54,7 @@ class CircuitBreaker:
     @property
     def state(self) -> CircuitState:
         if self._state == CircuitState.OPEN:
-            if time.time() - self._last_failure_time >= self.recovery_timeout:
+            if time.monotonic() - self._last_failure_time >= self.recovery_timeout:
                 self._state = CircuitState.HALF_OPEN
                 self._half_open_calls = 0
                 self._logger.info("Circuit breaker transitioning to HALF_OPEN")
@@ -62,9 +62,10 @@ class CircuitBreaker:
 
     def can_execute(self) -> bool:
         """Check if execution is allowed."""
-        if self._state == CircuitState.CLOSED:
+        current_state = self.state
+        if current_state == CircuitState.CLOSED:
             return True
-        if self._state == CircuitState.OPEN:
+        if current_state == CircuitState.OPEN:
             return False
         # HALF_OPEN
         return self._half_open_calls < self.half_open_max_calls
@@ -83,7 +84,7 @@ class CircuitBreaker:
     def record_failure(self) -> None:
         """Record failed call."""
         self._failure_count += 1
-        self._last_failure_time = time.time()
+        self._last_failure_time = time.monotonic()
 
         if self._state == CircuitState.HALF_OPEN:
             self._state = CircuitState.OPEN
@@ -121,6 +122,10 @@ class RetryConfig:
     max_delay: float = 30.0
     exponential_base: float = 2.0
     jitter: float = 0.1
+
+    def __post_init__(self) -> None:
+        if self.max_attempts < 1:
+            raise ValueError(f"max_attempts must be >= 1, got {self.max_attempts}")
 
 
 async def retry_with_backoff(
