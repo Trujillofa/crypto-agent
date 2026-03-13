@@ -14,7 +14,7 @@ from src.features.reader import IndicatorReader
 from src.risk.manager import RiskManager
 from src.strategy.engine import EngineConfig, StrategyEngine
 from src.strategy.signals import Signal, SignalType
-from src.strategy.simple_ma import SimpleMACrossoverStrategy
+from src.strategy.rsi_reversal import RSIReversalStrategy
 
 
 @pytest.fixture
@@ -33,8 +33,8 @@ def engine_config():
         database={},
         timeframe="1m",
         evaluation_interval_seconds=60,
-        strategy_classes=[SimpleMACrossoverStrategy],
-        strategy_configs=[{"ema_short_period": 12, "ema_long_period": 26}],
+        strategy_classes=[RSIReversalStrategy],
+        strategy_configs=[{"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70}],
     )
 
 
@@ -132,19 +132,20 @@ class TestStrategyEngineSignalFlow:
     async def test_first_cycle_primes_crossover_state_from_previous_row(
         self, mock_reader, engine_config
     ):
-        """First evaluation after restart should not miss a valid crossover."""
+        """First evaluation after restart should not miss a valid RSI crossover."""
+        # Previous row: RSI below oversold (25), current row: RSI above oversold (35)
         mock_reader.fetch_latest.return_value = [
             {
-                "ema_12": 49000.0,
-                "ema_26": 50000.0,
-                "ema_50": 49500.0,
+                "rsi_14": 25.0,
+                "ema_12": 50000.0,
+                "ema_26": 49800.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
             },
             {
+                "rsi_14": 35.0,
                 "ema_12": 50100.0,
-                "ema_26": 49100.0,
-                "ema_50": 49500.0,
+                "ema_26": 49900.0,
                 "ema_200": 48000.0,
                 "close_price": 50600.0,
             },
@@ -162,53 +163,51 @@ class TestStrategyEngineSignalFlow:
 
     @pytest.mark.asyncio
     async def test_evaluate_buy_signal_triggers_callback(self, mock_reader, engine_config):
-        """BUY signal from strategy triggers callback."""
-        # First warmup the strategy (set initial state)
+        """BUY signal from RSI strategy triggers callback."""
+        # Warmup: RSI stays below oversold (no crossover yet)
         mock_reader.fetch_latest.return_value = [
             {
-                "ema_12": 49000.0,
-                "ema_26": 50000.0,
-                "ema_50": 49500.0,
+                "rsi_14": 22.0,
+                "ema_12": 50000.0,
+                "ema_26": 49800.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
-            },  # Below
+            },
             {
-                "ema_12": 49000.0,
-                "ema_26": 50000.0,
-                "ema_50": 49500.0,
+                "rsi_14": 25.0,
+                "ema_12": 50000.0,
+                "ema_26": 49800.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
-            },  # Below
+            },
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
         callback = AsyncMock()
 
-        # First call to establish baseline (no crossover)
         await engine._evaluate_all(on_signal=callback)
         callback.reset_mock()
 
-        # Now provide crossover up data (close_price > ema_50 = uptrend)
+        # Now RSI crosses above oversold threshold (25 → 35 = BUY)
         mock_reader.fetch_latest.return_value = [
             {
-                "ema_12": 49000.0,
-                "ema_26": 50000.0,
-                "ema_50": 49500.0,
+                "rsi_14": 25.0,
+                "ema_12": 50000.0,
+                "ema_26": 49800.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
-            },  # Was below
+            },
             {
+                "rsi_14": 35.0,
                 "ema_12": 50100.0,
-                "ema_26": 49100.0,
-                "ema_50": 49500.0,
+                "ema_26": 49900.0,
                 "ema_200": 48000.0,
                 "close_price": 50600.0,
-            },  # Now above
+            },
         ]
 
         await engine._evaluate_all(on_signal=callback)
 
-        # Verify callback was called with BUY signal
         assert callback.call_count == 1
         signal: Signal = callback.call_args[0][0]
         assert signal.type == SignalType.BUY
@@ -216,53 +215,51 @@ class TestStrategyEngineSignalFlow:
 
     @pytest.mark.asyncio
     async def test_evaluate_sell_signal_triggers_callback(self, mock_reader, engine_config):
-        """SELL signal from strategy triggers callback."""
-        # First warmup the strategy with data
+        """SELL signal from RSI strategy triggers callback."""
+        # Warmup: RSI above overbought
         mock_reader.fetch_latest.return_value = [
             {
+                "rsi_14": 78.0,
                 "ema_12": 50100.0,
-                "ema_26": 49100.0,
-                "ema_50": 51000.0,
+                "ema_26": 49900.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
-            },  # Above
+            },
             {
+                "rsi_14": 75.0,
                 "ema_12": 50100.0,
-                "ema_26": 49100.0,
-                "ema_50": 51000.0,
+                "ema_26": 49900.0,
                 "ema_200": 48000.0,
                 "close_price": 50600.0,
-            },  # Above
+            },
         ]
 
         engine = StrategyEngine(engine_config, mock_reader)
         callback = AsyncMock()
 
-        # First evaluation to set state
         await engine._evaluate_all(on_signal=callback)
         callback.reset_mock()
 
-        # Now crossover down (close_price < ema_50 = downtrend)
+        # Now RSI crosses below overbought threshold (75 → 65 = SELL)
         mock_reader.fetch_latest.return_value = [
             {
+                "rsi_14": 75.0,
                 "ema_12": 50100.0,
-                "ema_26": 49100.0,
-                "ema_50": 51000.0,
+                "ema_26": 49900.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
-            },  # Above
+            },
             {
-                "ema_12": 49000.0,
-                "ema_26": 50000.0,
-                "ema_50": 51000.0,
+                "rsi_14": 65.0,
+                "ema_12": 49900.0,
+                "ema_26": 50100.0,
                 "ema_200": 48000.0,
                 "close_price": 50400.0,
-            },  # Below
+            },
         ]
 
         await engine._evaluate_all(on_signal=callback)
 
-        # Verify callback was called with SELL signal
         assert callback.call_count == 1
         signal: Signal = callback.call_args[0][0]
         assert signal.type == SignalType.SELL
@@ -271,19 +268,19 @@ class TestStrategyEngineSignalFlow:
     @pytest.mark.asyncio
     async def test_hold_does_not_trigger_callback(self, mock_reader, engine_config):
         """HOLD signal does not trigger callback."""
-        # Mock indicators showing no crossover
+        # RSI in neutral zone, no crossover
         mock_reader.fetch_latest.return_value = [
             {
+                "rsi_14": 50.0,
                 "ema_12": 50100.0,
-                "ema_26": 49100.0,
-                "ema_50": 49500.0,
+                "ema_26": 49900.0,
                 "ema_200": 48000.0,
                 "close_price": 50500.0,
             },
             {
+                "rsi_14": 52.0,
                 "ema_12": 50200.0,
-                "ema_26": 49200.0,
-                "ema_50": 49500.0,
+                "ema_26": 50000.0,
                 "ema_200": 48000.0,
                 "close_price": 50600.0,
             },
@@ -294,7 +291,6 @@ class TestStrategyEngineSignalFlow:
 
         await engine._evaluate_all(on_signal=callback)
 
-        # Callback should NOT be called for HOLD
         callback.assert_not_called()
 
 

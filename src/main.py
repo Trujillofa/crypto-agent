@@ -38,13 +38,10 @@ from src.strategy import (
     CCIBreakoutStrategy,
     EngineConfig,
     MACDHistogramStrategy,
-    MomentumStrategy,
     RSIReversalStrategy,
-    SimpleMACrossoverStrategy,
     StrategyEngine,
     VWAPReversionStrategy,
 )
-from src.strategy.lifecycle import LifecycleManager
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
 
@@ -530,18 +527,18 @@ def _resolve_strategy_config(
     Mapping[str, Mapping[str, object]],
 ]:
     default_strategy_classes = [
-        SimpleMACrossoverStrategy,
         RSIReversalStrategy,
         MACDHistogramStrategy,
         BollingerBounceStrategy,
-        MomentumStrategy,
+        CCIBreakoutStrategy,
+        VWAPReversionStrategy,
     ]
     default_strategy_configs = [
-        {"ema_short_period": 12, "ema_long_period": 26},
         {"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70},
         {"min_histogram_threshold": 0.0, "use_atr_filter": True},
         {"band_distance_threshold": 0.0, "rsi_oversold": 30, "rsi_overbought": 70},
-        {"rsi_buy_threshold": 50, "rsi_sell_threshold": 50},
+        {"cci_buy_threshold": 100, "cci_sell_threshold": -100, "atr_min_pct": 0.005},
+        {"vwap_atr_multiplier": 1.5, "rsi_oversold": 40, "rsi_overbought": 60},
     ]
     default_aggregator_config = {
         "min_agreement": 2,
@@ -585,18 +582,17 @@ def _resolve_strategy_config(
 
 def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
     strategy_registry: dict[str, type[BaseStrategy]] = {
-        "simple_ma": SimpleMACrossoverStrategy,
         "rsi_reversal": RSIReversalStrategy,
         "macd_histogram": MACDHistogramStrategy,
         "bollinger_bounce": BollingerBounceStrategy,
-        "momentum": MomentumStrategy,
         "cci_breakout": CCIBreakoutStrategy,
         "vwap_reversion": VWAPReversionStrategy,
     }
 
+    # Dynamically load optional strategies (new 2026 frameworks)
     optional_strategies = {
-        "breakout_retest": ("src.strategy.breakout_retest", "BreakoutRetestStrategy"),
-        "trend_pullback": ("src.strategy.trend_pullback", "TrendPullbackStrategy"),
+        "sentiment_mean_reversion": ("src.strategy.sentiment_mean_reversion", "SentimentMeanReversionStrategy"),
+        "macro_volatility": ("src.strategy.macro_volatility", "MacroVolatilityStrategy"),
     }
     for strategy_name, (module_name, class_name) in optional_strategies.items():
         try:
@@ -841,27 +837,6 @@ async def run() -> None:
         per_symbol_aggregator_config=per_symbol_agg_config,
         global_trend_filter_enabled=settings.strategy.global_trend_filter_enabled,
     )
-
-    # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB
-    # Non-blocking — logs warnings but does not prevent startup
-    try:
-        lifecycle_db = {
-            "host": settings.database.get("host", "localhost"),
-            "port": int(settings.database.get("port", 5432)),
-            "user": settings.database.get("user", "postgres"),
-            "password": settings.database.get("password", ""),
-            "database": settings.database.get("name", "trading"),
-        }
-        async with LifecycleManager(lifecycle_db) as lifecycle:
-            strategy_names = [cls.__name__ for cls in strategy_classes]
-            all_live = await lifecycle.is_live(strategy_names)
-            if not all_live:
-                get_logger("lifecycle").warning(
-                    "Some strategies not promoted to 'live' in DB — "
-                    "run migration 004 and baseline_strategies.py to enable lifecycle gating"
-                )
-    except Exception as exc:
-        get_logger("lifecycle").debug("Lifecycle check skipped (table may not exist): %s", exc)
 
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 

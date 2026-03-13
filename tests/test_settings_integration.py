@@ -11,11 +11,9 @@ import yaml
 
 from src.main import _build_strategy_registry, _resolve_strategy_config, load_settings
 from src.strategy import (
-    BreakoutRetestStrategy,
     CCIBreakoutStrategy,
     Signal,
     SignalType,
-    TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
 
@@ -92,48 +90,11 @@ def test_settings_resolves_new_strategy_registry_entries():
     assert VWAPReversionStrategy in strategy_classes
 
 
-def test_replacement_config_resolves_trend_pullback():
-    settings = load_settings(Path("config/settings.sol_trend_pullback.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert strategy_classes == [TrendPullbackStrategy]
-    assert len(strategy_configs) == 1
-    assert aggregator_config["buy_threshold"] == 0.45
-
-
-def test_sparse_replacement_config_resolves_trend_pullback_cluster():
-    settings = load_settings(Path("config/settings.sol_trend_pullback_sparse.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert strategy_classes == [TrendPullbackStrategy]
-    assert len(strategy_configs) == 1
-    assert strategy_configs[0]["rsi_reclaim_level"] == 48
-    assert strategy_configs[0]["min_trend_strength_pct"] == 0.006
-    assert strategy_configs[0]["vwap_pullback_distance_pct"] == 0.05
-    assert aggregator_config["buy_threshold"] == 0.45
-    assert per_symbol["SOLUSDT"]["buy_threshold"] == 0.45
-
-
-def test_replacement_config_resolves_breakout_retest():
-    settings = load_settings(Path("config/settings.sol_breakout_retest.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert strategy_classes == [BreakoutRetestStrategy]
-    assert len(strategy_configs) == 1
-    assert aggregator_config["buy_threshold"] == 0.45
-
-
 def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
     real_import_module = importlib.import_module
 
     def fake_import_module(name: str, package: str | None = None):
-        if name in {"src.strategy.breakout_retest", "src.strategy.trend_pullback"}:
+        if name in {"src.strategy.sentiment_mean_reversion", "src.strategy.macro_volatility"}:
             raise ImportError(name)
         return real_import_module(name, package)
 
@@ -141,8 +102,8 @@ def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
 
     strategy_registry = _build_strategy_registry()
 
-    assert "breakout_retest" not in strategy_registry
-    assert "trend_pullback" not in strategy_registry
+    assert "sentiment_mean_reversion" not in strategy_registry
+    assert "macro_volatility" not in strategy_registry
     assert strategy_registry["cci_breakout"] is CCIBreakoutStrategy
     assert strategy_registry["vwap_reversion"] is VWAPReversionStrategy
 
@@ -151,7 +112,7 @@ def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""
     from src.features.reader import IndicatorReader
-    from src.strategy import EngineConfig, SimpleMACrossoverStrategy, StrategyEngine
+    from src.strategy import EngineConfig, RSIReversalStrategy, StrategyEngine
 
     # Mock database config
     db_config = {
@@ -162,52 +123,47 @@ async def test_full_flow_engine_to_executor():
         "password": "test_pass",
     }
 
-    # Mock IndicatorReader.fetch_latest to return 2 rows (warmup requirement)
-    # We'll call evaluate twice to trigger crossover:
-    # - First call: sets baseline (short < long)
-    # - Second call: triggers crossover (short > long → BUY)
     mock_reader = MagicMock(spec=IndicatorReader)
 
-    # First call: baseline data (short < long, no crossover yet)
     call_count = 0
 
     async def mock_fetch_latest(*_args, **_kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            # Warmup: short < long
+            # Warmup: RSI in oversold territory (no crossover yet)
             return [
                 {
-                    "ema_12": 95.0,
-                    "ema_26": 100.0,
-                    "ema_50": 98.0,
-                    "ema_200": 90.0,
-                    "close_price": 99.0,
+                    "rsi_14": 22.0,
+                    "ema_12": 50000.0,
+                    "ema_26": 49800.0,
+                    "ema_200": 48000.0,
+                    "close_price": 50000.0,
                 },
                 {
-                    "ema_12": 96.0,
-                    "ema_26": 100.0,
-                    "ema_50": 98.0,
-                    "ema_200": 90.0,
-                    "close_price": 99.5,
+                    "rsi_14": 25.0,
+                    "ema_12": 50050.0,
+                    "ema_26": 49850.0,
+                    "ema_200": 48000.0,
+                    "close_price": 50100.0,
                 },
             ]
         else:
-            # Crossover: short > long (BUY signal, price > ema_50 = uptrend)
+            # Crossover: RSI crosses above oversold (25 → 35 = BUY)
             return [
                 {
-                    "ema_12": 96.0,
-                    "ema_26": 100.0,
-                    "ema_50": 98.0,
-                    "ema_200": 90.0,
-                    "close_price": 99.5,
+                    "rsi_14": 25.0,
+                    "ema_12": 50050.0,
+                    "ema_26": 49850.0,
+                    "ema_200": 48000.0,
+                    "close_price": 50100.0,
                 },
                 {
-                    "ema_12": 101.0,
-                    "ema_26": 100.0,
-                    "ema_50": 98.0,
-                    "ema_200": 90.0,
-                    "close_price": 102.0,
+                    "rsi_14": 35.0,
+                    "ema_12": 50200.0,
+                    "ema_26": 49900.0,
+                    "ema_200": 48000.0,
+                    "close_price": 50500.0,
                 },
             ]
 
@@ -215,33 +171,26 @@ async def test_full_flow_engine_to_executor():
     mock_reader.__aenter__ = AsyncMock(return_value=mock_reader)
     mock_reader.__aexit__ = AsyncMock(return_value=None)
 
-    # Create engine config with correct list format
     engine_config = EngineConfig(
         symbols=["BTCUSDT"],
         database=db_config,
         timeframe="1m",
         evaluation_interval_seconds=60,
-        strategy_classes=[SimpleMACrossoverStrategy],
-        strategy_configs=[{"ema_short_period": 12, "ema_long_period": 26}],  # LIST not dict!
+        strategy_classes=[RSIReversalStrategy],
+        strategy_configs=[{"rsi_period": 14, "oversold_threshold": 30, "overbought_threshold": 70}],
     )
 
-    # Create engine with mock reader
     engine = StrategyEngine(config=engine_config, reader=mock_reader)
 
-    # Mock signal handler
     received_signals = []
 
     async def mock_signal_handler(signal: Signal) -> None:
         received_signals.append(signal)
 
-    # Run TWO evaluation cycles to trigger crossover
-    # Cycle 1: warmup (sets baseline state)
-    # Cycle 2: crossover detected (generates BUY signal)
     async with engine:
         await engine._evaluate_all(on_signal=mock_signal_handler)  # Warmup
         await engine._evaluate_all(on_signal=mock_signal_handler)  # Crossover
 
-    # Verify signal was generated and passed to handler
     assert len(received_signals) == 1, "Should receive exactly one signal"
     assert received_signals[0].symbol == "BTCUSDT", "Signal should be for BTCUSDT"
-    assert received_signals[0].type == SignalType.BUY, "Should be BUY signal (ema_12 > ema_26)"
+    assert received_signals[0].type == SignalType.BUY, "Should be BUY signal (RSI crossed above oversold)"

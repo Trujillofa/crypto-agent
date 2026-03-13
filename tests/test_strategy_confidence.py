@@ -2,7 +2,6 @@ import pytest
 
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.macd_strategy import MACDHistogramStrategy
-from src.strategy.momentum_strategy import MomentumStrategy
 from src.strategy.signals import SignalType
 
 
@@ -73,26 +72,6 @@ class TestStrategyConfidence:
                 "close_price": 50000.0,
                 "ema_50": 49000.0,
             },
-        )
-        assert signal.type == SignalType.BUY
-        assert abs(signal.confidence - 0.55) < 0.01
-
-    @pytest.mark.asyncio
-    async def test_momentum_confidence_scaling(self):
-        strategy = MomentumStrategy({"rsi_buy_threshold": 50.0, "rsi_max_entry": 70.0})
-
-        # Case 1: Strong Trend
-        # EMA=49000, Price=50000. Dist=1000. Pct=0.02. Boost=min(0.5, 0.02 * 25) = 0.5. Conf=1.0
-        signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 60.0, "ema_50": 49000.0, "close_price": 50000.0}
-        )
-        assert signal.type == SignalType.BUY
-        assert abs(signal.confidence - 1.0) < 0.01
-
-        # Case 2: Weak Trend
-        # EMA=49900, Price=50000. Dist=100. Pct=0.002. Boost=min(0.5, 0.002 * 25) = 0.05. Conf=0.55
-        signal = await strategy.evaluate(
-            "BTCUSDT", {"rsi_14": 60.0, "ema_50": 49900.0, "close_price": 50000.0}
         )
         assert signal.type == SignalType.BUY
         assert abs(signal.confidence - 0.55) < 0.01

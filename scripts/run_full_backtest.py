@@ -11,8 +11,8 @@ from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
+from src.strategy.cci_strategy import CCIBreakoutStrategy
 from src.strategy.macd_strategy import MACDHistogramStrategy
-from src.strategy.momentum_strategy import MomentumStrategy
 
 
 async def main():
@@ -34,12 +34,12 @@ async def main():
         "password": os.getenv("DB_PASSWORD", "trading"),
     }
 
-    strategies = [MACDHistogramStrategy, BollingerBounceStrategy, MomentumStrategy]
+    strategies = [MACDHistogramStrategy, BollingerBounceStrategy, CCIBreakoutStrategy]
 
     strategy_configs = [
         {"min_histogram_threshold": 0.0, "use_atr_filter": True},
         {"band_distance_threshold": 0.0, "rsi_oversold": 30.0, "rsi_overbought": 70.0},
-        {"rsi_buy_threshold": 60.0},
+        {"cci_buy_threshold": 100, "cci_sell_threshold": -100, "atr_min_pct": 0.005},
     ]
 
     config = BacktestConfig(

@@ -464,6 +464,67 @@ class TradingExecutor:
             self._metrics.record_api_error("cancel_all_orders", str(type(exc).__name__))
             raise
 
+    async def place_twap_order(
+        self,
+        symbol: str,
+        side: str,
+        total_quantity: float,
+        num_slices: int = 5,
+        interval_seconds: float = 30.0,
+    ) -> list[OrderInfo]:
+        """Place a TWAP (Time-Weighted Average Price) order.
+
+        Splits a large order into smaller time-sliced chunks to minimize
+        market impact, especially important for altcoins with thin order books.
+
+        Args:
+            symbol: Trading pair symbol
+            side: "BUY" or "SELL"
+            total_quantity: Total quantity to execute
+            num_slices: Number of slices to split into
+            interval_seconds: Seconds between each slice
+
+        Returns:
+            List of OrderInfo for each executed slice
+        """
+        if num_slices < 1:
+            num_slices = 1
+
+        slice_qty = total_quantity / num_slices
+        filled_orders: list[OrderInfo] = []
+
+        self._logger.info(
+            "TWAP order: %s %s %.6f in %d slices (%.1fs apart)",
+            side, symbol, total_quantity, num_slices, interval_seconds,
+        )
+
+        for i in range(num_slices):
+            try:
+                order = await self.place_market_order(symbol, side, slice_qty)
+                filled_orders.append(order)
+                self._logger.info(
+                    "TWAP slice %d/%d: %s (status: %s)",
+                    i + 1, num_slices, order.order_id, order.status,
+                )
+            except Exception as exc:
+                self._logger.error(
+                    "TWAP slice %d/%d failed: %s — aborting remaining slices",
+                    i + 1, num_slices, exc,
+                )
+                break
+
+            # Wait between slices (skip after last slice)
+            if i < num_slices - 1:
+                await asyncio.sleep(interval_seconds)
+
+        total_filled = sum(o.executed_quantity for o in filled_orders if o.status == "FILLED")
+        self._logger.info(
+            "TWAP complete: %d/%d slices filled, total qty=%.6f",
+            len(filled_orders), num_slices, total_filled,
+        )
+
+        return filled_orders
+
     def _calculate_quantity(self, symbol: str, portfolio_value: float) -> float:
         """Calculate order quantity based on config and portfolio value.
 
