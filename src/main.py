@@ -630,7 +630,8 @@ def _wire_optional_strategy_dependencies(
     has_sentiment_strategy = False
     has_macro_strategy = False
 
-    for symbol_strategies in strategy_engine._strategies.values():  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    for symbol_strategies in strategy_engine._strategies.values():
         for strategy in symbol_strategies:
             if isinstance(strategy, SentimentMeanReversionStrategy):
                 has_sentiment_strategy = True
