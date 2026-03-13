@@ -1,0 +1,94 @@
+mode: paper
+agent_id: sentiment-macro-bot
+log_level: INFO
+
+trading:
+  pairs:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+  timeframe: 1h
+
+ingest:
+  use_websocket: true
+
+database:
+  host: timescaledb
+  port: 5432
+  name: marketdata
+  user: trading
+  password: ""
+
+telegram:
+  enabled: true
+  bot_token: ""
+  chat_id: ""
+  rate_limit_seconds: 5
+  allowed_updates:
+    - message
+
+ai:
+  enabled: true
+  provider: xai
+  model: grok-4-1-fast-reasoning
+  polling_interval: 60.0
+  max_history: 10
+  allowed_chat_ids: []
+  api_key: ""
+
+prometheus:
+  port: 8000
+
+trading_execution:
+  enabled: true
+  api_key: ""
+  api_secret: ""
+  test_mode: true
+  order_size_usdt: 100.0
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.05
+  sl_atr_multiplier: 2.0
+  tp_atr_multiplier: 4.5
+  trailing_activate_atr: 1.5
+  trailing_offset_atr: 1.0
+  use_atr_sizing: true
+  atr_multiplier: 1.0
+  risk_per_trade_pct: 0.02
+
+futures:
+  enabled: true
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+  default_leverage: 3
+  max_leverage: 10
+  margin_mode: isolated
+  position_mode: one-way
+  test_mode: true
+  liquidation_buffer_pct: 5.0
+
+strategy:
+  evaluation_interval_seconds: 3600
+  cooldown_candles: 1
+  default_trading_mode: futures
+  strategies:
+    - name: sentiment_mean_reversion
+      config:
+        rsi_oversold: 35.0
+        rsi_overbought: 65.0
+        bb_distance_threshold: 0.005
+        sentiment_gate_threshold: 35.0
+        sentiment_panic_threshold: 20.0
+        sentiment_boost_threshold: 65.0
+    - name: macro_volatility
+      config:
+        min_surprise_pct: 0.3
+        strong_surprise_pct: 1.0
+        min_atr_pct: 0.003
+        require_momentum_confirmation: true
+  global_trend_filter_enabled: true
+  aggregator:
+    min_agreement: 1
+    buy_threshold: 0.6
+    sell_threshold: -0.6

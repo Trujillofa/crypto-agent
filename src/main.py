@@ -39,13 +39,17 @@ from src.strategy import (
     CCIBreakoutStrategy,
     EngineConfig,
     MACDHistogramStrategy,
+    MacroVolatilityStrategy,
     MomentumStrategy,
     RSIReversalStrategy,
+    SentimentMeanReversionStrategy,
     SimpleMACrossoverStrategy,
     StrategyEngine,
     VWAPReversionStrategy,
 )
 from src.strategy.lifecycle import LifecycleManager
+from src.strategy.macro_volatility import MacroEventFeed
+from src.strategy.sentiment_mean_reversion import SentimentScorer
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
 
@@ -593,6 +597,8 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
         "momentum": MomentumStrategy,
         "cci_breakout": CCIBreakoutStrategy,
         "vwap_reversion": VWAPReversionStrategy,
+        "sentiment_mean_reversion": SentimentMeanReversionStrategy,
+        "macro_volatility": MacroVolatilityStrategy,
     }
 
     optional_strategies = {
@@ -865,6 +871,25 @@ async def run() -> None:
         get_logger("lifecycle").debug("Lifecycle check skipped (table may not exist): %s", exc)
 
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
+
+    # WIRED: Inject dependencies for new strategies
+    # This ensures they have access to external data (xAI, Macro Events) if configured
+    if overseer_agent and overseer_agent.xai_client:
+        scorer = SentimentScorer(xai_client=overseer_agent.xai_client)
+        # Inject into all instances
+        # Accessing private member _strategies is pragmatic here for dependency injection
+        for symbol_strategies in strategy_engine._strategies.values():  # pylint: disable=protected-access
+            for strategy in symbol_strategies:
+                if isinstance(strategy, SentimentMeanReversionStrategy):
+                    strategy.set_scorer(scorer)
+
+    # WIRED: Inject Macro Feed
+    # For now, this is an empty feed, but it provides the necessary interface
+    macro_feed = MacroEventFeed()
+    for symbol_strategies in strategy_engine._strategies.values():  # pylint: disable=protected-access
+        for strategy in symbol_strategies:
+            if isinstance(strategy, MacroVolatilityStrategy):
+                strategy.set_event_feed(macro_feed)
 
     stop_event = asyncio.Event()
 
