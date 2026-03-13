@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -68,7 +68,7 @@ class StagedOrder:
     hash: str = ""
     signal_confidence: float = 0.0
     signal_reason: str = ""
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     committed_at: datetime | None = None
     pushed_at: datetime | None = None
     exchange_order_id: str | None = None
@@ -199,7 +199,7 @@ class StagedOrderQueue:
 
         order.hash = commit_hash
         order.stage = OrderStage.COMMITTED
-        order.committed_at = datetime.now(timezone.utc)
+        order.committed_at = datetime.now(UTC)
 
         self._logger.info(
             "Order committed: %s -> hash=%s",
@@ -266,9 +266,9 @@ class StagedOrderQueue:
         order.error = error
 
         if new_stage == OrderStage.PUSHED:
-            order.pushed_at = datetime.now(timezone.utc)
+            order.pushed_at = datetime.now(UTC)
         if new_stage == OrderStage.FILLED:
-            order.pushed_at = order.pushed_at or datetime.now(timezone.utc)
+            order.pushed_at = order.pushed_at or datetime.now(UTC)
 
         self._logger.info(
             "Order stage updated: %s %s -> %s",

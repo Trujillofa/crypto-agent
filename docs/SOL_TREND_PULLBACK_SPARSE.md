@@ -56,6 +56,19 @@ ssh crypto-agent "cd /opt/crypto-agent && docker compose ps agent_sol_sparse"
 ssh crypto-agent "cd /opt/crypto-agent && docker compose logs agent_sol_sparse --tail=100 --no-log-prefix"
 ```
 
+Drift and activity check:
+
+```bash
+python scripts/production_drift_sentinel.py \
+  --expected-branch main \
+  --remote-host crypto-agent \
+  --remote-dir /opt/crypto-agent \
+  --watch-service agent_sol_sparse \
+  --signal-stale-hours 72 \
+  --log-tail 500 \
+  --fail-on error
+```
+
 Stop or remove the paper validation service:
 
 ```bash

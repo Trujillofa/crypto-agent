@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from src.utils.logger import get_logger
 
@@ -44,7 +45,7 @@ class CircuitBreaker:
     _state: CircuitState = field(default=CircuitState.CLOSED, init=False)
     _failure_count: int = field(default=0, init=False)
     _last_failure_time: float = field(default=0.0, init=False)
-_calls: int = field(default=0    _half_open, init=False)
+    _half_open_calls: int = field(default=0, init=False)
     _logger: Any = field(default=None, init=False)
 
     def __post_init__(self) -> None:

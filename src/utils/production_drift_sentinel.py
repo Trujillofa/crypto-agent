@@ -11,6 +11,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
+
 
 class Severity(StrEnum):
     ERROR = "error"
@@ -47,6 +49,18 @@ class SignalSnapshot:
 
 
 @dataclass(frozen=True)
+class WatchedServiceSnapshot:
+    service: str
+    exists: bool
+    running: bool
+    signal_count: int
+    last_signal_at: str | None
+    saw_strategy_cycle: bool
+    paper_order_count: int
+    last_paper_order_at: str | None
+
+
+@dataclass(frozen=True)
 class DriftReport:
     local_repo: RepoSnapshot | None
     remote_repo: RepoSnapshot | None
@@ -54,6 +68,7 @@ class DriftReport:
     remote_config_hashes: dict[str, str]
     service_snapshot: ServiceSnapshot | None
     signal_snapshot: SignalSnapshot | None
+    watched_service_snapshot: WatchedServiceSnapshot | None
     findings: list[Finding]
 
 
@@ -91,6 +106,8 @@ def collect_remote_repo_snapshot(host: str, remote_dir: str) -> RepoSnapshot:
 def collect_local_config_hashes(config_dir: Path = Path("config")) -> dict[str, str]:
     hashes: dict[str, str] = {}
     for path in sorted(config_dir.glob("settings*.yaml")):
+        if path.name in IGNORED_CONFIG_FILES:
+            continue
         hashes[path.name] = sha256_file(path)
     return hashes
 
@@ -123,6 +140,8 @@ def parse_sha256_lines(text: str) -> dict[str, str]:
             continue
         digest, file_path = parts
         normalized = Path(file_path.strip()).name
+        if normalized in IGNORED_CONFIG_FILES:
+            continue
         hashes[normalized] = digest
     return hashes
 
@@ -179,6 +198,62 @@ def collect_remote_signal_snapshot(
     )
 
 
+def collect_remote_watched_service_snapshot(
+    host: str,
+    remote_dir: str,
+    service_snapshot: ServiceSnapshot,
+    service: str,
+    tail_lines: int = 500,
+) -> WatchedServiceSnapshot:
+    exists = service in service_snapshot.all_services
+    running = service in service_snapshot.running_services
+    if not exists or not running:
+        return WatchedServiceSnapshot(
+            service=service,
+            exists=exists,
+            running=running,
+            signal_count=0,
+            last_signal_at=None,
+            saw_strategy_cycle=False,
+            paper_order_count=0,
+            last_paper_order_at=None,
+        )
+
+    logs = run_remote_command(
+        host,
+        remote_dir,
+        f"docker compose logs --tail {tail_lines} --timestamps --no-log-prefix {shlex.quote(service)}",
+        timeout=30,
+    )
+    lines = logs.splitlines()
+    signal_lines = [line for line in lines if "Consensus Signal" in line]
+    paper_order_lines = [
+        line
+        for line in lines
+        if "Paper BUY " in line or "Paper SELL " in line or "Paper SHORT " in line
+    ]
+    saw_strategy_cycle = any("Strategy cycle:" in line for line in lines)
+
+    last_signal_at: str | None = None
+    if signal_lines:
+        last_signal_at = extract_timestamp(signal_lines[-1])
+
+    last_paper_order_at: str | None = None
+    if paper_order_lines:
+        last_paper_order_at = extract_timestamp(paper_order_lines[-1])
+
+    return WatchedServiceSnapshot(
+        service=service,
+        exists=exists,
+        running=running,
+        signal_count=len(signal_lines),
+        last_signal_at=last_signal_at,
+        saw_strategy_cycle=saw_strategy_cycle,
+        paper_order_count=len(paper_order_lines),
+        last_paper_order_at=last_paper_order_at,
+    )
+
+
 def extract_timestamp(line: str) -> str | None:
     match = re.search(
         r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)", line
@@ -211,6 +286,7 @@ def analyze_drift(
     remote_config_hashes: dict[str, str],
     service_snapshot: ServiceSnapshot | None,
     signal_snapshot: SignalSnapshot | None,
+    watched_service_snapshot: WatchedServiceSnapshot | None,
     remote_error: str | None,
     signal_stale_hours: int,
     remote_checks_enabled: bool = True,
@@ -383,6 +459,81 @@ def analyze_drift(
                         )
                     )
 
+    if watched_service_snapshot is not None:
+        if not watched_service_snapshot.exists:
+            findings.append(
+                Finding(
+                    severity=Severity.ERROR,
+                    code="WATCH_SERVICE_MISSING",
+                    message=(
+                        f"Watched service '{watched_service_snapshot.service}' "
+                        "is not defined in docker compose"
+                    ),
+                    recommendation="Fix the service name or add the service before relying on it.",
+                )
+            )
+        elif not watched_service_snapshot.running:
+            findings.append(
+                Finding(
+                    severity=Severity.ERROR,
+                    code="WATCH_SERVICE_NOT_RUNNING",
+                    message=f"Watched service '{watched_service_snapshot.service}' is not running",
+                    recommendation="Restart the service and inspect its container logs.",
+                )
+            )
+        else:
+            if not watched_service_snapshot.saw_strategy_cycle:
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        code="WATCH_SERVICE_NO_STRATEGY_CYCLE",
+                        message=(
+                            f"No strategy cycle entries were found for "
+                            f"'{watched_service_snapshot.service}' in recent logs"
+                        ),
+                        recommendation="Check the service logs and confirm the strategy engine loop is running.",
+                    )
+                )
+
+            if (
+                watched_service_snapshot.saw_strategy_cycle
+                and watched_service_snapshot.signal_count == 0
+            ):
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        code="WATCH_SERVICE_SIGNAL_DROUGHT",
+                        message=(
+                            f"Watched service '{watched_service_snapshot.service}' is cycling "
+                            "but no consensus signals were found in recent logs"
+                        ),
+                        recommendation=(
+                            "Review the watched strategy thresholds and confirm recent market "
+                            "conditions match the thesis."
+                        ),
+                    )
+                )
+
+            if watched_service_snapshot.last_signal_at:
+                parsed = parse_iso_timestamp(watched_service_snapshot.last_signal_at)
+                if parsed is not None:
+                    age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
+                    if age_hours > signal_stale_hours:
+                        findings.append(
+                            Finding(
+                                severity=Severity.WARNING,
+                                code="WATCH_SERVICE_SIGNAL_STALE",
+                                message=(
+                                    f"Latest watched-service consensus signal is stale "
+                                    f"({age_hours:.1f}h old at {watched_service_snapshot.last_signal_at})"
+                                ),
+                                recommendation=(
+                                    "Inspect whether this sparse strategy is idle by design or "
+                                    "whether conditions changed materially."
+                                ),
+                            )
+                        )
+
     return findings
 
 
@@ -394,6 +545,9 @@ def report_to_json(report: DriftReport) -> str:
         "remote_config_hashes": report.remote_config_hashes,
         "service_snapshot": asdict(report.service_snapshot) if report.service_snapshot else None,
         "signal_snapshot": asdict(report.signal_snapshot) if report.signal_snapshot else None,
+        "watched_service_snapshot": (
+            asdict(report.watched_service_snapshot) if report.watched_service_snapshot else None
+        ),
         "findings": [asdict(finding) for finding in report.findings],
     }
     return json.dumps(payload, indent=2)

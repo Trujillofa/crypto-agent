@@ -50,6 +50,17 @@ htmlcov/
 
 # Data (local only, not committed)
 data/
+research/run.log
+research/last_result.json
+research/archive/
+research/candidates/
+research/resolved/
+
+# Generated reports (reproducible)
+docs/reports/config-search-*.csv
+docs/reports/config-search-*.json
+docs/reports/production-drift-sentinel-*.md
+docs/reports/production-drift-sentinel-*.json
 
 # Docker volumes / local state
 *.log
