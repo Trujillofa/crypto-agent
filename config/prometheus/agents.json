@@ -1,0 +1,30 @@
+[
+  {
+    "labels": {
+      "service": "agent",
+      "agent_id": "default"
+    },
+    "targets": ["agent:8000"]
+  },
+  {
+    "labels": {
+      "service": "agent_2",
+      "agent_id": "agent2"
+    },
+    "targets": ["agent_2:8000"]
+  },
+  {
+    "labels": {
+      "service": "agent_btc",
+      "agent_id": "btc-4h"
+    },
+    "targets": ["agent_btc:8000"]
+  },
+  {
+    "labels": {
+      "service": "agent_sol_sparse",
+      "agent_id": "sol-trend-pullback-sparse"
+    },
+    "targets": ["agent_sol_sparse:8000"]
+  }
+]

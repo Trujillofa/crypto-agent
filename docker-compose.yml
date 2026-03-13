@@ -25,6 +25,7 @@ services:
       - PROMETHEUS_PASSWORD=${PROMETHEUS_PASSWORD}
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus:/etc/prometheus/file_sd:ro
       - ./config/auth:/etc/prometheus/auth:ro
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
