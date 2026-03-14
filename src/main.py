@@ -668,7 +668,6 @@ async def run() -> None:
     # Initialize Event Log
     event_log = EventLog(
         agent_id=settings.agent_id,
-        rotation_interval="1d",
     )
 
     # Initialize risk manager
