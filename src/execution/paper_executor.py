@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.core.event_log import EventLog
 from src.db.pool import get_pool
 from src.execution.metrics import ExecutionMetrics
 from src.notifications.telegram import TelegramNotifier
@@ -88,6 +89,7 @@ class PaperExecutor:
         portfolio_manager: PortfolioManager | None = None,
         db_config: Mapping[str, object] | None = None,
         agent_id: str = "default",
+        event_log: EventLog | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -95,6 +97,8 @@ class PaperExecutor:
         self._notifier = notifier or TelegramNotifier()
         self._portfolio_manager = portfolio_manager
         self._db_config = db_config
+        self._event_log = event_log
+        self._agent_id = self._normalize_agent_id(agent_id)
         self._agent_id = self._normalize_agent_id(agent_id)
         self._position_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
         self._logger = get_logger("PaperExecutor")
@@ -365,6 +369,18 @@ class PaperExecutor:
         is_futures = signal.trading_mode == "futures"
         market_tag = "futures" if is_futures else "spot"
 
+        if self._event_log:
+            await self._event_log.log(
+                "signal_received",
+                {
+                    "symbol": signal.symbol,
+                    "type": signal.type.value,
+                    "price": signal.price,
+                    "reason": signal.reason,
+                    "trading_mode": signal.trading_mode,
+                },
+            )
+
         try:
             if signal.type == SignalType.HOLD:
                 return
@@ -381,6 +397,15 @@ class PaperExecutor:
                         signal.symbol,
                         market_tag,
                     )
+            if self._event_log:
+                await self._event_log.log(
+                    "signal_ignored",
+                    {
+                        "symbol": signal.symbol,
+                        "reason": "strategy_sell_ignored_spot_mode",
+                        "market_tag": market_tag,
+                    },
+                )
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Paper signal failed: %s — %s", signal.symbol, exc)
             await self._notifier.send_alert(
@@ -491,8 +516,18 @@ class PaperExecutor:
         # Risk check
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
+            if self._event_log:
+                await self._event_log.log(
+                    "risk_check_failed",
+                    {"symbol": signal.symbol, "reason": reason, "stage": "paper_buy"},
+                )
+            if self._event_log:
+                await self._event_log.log(
+                    "risk_check_failed",
+                    {"symbol": signal.symbol, "reason": reason, "stage": "paper_buy"},
+                )
             await self._notifier.send_alert(
-                f"<b>Paper signal blocked</b> [{market_tag}]\n" f"{signal.symbol} BUY — {reason}"
+                f"<b>Paper signal blocked</b> [{market_tag}]\n{signal.symbol} BUY — {reason}"
             )
             return
 
@@ -509,6 +544,15 @@ class PaperExecutor:
                 f"<b>Paper signal blocked</b> [{market_tag}]\n"
                 f"{signal.symbol} BUY — max open positions ({max_positions}) reached"
             )
+            if self._event_log:
+                await self._event_log.log(
+                    "risk_check_failed",
+                    {
+                        "symbol": signal.symbol,
+                        "reason": "max_open_positions_reached",
+                        "limit": max_positions,
+                    },
+                )
             return
 
         # Simulate fill with fee
@@ -589,6 +633,22 @@ class PaperExecutor:
             atr_text,
         )
 
+        if self._event_log:
+            await self._event_log.log(
+                "order_filled",
+                {
+                    "symbol": signal.symbol,
+                    "side": "BUY",
+                    "quantity": quantity,
+                    "price": entry_price,
+                    "order_type": "MARKET",
+                    "market": market_tag,
+                    "fee": fee,
+                    "notional": order_usdt,
+                    "leverage": self._config.futures_leverage if is_futures else 1,
+                },
+            )
+
         self._metrics.record_order_placed(
             symbol=signal.symbol,
             order_type=f"PAPER_{market_tag.upper()}",
@@ -639,6 +699,11 @@ class PaperExecutor:
 
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
+            if self._event_log:
+                await self._event_log.log(
+                    "risk_check_failed",
+                    {"symbol": signal.symbol, "reason": reason, "stage": "paper_short"},
+                )
             await self._notifier.send_alert(
                 f"<b>Paper signal blocked</b> [{market_tag}]\n" f"{signal.symbol} SELL — {reason}"
             )
@@ -656,6 +721,15 @@ class PaperExecutor:
                 f"<b>Paper signal blocked</b> [{market_tag}]\n"
                 f"{signal.symbol} SELL — max open positions ({max_positions}) reached"
             )
+            if self._event_log:
+                await self._event_log.log(
+                    "risk_check_failed",
+                    {
+                        "symbol": signal.symbol,
+                        "reason": "max_open_positions_reached",
+                        "limit": max_positions,
+                    },
+                )
             return
 
         fee = order_usdt * self._config.fee_rate_futures
@@ -726,6 +800,23 @@ class PaperExecutor:
             fee,
             atr_text,
         )
+
+        if self._event_log:
+            await self._event_log.log(
+                "order_filled",
+                {
+                    "symbol": signal.symbol,
+                    "side": "SELL",
+                    "quantity": quantity,
+                    "price": entry_price,
+                    "order_type": "MARKET",
+                    "market": market_tag,
+                    "fee": fee,
+                    "notional": order_usdt,
+                    "leverage": self._config.futures_leverage,
+                    "is_short": True,
+                },
+            )
 
         self._metrics.record_order_placed(
             symbol=signal.symbol,
@@ -807,6 +898,23 @@ class PaperExecutor:
             fee,
             self._balance,
         )
+
+        if self._event_log:
+            await self._event_log.log(
+                "order_filled",
+                {
+                    "symbol": signal.symbol,
+                    "side": close_side,
+                    "quantity": position.quantity,
+                    "price": signal.price,
+                    "order_type": "MARKET",
+                    "market": market_tag,
+                    "fee": fee,
+                    "pnl": net_pnl,
+                    "realized_pnl": net_pnl,
+                    "close_reason": "signal" if signal.reason == "SIGNAL" else signal.reason,
+                },
+            )
 
         self._metrics.record_order_placed(
             symbol=signal.symbol,

@@ -5,7 +5,13 @@ import logging
 try:
     from pythonjsonlogger.json import JsonFormatter
 except ImportError:
-    from pythonjsonlogger.jsonlogger import JsonFormatter
+    try:
+        from pythonjsonlogger.jsonlogger import JsonFormatter
+    except ImportError:
+        # Fallback for environments without pythonjsonlogger
+        class JsonFormatter(logging.Formatter):
+            def format(self, record):
+                return super().format(record)
 
 
 def configure_logger(level: str) -> None:

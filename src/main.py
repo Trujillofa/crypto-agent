@@ -13,6 +13,7 @@ from typing import cast
 
 import yaml
 
+from src.core.event_log import EventLog
 from src.db import close_pool, init_pool, is_connected, update_health_status
 from src.execution import (
     FuturesTradingConfig,
@@ -664,12 +665,19 @@ async def run() -> None:
         "database.auto_migrate",
         default=False,
     )
+    # Initialize Event Log
+    event_log = EventLog(
+        log_dir=Path("data"),
+        agent_id=settings.agent_id,
+        rotation_interval="1d",
+    )
 
     # Initialize risk manager
     risk_manager = RiskManager(
         Path("config/risk.yaml"),
         agent_id=settings.agent_id,
         paper_mode=settings.mode == "paper",
+        event_log=event_log,
     )
 
     # Check if trading is allowed (warn but don't exit in paper mode —
@@ -814,6 +822,7 @@ async def run() -> None:
             portfolio_manager=portfolio_manager,
             db_config=settings.database,
             agent_id=settings.agent_id,
+            event_log=event_log,
         )
         get_logger("main").info("Paper mode: using internal PaperExecutor (no Binance API)")
     else:
@@ -824,6 +833,7 @@ async def run() -> None:
             metrics=execution_metrics,
             portfolio_manager=portfolio_manager,
             notifier=telegram_notifier,
+            event_log=event_log,
         )
 
         if settings.futures and settings.futures.enabled:
@@ -854,6 +864,7 @@ async def run() -> None:
                 metrics=execution_metrics,
                 portfolio_manager=portfolio_manager,
                 notifier=telegram_notifier,
+                event_log=event_log,
             )
 
             # Initialize futures mark price WebSocket
@@ -924,6 +935,7 @@ async def run() -> None:
     # Prepare async context managers - conditionally add futures if enabled
     context_managers = [
         writer,
+        event_log,
         indicator_writer,
         indicator_reader,
         portfolio_manager,

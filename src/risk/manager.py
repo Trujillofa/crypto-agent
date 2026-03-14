@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from src.core.event_log import EventLog
 from src.notifications.telegram import TelegramNotifier
 from src.utils.logger import get_logger
 
@@ -73,6 +74,7 @@ class RiskManager:
         state_path: Path | None = None,
         agent_id: str = "default",
         paper_mode: bool = False,
+        event_log: EventLog | None = None,
     ) -> None:
         self._logger = get_logger(self.__class__.__name__)
         self._config = self._load_config(config_path)
@@ -80,6 +82,7 @@ class RiskManager:
         self._agent_id = self._normalize_agent_id(agent_id)
         self._state_path = state_path or self._default_state_path(self._agent_id)
         self._paper_mode = paper_mode
+        self._event_log = event_log
         self._logger.info(
             "Risk manager initialized (agent_id=%s, state=%s)",
             self._agent_id,
@@ -345,6 +348,35 @@ class RiskManager:
         """Trigger a circuit breaker."""
         self._circuit_breakers[reason] = True
         self._save_state()  # Persist circuit breaker state
+        self._logger.error(f"CIRCUIT BREAKER TRIGGERED: {reason}")
+        if self._event_log:
+            # Fire-and-forget async logging task since we are in a sync method
+            # but running within an asyncio event loop
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    self._event_log.log(
+                        event_type="risk_check",
+                        level="error",
+                        agent_id=self._agent_id,
+                        content={
+                            "action": "circuit_breaker_triggered",
+                            "reason": reason,
+                            "component": "RiskManager",
+                        },
+                    )
+                )
+            except RuntimeError:
+                # No running loop (e.g. during sync tests)
+                pass
+            # We can't await here easily because this might be called from sync context.
+            # But the whole app is async. _trigger_circuit_breaker is synchronous though.
+            # Wait, RiskManager methods are synchronous (except monitor_loop).
+            # I should make _trigger_circuit_breaker async OR use a task.
+            # Since this is a critical event, firing a task is acceptable.
+            # Actually, let's check if I can make it async.
+            pass  # Will handle async logging below
+
         self._logger.error(f"CIRCUIT BREAKER TRIGGERED: {reason}")
 
         # Queue circuit breaker notification

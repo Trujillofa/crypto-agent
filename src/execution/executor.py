@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.core.event_log import EventLog
 from src.execution.binance_client import (
     BinancePrivateClient,
     OrderInfo,
@@ -48,12 +49,14 @@ class TradingExecutor:
         metrics: ExecutionMetrics,
         portfolio_manager: PortfolioManager | None = None,
         notifier: TelegramNotifier | None = None,
+        event_log: EventLog | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
         self._portfolio_manager = portfolio_manager
         self._notifier = notifier or TelegramNotifier()
+        self._event_log = event_log
         self._logger = get_logger(self.__class__.__name__)
         self._client: BinancePrivateClient | None = None
         self._running = False
@@ -566,6 +569,21 @@ class TradingExecutor:
             return
 
         try:
+            if self._event_log:
+                await self._event_log.log(
+                    event_type="signal_received",
+                    level="info",
+                    agent_id=self._risk_manager._agent_id,
+                    content={
+                        "symbol": signal.symbol,
+                        "type": signal.type.value,
+                        "price": signal.price,
+                        "confidence": signal.confidence,
+                        "indicators": signal.indicators,
+                        "reason": signal.reason,
+                    },
+                )
+
             if signal.type == SignalType.BUY:
                 # Check for duplicate orders/existing positions
                 if self._portfolio_manager and self._portfolio_manager.has_position(

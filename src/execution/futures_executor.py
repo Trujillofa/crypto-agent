@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.core.event_log import EventLog
 from src.execution.futures_client import (
     BinanceFuturesClient,
     FuturesOrderInfo,
@@ -51,6 +52,7 @@ class FuturesTradingExecutor:
         metrics: ExecutionMetrics,
         portfolio_manager: PortfolioManager | None = None,
         notifier: TelegramNotifier | None = None,
+        event_log: EventLog | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -58,6 +60,7 @@ class FuturesTradingExecutor:
         self._portfolio_manager = portfolio_manager
         self._notifier = notifier or TelegramNotifier()
         self._logger = get_logger(self.__class__.__name__)
+        self._event_log = event_log
         self._client: BinanceFuturesClient | None = None
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
