@@ -357,9 +357,8 @@ class RiskManager:
                 loop.create_task(
                     self._event_log.log(
                         event_type="risk_check",
-                        level="error",
-                        agent_id=self._agent_id,
-                        content={
+                        payload={
+                            "level": "error",
                             "action": "circuit_breaker_triggered",
                             "reason": reason,
                             "component": "RiskManager",

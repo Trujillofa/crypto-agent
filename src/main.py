@@ -1118,6 +1118,18 @@ async def run() -> None:
                 ),
                 "enabled" if overseer_agent else "disabled",
             )
+            # Log startup event to force event log file creation
+            await event_log.log(
+                event_type="system_startup",
+                payload={
+                    "version": "1.0.0",
+                    "mode": settings.mode,
+                    "trading_enabled": trading_executor is not None or paper_executor is not None,
+                    "futures_enabled": futures_executor is not None
+                    or (paper_executor and paper_executor._config.futures_symbols),
+                    "risk_summary": risk_summary,
+                },
+            )
 
         async def health_monitor_loop() -> None:
             """Periodically probe the database for health status."""
