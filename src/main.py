@@ -667,7 +667,6 @@ async def run() -> None:
     )
     # Initialize Event Log
     event_log = EventLog(
-        log_dir=Path("data"),
         agent_id=settings.agent_id,
         rotation_interval="1d",
     )
