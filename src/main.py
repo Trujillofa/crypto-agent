@@ -933,7 +933,6 @@ async def run() -> None:
     # Prepare async context managers - conditionally add futures if enabled
     context_managers = [
         writer,
-        event_log,
         indicator_writer,
         indicator_reader,
         portfolio_manager,
