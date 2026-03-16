@@ -136,6 +136,38 @@ class PaperExecutor:
         symbol, market_tag = raw_key.rsplit(":", 1)
         return symbol, market_tag
 
+    def _portfolio_value(self) -> float:
+        """Estimate current account equity for paper risk checks."""
+        portfolio_value = self._balance
+        for pos_key, position in self._positions.items():
+            _, market_tag = self._parse_position_key(pos_key)
+            if market_tag == "futures":
+                portfolio_value += position.notional / self._config.futures_leverage
+            else:
+                portfolio_value += position.notional
+        return portfolio_value
+
+    async def _enforce_position_limit(
+        self,
+        pos_key: str,
+        symbol: str,
+        side: str,
+        market_tag: str,
+        order_usdt: float,
+    ) -> bool:
+        allowed, reason = self._risk_manager.check_position_limit(
+            pos_key,
+            order_usdt,
+            self._portfolio_value(),
+        )
+        if allowed:
+            return True
+
+        await self._notifier.send_alert(
+            f"<b>Paper signal blocked</b> [{market_tag}]\n" f"{symbol} {side} — {reason}"
+        )
+        return False
+
     async def __aenter__(self) -> PaperExecutor:
         if not self._config.enabled:
             self._logger.info("PaperExecutor disabled")
@@ -555,6 +587,15 @@ class PaperExecutor:
                 )
             return
 
+        if not await self._enforce_position_limit(
+            pos_key,
+            signal.symbol,
+            "BUY",
+            market_tag,
+            order_usdt,
+        ):
+            return
+
         # Simulate fill with fee
         fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
         fee = order_usdt * fee_rate
@@ -683,7 +724,9 @@ class PaperExecutor:
         if self._config.use_atr_sizing and atr_14_for_size > 0:
             risk_amount = self._balance * self._config.risk_per_trade_pct
             stop_distance = atr_14_for_size * self._config.atr_multiplier
-            quantity = risk_amount / stop_distance
+            target_qty = risk_amount / stop_distance
+            max_qty = (self._balance * 0.98) / signal.price
+            quantity = min(target_qty, max_qty)
             order_usdt = quantity * signal.price
         else:
             quantity = order_usdt / signal.price
@@ -730,6 +773,15 @@ class PaperExecutor:
                         "limit": max_positions,
                     },
                 )
+            return
+
+        if not await self._enforce_position_limit(
+            pos_key,
+            signal.symbol,
+            "SELL",
+            market_tag,
+            order_usdt,
+        ):
             return
 
         fee = order_usdt * self._config.fee_rate_futures

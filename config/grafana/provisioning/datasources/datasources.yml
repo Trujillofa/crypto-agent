@@ -28,10 +28,6 @@ datasources:
     url: http://prometheus:9090
     isDefault: false
     editable: false
-    basicAuth: true
-    basicAuthUser: admin
-    secureJsonData:
-      basicAuthPassword: ${PROMETHEUS_PASSWORD}
     jsonData:
       timeInterval: "15s"
       httpMethod: POST

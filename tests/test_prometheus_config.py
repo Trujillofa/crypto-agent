@@ -60,3 +60,36 @@ def test_compose_mounts_prometheus_target_directory() -> None:
     prometheus_service = raw["services"]["prometheus"]
 
     assert "./config/prometheus:/etc/prometheus/file_sd:ro" in prometheus_service["volumes"]
+
+
+def test_compose_does_not_enable_internal_prometheus_basic_auth() -> None:
+    with Path("docker-compose.yml").open("r", encoding="utf-8") as file_handle:
+        raw = yaml.safe_load(file_handle)
+
+    prometheus_service = raw["services"]["prometheus"]
+
+    assert "./config/auth:/etc/prometheus/auth:ro" not in prometheus_service["volumes"]
+    assert "--web.config.file=/etc/prometheus/auth/web.yml" not in prometheus_service.get(
+        "command", []
+    )
+
+
+def test_grafana_prometheus_datasource_uses_internal_network_without_basic_auth() -> None:
+    with Path("config/grafana/provisioning/datasources/datasources.yml").open(
+        "r",
+        encoding="utf-8",
+    ) as file_handle:
+        raw = yaml.safe_load(file_handle)
+
+    prometheus_datasource = next(
+        datasource
+        for datasource in raw["datasources"]
+        if datasource["uid"] == "prometheus"
+    )
+
+    assert prometheus_datasource["url"] == "http://prometheus:9090"
+    assert "basicAuth" not in prometheus_datasource
+    assert "basicAuthUser" not in prometheus_datasource
+    assert "secureJsonData" not in prometheus_datasource or (
+        "basicAuthPassword" not in prometheus_datasource["secureJsonData"]
+    )

@@ -39,6 +39,7 @@ def _make_executor(
     config = config or _make_config()
     risk_manager = MagicMock()
     risk_manager.is_trading_allowed.return_value = (True, "")
+    risk_manager.check_position_limit.return_value = (True, "")
     risk_manager._config.position_limits.max_open_positions = 10
     metrics = MagicMock(spec=ExecutionMetrics)
     notifier = MagicMock()
@@ -385,6 +386,28 @@ class TestOnSignalEntryPath:
             price=50000.0,
             market="spot",
         )
+        executor._risk_manager.check_position_limit.assert_called_once_with(
+            "BTCUSDT:spot",
+            pytest.approx(200.0),
+            pytest.approx(10000.0),
+        )
+
+    @pytest.mark.asyncio
+    async def test_buy_blocks_when_position_limit_exceeded(self):
+        executor = _make_executor(_make_config(order_size_usdt=1500.0))
+        executor._risk_manager.check_position_limit.return_value = (
+            False,
+            "Position size exceeds configured max",
+        )
+        signal = self._make_buy_signal(atr=0.0)
+
+        await executor.on_signal(signal)
+
+        assert "BTCUSDT:spot" not in executor._positions
+        executor._portfolio_manager.open_position.assert_not_awaited()
+        executor._risk_manager.register_open_position.assert_not_called()
+        executor._notifier.send_alert.assert_awaited_once()
+        assert "exceeds configured max" in executor._notifier.send_alert.await_args.args[0]
 
     @pytest.mark.asyncio
     async def test_futures_sell_from_flat_opens_short_position(self):
@@ -413,6 +436,60 @@ class TestOnSignalEntryPath:
             market="futures",
             position_side="SHORT",
         )
+
+    @pytest.mark.asyncio
+    async def test_futures_short_atr_sizing_caps_quantity_before_open(self):
+        executor = _make_executor(
+            _make_config(
+                futures_symbols=["BTCUSDT"],
+                use_atr_sizing=True,
+            )
+        )
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.8,
+            reason="ATR sized short",
+            indicators={"atr_14": 250.0},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        pos = executor._positions.get("BTCUSDT:futures")
+        assert pos is not None
+        assert pos.quantity == pytest.approx(0.196)
+        executor._risk_manager.check_position_limit.assert_called_once_with(
+            "BTCUSDT:futures",
+            pytest.approx(9800.0),
+            pytest.approx(10000.0),
+        )
+
+    @pytest.mark.asyncio
+    async def test_futures_short_blocks_when_position_limit_exceeded(self):
+        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"]))
+        executor._risk_manager.check_position_limit.return_value = (
+            False,
+            "Position size exceeds configured max",
+        )
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.8,
+            reason="Short blocked by risk",
+            indicators={},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        assert "BTCUSDT:futures" not in executor._positions
+        executor._portfolio_manager.open_position.assert_not_awaited()
+        executor._risk_manager.register_open_position.assert_not_called()
+        executor._notifier.send_alert.assert_awaited_once()
+        assert "exceeds configured max" in executor._notifier.send_alert.await_args.args[0]
 
     @pytest.mark.asyncio
     async def test_spot_sell_from_flat_is_still_ignored(self):
