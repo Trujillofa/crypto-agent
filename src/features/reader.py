@@ -74,6 +74,17 @@ class IndicatorReader:
                 i.stoch_k,
                 i.stoch_d,
                 i.cci,
+                -- Regime Features (NEW)
+                i.ema_slope_50,
+                i.volatility_percentile,
+                i.atr_percentile,
+                i.volume_regime,
+                i.price_vs_weekly,
+                i.price_vs_monthly,
+                i.rsi_slope,
+                i.trend_consistency,
+                o.high_price,
+                o.low_price
                 o.high_price,
                 o.low_price
             FROM indicators i
@@ -136,6 +147,15 @@ class IndicatorReader:
                     "stoch_k": (float(row["stoch_k"]) if row["stoch_k"] is not None else None),
                     "stoch_d": (float(row["stoch_d"]) if row["stoch_d"] is not None else None),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
+                    # Regime Features (NEW)
+                    "ema_slope_50": float(row["ema_slope_50"]) if row["ema_slope_50"] is not None else None,
+                    "volatility_percentile": float(row["volatility_percentile"]) if row["volatility_percentile"] is not None else None,
+                    "atr_percentile": float(row["atr_percentile"]) if row["atr_percentile"] is not None else None,
+                    "volume_regime": float(row["volume_regime"]) if row["volume_regime"] is not None else None,
+                    "price_vs_weekly": float(row["price_vs_weekly"]) if row["price_vs_weekly"] is not None else None,
+                    "price_vs_monthly": float(row["price_vs_monthly"]) if row["price_vs_monthly"] is not None else None,
+                    "rsi_slope": float(row["rsi_slope"]) if row["rsi_slope"] is not None else None,
+                    "trend_consistency": float(row["trend_consistency"]) if row["trend_consistency"] is not None else None,
                     "high_price": (
                         float(row["high_price"])
                         if row["high_price"] is not None
@@ -176,7 +196,17 @@ class IndicatorReader:
                 i.vwap,
                 i.stoch_k,
                 i.stoch_d,
-                i.cci
+                i.cci,
+                -- Regime Features (NEW)
+                i.ema_slope_50,
+                i.volatility_percentile,
+                i.atr_percentile,
+                i.volume_regime,
+                i.price_vs_weekly,
+                i.price_vs_monthly,
+                i.rsi_slope,
+                i.trend_consistency
+            FROM indicators i
             FROM indicators i
             INNER JOIN ohlcv o
                 ON i.time = o.time
@@ -230,6 +260,15 @@ class IndicatorReader:
                     "stoch_k": (float(row["stoch_k"]) if row["stoch_k"] is not None else None),
                     "stoch_d": (float(row["stoch_d"]) if row["stoch_d"] is not None else None),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
+                    # Regime Features (NEW)
+                    "ema_slope_50": float(row["ema_slope_50"]) if row["ema_slope_50"] is not None else None,
+                    "volatility_percentile": float(row["volatility_percentile"]) if row["volatility_percentile"] is not None else None,
+                    "atr_percentile": float(row["atr_percentile"]) if row["atr_percentile"] is not None else None,
+                    "volume_regime": float(row["volume_regime"]) if row["volume_regime"] is not None else None,
+                    "price_vs_weekly": float(row["price_vs_weekly"]) if row["price_vs_weekly"] is not None else None,
+                    "price_vs_monthly": float(row["price_vs_monthly"]) if row["price_vs_monthly"] is not None else None,
+                    "rsi_slope": float(row["rsi_slope"]) if row["rsi_slope"] is not None else None,
+                    "trend_consistency": float(row["trend_consistency"]) if row["trend_consistency"] is not None else None,
                 }
             )
 

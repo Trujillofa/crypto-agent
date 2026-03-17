@@ -138,6 +138,15 @@ class IndicatorComputer:
                 stoch_k=indicators.stoch_k,
                 stoch_d=indicators.stoch_d,
                 cci=indicators.cci,
+                # Regime Features (NEW)
+                ema_slope_50=indicators.ema_slope_50,
+                volatility_percentile=indicators.volatility_percentile,
+                atr_percentile=indicators.atr_percentile,
+                volume_regime=indicators.volume_regime,
+                price_vs_weekly=indicators.price_vs_weekly,
+                price_vs_monthly=indicators.price_vs_monthly,
+                rsi_slope=indicators.rsi_slope,
+                trend_consistency=indicators.trend_consistency,
             )
 
             write_start = time.perf_counter()

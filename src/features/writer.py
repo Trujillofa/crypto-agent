@@ -34,6 +34,15 @@ class StoredIndicator:
     stoch_k: float | None
     stoch_d: float | None
     cci: float | None
+    # Regime Features (NEW)
+    ema_slope_50: float | None
+    volatility_percentile: float | None
+    atr_percentile: float | None
+    volume_regime: float | None
+    price_vs_weekly: float | None
+    price_vs_monthly: float | None
+    rsi_slope: float | None
+    trend_consistency: float | None
 
 
 class IndicatorWriter:
@@ -102,6 +111,16 @@ class IndicatorWriter:
                     stoch_k DOUBLE PRECISION,
                     stoch_d DOUBLE PRECISION,
                     cci DOUBLE PRECISION,
+                    -- Regime Features (NEW)
+                    ema_slope_50 DOUBLE PRECISION,
+                    volatility_percentile DOUBLE PRECISION,
+                    atr_percentile DOUBLE PRECISION,
+                    volume_regime DOUBLE PRECISION,
+                    price_vs_weekly DOUBLE PRECISION,
+                    price_vs_monthly DOUBLE PRECISION,
+                    rsi_slope DOUBLE PRECISION,
+                    trend_consistency DOUBLE PRECISION,
+
                     PRIMARY KEY (time, symbol, timeframe)
                 );
                 """)
@@ -135,6 +154,15 @@ class IndicatorWriter:
             indicator.stoch_k,
             indicator.stoch_d,
             indicator.cci,
+            # Regime Features (NEW)
+            indicator.ema_slope_50,
+            indicator.volatility_percentile,
+            indicator.atr_percentile,
+            indicator.volume_regime,
+            indicator.price_vs_weekly,
+            indicator.price_vs_monthly,
+            indicator.rsi_slope,
+            indicator.trend_consistency,
         )
 
         pool = get_pool()
@@ -147,9 +175,16 @@ class IndicatorWriter:
                     bb_upper_dist, bb_lower_dist, atr_14, atr_pct,
                     ema_12, ema_26, ema_50, ema_200,
                     sma_20, sma_50, sma_200,
-                    vwap, stoch_k, stoch_d, cci
+                    vwap, stoch_k, stoch_d, cci,
+                    -- Regime Features (NEW)
+                    ema_slope_50, volatility_percentile, atr_percentile,
+                    volume_regime, price_vs_weekly, price_vs_monthly,
+                    rsi_slope, trend_consistency
+                ) VALUES (
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+                    $26, $27, $28, $29, $30, $31, $32
                     $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
                 )
                 ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
@@ -172,7 +207,16 @@ class IndicatorWriter:
                     vwap = EXCLUDED.vwap,
                     stoch_k = EXCLUDED.stoch_k,
                     stoch_d = EXCLUDED.stoch_d,
-                    cci = EXCLUDED.cci;
+                    cci = EXCLUDED.cci,
+                    -- Regime Features (NEW)
+                    ema_slope_50 = EXCLUDED.ema_slope_50,
+                    volatility_percentile = EXCLUDED.volatility_percentile,
+                    atr_percentile = EXCLUDED.atr_percentile,
+                    volume_regime = EXCLUDED.volume_regime,
+                    price_vs_weekly = EXCLUDED.price_vs_weekly,
+                    price_vs_monthly = EXCLUDED.price_vs_monthly,
+                    rsi_slope = EXCLUDED.rsi_slope,
+                    trend_consistency = EXCLUDED.trend_consistency;
                 """,
                 *values,
             )
