@@ -144,3 +144,24 @@ def test_compute_indicators_returns_values() -> None:
 
     assert indicators.rsi_14 >= 0
     assert indicators.macd_hist == indicators.macd - indicators.macd_signal
+
+
+def test_compute_indicators_populates_regime_features_for_long_series() -> None:
+    data = {
+        "open": [100 + i * 0.25 for i in range(240)],
+        "high": [101 + i * 0.25 for i in range(240)],
+        "low": [99 + i * 0.25 for i in range(240)],
+        "close": [100 + i * 0.25 for i in range(240)],
+        "volume": [1000 + (i % 12) * 25 for i in range(240)],
+    }
+
+    indicators = compute_indicators(data)
+
+    assert indicators.ema_slope_50 is not None
+    assert indicators.volatility_percentile is not None
+    assert indicators.atr_percentile is not None
+    assert indicators.volume_regime is not None
+    assert indicators.price_vs_weekly is not None
+    assert indicators.price_vs_monthly is not None
+    assert indicators.rsi_slope is not None
+    assert indicators.trend_consistency is not None

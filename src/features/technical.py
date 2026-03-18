@@ -367,32 +367,6 @@ def _atr_percentile(
     sorted_atrs = sorted(historical_atrs)
     count = sum(1 for a in sorted_atrs if a < current_atr)
     return (count / len(sorted_atrs)) * 100
-    """Calculate ATR percentile (0-100)."""
-    if len(close) < lookback + atr_period + 1:
-        return None
-    # Calculate ATR for each period
-    atr_values = []
-    for i in range(atr_period, len(close)):
-        h_window = high[i - atr_period : i + 1]
-        l_window = low[i - atr_period : i + 1]
-        c_window = close[i - atr_period : i + 1]
-        atr = _atr(h_window, l_window, c_window, atr_period)
-        l_window = low[i - atr_period : i + 1]
-        c_window = close[i - atr_period : i + 1]
-        h_window = high[i - atr_period : i]
-        l_window = low[i - atr_period : i]
-        c_window = close[i - atr_period : i + 1]
-        atr = _atr(h_window, l_window, c_window, atr_period)
-        atr_values.append(atr)
-    if len(atr_values) < lookback:
-        return None
-    current_atr = atr_values[-1]
-    historical_atrs = atr_values[:-1]
-    if not historical_atrs:
-        return 50.0
-    sorted_atrs = sorted(historical_atrs)
-    count = sum(1 for a in sorted_atrs if a < current_atr)
-    return (count / len(sorted_atrs)) * 100
 
 
 def _volume_regime(volume: list[float], lookback: int) -> float | None:
@@ -426,16 +400,6 @@ def _rsi_slope(series: list[float], period: int) -> float | None:
         return None
     rsi_values = []
     for i in range(period + 1, len(series) + 1):  # Start from period+1 to have enough deltas
-        rsi = _rsi(series[:i], period)
-        rsi_values.append(rsi)
-    if len(rsi_values) < 5:
-        return None
-    return rsi_values[-1] - rsi_values[-5]
-    """Calculate RSI slope as momentum indicator."""
-    if len(series) < period + 5:
-        return None
-    rsi_values = []
-    for i in range(period, len(series) + 1):
         rsi = _rsi(series[:i], period)
         rsi_values.append(rsi)
     if len(rsi_values) < 5:
