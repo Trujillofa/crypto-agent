@@ -140,9 +140,9 @@ class TestStrategyEngineIntegration:
             await engine._evaluate_all(on_signal)
 
         assert received_signals == []
-        assert "Blocked by Global Trend Filter (Price < EMA200) for BNBUSDT" in caplog.text
+        assert "Blocked by Global Trend Filter (Price < 5.0% of EMA200) for BNBUSDT" in caplog.text
         assert (
-            "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter (Price < EMA200)"
+            "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter (Price < 5% of EMA200)"
             in caplog.text
         )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -143,3 +144,64 @@ class TestFetchLatest:
         with patch("src.features.reader.get_pool", return_value=mock_pool):
             rows = await reader.fetch_latest("BTCUSDT", "1m", limit=2)
         assert rows == []
+
+
+class TestFetchLatestMultiTimeframe:
+    """Test suite for fetch_latest_multi_timeframe."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_latest_multi_timeframe_returns_joined_rows(
+        self,
+        db_config: dict[str, object],
+    ) -> None:
+        """Latest joined rows include suffixed regime indicators."""
+        reader = IndicatorReader(db_config)
+
+        async def mock_fetch_rows(symbol: str, timeframe: str, limit: int):
+            assert symbol == "BTCUSDT"
+            assert timeframe == "1h"
+            assert limit == 2
+            return [
+                {
+                    "time": datetime.fromisoformat("2024-01-01T09:00:00"),
+                    "close_price": 101.0,
+                    "ema_12": 100.0,
+                    "ema_26": 99.0,
+                    "ema_50": 98.0,
+                    "ema_200": 95.0,
+                    "vwap": 100.5,
+                },
+                {
+                    "time": datetime.fromisoformat("2024-01-01T10:00:00"),
+                    "close_price": 102.0,
+                    "ema_12": 101.0,
+                    "ema_26": 100.0,
+                    "ema_50": 99.0,
+                    "ema_200": 95.0,
+                    "vwap": 101.0,
+                },
+            ]
+
+        async def mock_fetch_range_rows(
+            symbol: str, timeframe: str, start_time: str, end_time: str
+        ):
+            assert symbol == "BTCUSDT"
+            assert timeframe == "4h"
+            assert end_time == "2024-01-01T10:00:00"
+            return [
+                {
+                    "time": datetime.fromisoformat("2024-01-01T04:00:00"),
+                    "ema_slope_50": 0.01,
+                    "trend_consistency": 75.0,
+                    "volatility_percentile": 65.0,
+                }
+            ]
+
+        reader._fetch_rows = mock_fetch_rows
+        reader._fetch_range_rows = mock_fetch_range_rows
+
+        rows = await reader.fetch_latest_multi_timeframe("BTCUSDT", "1h", "4h", limit=2)
+
+        assert len(rows) == 2
+        assert rows[-1]["close_price"] == 102.0
+        assert rows[-1]["ema_slope_50_4h"] == 0.01

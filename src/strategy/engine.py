@@ -56,6 +56,7 @@ class StrategyEngine:
         self._last_signal_time: dict[str, float] = {}
         self._primed_symbols: set[str] = set()
         self._aggregator = SignalAggregator(config.aggregator_config, config.default_trading_mode)
+        self._mtf_timeframes: dict[str, str] | None = None
 
         for symbol in config.symbols:
             self._strategies[symbol] = []
@@ -69,6 +70,17 @@ class StrategyEngine:
 
             strategy_names = [s.get_name() for s in self._strategies[symbol]]
             self._logger.info(f"Initialized strategies for {symbol}: {strategy_names}")
+
+        if config.symbols:
+            self._mtf_timeframes = self._validate_strategy_timeframes(
+                self._strategies[config.symbols[0]]
+            )
+            if self._mtf_timeframes:
+                self._logger.info(
+                    "Runtime multi-timeframe mode enabled: entry=%s regime=%s",
+                    self._mtf_timeframes.get("entry", config.timeframe),
+                    self._mtf_timeframes.get("regime", "4h"),
+                )
 
     async def __aenter__(self) -> StrategyEngine:
         self._running = True
@@ -214,11 +226,11 @@ class StrategyEngine:
                     )
 
                 if final_signal.type != SignalType.HOLD:
-                    timeframe_seconds = _TIMEFRAME_SECONDS.get(self._config.timeframe)
+                    timeframe_seconds = _TIMEFRAME_SECONDS.get(self._runtime_timeframe)
                     if timeframe_seconds is None:
                         self._logger.warning(
                             "Cooldown disabled: unknown timeframe %s",
-                            self._config.timeframe,
+                            self._runtime_timeframe,
                         )
                     else:
                         cooldown_seconds = self._config.cooldown_candles * timeframe_seconds
@@ -261,7 +273,7 @@ class StrategyEngine:
         reference_symbol = self._aggregator.get_market_reference_symbol()
         if not reference_symbol:
             return {}
-        rows = await self._reader.fetch_latest(reference_symbol, self._config.timeframe, limit=2)
+        rows = await self._reader.fetch_latest(reference_symbol, self._runtime_timeframe, limit=2)
         if len(rows) < 2:
             return {}
 
@@ -292,7 +304,15 @@ class StrategyEngine:
             Two oldest-first rows for crossover-aware strategy evaluation.
             None if insufficient data (< 2 rows for crossover detection).
         """
-        rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
+        if self._mtf_timeframes:
+            rows = await self._reader.fetch_latest_multi_timeframe(
+                symbol,
+                self._mtf_timeframes.get("entry", self._config.timeframe),
+                self._mtf_timeframes.get("regime", "4h"),
+                limit=2,
+            )
+        else:
+            rows = await self._reader.fetch_latest(symbol, self._config.timeframe, limit=2)
         if len(rows) < 2:
             self._logger.info("Warming up %s: need 2 indicator rows, have %d", symbol, len(rows))
             return None
@@ -326,3 +346,42 @@ class StrategyEngine:
     def stop(self) -> None:
         """Stop the engine loop."""
         self._running = False
+
+    @property
+    def _runtime_timeframe(self) -> str:
+        """Timeframe used for live evaluation cadence and market context."""
+        if self._mtf_timeframes:
+            return self._mtf_timeframes.get("entry", self._config.timeframe)
+        return self._config.timeframe
+
+    @staticmethod
+    def _get_required_timeframes(strategy: BaseStrategy) -> dict[str, str]:
+        required = getattr(strategy, "REQUIRED_TIMEFRAMES", {})
+        return required if required else {}
+
+    def _validate_strategy_timeframes(
+        self,
+        strategies: list[BaseStrategy],
+    ) -> dict[str, str] | None:
+        mtf_requirements = [
+            self._get_required_timeframes(strategy)
+            for strategy in strategies
+            if self._get_required_timeframes(strategy)
+        ]
+
+        if not mtf_requirements:
+            return None
+
+        if len(mtf_requirements) != len(strategies):
+            raise ValueError(
+                "Mixed multi-timeframe and single-timeframe runtime strategy sets are not supported"
+            )
+
+        first = mtf_requirements[0]
+        for requirement in mtf_requirements[1:]:
+            if requirement != first:
+                raise ValueError(
+                    "Runtime strategies must declare identical REQUIRED_TIMEFRAMES when using multi-timeframe mode"
+                )
+
+        return first

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 
 from src.db.pool import get_pool
 from src.utils.logger import get_logger
@@ -45,6 +46,35 @@ class IndicatorReader:
         """Fetch all indicator rows for symbol+timeframe within a time range."""
         async with self._db_lock:
             return await self._fetch_range_rows(symbol, timeframe, start_time, end_time)
+
+    async def fetch_latest_multi_timeframe(
+        self,
+        symbol: str,
+        entry_timeframe: str,
+        regime_timeframe: str,
+        limit: int = 2,
+    ) -> list[dict[str, float]]:
+        """Fetch the latest joined MTF indicator rows, oldest-first.
+
+        This mirrors the backtest MTF path for runtime strategy evaluation.
+        Regime indicators are joined onto entry bars using the same strict
+        no-lookahead semantics as ``fetch_multi_timeframe``.
+        """
+        async with self._db_lock:
+            entry_rows = await self._fetch_rows(symbol, entry_timeframe, limit)
+            if not entry_rows:
+                return []
+
+            latest_entry_time = entry_rows[-1]["time"]
+            regime_start = entry_rows[0]["time"] - timedelta(hours=24)
+            regime_rows = await self._fetch_range_rows(
+                symbol,
+                regime_timeframe,
+                regime_start.isoformat(),
+                latest_entry_time.isoformat(),
+            )
+
+        return self._join_timeframes(entry_rows, regime_rows, regime_timeframe)
 
     async def _fetch_range_rows(
         self, symbol: str, timeframe: str, start_time: str, end_time: str
@@ -95,8 +125,6 @@ class IndicatorReader:
             ORDER BY i.time ASC
         """
 
-        from datetime import datetime
-
         def _parse_dt(val: str | datetime) -> datetime:
             if isinstance(val, datetime):
                 return val
@@ -113,6 +141,8 @@ class IndicatorReader:
 
         results = []
         for row in rows:
+            high_price = row["high_price"] if "high_price" in row else None
+            low_price = row["low_price"] if "low_price" in row else None
             results.append(
                 {
                     "time": row["time"],
@@ -146,37 +176,41 @@ class IndicatorReader:
                     "stoch_d": (float(row["stoch_d"]) if row["stoch_d"] is not None else None),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
                     # Regime Features (NEW)
-                    "ema_slope_50": float(row["ema_slope_50"])
-                    if row["ema_slope_50"] is not None
-                    else None,
-                    "volatility_percentile": float(row["volatility_percentile"])
-                    if row["volatility_percentile"] is not None
-                    else None,
-                    "atr_percentile": float(row["atr_percentile"])
-                    if row["atr_percentile"] is not None
-                    else None,
-                    "volume_regime": float(row["volume_regime"])
-                    if row["volume_regime"] is not None
-                    else None,
-                    "price_vs_weekly": float(row["price_vs_weekly"])
-                    if row["price_vs_weekly"] is not None
-                    else None,
-                    "price_vs_monthly": float(row["price_vs_monthly"])
-                    if row["price_vs_monthly"] is not None
-                    else None,
+                    "ema_slope_50": (
+                        float(row["ema_slope_50"]) if row["ema_slope_50"] is not None else None
+                    ),
+                    "volatility_percentile": (
+                        float(row["volatility_percentile"])
+                        if row["volatility_percentile"] is not None
+                        else None
+                    ),
+                    "atr_percentile": (
+                        float(row["atr_percentile"]) if row["atr_percentile"] is not None else None
+                    ),
+                    "volume_regime": (
+                        float(row["volume_regime"]) if row["volume_regime"] is not None else None
+                    ),
+                    "price_vs_weekly": (
+                        float(row["price_vs_weekly"])
+                        if row["price_vs_weekly"] is not None
+                        else None
+                    ),
+                    "price_vs_monthly": (
+                        float(row["price_vs_monthly"])
+                        if row["price_vs_monthly"] is not None
+                        else None
+                    ),
                     "rsi_slope": float(row["rsi_slope"]) if row["rsi_slope"] is not None else None,
-                    "trend_consistency": float(row["trend_consistency"])
-                    if row["trend_consistency"] is not None
-                    else None,
+                    "trend_consistency": (
+                        float(row["trend_consistency"])
+                        if row["trend_consistency"] is not None
+                        else None
+                    ),
                     "high_price": (
-                        float(row["high_price"])
-                        if row["high_price"] is not None
-                        else float(row["close_price"])
+                        float(high_price) if high_price is not None else float(row["close_price"])
                     ),
                     "low_price": (
-                        float(row["low_price"])
-                        if row["low_price"] is not None
-                        else float(row["close_price"])
+                        float(low_price) if low_price is not None else float(row["close_price"])
                     ),
                 }
             )
@@ -240,8 +274,11 @@ class IndicatorReader:
         rows.reverse()
         results = []
         for row in rows:
+            high_price = row["high_price"] if "high_price" in row else None
+            low_price = row["low_price"] if "low_price" in row else None
             results.append(
                 {
+                    "time": row["time"],
                     "ema_12": (float(row["ema_12"]) if row["ema_12"] is not None else 0.0),
                     "ema_26": (float(row["ema_26"]) if row["ema_26"] is not None else 0.0),
                     "close_price": float(row["close_price"]),
@@ -272,28 +309,42 @@ class IndicatorReader:
                     "stoch_d": (float(row["stoch_d"]) if row["stoch_d"] is not None else None),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
                     # Regime Features (NEW)
-                    "ema_slope_50": float(row["ema_slope_50"])
-                    if row["ema_slope_50"] is not None
-                    else None,
-                    "volatility_percentile": float(row["volatility_percentile"])
-                    if row["volatility_percentile"] is not None
-                    else None,
-                    "atr_percentile": float(row["atr_percentile"])
-                    if row["atr_percentile"] is not None
-                    else None,
-                    "volume_regime": float(row["volume_regime"])
-                    if row["volume_regime"] is not None
-                    else None,
-                    "price_vs_weekly": float(row["price_vs_weekly"])
-                    if row["price_vs_weekly"] is not None
-                    else None,
-                    "price_vs_monthly": float(row["price_vs_monthly"])
-                    if row["price_vs_monthly"] is not None
-                    else None,
+                    "ema_slope_50": (
+                        float(row["ema_slope_50"]) if row["ema_slope_50"] is not None else None
+                    ),
+                    "volatility_percentile": (
+                        float(row["volatility_percentile"])
+                        if row["volatility_percentile"] is not None
+                        else None
+                    ),
+                    "atr_percentile": (
+                        float(row["atr_percentile"]) if row["atr_percentile"] is not None else None
+                    ),
+                    "volume_regime": (
+                        float(row["volume_regime"]) if row["volume_regime"] is not None else None
+                    ),
+                    "price_vs_weekly": (
+                        float(row["price_vs_weekly"])
+                        if row["price_vs_weekly"] is not None
+                        else None
+                    ),
+                    "price_vs_monthly": (
+                        float(row["price_vs_monthly"])
+                        if row["price_vs_monthly"] is not None
+                        else None
+                    ),
                     "rsi_slope": float(row["rsi_slope"]) if row["rsi_slope"] is not None else None,
-                    "trend_consistency": float(row["trend_consistency"])
-                    if row["trend_consistency"] is not None
-                    else None,
+                    "trend_consistency": (
+                        float(row["trend_consistency"])
+                        if row["trend_consistency"] is not None
+                        else None
+                    ),
+                    "high_price": (
+                        float(high_price) if high_price is not None else float(row["close_price"])
+                    ),
+                    "low_price": (
+                        float(low_price) if low_price is not None else float(row["close_price"])
+                    ),
                 }
             )
 
@@ -322,8 +373,6 @@ class IndicatorReader:
         Returns:
             List of joined indicator rows with regime indicators suffixed
         """
-        from datetime import timedelta
-
         if isinstance(start_time, str):
             start_time = datetime.fromisoformat(start_time)
         if isinstance(end_time, str):
@@ -352,8 +401,6 @@ class IndicatorReader:
 
     @staticmethod
     def _parse_timeframe_to_delta(tf_str: str) -> timedelta:
-        from datetime import timedelta
-
         unit = tf_str[-1]
         if len(tf_str) > 1 and tf_str[:-1].isdigit():
             value = int(tf_str[:-1])
