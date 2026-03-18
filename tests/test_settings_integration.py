@@ -27,6 +27,7 @@ from src.strategy import (
     TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
+from src.strategy.mtf_template import MTFStrategyTemplate
 
 
 def test_settings_default_safe():
@@ -149,6 +150,22 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert settings.telegram.enabled is False
     assert settings.ai.enabled is True
     assert aggregator_config["buy_threshold"] == 0.6
+
+
+def test_btc_mtf_paper_config_resolves_mtf_template():
+    settings = load_settings(Path("config/settings.btc_1h_mtf.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert settings.agent_id == "btc-1h-mtf"
+    assert settings.trading_pairs == ["BTCUSDT"]
+    assert settings.timeframe == "1h"
+    assert settings.ai.enabled is False
+    assert settings.trading_execution.enabled is True
+    assert strategy_classes == [MTFStrategyTemplate]
+    assert len(strategy_configs) == 1
+    assert aggregator_config["buy_threshold"] == 0.7
 
 
 def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
