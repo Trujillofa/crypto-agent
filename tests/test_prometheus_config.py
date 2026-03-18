@@ -38,17 +38,20 @@ def test_file_sd_targets_cover_all_current_agent_services() -> None:
         "agent",
         "agent_2",
         "agent_btc",
+        "agent_btc_mtf",
         "agent_sol_sparse",
         "agent_sentiment_macro",
     }
     assert targets_by_service["agent"] == ["agent:8000"]
     assert targets_by_service["agent_2"] == ["agent_2:8000"]
     assert targets_by_service["agent_btc"] == ["agent_btc:8000"]
+    assert targets_by_service["agent_btc_mtf"] == ["agent_btc_mtf:8000"]
     assert targets_by_service["agent_sol_sparse"] == ["agent_sol_sparse:8000"]
     assert targets_by_service["agent_sentiment_macro"] == ["agent_sentiment_macro:8000"]
     assert labels_by_service["agent"]["agent_id"] == "default"
     assert labels_by_service["agent_2"]["agent_id"] == "agent2"
     assert labels_by_service["agent_btc"]["agent_id"] == "btc-4h"
+    assert labels_by_service["agent_btc_mtf"]["agent_id"] == "btc-1h-mtf"
     assert labels_by_service["agent_sol_sparse"]["agent_id"] == "sol-trend-pullback-sparse"
     assert labels_by_service["agent_sentiment_macro"]["agent_id"] == "sentiment-macro-bot"
 
@@ -82,9 +85,7 @@ def test_grafana_prometheus_datasource_uses_internal_network_without_basic_auth(
         raw = yaml.safe_load(file_handle)
 
     prometheus_datasource = next(
-        datasource
-        for datasource in raw["datasources"]
-        if datasource["uid"] == "prometheus"
+        datasource for datasource in raw["datasources"] if datasource["uid"] == "prometheus"
     )
 
     assert prometheus_datasource["url"] == "http://prometheus:9090"
