@@ -85,8 +85,6 @@ class IndicatorReader:
                 i.trend_consistency,
                 o.high_price,
                 o.low_price
-                o.high_price,
-                o.low_price
             FROM indicators i
             INNER JOIN ohlcv o
                 ON i.time = o.time
@@ -148,14 +146,28 @@ class IndicatorReader:
                     "stoch_d": (float(row["stoch_d"]) if row["stoch_d"] is not None else None),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
                     # Regime Features (NEW)
-                    "ema_slope_50": float(row["ema_slope_50"]) if row["ema_slope_50"] is not None else None,
-                    "volatility_percentile": float(row["volatility_percentile"]) if row["volatility_percentile"] is not None else None,
-                    "atr_percentile": float(row["atr_percentile"]) if row["atr_percentile"] is not None else None,
-                    "volume_regime": float(row["volume_regime"]) if row["volume_regime"] is not None else None,
-                    "price_vs_weekly": float(row["price_vs_weekly"]) if row["price_vs_weekly"] is not None else None,
-                    "price_vs_monthly": float(row["price_vs_monthly"]) if row["price_vs_monthly"] is not None else None,
+                    "ema_slope_50": float(row["ema_slope_50"])
+                    if row["ema_slope_50"] is not None
+                    else None,
+                    "volatility_percentile": float(row["volatility_percentile"])
+                    if row["volatility_percentile"] is not None
+                    else None,
+                    "atr_percentile": float(row["atr_percentile"])
+                    if row["atr_percentile"] is not None
+                    else None,
+                    "volume_regime": float(row["volume_regime"])
+                    if row["volume_regime"] is not None
+                    else None,
+                    "price_vs_weekly": float(row["price_vs_weekly"])
+                    if row["price_vs_weekly"] is not None
+                    else None,
+                    "price_vs_monthly": float(row["price_vs_monthly"])
+                    if row["price_vs_monthly"] is not None
+                    else None,
                     "rsi_slope": float(row["rsi_slope"]) if row["rsi_slope"] is not None else None,
-                    "trend_consistency": float(row["trend_consistency"]) if row["trend_consistency"] is not None else None,
+                    "trend_consistency": float(row["trend_consistency"])
+                    if row["trend_consistency"] is not None
+                    else None,
                     "high_price": (
                         float(row["high_price"])
                         if row["high_price"] is not None
@@ -206,7 +218,6 @@ class IndicatorReader:
                 i.price_vs_monthly,
                 i.rsi_slope,
                 i.trend_consistency
-            FROM indicators i
             FROM indicators i
             INNER JOIN ohlcv o
                 ON i.time = o.time
@@ -261,15 +272,167 @@ class IndicatorReader:
                     "stoch_d": (float(row["stoch_d"]) if row["stoch_d"] is not None else None),
                     "cci": float(row["cci"]) if row["cci"] is not None else None,
                     # Regime Features (NEW)
-                    "ema_slope_50": float(row["ema_slope_50"]) if row["ema_slope_50"] is not None else None,
-                    "volatility_percentile": float(row["volatility_percentile"]) if row["volatility_percentile"] is not None else None,
-                    "atr_percentile": float(row["atr_percentile"]) if row["atr_percentile"] is not None else None,
-                    "volume_regime": float(row["volume_regime"]) if row["volume_regime"] is not None else None,
-                    "price_vs_weekly": float(row["price_vs_weekly"]) if row["price_vs_weekly"] is not None else None,
-                    "price_vs_monthly": float(row["price_vs_monthly"]) if row["price_vs_monthly"] is not None else None,
+                    "ema_slope_50": float(row["ema_slope_50"])
+                    if row["ema_slope_50"] is not None
+                    else None,
+                    "volatility_percentile": float(row["volatility_percentile"])
+                    if row["volatility_percentile"] is not None
+                    else None,
+                    "atr_percentile": float(row["atr_percentile"])
+                    if row["atr_percentile"] is not None
+                    else None,
+                    "volume_regime": float(row["volume_regime"])
+                    if row["volume_regime"] is not None
+                    else None,
+                    "price_vs_weekly": float(row["price_vs_weekly"])
+                    if row["price_vs_weekly"] is not None
+                    else None,
+                    "price_vs_monthly": float(row["price_vs_monthly"])
+                    if row["price_vs_monthly"] is not None
+                    else None,
                     "rsi_slope": float(row["rsi_slope"]) if row["rsi_slope"] is not None else None,
-                    "trend_consistency": float(row["trend_consistency"]) if row["trend_consistency"] is not None else None,
+                    "trend_consistency": float(row["trend_consistency"])
+                    if row["trend_consistency"] is not None
+                    else None,
                 }
             )
 
         return results
+
+    async def fetch_multi_timeframe(
+        self,
+        symbol: str,
+        entry_timeframe: str,
+        regime_timeframe: str,
+        start_time: datetime | str,
+        end_time: datetime | str,
+    ) -> list[dict[str, float]]:
+        """Fetch and join multi-timeframe data without lookahead.
+
+        CRITICAL: Uses STRICT inequality (regime_time < entry_time) to ensure
+        we only use COMPLETED regime bars. Same-timestamp bars are NOT available.
+
+        Args:
+            symbol: Trading pair symbol
+            entry_timeframe: Entry timeframe (e.g., '1h')
+            regime_timeframe: Regime classification timeframe (e.g., '4h')
+            start_time: Start of range
+            end_time: End of range
+
+        Returns:
+            List of joined indicator rows with regime indicators suffixed
+        """
+        from datetime import timedelta
+
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time)
+        if isinstance(end_time, str):
+            end_time = datetime.fromisoformat(end_time)
+
+        regime_lookback = timedelta(hours=24)
+        regime_start = start_time - regime_lookback
+
+        entry_start_str = start_time.isoformat()
+        entry_end_str = end_time.isoformat()
+        entry_data = await self._fetch_range_rows(
+            symbol, entry_timeframe, entry_start_str, entry_end_str
+        )
+
+        if not entry_data:
+            return []
+
+        regime_start_str = regime_start.isoformat()
+        regime_data = await self._fetch_range_rows(
+            symbol, regime_timeframe, regime_start_str, entry_end_str
+        )
+
+        joined_data = self._join_timeframes(entry_data, regime_data, regime_timeframe)
+
+        return joined_data
+
+    @staticmethod
+    def _parse_timeframe_to_delta(tf_str: str) -> timedelta:
+        from datetime import timedelta
+
+        unit = tf_str[-1]
+        if len(tf_str) > 1 and tf_str[:-1].isdigit():
+            value = int(tf_str[:-1])
+        else:
+            # Fallback or strict parsing? Assuming standard format like '1h', '15m'
+            # If someone passes 'BTCUSDT', it will fail.
+            # Let's assume valid input for now or add basic check
+            value = int(tf_str[:-1])
+
+        if unit == "m":
+            return timedelta(minutes=value)
+        elif unit == "h":
+            return timedelta(hours=value)
+        elif unit == "d":
+            return timedelta(days=value)
+        elif unit == "w":
+            return timedelta(weeks=value)
+        raise ValueError(f"Unknown timeframe format: {tf_str}")
+
+    @staticmethod
+    def _join_timeframes(
+        entry_data: list[dict],
+        regime_data: list[dict],
+        regime_timeframe: str,
+    ) -> list[dict[str, float]]:
+        """Join regime indicators onto entry bars without lookahead.
+
+        CRITICAL: Uses STRICT regime_close_time <= entry_open_time logic.
+        This ensures we only use regime bars that have fully completed
+        before or at the entry bar timestamp.
+
+        Args:
+            entry_data: List of entry-timeframe bars, each with 'time' key
+            regime_data: List of regime-timeframe bars, each with 'time' key
+            regime_timeframe: String representation of regime timeframe (e.g. "4h")
+
+        Returns:
+            List of joined dicts with regime indicators suffixed
+        """
+        if not entry_data:
+            return []
+
+        regime_duration = IndicatorReader._parse_timeframe_to_delta(regime_timeframe)
+        regime_suffix = f"_{regime_timeframe}"
+
+        joined = []
+        regime_idx = 0
+        current_regime: dict = {}
+
+        for entry_bar in entry_data:
+            entry_time = entry_bar.get("time")
+
+            while regime_idx < len(regime_data):
+                regime_bar = regime_data[regime_idx]
+                regime_time = regime_bar.get("time")
+
+                if regime_time is None:
+                    regime_idx += 1
+                    continue
+
+                regime_close_time = regime_time + regime_duration
+
+                # CRITICAL: Regime bar must be CLOSED before or at entry OPEN time.
+                # Example: 4h bar opens 08:00, closes 12:00.
+                # Entry bar opens 12:00.
+                # 12:00 <= 12:00 -> True. (Available)
+                # Entry bar opens 11:00.
+                # 12:00 <= 11:00 -> False. (Not available)
+                if regime_close_time <= entry_time:
+                    current_regime = regime_bar
+                    regime_idx += 1
+                else:
+                    break
+
+            joined_bar = dict(entry_bar)
+            for key, value in current_regime.items():
+                if key != "time" and value is not None:
+                    joined_bar[f"{key}{regime_suffix}"] = value
+
+            joined.append(joined_bar)
+
+        return joined

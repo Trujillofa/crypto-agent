@@ -604,6 +604,7 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
     optional_strategies = {
         "breakout_retest": ("src.strategy.breakout_retest", "BreakoutRetestStrategy"),
         "trend_pullback": ("src.strategy.trend_pullback", "TrendPullbackStrategy"),
+        "mtf_template": ("src.strategy.mtf_template", "MTFStrategyTemplate"),
     }
     for strategy_name, (module_name, class_name) in optional_strategies.items():
         try:

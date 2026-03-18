@@ -14,6 +14,15 @@ class BaseStrategy(ABC):
     - get_name(): Return strategy name for logging/metrics
     """
 
+    # Optional: Declare required timeframes for multi-timeframe (MTF) strategies.
+    # Single-timeframe strategies should leave this empty (default).
+    # Example for 4h regime + 1h entry:
+    #   REQUIRED_TIMEFRAMES = {
+    #       'entry': '1h',
+    #       'regime': '4h',
+    #   }
+    REQUIRED_TIMEFRAMES: dict[str, str] = {}
+
     def __init__(self, config: Mapping[str, object] | None = None) -> None:
         """Initialize strategy with configuration.
 

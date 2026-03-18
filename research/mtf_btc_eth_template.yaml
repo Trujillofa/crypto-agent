@@ -1,0 +1,307 @@
+# Multi-Timeframe Strategy Research Template
+# 
+# This template provides a starting point for researching multi-timeframe
+# strategies using the MTF infrastructure. Use this as a foundation for
+# testing new thesis families.
+#
+# Thesis Family: 4h Regime + 1h Entry
+# Primary Use Case: BTC/ETH swing trading with trend confirmation
+
+# ============================================================================
+# STRATEGY CONFIGURATION
+# ============================================================================
+
+strategies:
+  # --------------------------------------------------------------------------
+  # Template 1: Trend Pullback (4h Uptrend + 1h VWAP Pullback)
+  # --------------------------------------------------------------------------
+  - name: MTF_TrendPullback_BTC
+    class: src.strategy.mtf_template.MTFStrategyTemplate
+    enabled: true
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    params:
+      # Regime Classification (4h)
+      regime_threshold: 0.005              # 0.5% EMA slope for trending
+      trend_consistency_threshold: 60.0    # Minimum trend consistency
+      volatility_percentile_threshold: 50.0 # Minimum volatility for trends
+
+      # Entry Conditions (1h)
+      entry_pullback_pct: 0.01             # 1% pullback zone
+      rsi_oversold: 40.0                   # Oversold threshold
+      rsi_overbought: 60.0                 # Overbought threshold
+
+      # Confidence
+      confidence_boost: 1.2                # 20% boost in trending regime
+
+  # --------------------------------------------------------------------------
+  # Template 2: Breakout Retest (4h Breakout + 1h Retest)
+  # --------------------------------------------------------------------------
+  - name: MTF_BreakoutRetest_BTC
+    class: src.strategy.breakout_retest.BreakoutRetestStrategy
+    enabled: false  # Enable when strategy is implemented
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    params:
+      # Breakout detection (4h)
+      breakout_threshold: 0.03             # 3% breakout
+      consolidation_periods: 6             # 6 bars (24h) consolidation
+
+      # Retest conditions (1h)
+      retest_tolerance: 0.005              # 0.5% tolerance for retest
+      volume_confirmation: true            # Require volume spike
+
+  # --------------------------------------------------------------------------
+  # Template 3: Volatility Regime + Mean Reversion
+  # --------------------------------------------------------------------------
+  - name: MTF_VolMeanReversion_BTC
+    class: src.strategy.mtf_template.MTFStrategyTemplate
+    enabled: false  # Enable for testing
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+    params:
+      # Volatility regime (4h)
+      low_volatility_threshold: 30.0       # 30th percentile = low vol
+      high_volatility_threshold: 70.0      # 70th percentile = high vol
+
+      # Mean reversion entries (1h)
+      bb_entry_threshold: 0.01             # 1% beyond BB
+      rsi_extreme: 30.0                    # Extreme oversold
+
+      # Risk adjustment
+      reduce_size_in_high_vol: true        # Smaller positions when volatile
+
+# ============================================================================
+# TIMEFRAME CONFIGURATION
+# ============================================================================
+
+timeframes:
+  # Standard: 4h regime + 1h entry
+  entry: 1h
+  regime: 4h
+
+  # Alternative configurations to test:
+  # - entry: 15m, regime: 1h  (Day trading)
+  # - entry: 4h, regime: 1d   (Position trading)
+  # - entry: 1h, regime: 1d   (Multi-day swings)
+
+# ============================================================================
+# BACKTEST PARAMETERS
+# ============================================================================
+
+backtest:
+  # Date range
+  start_date: "2023-01-01"
+  end_date: "2024-12-31"
+
+  # Initial capital
+  initial_capital: 10000.0
+
+  # Risk management
+  position_size_pct: 0.10                # 10% per trade
+  max_positions: 3                       # Max concurrent positions
+
+  # Stop loss / take profit
+  stop_loss_atr_multiple: 2.0
+  take_profit_atr_multiple: 4.0
+
+  # Fees (Binance spot)
+  maker_fee: 0.001
+  taker_fee: 0.001
+
+# ============================================================================
+# SYMBOLS TO TEST
+# ============================================================================
+
+symbols:
+  primary:
+    - BTCUSDT
+    - ETHUSDT
+
+  extended:
+    - SOLUSDT
+    - AVAXUSDT
+    - MATICUSDT
+    - LINKUSDT
+    - UNIUSDT
+
+# ============================================================================
+# RESEARCH HYPOTHESES
+# ============================================================================
+
+hypotheses:
+  # Hypothesis 1: 4h trend + 1h pullback produces more trades than 4h-only
+  h1_trade_frequency:
+    description: "MTF approach increases trade count while maintaining quality"
+    metric: "trades_per_year"
+    threshold: "> 10"
+    baseline: "4h-only regime strategy"
+
+  # Hypothesis 2: ETH shows similar patterns to BTC
+  h2_eth_similarity:
+    description: "ETH responds to same MTF patterns as BTC"
+    metric: "win_rate_correlation"
+    threshold: "> 0.7"
+    test_symbols: ["ETHUSDT"]
+
+  # Hypothesis 3: Multi-asset portfolio reduces drawdown
+  h3_portfolio_diversification:
+    description: "Trading BTC+ETH together reduces max drawdown"
+    metric: "max_drawdown_pct"
+    threshold: "< 15%"
+    compare: ["BTC_only", "ETH_only", "BTC_ETH_combined"]
+
+  # Hypothesis 4: Volatility regime improves performance
+  h4_vol_regime:
+    description: "Filtering by volatility regime improves risk-adjusted returns"
+    metric: "sharpe_ratio"
+    threshold: "> 1.5"
+    variants: ["no_filter", "low_vol_only", "high_vol_only"]
+
+# ============================================================================
+# EXPERIMENT CONFIGURATIONS
+# ============================================================================
+
+experiments:
+  # --------------------------------------------------------------------------
+  # Experiment 1: Threshold Sensitivity
+  # --------------------------------------------------------------------------
+  threshold_sensitivity:
+    description: "Test how regime threshold affects performance"
+    base_config: MTF_TrendPullback_BTC
+    parameters:
+      - name: regime_threshold
+        values: [0.003, 0.005, 0.007, 0.01]
+    metrics:
+      - total_trades
+      - win_rate
+      - profit_factor
+      - sharpe_ratio
+      - max_drawdown_pct
+
+  # --------------------------------------------------------------------------
+  # Experiment 2: Entry Pullback Depth
+  # --------------------------------------------------------------------------
+  pullback_depth:
+    description: "Test optimal pullback depth for entries"
+    base_config: MTF_TrendPullback_BTC
+    parameters:
+      - name: entry_pullback_pct
+        values: [0.005, 0.01, 0.015, 0.02]
+    metrics:
+      - total_trades
+      - win_rate
+      - avg_trade_return
+
+  # --------------------------------------------------------------------------
+  # Experiment 3: Timeframe Combinations
+  # --------------------------------------------------------------------------
+  timeframe_combinations:
+    description: "Compare different timeframe combinations"
+    configs:
+      - name: 15m_1h
+        entry: 15m
+        regime: 1h
+      - name: 1h_4h
+        entry: 1h
+        regime: 4h
+      - name: 4h_1d
+        entry: 4h
+        regime: 1d
+    metrics:
+      - trades_per_month
+      - win_rate
+      - profit_factor
+      - avg_holding_period
+
+  # --------------------------------------------------------------------------
+  # Experiment 4: Symbol Universe
+  # --------------------------------------------------------------------------
+  symbol_universe:
+    description: "Test across multiple crypto assets"
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - SOLUSDT
+      - AVAXUSDT
+    metrics:
+      - trades_per_year
+      - win_rate
+      - sharpe_ratio
+      - correlation_matrix
+
+# ============================================================================
+# EVALUATION CRITERIA
+# ============================================================================
+
+evaluation:
+  # Minimum thresholds for a viable strategy
+  minimum_requirements:
+    min_trades: 20                       # Need statistical significance
+    min_win_rate: 0.45                   # Must beat random
+    max_drawdown: 0.25                   # 25% max drawdown
+    min_sharpe: 0.8                      # Positive risk-adjusted returns
+
+  # Success criteria for production
+  success_criteria:
+    min_trades_per_year: 12              # At least monthly trading
+    min_win_rate: 0.50                   # 50% win rate
+    min_profit_factor: 1.3               # $1.30 gain per $1 loss
+    max_drawdown: 0.20                   # 20% max drawdown
+    min_sharpe: 1.0                      # Good risk-adjusted returns
+
+  # Comparison metrics
+  compare_to_benchmark:
+    - buy_and_hold_return
+    - benchmark_sharpe
+    - max_drawdown_vs_benchmark
+
+# ============================================================================
+# OUTPUT CONFIGURATION
+# ============================================================================
+
+output:
+  # Save detailed results
+  save_trade_list: true
+  save_equity_curve: true
+  save_indicators: true
+
+  # Reports
+  generate_html_report: true
+  generate_csv_summary: true
+
+  # Plots
+  generate_plots:
+    - equity_curve
+    - drawdown
+    - trade_distribution
+    - monthly_returns
+    - regime_distribution
+
+# ============================================================================
+# NOTES
+# ============================================================================
+
+# Development Workflow:
+# 1. Start with template strategy
+# 2. Run single symbol backtest (BTC)
+# 3. Tune parameters using threshold_sensitivity experiment
+# 4. Verify on ETH
+# 5. Test extended symbol universe
+# 6. Portfolio test with multiple assets
+# 7. Paper trade validation
+# 8. Production deployment (if all criteria met)
+
+# Known Limitations:
+# - MTF requires more data (both timeframes)
+# - Naturally lower trade frequency than single timeframe
+# - Regime classification adds complexity
+
+# Future Extensions:
+# - Dynamic regime thresholds based on volatility
+# - Multi-regime strategies (trend + range)
+# - Cross-asset regime correlation
+# - Machine learning regime detection

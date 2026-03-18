@@ -92,29 +92,79 @@ class BacktestEngine:
         self._equity_curve: list[float] = []
         self._trades: list[Trade] = []
 
+    @staticmethod
+    def _get_required_timeframes(strategy: BaseStrategy) -> dict[str, str]:
+        required = getattr(strategy, "REQUIRED_TIMEFRAMES", {})
+        return required if required else {}
+
+    def _validate_strategy_timeframes(
+        self, strategies: list[BaseStrategy]
+    ) -> dict[str, str] | None:
+        mtf_requirements = [
+            self._get_required_timeframes(strategy)
+            for strategy in strategies
+            if self._get_required_timeframes(strategy)
+        ]
+
+        if not mtf_requirements:
+            return None
+
+        if len(mtf_requirements) != len(strategies):
+            raise ValueError(
+                "Mixed multi-timeframe and single-timeframe backtest strategy sets are not supported"
+            )
+
+        first = mtf_requirements[0]
+        for requirement in mtf_requirements[1:]:
+            if requirement != first:
+                raise ValueError(
+                    "Backtest strategies must declare identical REQUIRED_TIMEFRAMES when using multi-timeframe mode"
+                )
+
+        return first
+
     async def run(self) -> BacktestResult:
         """Execute the backtest."""
         self._logger.info(f"Starting backtest for {self._config.symbol}...")
 
-        data = await self._reader.fetch_range(
-            self._config.symbol,
-            self._config.timeframe,
-            self._config.start_date,
-            self._config.end_date,
-        )
-
-        if not data:
-            self._logger.warning("No data found for backtest range")
-            return self._create_empty_result()
-
-        self._logger.info(f"Loaded {len(data)} data points")
-
+        # Instantiate strategies first to check if any require MTF
         strategies = []
         for idx, cls in enumerate(self._config.strategy_classes):
             cfg = None
             if idx < len(self._config.strategy_configs):
                 cfg = self._config.strategy_configs[idx]
             strategies.append(cls(cfg))
+
+        mtf_timeframes = self._validate_strategy_timeframes(strategies)
+
+        if mtf_timeframes:
+            # Multi-timeframe backtest
+            entry_tf = mtf_timeframes.get("entry", self._config.timeframe)
+            regime_tf = mtf_timeframes.get("regime", "4h")
+
+            self._logger.info(f"Multi-timeframe mode: entry={entry_tf}, regime={regime_tf}")
+
+            data = await self._reader.fetch_multi_timeframe(
+                symbol=self._config.symbol,
+                entry_timeframe=entry_tf,
+                regime_timeframe=regime_tf,
+                start_time=self._config.start_date,
+                end_time=self._config.end_date,
+            )
+        else:
+            # Single-timeframe backtest (original behavior)
+            data = await self._reader.fetch_range(
+                self._config.symbol,
+                self._config.timeframe,
+                self._config.start_date,
+                self._config.end_date,
+            )
+
+        if not data:
+            self._logger.warning("No data found for backtest range")
+            return self._create_empty_result()
+
+        self._logger.info(f"Loaded {len(data)} data points")
 
         for row in data:
             current_time = str(row["time"])

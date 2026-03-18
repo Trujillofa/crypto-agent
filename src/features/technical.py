@@ -102,8 +102,8 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
     volatility_percentile = _volatility_percentile(close, 20) if len(close) >= 20 else None
     atr_percentile = _atr_percentile(high, low, close, 14, 20) if len(close) >= 20 else None
     volume_regime = _volume_regime(volume, 20) if len(volume) >= 20 else None
-    price_vs_weekly = _price_vs_anchored_vwap(high, low, close, volume, 7 * 24) if len(close) >= 7 * 24 else None
-    price_vs_monthly = _price_vs_anchored_vwap(high, low, close, volume, 30 * 24) if len(close) >= 30 * 24 else None
+    price_vs_weekly = _price_vs_anchored_vwap(high, low, close, volume, 7 * 6) if len(close) >= 7 * 6 else None
+    price_vs_monthly = _price_vs_anchored_vwap(high, low, close, volume, 30 * 6) if len(close) >= 30 * 6 else None
     rsi_slope = _rsi_slope(close, 14) if len(close) >= 15 else None
     trend_consistency = _trend_consistency(close) if len(close) >= 200 else None
 
@@ -341,6 +341,32 @@ def _atr_percentile(high: list[float], low: list[float], close: list[float], atr
     # Calculate ATR for each period
     atr_values = []
     for i in range(atr_period, len(close)):
+        h_window = high[i-atr_period:i+1]
+        l_window = low[i-atr_period:i+1]
+        c_window = close[i-atr_period:i+1]
+        atr = _atr(h_window, l_window, c_window, atr_period)
+        atr_values.append(atr)
+    if len(atr_values) < lookback:
+        return None
+    current_atr = atr_values[-1]
+    historical_atrs = atr_values[:-1]
+    if not historical_atrs:
+        return 50.0
+    sorted_atrs = sorted(historical_atrs)
+    count = sum(1 for a in sorted_atrs if a < current_atr)
+    return (count / len(sorted_atrs)) * 100
+    """Calculate ATR percentile (0-100)."""
+    if len(close) < lookback + atr_period + 1:
+        return None
+    # Calculate ATR for each period
+    atr_values = []
+    for i in range(atr_period, len(close)):
+        h_window = high[i-atr_period:i+1]
+        l_window = low[i-atr_period:i+1]
+        c_window = close[i-atr_period:i+1]
+        atr = _atr(h_window, l_window, c_window, atr_period)
+        l_window = low[i-atr_period:i+1]
+        c_window = close[i-atr_period:i+1]
         h_window = high[i-atr_period:i]
         l_window = low[i-atr_period:i]
         c_window = close[i-atr_period:i+1]
@@ -381,6 +407,16 @@ def _price_vs_anchored_vwap(high: list[float], low: list[float], close: list[flo
 
 
 def _rsi_slope(series: list[float], period: int) -> float | None:
+    """Calculate RSI slope as momentum indicator."""
+    if len(series) < period + 5 + 1:  # +1 because we need period+1 elements to get period deltas
+        return None
+    rsi_values = []
+    for i in range(period + 1, len(series) + 1):  # Start from period+1 to have enough deltas
+        rsi = _rsi(series[:i], period)
+        rsi_values.append(rsi)
+    if len(rsi_values) < 5:
+        return None
+    return rsi_values[-1] - rsi_values[-5]
     """Calculate RSI slope as momentum indicator."""
     if len(series) < period + 5:
         return None

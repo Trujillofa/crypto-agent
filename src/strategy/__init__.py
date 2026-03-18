@@ -11,6 +11,8 @@ from src.strategy.mean_reversion import MeanReversionStrategy
 from src.strategy.momentum_strategy import MomentumStrategy
 from src.strategy.rsi_reversal import RSIReversalStrategy
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
+from src.strategy.regime_router import RegimeRouterStrategy
+from src.strategy.multi_timeframe_regime import MultiTimeframeRegimeRouter
 from src.strategy.signals import Signal, SignalType
 from src.strategy.simple_ma import SimpleMACrossoverStrategy
 from src.strategy.trend_pullback import TrendPullbackStrategy
@@ -34,4 +36,6 @@ __all__ = [
     "MeanReversionStrategy",
     "SentimentMeanReversionStrategy",
     "MacroVolatilityStrategy",
+    "RegimeRouterStrategy",
+    "MultiTimeframeRegimeRouter",
 ]
