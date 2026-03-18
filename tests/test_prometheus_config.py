@@ -82,9 +82,7 @@ def test_grafana_prometheus_datasource_uses_internal_network_without_basic_auth(
         raw = yaml.safe_load(file_handle)
 
     prometheus_datasource = next(
-        datasource
-        for datasource in raw["datasources"]
-        if datasource["uid"] == "prometheus"
+        datasource for datasource in raw["datasources"] if datasource["uid"] == "prometheus"
     )
 
     assert prometheus_datasource["url"] == "http://prometheus:9090"

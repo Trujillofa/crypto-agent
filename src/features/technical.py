@@ -102,8 +102,12 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
     volatility_percentile = _volatility_percentile(close, 20) if len(close) >= 20 else None
     atr_percentile = _atr_percentile(high, low, close, 14, 20) if len(close) >= 20 else None
     volume_regime = _volume_regime(volume, 20) if len(volume) >= 20 else None
-    price_vs_weekly = _price_vs_anchored_vwap(high, low, close, volume, 7 * 6) if len(close) >= 7 * 6 else None
-    price_vs_monthly = _price_vs_anchored_vwap(high, low, close, volume, 30 * 6) if len(close) >= 30 * 6 else None
+    price_vs_weekly = (
+        _price_vs_anchored_vwap(high, low, close, volume, 7 * 6) if len(close) >= 7 * 6 else None
+    )
+    price_vs_monthly = (
+        _price_vs_anchored_vwap(high, low, close, volume, 30 * 6) if len(close) >= 30 * 6 else None
+    )
     rsi_slope = _rsi_slope(close, 14) if len(close) >= 15 else None
     trend_consistency = _trend_consistency(close) if len(close) >= 200 else None
 
@@ -298,7 +302,6 @@ def _cci(high: list[float], low: list[float], close: list[float], period: int) -
     return cci
 
 
-
 def _ema_slope(series: list[float], period: int) -> float | None:
     """Calculate EMA slope as trend strength indicator."""
     if len(series) < period + 5:
@@ -313,18 +316,25 @@ def _volatility_percentile(series: list[float], lookback: int) -> float | None:
     if len(series) < lookback + 1:
         return None
     # Calculate daily returns
-    returns = [(series[i] - series[i-1]) / series[i-1] for i in range(1, len(series)) if series[i-1] != 0]
+    returns = [
+        (series[i] - series[i - 1]) / series[i - 1]
+        for i in range(1, len(series))
+        if series[i - 1] != 0
+    ]
     if len(returns) < lookback:
         return None
     # Current realized vol (std dev of recent returns)
     current_returns = returns[-lookback:]
-    current_vol = (sum((r - sum(current_returns)/len(current_returns))**2 for r in current_returns) / len(current_returns)) ** 0.5
+    current_vol = (
+        sum((r - sum(current_returns) / len(current_returns)) ** 2 for r in current_returns)
+        / len(current_returns)
+    ) ** 0.5
     # Historical vol distribution
     historical_vols = []
     for i in range(0, len(returns) - lookback, lookback):
-        window = returns[i:i+lookback]
+        window = returns[i : i + lookback]
         if len(window) >= lookback:
-            vol = (sum((r - sum(window)/len(window))**2 for r in window) / len(window)) ** 0.5
+            vol = (sum((r - sum(window) / len(window)) ** 2 for r in window) / len(window)) ** 0.5
             historical_vols.append(vol)
     if not historical_vols:
         return 50.0
@@ -334,16 +344,18 @@ def _volatility_percentile(series: list[float], lookback: int) -> float | None:
     return (count / len(sorted_vols)) * 100 if sorted_vols else 50.0
 
 
-def _atr_percentile(high: list[float], low: list[float], close: list[float], atr_period: int, lookback: int) -> float | None:
+def _atr_percentile(
+    high: list[float], low: list[float], close: list[float], atr_period: int, lookback: int
+) -> float | None:
     """Calculate ATR percentile (0-100)."""
     if len(close) < lookback + atr_period + 1:
         return None
     # Calculate ATR for each period
     atr_values = []
     for i in range(atr_period, len(close)):
-        h_window = high[i-atr_period:i+1]
-        l_window = low[i-atr_period:i+1]
-        c_window = close[i-atr_period:i+1]
+        h_window = high[i - atr_period : i + 1]
+        l_window = low[i - atr_period : i + 1]
+        c_window = close[i - atr_period : i + 1]
         atr = _atr(h_window, l_window, c_window, atr_period)
         atr_values.append(atr)
     if len(atr_values) < lookback:
@@ -361,15 +373,15 @@ def _atr_percentile(high: list[float], low: list[float], close: list[float], atr
     # Calculate ATR for each period
     atr_values = []
     for i in range(atr_period, len(close)):
-        h_window = high[i-atr_period:i+1]
-        l_window = low[i-atr_period:i+1]
-        c_window = close[i-atr_period:i+1]
+        h_window = high[i - atr_period : i + 1]
+        l_window = low[i - atr_period : i + 1]
+        c_window = close[i - atr_period : i + 1]
         atr = _atr(h_window, l_window, c_window, atr_period)
-        l_window = low[i-atr_period:i+1]
-        c_window = close[i-atr_period:i+1]
-        h_window = high[i-atr_period:i]
-        l_window = low[i-atr_period:i]
-        c_window = close[i-atr_period:i+1]
+        l_window = low[i - atr_period : i + 1]
+        c_window = close[i - atr_period : i + 1]
+        h_window = high[i - atr_period : i]
+        l_window = low[i - atr_period : i]
+        c_window = close[i - atr_period : i + 1]
         atr = _atr(h_window, l_window, c_window, atr_period)
         atr_values.append(atr)
     if len(atr_values) < lookback:
@@ -388,11 +400,13 @@ def _volume_regime(volume: list[float], lookback: int) -> float | None:
     if len(volume) < lookback * 2:
         return None
     current_vol = sum(volume[-lookback:]) / lookback
-    historical_vol = sum(volume[-2*lookback:-lookback]) / lookback
+    historical_vol = sum(volume[-2 * lookback : -lookback]) / lookback
     return (current_vol / historical_vol - 1) * 100 if historical_vol != 0 else 0.0
 
 
-def _price_vs_anchored_vwap(high: list[float], low: list[float], close: list[float], volume: list[float], periods: int) -> float | None:
+def _price_vs_anchored_vwap(
+    high: list[float], low: list[float], close: list[float], volume: list[float], periods: int
+) -> float | None:
     """Calculate distance from anchored VWAP."""
     if len(close) < periods:
         return None
