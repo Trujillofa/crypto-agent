@@ -79,6 +79,7 @@ class StrategySettings:
     # Per-symbol aggregator overrides
     per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     global_trend_filter_enabled: bool = True
+    global_trend_filter_buffer_pct: float = 0.05
 
 
 @dataclass(frozen=True)
@@ -265,6 +266,11 @@ def load_settings(config_path: Path) -> Settings:
             strategy.get("global_trend_filter_enabled"),
             "strategy.global_trend_filter_enabled",
             default=True,
+        ),
+        global_trend_filter_buffer_pct=_as_float(
+            strategy.get("global_trend_filter_buffer_pct"),
+            "strategy.global_trend_filter_buffer_pct",
+            default=0.05,
         ),
     )
 
@@ -896,7 +902,8 @@ async def run() -> None:
         aggregator_config=aggregator_config,
         per_symbol_aggregator_config=per_symbol_agg_config,
         global_trend_filter_enabled=settings.strategy.global_trend_filter_enabled,
-    )
+        global_trend_filter_buffer_pct=settings.strategy.global_trend_filter_buffer_pct,
+)
 
     # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB
     # Non-blocking — logs warnings but does not prevent startup

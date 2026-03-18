@@ -37,6 +37,7 @@ class EngineConfig:
     # Per-symbol aggregator overrides: {"SOLUSDT": {"min_agreement": 1, "buy_threshold": 1.1, "sell_threshold": -1.0}, ...}
     per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     global_trend_filter_enabled: bool = True
+    global_trend_filter_buffer_pct: float = 0.05  # Allow buys within 5% below EMA200
 
 
 class StrategyEngine:
@@ -179,11 +180,15 @@ class StrategyEngine:
                 if final_signal.type == SignalType.BUY and self._config.global_trend_filter_enabled:
                     price = indicators["close_price"]
                     ema_200 = indicators["ema_200"]
-                    if ema_200 is not None and price < ema_200:
+                    buffer_pct = self._config.global_trend_filter_buffer_pct
+                    if ema_200 is not None and price < ema_200 * (1 - buffer_pct):
+                        threshold = ema_200 * (1 - buffer_pct)
                         self._logger.info(
-                            "Blocked by Global Trend Filter (Price < EMA200) for %s: price=%.2f ema_200=%.2f",
+                            "Blocked by Global Trend Filter (Price < %.1f%% of EMA200) for %s: price=%.2f threshold=%.2f ema_200=%.2f",
+                            buffer_pct * 100,
                             symbol,
                             price,
+                            threshold,
                             ema_200,
                         )
                         final_signal = Signal(
@@ -191,7 +196,7 @@ class StrategyEngine:
                             symbol=symbol,
                             price=price,
                             confidence=0.0,
-                            reason="Blocked by Global Trend Filter (Price < EMA200)",
+                            reason=f"Blocked by Global Trend Filter (Price < {buffer_pct*100:.0f}% of EMA200)",
                             indicators=final_signal.indicators,
                             trading_mode=final_signal.trading_mode,
                         )
