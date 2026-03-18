@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timedelta
 
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType

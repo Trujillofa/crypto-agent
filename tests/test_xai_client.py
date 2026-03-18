@@ -12,9 +12,7 @@ async def test_chat_returns_trimmed_content() -> None:
         choices=[SimpleNamespace(message=SimpleNamespace(content="  market regime stable  \n"))]
     )
     create = AsyncMock(return_value=completion)
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client) as mock_openai:
         client = XAIClient(api_key="test-key", model="grok-3")
@@ -37,9 +35,7 @@ async def test_chat_returns_trimmed_content() -> None:
 async def test_chat_returns_fallback_when_content_missing() -> None:
     completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=[]))])
     create = AsyncMock(return_value=completion)
-    fake_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
         client = XAIClient(api_key="test-key", model="grok-3")

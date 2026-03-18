@@ -12,6 +12,7 @@ from src.execution.executor import TradingConfig, TradingExecutor
 from src.execution.metrics import ExecutionMetrics
 from src.features.reader import IndicatorReader
 from src.risk.manager import RiskManager
+from src.strategy.base import BaseStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine
 from src.strategy.signals import Signal, SignalType
 from src.strategy.simple_ma import SimpleMACrossoverStrategy
@@ -22,6 +23,7 @@ def mock_reader():
     """Mock IndicatorReader."""
     reader = MagicMock(spec=IndicatorReader)
     reader.fetch_latest = AsyncMock()
+    reader.fetch_latest_multi_timeframe = AsyncMock()
     return reader
 
 
@@ -104,6 +106,65 @@ class TestStrategyEngineFetchIndicators:
         mock_reader.fetch_latest.assert_called_once_with("BTCUSDT", "1m", limit=2)
 
     @pytest.mark.asyncio
+    async def test_fetch_indicators_uses_mtf_joined_rows(self, mock_reader):
+        """MTF strategies fetch joined entry/regime indicators at runtime."""
+
+        class MockMTFStrategy(BaseStrategy):
+            REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
+
+            async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
+                return Signal(
+                    type=SignalType.HOLD,
+                    symbol=symbol,
+                    price=indicators["close_price"],
+                    confidence=0.0,
+                    reason="noop",
+                    indicators=indicators,
+                )
+
+        mock_reader.fetch_latest_multi_timeframe.return_value = [
+            {
+                "time": "2024-01-01T00:00:00Z",
+                "ema_12": 50000.0,
+                "ema_26": 49000.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50500.0,
+                "ema_slope_50_4h": 0.01,
+            },
+            {
+                "time": "2024-01-01T01:00:00Z",
+                "ema_12": 50100.0,
+                "ema_26": 49100.0,
+                "ema_50": 49500.0,
+                "ema_200": 48000.0,
+                "close_price": 50600.0,
+                "ema_slope_50_4h": 0.02,
+            },
+        ]
+
+        engine = StrategyEngine(
+            EngineConfig(
+                symbols=["BTCUSDT"],
+                timeframe="1h",
+                evaluation_interval_seconds=3600,
+                strategy_classes=[MockMTFStrategy],
+                strategy_configs=[{}],
+            ),
+            mock_reader,
+        )
+
+        result = await engine._fetch_indicators("BTCUSDT")
+
+        assert result is not None
+        assert result["close_price"] == 50600.0
+        assert result["ema_slope_50_4h"] == 0.02
+        mock_reader.fetch_latest_multi_timeframe.assert_called_once_with(
+            "BTCUSDT", "1h", "4h", limit=2
+        )
+        mock_reader.fetch_latest.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_fetch_indicators_warmup(self, mock_reader, engine_config):
         """Fetch with < 2 rows returns None (warmup period)."""
         # Mock reader returns only 1 row
@@ -123,6 +184,39 @@ class TestStrategyEngineFetchIndicators:
 
         assert result is None
         mock_reader.fetch_latest.assert_called_once_with("BTCUSDT", "1m", limit=2)
+
+    def test_mixed_runtime_strategy_sets_are_rejected(self, mock_reader):
+        """Runtime engine rejects mixed MTF and single-timeframe strategy sets."""
+
+        class MockMTFStrategy(BaseStrategy):
+            REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
+
+            async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
+                return Signal(
+                    type=SignalType.HOLD,
+                    symbol=symbol,
+                    price=indicators.get("close_price", 0.0),
+                    confidence=0.0,
+                    reason="noop",
+                    indicators=indicators,
+                )
+
+        with pytest.raises(
+            ValueError,
+            match="Mixed multi-timeframe and single-timeframe runtime strategy sets are not supported",
+        ):
+            StrategyEngine(
+                EngineConfig(
+                    symbols=["BTCUSDT"],
+                    timeframe="1h",
+                    strategy_classes=[SimpleMACrossoverStrategy, MockMTFStrategy],
+                    strategy_configs=[
+                        {"ema_short_period": 12, "ema_long_period": 26},
+                        {},
+                    ],
+                ),
+                mock_reader,
+            )
 
 
 class TestStrategyEngineSignalFlow:

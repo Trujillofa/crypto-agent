@@ -62,7 +62,6 @@ class MTFBreakoutExpansionTemplate(BaseStrategy):
         close_price = indicators.get("close_price", 0.0)
         vwap = indicators.get("vwap", close_price)
         ema = indicators.get(f"ema_{self._ema_period}", close_price)
-        high_price = indicators.get("high_price", close_price)
 
         # Extract 4h regime indicators
         ema_slope_4h = indicators.get("ema_slope_50_4h", 0.0) or 0.0

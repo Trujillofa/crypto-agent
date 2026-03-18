@@ -903,7 +903,7 @@ async def run() -> None:
         per_symbol_aggregator_config=per_symbol_agg_config,
         global_trend_filter_enabled=settings.strategy.global_trend_filter_enabled,
         global_trend_filter_buffer_pct=settings.strategy.global_trend_filter_buffer_pct,
-)
+    )
 
     # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB
     # Non-blocking — logs warnings but does not prevent startup
