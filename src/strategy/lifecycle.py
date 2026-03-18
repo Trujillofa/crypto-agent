@@ -72,18 +72,58 @@ class LifecycleManager:
             unknown_message="Strategy %s has no lifecycle row yet (allowed in paper mode)",
         )
 
-    async def promote_strategy(self, name: str, version: str, metrics: dict):
-        """Promote strategy to next state."""
+    async def set_strategy_status(
+        self,
+        name: str,
+        version: str,
+        status: str,
+        metrics: dict | None = None,
+    ) -> None:
+        """Insert or update a strategy lifecycle row."""
+        metrics = metrics or {}
         await self.conn.execute(
             """
-            INSERT INTO strategy_versions (name, version, status, config, backtest_sharpe, backtest_win_rate)
-            VALUES ($1, $2, 'validated', $3, $4, $5)
-            ON CONFLICT (name, version) DO NOTHING
+            INSERT INTO strategy_versions (
+                name,
+                version,
+                status,
+                promoted_at,
+                config,
+                backtest_sharpe,
+                backtest_win_rate,
+                backtest_max_drawdown,
+                backtest_total_trades,
+                notes
+            )
+            VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (name, version) DO UPDATE SET
+                status = EXCLUDED.status,
+                promoted_at = NOW(),
+                config = EXCLUDED.config,
+                backtest_sharpe = EXCLUDED.backtest_sharpe,
+                backtest_win_rate = EXCLUDED.backtest_win_rate,
+                backtest_max_drawdown = EXCLUDED.backtest_max_drawdown,
+                backtest_total_trades = EXCLUDED.backtest_total_trades,
+                notes = EXCLUDED.notes
             """,
             name,
             version,
+            status,
             metrics.get("config", "{}"),
             metrics.get("sharpe"),
             metrics.get("win_rate"),
+            metrics.get("max_drawdown"),
+            metrics.get("total_trades"),
+            metrics.get("notes"),
         )
-        logger.info(f"Promoted {name}:{version} with Sharpe {metrics.get('sharpe')}")
+        logger.info("Set %s:%s to %s", name, version, status)
+
+    async def promote_strategy(self, name: str, version: str, metrics: dict):
+        """Promote strategy to next state."""
+        await self.set_strategy_status(name, version, "validated", metrics)
+
+    async def register_paper_strategy(
+        self, name: str, version: str, metrics: dict | None = None
+    ) -> None:
+        """Mark a strategy version as approved for paper validation."""
+        await self.set_strategy_status(name, version, "paper", metrics)

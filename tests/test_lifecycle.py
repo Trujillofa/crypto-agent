@@ -57,3 +57,44 @@ async def test_is_paper_ready_still_blocks_rejected_status(caplog) -> None:
 
     assert allowed is False
     assert "status: archived (blocked)" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_set_strategy_status_upserts_requested_status() -> None:
+    lifecycle = LifecycleManager({})
+    lifecycle.conn = AsyncMock()
+
+    await lifecycle.set_strategy_status(
+        "SentimentMeanReversionStrategy",
+        "1.0",
+        "paper",
+        {
+            "sharpe": 0.42,
+            "win_rate": 0.55,
+            "max_drawdown": 8.5,
+            "total_trades": 12,
+            "notes": "paper validation",
+        },
+    )
+
+    execute_args = lifecycle.conn.execute.await_args.args
+    assert execute_args[1] == "SentimentMeanReversionStrategy"
+    assert execute_args[2] == "1.0"
+    assert execute_args[3] == "paper"
+    assert execute_args[5] == 0.42
+    assert execute_args[6] == 0.55
+    assert execute_args[7] == 8.5
+    assert execute_args[8] == 12
+
+
+@pytest.mark.asyncio
+async def test_register_paper_strategy_delegates_to_paper_status() -> None:
+    lifecycle = LifecycleManager({})
+    lifecycle.conn = AsyncMock()
+
+    await lifecycle.register_paper_strategy("MTFStrategyTemplate", "1.0")
+
+    execute_args = lifecycle.conn.execute.await_args.args
+    assert execute_args[1] == "MTFStrategyTemplate"
+    assert execute_args[2] == "1.0"
+    assert execute_args[3] == "paper"
