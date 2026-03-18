@@ -181,11 +181,9 @@ class IndicatorWriter:
                     volume_regime, price_vs_weekly, price_vs_monthly,
                     rsi_slope, trend_consistency
                 ) VALUES (
-                ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
-                    $26, $27, $28, $29, $30, $31, $32
-                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+                    $24, $25, $26, $27, $28, $29, $30, $31
                 )
                 ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                     rsi_14 = EXCLUDED.rsi_14,
