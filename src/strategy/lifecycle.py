@@ -29,14 +29,48 @@ class LifecycleManager:
         )
         return row["status"] if row else "unknown"
 
+    async def _check_statuses(
+        self,
+        strategies: list[str],
+        *,
+        allowed_statuses: set[str],
+        allow_unknown: bool = False,
+        unknown_message: str | None = None,
+    ) -> bool:
+        """Check strategy lifecycle status against an allowed set."""
+        all_allowed = True
+        normalized_allowed = {status.lower() for status in allowed_statuses}
+
+        for name in strategies:
+            status = (await self.get_strategy_status(name)).lower()
+            if status == "unknown" and allow_unknown:
+                if unknown_message:
+                    logger.info(unknown_message, name)
+                continue
+            if status not in normalized_allowed:
+                logger.warning("Strategy %s status: %s (blocked)", name, status)
+                all_allowed = False
+
+        return all_allowed
+
     async def is_live(self, strategies: list[str]) -> bool:
         """Check if all strategies are 'live'."""
-        for name in strategies:
-            status = await self.get_strategy_status(name)
-            if status != "live":
-                logger.warning(f"Strategy {name} status: {status} (blocked)")
-                return False
-        return True
+        return await self._check_statuses(strategies, allowed_statuses={"live"})
+
+    async def is_paper_ready(self, strategies: list[str]) -> bool:
+        """Check if strategies are acceptable for paper validation.
+
+        Paper mode allows strategies that are already live, explicitly marked
+        for paper validation, or only validated offline. Missing registry rows
+        are logged as informational so new paper strategies do not look blocked
+        before they earn lifecycle promotion.
+        """
+        return await self._check_statuses(
+            strategies,
+            allowed_statuses={"live", "validated", "paper"},
+            allow_unknown=True,
+            unknown_message="Strategy %s has no lifecycle row yet (allowed in paper mode)",
+        )
 
     async def promote_strategy(self, name: str, version: str, metrics: dict):
         """Promote strategy to next state."""

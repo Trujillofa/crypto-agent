@@ -917,12 +917,20 @@ async def run() -> None:
         }
         async with LifecycleManager(lifecycle_db) as lifecycle:
             strategy_names = [cls.__name__ for cls in strategy_classes]
-            all_live = await lifecycle.is_live(strategy_names)
-            if not all_live:
-                get_logger("lifecycle").warning(
-                    "Some strategies not promoted to 'live' in DB — "
-                    "run migration 004 and baseline_strategies.py to enable lifecycle gating"
-                )
+            if settings.mode == "paper":
+                paper_ready = await lifecycle.is_paper_ready(strategy_names)
+                if not paper_ready:
+                    get_logger("lifecycle").warning(
+                        "Some strategies are not paper-ready in DB — "
+                        "register them as paper/validated/live before trusting paper results"
+                    )
+            else:
+                all_live = await lifecycle.is_live(strategy_names)
+                if not all_live:
+                    get_logger("lifecycle").warning(
+                        "Some strategies not promoted to 'live' in DB — "
+                        "run migration 004 and baseline_strategies.py to enable lifecycle gating"
+                    )
     except Exception as exc:
         get_logger("lifecycle").debug("Lifecycle check skipped (table may not exist): %s", exc)
 
