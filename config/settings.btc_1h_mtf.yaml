@@ -1,0 +1,87 @@
+mode: paper
+agent_id: btc-1h-mtf
+log_level: INFO
+
+trading:
+  pairs:
+    - BTCUSDT
+  timeframe: 1h
+
+ingest:
+  use_websocket: true
+
+database:
+  host: timescaledb
+  port: 5432
+  name: marketdata
+  user: trading
+  password: ""
+
+telegram:
+  enabled: false
+  bot_token: ""
+  chat_id: ""
+  rate_limit_seconds: 5
+  allowed_updates:
+    - message
+
+ai:
+  enabled: false
+
+prometheus:
+  port: 8000
+
+trading_execution:
+  enabled: true
+  api_key: ""
+  api_secret: ""
+  test_mode: true
+  order_size_usdt: 100.0
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.05
+  sl_atr_multiplier: 2.0
+  tp_atr_multiplier: 4.5
+  trailing_activate_atr: 1.5
+  trailing_offset_atr: 1.0
+  use_atr_sizing: true
+  atr_multiplier: 1.0
+  risk_per_trade_pct: 0.02
+  exit_rules:
+    time_stop_minutes: 240
+
+futures:
+  enabled: true
+  symbols:
+    - BTCUSDT
+  default_leverage: 3
+  max_leverage: 10
+  margin_mode: isolated
+  position_mode: one-way
+  test_mode: true
+  liquidation_buffer_pct: 5.0
+
+strategy:
+  evaluation_interval_seconds: 3600
+  cooldown_candles: 1
+  default_trading_mode: futures
+  strategies:
+    - name: mtf_template
+      config:
+        regime_threshold: 0.005
+        trend_consistency_threshold: 50.0
+        volatility_percentile_threshold: 40.0
+        entry_pullback_pct: 0.01
+        rsi_oversold: 40.0
+        rsi_overbought: 60.0
+        confidence_boost: 1.2
+  global_trend_filter_enabled: true
+  aggregator:
+    min_agreement: 1
+    buy_threshold: 0.7
+    buy_threshold_uptrend: 0.7
+    sell_threshold: -0.6
+    btc_regime_filter_enabled: false
+    btc_reference_symbol: BTCUSDT
+    btc_dump_threshold_pct: -1.0
+    btc_dump_require_below_ema200: true
+  per_symbol_aggregator_config: {}
