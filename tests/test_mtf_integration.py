@@ -1,10 +1,10 @@
 """Integration tests for multi-timeframe (MTF) backtesting."""
 
-import pytest
 from datetime import datetime
 
-from src.backtest.engine import BacktestEngine, BacktestConfig
+import pytest
 
+from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
