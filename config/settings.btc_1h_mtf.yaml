@@ -1,11 +1,11 @@
 mode: paper
-agent_id: btc-1h-mtf
+agent_id: eth-4h
 log_level: INFO
 
 trading:
   pairs:
-    - BTCUSDT
-  timeframe: 1h
+    - ETHUSDT
+  timeframe: 4h
 
 ingest:
   use_websocket: true
@@ -32,56 +32,57 @@ prometheus:
   port: 8000
 
 trading_execution:
-  enabled: true
-  api_key: ""
-  api_secret: ""
-  test_mode: true
-  order_size_usdt: 100.0
+  enabled: true  # Futures demo trading via demo-fapi.binance.com
+  api_key: ""  # Set via BINANCE_API_KEY environment variable
+  api_secret: ""  # Set via BINANCE_API_SECRET environment variable
+  test_mode: true  # Set to false for live trading
+  order_size_usdt: 100.0  # 1% of $10k paper balance
+  # Fixed SL/TP as fallback only (ATR-based is primary)
   stop_loss_pct: 0.02
   take_profit_pct: 0.05
-  sl_atr_multiplier: 2.0
-  tp_atr_multiplier: 4.5
-  trailing_activate_atr: 1.5
-  trailing_offset_atr: 1.0
-  use_atr_sizing: true
-  atr_multiplier: 1.0
-  risk_per_trade_pct: 0.02
+  # ATR-based SL/TP — will be tuned by autoresearch results
+  sl_atr_multiplier: 2.0   # SL = entry - 2.0 * ATR(14)
+  tp_atr_multiplier: 4.5   # TP = entry + 4.5 * ATR(14)
+  trailing_activate_atr: 1.5  # activate trailing after +1.5 * ATR profit
+  trailing_offset_atr: 1.0    # trail SL at highest - 1.0 * ATR
+  # ATR-based position sizing
+  use_atr_sizing: true         # size by (equity × risk_pct) / (atr × multiplier) instead of flat USDT
+  atr_multiplier: 1.0          # stop distance multiplier for sizing calc
+  risk_per_trade_pct: 0.02     # 2% of current equity risked per trade
   exit_rules:
-    time_stop_minutes: 240
+    time_stop_minutes: 240      # align with 4h strategy cadence
 
 futures:
-  enabled: true
+  enabled: true  # Futures demo trading enabled
   symbols:
-    - BTCUSDT
-  default_leverage: 3
-  max_leverage: 10
-  margin_mode: isolated
-  position_mode: one-way
-  test_mode: true
-  liquidation_buffer_pct: 5.0
+    - ETHUSDT
+  default_leverage: 3  # Conservative default
+  max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
+  margin_mode: isolated  # isolated only for MVP
+  position_mode: one-way  # one-way only for MVP
+  test_mode: true  # Use demo.binance.com for paper trading
+  liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
 
 strategy:
-  evaluation_interval_seconds: 3600
+  evaluation_interval_seconds: 14400
   cooldown_candles: 1
-  default_trading_mode: futures
+  default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
-    - name: mtf_template
-      config:
-        regime_threshold: 0.005
-        trend_consistency_threshold: 50.0
-        volatility_percentile_threshold: 40.0
-        entry_pullback_pct: 0.01
-        rsi_oversold: 40.0
-        rsi_overbought: 60.0
-        confidence_boost: 1.2
+    - name: simple_ma
+      config: {}
+    # Repurposed from btc-1h-mtf (mtf_template) → ETHUSDT 4h simple_ma
+    # Autoresearch: No strategy cross-validated profitable for ETH (tough market)
+    # MA [L,TF,Fix] was best validation performer: +3.64%, Sharpe +0.62
+    # Using conservative defaults — ETH needs monitoring
   global_trend_filter_enabled: true
+  global_trend_filter_buffer_pct: 0.05
   aggregator:
     min_agreement: 1
-    buy_threshold: 0.7
-    buy_threshold_uptrend: 0.7
-    sell_threshold: -0.6
-    btc_regime_filter_enabled: false
+    buy_threshold: 0.5
+    buy_threshold_uptrend: 0.5
+    sell_threshold: -0.5
+    min_confidence: 0.0
+    btc_regime_filter_enabled: true
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0
     btc_dump_require_below_ema200: true
-  per_symbol_aggregator_config: {}

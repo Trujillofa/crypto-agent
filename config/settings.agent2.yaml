@@ -74,38 +74,17 @@ strategy:
   cooldown_candles: 1
   default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
-    - name: rsi_reversal
-      config:
-        rsi_period: 7
-        oversold_threshold: 35
-        overbought_threshold: 65
-    - name: macd_histogram
-      config:
-        min_histogram_threshold: 0.0001
-        use_atr_filter: true
-        atr_min_pct: 0.003
-    - name: bollinger_bounce
-      config:
-        band_distance_threshold: 0.003
-        rsi_oversold: 35
-        rsi_overbought: 65
-    - name: cci_breakout
-      config:
-        cci_buy_threshold: 100
-        cci_sell_threshold: -100
-        atr_min_pct: 0.005
-    - name: vwap_reversion
-      config:
-        vwap_atr_multiplier: 1.5
-        rsi_oversold: 40
-        rsi_overbought: 60
-  global_trend_filter_enabled: true  # block BUY when price < EMA200; set false to allow trend-counter entries
+    - name: simple_ma
+      config: {}
+    # Autoresearch: MA [S,noTF,ATR] best for BNBUSDT — Training +11.56%, Val +10.41%
+  global_trend_filter_enabled: false  # BNB performs better WITHOUT trend filter (autoresearch validated)
+  global_trend_filter_buffer_pct: 0.05
   aggregator:
     min_agreement: 1
-    buy_threshold: 0.8          # conservative paper-mode lowering to admit strong single-strategy votes
-    buy_threshold_uptrend: 0.8  # keep aligned with base threshold while validating live signal flow
-    sell_threshold: -0.6
-    sell_min_agreement: 2       # require at least two SELL voters before opening futures shorts
+    buy_threshold: 0.5
+    buy_threshold_uptrend: 0.5
+    sell_threshold: -0.5
+    min_confidence: 0.0
     btc_regime_filter_enabled: true
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0

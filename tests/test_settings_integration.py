@@ -23,12 +23,11 @@ from src.strategy import (
     SentimentMeanReversionStrategy,
     Signal,
     SignalType,
+    SimpleMACrossoverStrategy,
     StrategyEngine,
     TrendPullbackStrategy,
     VWAPReversionStrategy,
 )
-from src.strategy.mtf_template import MTFStrategyTemplate
-
 
 def test_settings_default_safe():
     """Verify settings.yaml loads with safe defaults (paper mode with test mode)."""
@@ -113,19 +112,16 @@ def test_replacement_config_resolves_trend_pullback():
     assert aggregator_config["buy_threshold"] == 0.45
 
 
-def test_sparse_replacement_config_resolves_trend_pullback_cluster():
+def test_sol_sparse_config_disabled_with_simple_ma():
     settings = load_settings(Path("config/settings.sol_trend_pullback_sparse.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, per_symbol = _resolve_strategy_config(
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
         settings.strategy
     )
 
-    assert strategy_classes == [TrendPullbackStrategy]
+    assert strategy_classes == [SimpleMACrossoverStrategy]
     assert len(strategy_configs) == 1
-    assert strategy_configs[0]["rsi_reclaim_level"] == 48
-    assert strategy_configs[0]["min_trend_strength_pct"] == 0.006
-    assert strategy_configs[0]["vwap_pullback_distance_pct"] == 0.05
-    assert aggregator_config["buy_threshold"] == 0.45
-    assert per_symbol["SOLUSDT"]["buy_threshold"] == 0.45
+    assert settings.trading_execution.enabled is False  # Disabled — duplicate of main agent
+    assert aggregator_config["buy_threshold"] == 0.5
 
 
 def test_replacement_config_resolves_breakout_retest():
@@ -152,20 +148,20 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert aggregator_config["buy_threshold"] == 0.6
 
 
-def test_btc_mtf_paper_config_resolves_mtf_template():
+def test_eth_4h_config_resolves_simple_ma():
     settings = load_settings(Path("config/settings.btc_1h_mtf.yaml"))
     strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
         settings.strategy
     )
 
-    assert settings.agent_id == "btc-1h-mtf"
-    assert settings.trading_pairs == ["BTCUSDT"]
-    assert settings.timeframe == "1h"
+    assert settings.agent_id == "eth-4h"
+    assert settings.trading_pairs == ["ETHUSDT"]
+    assert settings.timeframe == "4h"
     assert settings.ai.enabled is False
     assert settings.trading_execution.enabled is True
-    assert strategy_classes == [MTFStrategyTemplate]
+    assert strategy_classes == [SimpleMACrossoverStrategy]
     assert len(strategy_configs) == 1
-    assert aggregator_config["buy_threshold"] == 0.7
+    assert aggregator_config["buy_threshold"] == 0.5
 
 
 def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
