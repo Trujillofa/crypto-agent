@@ -106,6 +106,7 @@ strategy:
     buy_threshold: 0.8          # conservative paper-mode lowering to admit strong single-strategy votes
     buy_threshold_uptrend: 0.8  # keep aligned with base threshold while validating live signal flow
     sell_threshold: -0.6
+    min_confidence: 0.5         # ignore signals below this confidence — prevents weak conflicting votes from cancelling strong ones
     btc_regime_filter_enabled: true
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0

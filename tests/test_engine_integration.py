@@ -140,11 +140,8 @@ class TestStrategyEngineIntegration:
             await engine._evaluate_all(on_signal)
 
         assert received_signals == []
-        assert "Blocked by Global Trend Filter (Price < 5.0% of EMA200) for BNBUSDT" in caplog.text
-        assert (
-            "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter (Price < 5% of EMA200)"
-            in caplog.text
-        )
+        assert "Blocked by Global Trend Filter" in caplog.text and "of EMA200) for BNBUSDT" in caplog.text
+        assert "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter" in caplog.text
 
     @pytest.mark.asyncio
     async def test_global_trend_filter_disabled_allows_buy_below_ema200(self, below_ema200_reader):

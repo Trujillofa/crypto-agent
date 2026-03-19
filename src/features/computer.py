@@ -58,7 +58,7 @@ class IndicatorComputer:
             try:
                 await self._compute_symbol(symbol)
             except Exception as exc:  # noqa: BLE001
-                self._logger.error("Failed to compute indicators for %s: %s", symbol, exc)
+                self._logger.error("Failed to compute indicators for %s: %s", symbol, exc, exc_info=True)
                 self._metrics.errors_total.labels(
                     symbol=symbol, error_type=type(exc).__name__
                 ).inc()

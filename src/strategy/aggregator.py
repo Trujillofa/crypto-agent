@@ -33,6 +33,7 @@ class SignalAggregator:
         self._btc_dump_require_below_ema200 = bool(
             self._config.get("btc_dump_require_below_ema200", True)
         )
+        self._min_confidence = float(self._config.get("min_confidence", 0.0))
 
     def aggregate(
         self,
@@ -67,6 +68,7 @@ class SignalAggregator:
         btc_regime_filter_enabled = self._btc_regime_filter_enabled
         btc_dump_threshold_pct = self._btc_dump_threshold_pct
         btc_dump_require_below_ema200 = self._btc_dump_require_below_ema200
+        min_confidence = self._min_confidence
 
         if symbol_config:
             buy_threshold = float(symbol_config.get("buy_threshold", buy_threshold))
@@ -88,6 +90,7 @@ class SignalAggregator:
                     btc_dump_require_below_ema200,
                 )
             )
+            min_confidence = float(symbol_config.get("min_confidence", min_confidence))
 
         # Dynamic buy threshold: more aggressive in confirmed uptrend (price > EMA200)
         in_uptrend = ema_200 is not None and current_price > ema_200
@@ -97,10 +100,19 @@ class SignalAggregator:
         active_signals = 0
         buy_votes = 0
         sell_votes = 0
+        filtered_out = 0
         reasons = []
         all_indicators = {}
 
         for sig in signals:
+            all_indicators.update(sig.indicators)
+
+            # Skip low-confidence signals — prevents weak conflicting votes
+            # from cancelling strong signals
+            if sig.type != SignalType.HOLD and sig.confidence < min_confidence:
+                filtered_out += 1
+                continue
+
             score = 0.0
             if sig.type == SignalType.BUY:
                 score = 1.0 * sig.confidence
@@ -116,11 +128,10 @@ class SignalAggregator:
             if sig.type != SignalType.HOLD:
                 reasons.append(f"{sig.reason} ({sig.confidence:.2f})")
 
-            all_indicators.update(sig.indicators)
-
         final_type = SignalType.HOLD
         final_confidence = 0.0
-        final_reason = f"Score: {total_score:.2f} (Active: {active_signals}, BUY: {buy_votes}, SELL: {sell_votes})"
+        filtered_info = f", Filtered: {filtered_out}" if filtered_out else ""
+        final_reason = f"Score: {total_score:.2f} (Active: {active_signals}, BUY: {buy_votes}, SELL: {sell_votes}{filtered_info})"
 
         if total_score >= effective_buy_threshold:
             if buy_votes >= min_agreement:

@@ -193,6 +193,58 @@ class TestSignalAggregator:
         assert result.type == SignalType.HOLD
         assert "Insufficient BUY agreement" in result.reason
 
+    def test_min_confidence_filters_weak_conflicting_vote(self):
+        """A weak SELL below min_confidence should not cancel a strong BUY."""
+        agg = SignalAggregator(
+            {"buy_threshold": 0.5, "sell_threshold": -0.5, "min_agreement": 1, "min_confidence": 0.5}
+        )
+        signals = [
+            self._create_signal(SignalType.BUY, 0.8),
+            self._create_signal(SignalType.SELL, 0.3),  # below 0.5 threshold
+        ]
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.BUY
+        assert "Filtered: 1" in result.reason or "Consensus BUY" in result.reason
+
+    def test_min_confidence_keeps_strong_conflicting_vote(self):
+        """A strong SELL above min_confidence should still cancel a BUY."""
+        agg = SignalAggregator(
+            {"buy_threshold": 0.5, "sell_threshold": -0.5, "min_agreement": 1, "min_confidence": 0.5}
+        )
+        signals = [
+            self._create_signal(SignalType.BUY, 0.8),
+            self._create_signal(SignalType.SELL, 0.6),  # above 0.5 threshold
+        ]
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.HOLD
+
+    def test_min_confidence_zero_disables_filtering(self, aggregator):
+        """Default min_confidence=0 should not filter anything."""
+        signals = [
+            self._create_signal(SignalType.BUY, 0.8),
+            self._create_signal(SignalType.SELL, 0.3),
+        ]
+        result = aggregator.aggregate("BTCUSDT", signals)
+        # Score = 0.8 - 0.3 = 0.5, meets threshold 0.5 → BUY
+        assert result.type == SignalType.BUY
+
+    def test_min_confidence_per_symbol_override(self):
+        """Per-symbol min_confidence should override global."""
+        agg = SignalAggregator(
+            {"buy_threshold": 0.5, "min_agreement": 1, "min_confidence": 0.0}
+        )
+        signals = [
+            self._create_signal(SignalType.BUY, 0.8),
+            self._create_signal(SignalType.SELL, 0.4),
+        ]
+        # Without override: score = 0.8 - 0.4 = 0.4 < 0.5 → HOLD
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.type == SignalType.HOLD
+
+        # With min_confidence override: SELL(0.4) filtered out, score = 0.8 → BUY
+        result = agg.aggregate("BTCUSDT", signals, symbol_config={"min_confidence": 0.5})
+        assert result.type == SignalType.BUY
+
     def test_btc_regime_filter_blocks_alt_buy_when_btc_dumping(self):
         agg = SignalAggregator(
             {
