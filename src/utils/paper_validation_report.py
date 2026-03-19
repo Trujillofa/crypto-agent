@@ -256,7 +256,15 @@ async def collect_report(
 
 
 def report_to_json(report: PaperValidationReport) -> str:
-    return json.dumps(asdict(report), indent=2)
+    return json.dumps(asdict(report), indent=2, default=_json_default)
+
+
+def _json_default(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
 
 
 def render_markdown(report: PaperValidationReport) -> str:
