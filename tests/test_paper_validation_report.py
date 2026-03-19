@@ -102,6 +102,7 @@ def test_load_risk_state_returns_defaults_when_missing(tmp_path: Path) -> None:
     assert summary.kill_switch_triggered is False
     assert summary.active_breakers == []
     assert summary.updated_at is None
+    assert summary.updated_day is None
 
 
 def test_load_risk_state_extracts_active_breakers(tmp_path: Path) -> None:
@@ -129,6 +130,7 @@ def test_load_risk_state_extracts_active_breakers(tmp_path: Path) -> None:
     assert summary.kill_switch_triggered is True
     assert summary.open_position_keys == 1
     assert summary.active_breakers == ["api_errors", "drawdown"]
+    assert summary.updated_day == "2026-03-19"
 
 
 @pytest.mark.asyncio
@@ -201,9 +203,60 @@ async def test_collect_agent_report_aggregates_db_and_files(tmp_path: Path) -> N
 
     assert report.agent.agent_id == spec.agent_id
     assert report.events.signal_count == 1
-    assert report.risk.daily_pnl == 7.25
+    assert report.risk.snapshot_daily_pnl == 7.25
     assert report.daily_closed_trades == 3
+    assert report.risk_state_matches_report_day is True
     assert report.portfolio.total_realized_pnl == 25.0
+
+
+@pytest.mark.asyncio
+async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path) -> None:
+    spec = DEFAULT_PAPER_AGENTS[1]
+    data_dir = tmp_path
+    default_risk_state_path(spec.agent_id, data_dir).write_text(
+        json.dumps(
+            {
+                "positions": {},
+                "daily_pnl": 88.93,
+                "peak_balance": 10050.0,
+                "kill_switch_triggered": False,
+                "circuit_breakers": {"drawdown": False},
+                "updated_at": "2026-03-19T21:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    async def _enter(self):  # type: ignore[no-untyped-def]
+        return self
+
+    async def _exit(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        return None
+
+    with (
+        patch("src.utils.paper_validation_report.init_pool", AsyncMock()),
+        patch("src.utils.paper_validation_report.close_pool", AsyncMock()),
+        patch("src.utils.paper_validation_report.PortfolioManager.__aenter__", _enter),
+        patch("src.utils.paper_validation_report.PortfolioManager.__aexit__", _exit),
+        patch(
+            "src.utils.paper_validation_report.PortfolioManager.get_daily_stats",
+            AsyncMock(return_value=(0.0, 0, 0.0)),
+        ),
+        patch(
+            "src.utils.paper_validation_report.PortfolioManager.get_portfolio_summary",
+            AsyncMock(return_value=PortfolioSummary()),
+        ),
+    ):
+        report = await collect_agent_report(
+            spec,
+            date(2026, 3, 18),
+            db_config={"host": "timescaledb"},
+            data_dir=data_dir,
+        )
+
+    assert report.risk.snapshot_daily_pnl == 88.93
+    assert report.risk.updated_day == "2026-03-19"
+    assert report.risk_state_matches_report_day is False
 
 
 def test_render_markdown_contains_key_sections() -> None:
@@ -221,15 +274,17 @@ def test_render_markdown_contains_key_sections() -> None:
         ),
         risk=RiskStateSummary(
             kill_switch_triggered=False,
-            daily_pnl=0.0,
+            snapshot_daily_pnl=0.0,
             peak_balance=10000.0,
             open_position_keys=0,
             active_breakers=[],
             updated_at="2026-03-19T13:05:00+00:00",
+            updated_day="2026-03-19",
         ),
         daily_realized_pnl=4.5,
         daily_closed_trades=1,
         daily_win_rate=100.0,
+        risk_state_matches_report_day=True,
         portfolio=PortfolioSummary(
             total_positions=1,
             open_positions=0,
@@ -253,6 +308,8 @@ def test_render_markdown_contains_key_sections() -> None:
     assert "agent_avax" in markdown
     assert "AVAXUSDT" in markdown
     assert "Daily realized PnL" in markdown
+    assert "Current risk-state PnL snapshot" in markdown
+    assert "Risk-state matches report day" in markdown
 
 
 def test_report_to_json_serializes_datetime_fields() -> None:
@@ -268,15 +325,17 @@ def test_report_to_json_serializes_datetime_fields() -> None:
         ),
         risk=RiskStateSummary(
             kill_switch_triggered=False,
-            daily_pnl=0.0,
+            snapshot_daily_pnl=0.0,
             peak_balance=10000.0,
             open_position_keys=0,
             active_breakers=[],
             updated_at="2026-03-19T00:00:00+00:00",
+            updated_day="2026-03-19",
         ),
         daily_realized_pnl=0.0,
         daily_closed_trades=0,
         daily_win_rate=0.0,
+        risk_state_matches_report_day=True,
         portfolio=PortfolioSummary(
             total_positions=1,
             open_positions=0,
