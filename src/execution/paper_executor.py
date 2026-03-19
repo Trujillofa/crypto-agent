@@ -147,6 +147,22 @@ class PaperExecutor:
                 portfolio_value += position.notional
         return portfolio_value
 
+    def _cap_atr_sized_order_usdt(self, symbol: str, market_tag: str, order_usdt: float) -> float:
+        """Clamp ATR-sized orders to the configured max position notional."""
+        max_position_pct = self._risk_manager._config.position_limits.max_position_pct
+        max_position_value = self._portfolio_value() * max_position_pct
+        capped_order_usdt = min(order_usdt, max_position_value)
+        if capped_order_usdt < order_usdt:
+            self._logger.info(
+                "Capping ATR-sized paper order for %s [%s]: %.2f USDT -> %.2f USDT (max %.1f%% of portfolio)",
+                symbol,
+                market_tag,
+                order_usdt,
+                capped_order_usdt,
+                max_position_pct * 100,
+            )
+        return capped_order_usdt
+
     async def _enforce_position_limit(
         self,
         pos_key: str,
@@ -529,6 +545,8 @@ class PaperExecutor:
             max_qty = (self._balance * 0.98) / signal.price
             quantity = min(target_qty, max_qty)
             order_usdt = quantity * signal.price
+            order_usdt = self._cap_atr_sized_order_usdt(signal.symbol, market_tag, order_usdt)
+            quantity = order_usdt / signal.price
         else:
             quantity = order_usdt / signal.price
         if is_futures:
@@ -728,6 +746,8 @@ class PaperExecutor:
             max_qty = (self._balance * 0.98) / signal.price
             quantity = min(target_qty, max_qty)
             order_usdt = quantity * signal.price
+            order_usdt = self._cap_atr_sized_order_usdt(signal.symbol, market_tag, order_usdt)
+            quantity = order_usdt / signal.price
         else:
             quantity = order_usdt / signal.price
 

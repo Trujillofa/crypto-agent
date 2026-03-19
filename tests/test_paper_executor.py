@@ -41,6 +41,7 @@ def _make_executor(
     risk_manager.is_trading_allowed.return_value = (True, "")
     risk_manager.check_position_limit.return_value = (True, "")
     risk_manager._config.position_limits.max_open_positions = 10
+    risk_manager._config.position_limits.max_position_pct = 0.10
     metrics = MagicMock(spec=ExecutionMetrics)
     notifier = MagicMock()
     notifier.send_alert = AsyncMock()
@@ -459,10 +460,30 @@ class TestOnSignalEntryPath:
 
         pos = executor._positions.get("BTCUSDT:futures")
         assert pos is not None
-        assert pos.quantity == pytest.approx(0.196)
+        assert pos.quantity == pytest.approx(0.02)
         executor._risk_manager.check_position_limit.assert_called_once_with(
             "BTCUSDT:futures",
-            pytest.approx(9800.0),
+            pytest.approx(1000.0),
+            pytest.approx(10000.0),
+        )
+
+    @pytest.mark.asyncio
+    async def test_spot_buy_atr_sizing_caps_quantity_before_open(self):
+        executor = _make_executor(
+            _make_config(
+                use_atr_sizing=True,
+            )
+        )
+        signal = self._make_buy_signal(atr=250.0)
+
+        await executor.on_signal(signal)
+
+        pos = executor._positions.get("BTCUSDT:spot")
+        assert pos is not None
+        assert pos.quantity == pytest.approx(0.02)
+        executor._risk_manager.check_position_limit.assert_called_once_with(
+            "BTCUSDT:spot",
+            pytest.approx(1000.0),
             pytest.approx(10000.0),
         )
 
