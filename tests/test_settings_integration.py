@@ -98,8 +98,8 @@ def test_settings_resolves_new_strategy_registry_entries():
 
     assert len(strategy_classes) == len(settings.strategy.strategies)
     assert len(strategy_configs) == len(settings.strategy.strategies)
-    assert CCIBreakoutStrategy in strategy_classes
-    assert VWAPReversionStrategy in strategy_classes
+    from src.strategy import SimpleMACrossoverStrategy
+    assert SimpleMACrossoverStrategy in strategy_classes
 
 
 def test_replacement_config_resolves_trend_pullback():

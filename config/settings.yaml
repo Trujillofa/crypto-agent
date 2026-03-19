@@ -46,11 +46,11 @@ trading_execution:
   # Fixed SL/TP as fallback only (ATR-based is primary)
   stop_loss_pct: 0.02
   take_profit_pct: 0.05
-  # ATR-based SL/TP (primary)
-  sl_atr_multiplier: 2.0   # SL = entry - 2.0 * ATR(14)
-  tp_atr_multiplier: 4.5   # TP = entry + 4.5 * ATR(14)
-  trailing_activate_atr: 1.5  # activate trailing after +1.5 * ATR profit
-  trailing_offset_atr: 1.0    # trail SL at highest - 1.0 * ATR
+  # ATR-based SL/TP — tighter SL, wider trail (validated by autoresearch)
+  sl_atr_multiplier: 1.0   # SL = entry - 1.0 * ATR(14) — tight stop
+  tp_atr_multiplier: 3.0   # TP = entry + 3.0 * ATR(14)
+  trailing_activate_atr: 2.5  # activate trailing after +2.5 * ATR profit
+  trailing_offset_atr: 1.5    # trail SL at highest - 1.5 * ATR
   # ATR-based position sizing
   use_atr_sizing: true         # size by (equity × risk_pct) / (atr × multiplier) instead of flat USDT
   atr_multiplier: 1.0          # stop distance multiplier for sizing calc
@@ -74,52 +74,20 @@ strategy:
   cooldown_candles: 1
   default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
-    - name: rsi_reversal
-      config:
-        rsi_period: 7
-        oversold_threshold: 35
-        overbought_threshold: 65
-    - name: macd_histogram
-      config:
-        min_histogram_threshold: 0.0001
-        use_atr_filter: true
-        atr_min_pct: 0.003
-    - name: bollinger_bounce
-      config:
-        band_distance_threshold: 0.003
-        rsi_oversold: 35
-        rsi_overbought: 65
-    - name: cci_breakout
-      config:
-        cci_buy_threshold: 100
-        cci_sell_threshold: -100
-        atr_min_pct: 0.005
-    - name: vwap_reversion
-      config:
-        vwap_atr_multiplier: 1.5
-        rsi_oversold: 40
-        rsi_overbought: 60
+    - name: simple_ma
+      config: {}
+    # Previous 5-strategy ensemble dropped — autoresearch (2024-2025) showed
+    # only MA Crossover was consistently profitable. RSI, Bollinger, VWAP, and
+    # Momentum all had negative Sharpe across every period tested.
   global_trend_filter_enabled: true  # block BUY when price < EMA200 (with buffer); set false to disable
   global_trend_filter_buffer_pct: 0.05  # Allow buys within 5% below EMA200 (0.05 = 5%)
   aggregator:
     min_agreement: 1
-    buy_threshold: 0.8          # conservative paper-mode lowering to admit strong single-strategy votes
-    buy_threshold_uptrend: 0.8  # keep aligned with base threshold while validating live signal flow
-    sell_threshold: -0.6
-    min_confidence: 0.5         # ignore signals below this confidence — prevents weak conflicting votes from cancelling strong ones
+    buy_threshold: 0.5          # single-strategy, lower threshold to allow signals through
+    buy_threshold_uptrend: 0.5
+    sell_threshold: -0.5
+    min_confidence: 0.0         # single strategy — no conflicting votes to filter
     btc_regime_filter_enabled: true
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0
     btc_dump_require_below_ema200: true
-  # Per-symbol aggregator overrides (key = symbol, value = aggregator config)
-  # These override the global aggregator settings for specific symbols
-  per_symbol_aggregator_config:
-    SOLUSDT:
-      min_agreement: 1
-      buy_threshold: 0.8
-      sell_threshold: -0.6
-      sell_min_agreement: 2     # require at least two SELL voters before opening futures shorts
-    BNBUSDT:
-      min_agreement: 1
-      buy_threshold: 1.1
-      sell_threshold: -0.5
