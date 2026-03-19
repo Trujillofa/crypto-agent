@@ -69,6 +69,38 @@ async def _cancel_background_tasks(
             await task
 
 
+def _resolve_signal_routing(
+    signal: Signal,
+    futures_symbols: set[str],
+    default_trading_mode: str,
+) -> tuple[Signal, bool]:
+    """Resolve whether a signal should be rerouted or mirrored to futures.
+
+    Returns:
+        tuple[Signal, bool]:
+            - routed signal to execute first
+            - whether a second mirrored futures execution should also occur
+    """
+    if signal.trading_mode == "futures" or signal.symbol not in futures_symbols:
+        return signal, False
+
+    if default_trading_mode == "futures":
+        return (
+            Signal(
+                type=signal.type,
+                symbol=signal.symbol,
+                price=signal.price,
+                confidence=signal.confidence,
+                reason=signal.reason,
+                indicators=signal.indicators,
+                trading_mode="futures",
+            ),
+            False,
+        )
+
+    return signal, True
+
+
 @dataclass(frozen=True)
 class StrategySettings:
     evaluation_interval_seconds: int
@@ -991,18 +1023,22 @@ async def run() -> None:
         if paper_executor:
             # Paper mode: all signals (spot + futures) go to PaperExecutor
             paper_futures_symbols = set(paper_executor._config.futures_symbols)
-            router_logger = get_logger("signal_router")
 
             async def on_signal_paper(signal: Signal) -> None:
-                execution_metrics.record_signal(
-                    signal.symbol,
-                    signal.trading_mode,
-                    signal.type.value,
+                routed_signal, should_mirror_to_futures = _resolve_signal_routing(
+                    signal,
+                    paper_futures_symbols,
+                    settings.strategy.default_trading_mode,
                 )
-                await paper_executor.on_signal(signal)
+                execution_metrics.record_signal(
+                    routed_signal.symbol,
+                    routed_signal.trading_mode,
+                    routed_signal.type.value,
+                )
+                await paper_executor.on_signal(routed_signal)
 
                 # Mirror to futures if applicable
-                if signal.symbol in paper_futures_symbols and signal.trading_mode != "futures":
+                if should_mirror_to_futures:
                     mirrored = Signal(
                         type=signal.type,
                         symbol=signal.symbol,
@@ -1032,18 +1068,23 @@ async def run() -> None:
             router_logger = get_logger("signal_router")
 
             async def on_signal_router(signal: Signal) -> None:
+                routed_signal, should_mirror_to_futures = _resolve_signal_routing(
+                    signal,
+                    futures_symbols,
+                    settings.strategy.default_trading_mode,
+                )
                 execution_metrics.record_signal(
-                    signal.symbol,
-                    signal.trading_mode,
-                    signal.type.value,
+                    routed_signal.symbol,
+                    routed_signal.trading_mode,
+                    routed_signal.type.value,
                 )
 
-                if signal.trading_mode == "futures":
-                    await futures_executor.on_signal(signal)
+                if routed_signal.trading_mode == "futures":
+                    await futures_executor.on_signal(routed_signal)
                 else:
-                    await trading_executor.on_signal(signal)
+                    await trading_executor.on_signal(routed_signal)
 
-                    if signal.symbol in futures_symbols:
+                    if should_mirror_to_futures:
                         mirrored_signal = Signal(
                             type=signal.type,
                             symbol=signal.symbol,
