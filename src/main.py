@@ -101,6 +101,26 @@ def _resolve_signal_routing(
     return signal, True
 
 
+def _resolve_overseer_launch(
+    settings: Settings,
+) -> tuple[bool, str | None]:
+    """Decide whether the chat overseer should start.
+
+    Strategy-side AI usage via xAI is allowed without Telegram. Only the chat
+    overseer requires Telegram to be enabled and configured.
+    """
+    if not settings.ai.enabled:
+        return False, None
+
+    if not settings.telegram.enabled:
+        return False, None
+
+    if not settings.telegram.bot_token:
+        return False, "AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled"
+
+    return True, None
+
+
 @dataclass(frozen=True)
 class StrategySettings:
     evaluation_interval_seconds: int
@@ -796,11 +816,11 @@ async def run() -> None:
                 "AI features enabled without XAI_API_KEY; sentiment falls back to neutral"
             )
 
-        if not settings.telegram.enabled:
-            logger.warning("AI overseer enabled but telegram.enabled=false; overseer disabled")
-        elif not settings.telegram.bot_token:
-            logger.warning("AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled")
-        else:
+        start_overseer, overseer_warning = _resolve_overseer_launch(settings)
+        if overseer_warning:
+            logger.warning(overseer_warning)
+
+        if start_overseer:
             overseer_agent = OverseerAgent(
                 mode=settings.mode,
                 poll_interval_seconds=settings.ai.polling_interval,

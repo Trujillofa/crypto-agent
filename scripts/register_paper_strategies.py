@@ -11,6 +11,30 @@ sys.path.append(os.getcwd())
 
 from src.strategy.lifecycle import LifecycleManager
 
+PAPER_STRATEGIES = [
+    {
+        "name": "SentimentMeanReversionStrategy",
+        "version": "1.0",
+        "metrics": {
+            "notes": "Paper-only validation strategy wired through settings.sentiment_macro.yaml",
+        },
+    },
+    {
+        "name": "MTFStrategyTemplate",
+        "version": "1.0",
+        "metrics": {
+            "notes": "Paper-only validation strategy wired through settings.btc_1h_mtf.yaml",
+        },
+    },
+    {
+        "name": "SimpleMACrossoverStrategy",
+        "version": "1.0",
+        "metrics": {
+            "notes": "Paper-only validation strategy wired through settings.avax_4h_ma.yaml",
+        },
+    },
+]
+
 
 async def main() -> None:
     db_config = {
@@ -21,25 +45,8 @@ async def main() -> None:
         "password": os.getenv("DB_PASSWORD", ""),
     }
 
-    strategies = [
-        {
-            "name": "SentimentMeanReversionStrategy",
-            "version": "1.0",
-            "metrics": {
-                "notes": "Paper-only validation strategy wired through settings.sentiment_macro.yaml",
-            },
-        },
-        {
-            "name": "MTFStrategyTemplate",
-            "version": "1.0",
-            "metrics": {
-                "notes": "Paper-only validation strategy wired through settings.btc_1h_mtf.yaml",
-            },
-        },
-    ]
-
     async with LifecycleManager(db_config) as lifecycle:
-        for strategy in strategies:
+        for strategy in PAPER_STRATEGIES:
             await lifecycle.register_paper_strategy(
                 strategy["name"],
                 strategy["version"],
