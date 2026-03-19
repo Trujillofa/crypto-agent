@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from scripts.register_paper_strategies import PAPER_STRATEGIES
 from src.strategy.lifecycle import LifecycleManager
 
 
@@ -98,3 +99,11 @@ async def test_register_paper_strategy_delegates_to_paper_status() -> None:
     assert execute_args[1] == "MTFStrategyTemplate"
     assert execute_args[2] == "1.0"
     assert execute_args[3] == "paper"
+
+
+def test_register_paper_strategies_includes_simple_ma_candidate() -> None:
+    strategy_names = {strategy["name"] for strategy in PAPER_STRATEGIES}
+
+    assert "SentimentMeanReversionStrategy" in strategy_names
+    assert "MTFStrategyTemplate" in strategy_names
+    assert "SimpleMACrossoverStrategy" in strategy_names
