@@ -33,11 +33,12 @@ class EventSummary:
 @dataclass(frozen=True)
 class RiskStateSummary:
     kill_switch_triggered: bool
-    daily_pnl: float
+    snapshot_daily_pnl: float
     peak_balance: float
     open_position_keys: int
     active_breakers: list[str]
     updated_at: str | None
+    updated_day: str | None
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ class PaperAgentReport:
     daily_realized_pnl: float
     daily_closed_trades: int
     daily_win_rate: float
+    risk_state_matches_report_day: bool
     portfolio: PortfolioSummary
 
 
@@ -177,11 +179,12 @@ def load_risk_state(path: Path) -> RiskStateSummary:
     if not path.exists():
         return RiskStateSummary(
             kill_switch_triggered=False,
-            daily_pnl=0.0,
+            snapshot_daily_pnl=0.0,
             peak_balance=0.0,
             open_position_keys=0,
             active_breakers=[],
             updated_at=None,
+            updated_day=None,
         )
 
     with path.open(encoding="utf-8") as handle:
@@ -189,14 +192,17 @@ def load_risk_state(path: Path) -> RiskStateSummary:
 
     breakers = payload.get("circuit_breakers") or {}
     active_breakers = sorted(name for name, active in breakers.items() if active)
+    updated_at = payload.get("updated_at")
+    updated_timestamp = parse_iso_timestamp(updated_at)
 
     return RiskStateSummary(
         kill_switch_triggered=bool(payload.get("kill_switch_triggered", False)),
-        daily_pnl=float(payload.get("daily_pnl", 0.0) or 0.0),
+        snapshot_daily_pnl=float(payload.get("daily_pnl", 0.0) or 0.0),
         peak_balance=float(payload.get("peak_balance", 0.0) or 0.0),
         open_position_keys=len(payload.get("positions") or {}),
         active_breakers=active_breakers,
-        updated_at=payload.get("updated_at"),
+        updated_at=updated_at,
+        updated_day=updated_timestamp.date().isoformat() if updated_timestamp else None,
     )
 
 
@@ -216,6 +222,8 @@ async def collect_agent_report(
         daily_realized_pnl, daily_closed_trades, daily_win_rate = await manager.get_daily_stats(day)
         portfolio = await manager.get_portfolio_summary()
 
+    risk_state_matches_report_day = risk.updated_day == day.isoformat()
+
     return PaperAgentReport(
         agent=spec,
         day=day.isoformat(),
@@ -224,6 +232,7 @@ async def collect_agent_report(
         daily_realized_pnl=daily_realized_pnl,
         daily_closed_trades=daily_closed_trades,
         daily_win_rate=daily_win_rate,
+        risk_state_matches_report_day=risk_state_matches_report_day,
         portfolio=portfolio,
     )
 
@@ -310,9 +319,12 @@ def render_markdown(report: PaperValidationReport) -> str:
         lines.append(
             f"- Active breakers: `{', '.join(agent.risk.active_breakers) if agent.risk.active_breakers else 'none'}`"
         )
-        lines.append(f"- Risk-state daily PnL: `{agent.risk.daily_pnl:.2f} USDT`")
+        lines.append(
+            f"- Current risk-state PnL snapshot: `{agent.risk.snapshot_daily_pnl:.2f} USDT`"
+        )
         lines.append(f"- Peak balance anchor: `{agent.risk.peak_balance:.2f} USDT`")
         lines.append(f"- Risk-state updated: `{agent.risk.updated_at or 'none'}`")
+        lines.append(f"- Risk-state matches report day: `{agent.risk_state_matches_report_day}`")
         if agent.events.signals_by_symbol:
             lines.append(f"- Signals by symbol: `{agent.events.signals_by_symbol}`")
         if agent.events.orders_by_symbol:
