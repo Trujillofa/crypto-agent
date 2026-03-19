@@ -5,14 +5,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from src.utils.paper_validation_report import (
-    collect_report,
-    render_markdown,
-    report_to_json,
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,6 +47,12 @@ def _db_config() -> dict[str, object]:
 
 
 async def main() -> int:
+    from src.utils.paper_validation_report import (
+        collect_report,
+        render_markdown,
+        report_to_json,
+    )
+
     args = parse_args()
     day = _parse_day(args.day)
     report = await collect_report(db_config=_db_config(), day=day)

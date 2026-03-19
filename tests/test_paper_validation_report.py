@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -20,6 +23,7 @@ from src.utils.paper_validation_report import (
     load_risk_state,
     parse_iso_timestamp,
     render_markdown,
+    report_to_json,
     summarize_event_log,
 )
 
@@ -249,3 +253,65 @@ def test_render_markdown_contains_key_sections() -> None:
     assert "agent_avax" in markdown
     assert "AVAXUSDT" in markdown
     assert "Daily realized PnL" in markdown
+
+
+def test_report_to_json_serializes_datetime_fields() -> None:
+    report = PaperAgentReport(
+        agent=DEFAULT_PAPER_AGENTS[0],
+        day="2026-03-19",
+        events=EventSummary(
+            signal_count=0,
+            order_filled_count=0,
+            risk_check_failed_count=0,
+            last_signal_at=None,
+            last_order_at=None,
+        ),
+        risk=RiskStateSummary(
+            kill_switch_triggered=False,
+            daily_pnl=0.0,
+            peak_balance=10000.0,
+            open_position_keys=0,
+            active_breakers=[],
+            updated_at="2026-03-19T00:00:00+00:00",
+        ),
+        daily_realized_pnl=0.0,
+        daily_closed_trades=0,
+        daily_win_rate=0.0,
+        portfolio=PortfolioSummary(
+            total_positions=1,
+            open_positions=0,
+            closed_positions=1,
+            total_trades=1,
+            last_trade_time=parse_iso_timestamp("2026-03-19T12:34:56Z"),
+            total_realized_pnl=1.25,
+            win_count=1,
+            loss_count=0,
+        ),
+    )
+
+    payload = report_to_json(
+        PaperValidationReport(
+            generated_at="2026-03-19T21:00:00+00:00",
+            day="2026-03-19",
+            agents=[report],
+        )
+    )
+
+    assert "2026-03-19T12:34:56+00:00" in payload
+
+
+def test_script_runs_directly_without_pythonpath() -> None:
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/paper_validation_report.py", "--help"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Daily paper validation report" in result.stdout
