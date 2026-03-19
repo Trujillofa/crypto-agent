@@ -40,5 +40,12 @@
 			"agent_id": "sentiment-macro-bot"
 		},
 		"targets": ["agent_sentiment_macro:8000"]
+	},
+	{
+		"labels": {
+			"service": "agent_avax",
+			"agent_id": "avax-4h-ma"
+		},
+		"targets": ["agent_avax:8000"]
 	}
 ]

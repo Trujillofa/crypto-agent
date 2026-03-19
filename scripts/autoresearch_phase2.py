@@ -8,10 +8,12 @@ Tests:
 4. Cross-validation on rolling 6-month windows
 """
 
+import argparse
 import asyncio
 import os
 import sys
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.append(os.getcwd())
@@ -59,6 +61,47 @@ HEADER = f"{'Config':<50} | {'#':>4} | {'W':>3}/{'L':>3} | {'Win%':>5}  | {'Retu
 SEP = "-" * 110
 
 
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Phase 2 autoresearch deep-dive for a target symbol/timeframe."
+    )
+    parser.add_argument("--symbol", default="SOLUSDT", help="Trading pair to evaluate")
+    parser.add_argument("--timeframe", default="4h", help="Timeframe to evaluate")
+    return parser.parse_args(argv)
+
+
+def find_consistent_configs(
+    results: Sequence[Result],
+    *,
+    required_periods: int,
+    min_trades: int = 3,
+) -> list[tuple[str, float, float, int, list[Result]]]:
+    """Return configs that are profitable in every eligible period.
+
+    A config only counts as cross-period consistent if it has at least ``min_trades``
+    in every required period and every one of those periods is profitable.
+    """
+    config_labels = {result.label for result in results}
+    consistent: list[tuple[str, float, float, int, list[Result]]] = []
+
+    for label in config_labels:
+        label_results = [result for result in results if result.label == label]
+        eligible_results = [result for result in label_results if result.trades >= min_trades]
+
+        if len(eligible_results) != required_periods:
+            continue
+        if not all(result.return_pct > 0 for result in eligible_results):
+            continue
+
+        avg_sharpe = sum(result.sharpe for result in eligible_results) / len(eligible_results)
+        avg_return = sum(result.return_pct for result in eligible_results) / len(eligible_results)
+        total_trades = sum(result.trades for result in eligible_results)
+        consistent.append((label, avg_sharpe, avg_return, total_trades, eligible_results))
+
+    consistent.sort(key=lambda item: item[1], reverse=True)
+    return consistent
+
+
 async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kwargs) -> Result:
     agg = kwargs.pop("aggregator_config", None) or {
         "buy_threshold": kwargs.pop("buy_threshold", 0.5),
@@ -68,8 +111,12 @@ async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kwar
     }
 
     config = BacktestConfig(
-        symbol=symbol, timeframe=tf, start_date=start, end_date=end,
-        initial_capital=10000.0, fee_rate=0.001,
+        symbol=symbol,
+        timeframe=tf,
+        start_date=start,
+        end_date=end,
+        initial_capital=10000.0,
+        fee_rate=0.001,
         stop_loss_pct=kwargs.get("stop_loss_pct", 0.02),
         take_profit_pct=kwargs.get("take_profit_pct", 0.05),
         sl_atr_multiplier=kwargs.get("sl_atr", 2.0),
@@ -80,7 +127,8 @@ async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kwar
         ignore_signal_sells=False,
         apply_global_trend_filter=kwargs.get("trend_filter", True),
         allow_short=kwargs.get("allow_short", True),
-        strategy_classes=classes, strategy_configs=configs,
+        strategy_classes=classes,
+        strategy_configs=configs,
         aggregator_config=agg,
     )
 
@@ -90,15 +138,21 @@ async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kwar
     losses = len([t for t in r.trades if t.pnl <= 0])
 
     return Result(
-        label=label, period=f"{start} to {end}",
-        trades=r.total_trades, wins=wins, losses=losses,
-        win_rate=r.win_rate, return_pct=r.total_return_pct,
-        max_drawdown=r.max_drawdown * 100, sharpe=r.sharpe_ratio,
+        label=label,
+        period=f"{start} to {end}",
+        trades=r.total_trades,
+        wins=wins,
+        losses=losses,
+        win_rate=r.win_rate,
+        return_pct=r.total_return_pct,
+        max_drawdown=r.max_drawdown * 100,
+        sharpe=r.sharpe_ratio,
         profit_factor=r.profit_factor,
     )
 
 
-async def main():
+async def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(argv)
     configure_logger("WARNING")
     settings = load_settings(Path("config/settings.yaml"))
 
@@ -111,8 +165,8 @@ async def main():
     }
     await init_pool(db_config)
 
-    symbol = "SOLUSDT"
-    tf = "4h"
+    symbol = args.symbol.upper()
+    tf = args.timeframe
 
     # Rolling windows for robustness
     periods = [
@@ -134,7 +188,6 @@ async def main():
     try:
         reader = IndicatorReader(db_config)
         async with reader:
-
             # ═══════════════════════════════════════════════════════════════
             # SECTION 1: MA Crossover — refined exit sweep across all periods
             # ═══════════════════════════════════════════════════════════════
@@ -145,16 +198,58 @@ async def main():
             ma_results = []
             configs_to_test = [
                 # (label_suffix, kwargs)
-                ("Fix,S,TF", {"allow_short": True, "trend_filter": True, "use_executor_exit": False}),
-                ("Fix,S,noTF", {"allow_short": True, "trend_filter": False, "use_executor_exit": False}),
-                ("ATR1.0/T2.5,S,TF", {"allow_short": True, "trend_filter": True, "use_executor_exit": True,
-                                        "sl_atr": 1.0, "tp_atr": 2.0, "trailing_activate": 2.5, "trailing_offset": 1.5}),
-                ("ATR1.0/T2.0,S,TF", {"allow_short": True, "trend_filter": True, "use_executor_exit": True,
-                                        "sl_atr": 1.0, "tp_atr": 3.0, "trailing_activate": 2.0, "trailing_offset": 1.0}),
-                ("ATR1.5/T2.0,S,TF", {"allow_short": True, "trend_filter": True, "use_executor_exit": True,
-                                        "sl_atr": 1.5, "tp_atr": 3.0, "trailing_activate": 2.0, "trailing_offset": 1.0}),
-                ("Fix,L,TF", {"allow_short": False, "trend_filter": True, "use_executor_exit": False}),
-                ("Fix,L,noTF", {"allow_short": False, "trend_filter": False, "use_executor_exit": False}),
+                (
+                    "Fix,S,TF",
+                    {"allow_short": True, "trend_filter": True, "use_executor_exit": False},
+                ),
+                (
+                    "Fix,S,noTF",
+                    {"allow_short": True, "trend_filter": False, "use_executor_exit": False},
+                ),
+                (
+                    "ATR1.0/T2.5,S,TF",
+                    {
+                        "allow_short": True,
+                        "trend_filter": True,
+                        "use_executor_exit": True,
+                        "sl_atr": 1.0,
+                        "tp_atr": 2.0,
+                        "trailing_activate": 2.5,
+                        "trailing_offset": 1.5,
+                    },
+                ),
+                (
+                    "ATR1.0/T2.0,S,TF",
+                    {
+                        "allow_short": True,
+                        "trend_filter": True,
+                        "use_executor_exit": True,
+                        "sl_atr": 1.0,
+                        "tp_atr": 3.0,
+                        "trailing_activate": 2.0,
+                        "trailing_offset": 1.0,
+                    },
+                ),
+                (
+                    "ATR1.5/T2.0,S,TF",
+                    {
+                        "allow_short": True,
+                        "trend_filter": True,
+                        "use_executor_exit": True,
+                        "sl_atr": 1.5,
+                        "tp_atr": 3.0,
+                        "trailing_activate": 2.0,
+                        "trailing_offset": 1.0,
+                    },
+                ),
+                (
+                    "Fix,L,TF",
+                    {"allow_short": False, "trend_filter": True, "use_executor_exit": False},
+                ),
+                (
+                    "Fix,L,noTF",
+                    {"allow_short": False, "trend_filter": False, "use_executor_exit": False},
+                ),
             ]
 
             for start, end, period_label in periods:
@@ -176,13 +271,31 @@ async def main():
 
             cci_results = []
             cci_configs = [
-                ("Fix,S,noTF", {"allow_short": True, "trend_filter": False, "use_executor_exit": False}),
-                ("Fix,S,TF", {"allow_short": True, "trend_filter": True, "use_executor_exit": False}),
-                ("Fix,L,TF", {"allow_short": False, "trend_filter": True, "use_executor_exit": False}),
-                ("Fix,L,noTF", {"allow_short": False, "trend_filter": False, "use_executor_exit": False}),
+                (
+                    "Fix,S,noTF",
+                    {"allow_short": True, "trend_filter": False, "use_executor_exit": False},
+                ),
+                (
+                    "Fix,S,TF",
+                    {"allow_short": True, "trend_filter": True, "use_executor_exit": False},
+                ),
+                (
+                    "Fix,L,TF",
+                    {"allow_short": False, "trend_filter": True, "use_executor_exit": False},
+                ),
+                (
+                    "Fix,L,noTF",
+                    {"allow_short": False, "trend_filter": False, "use_executor_exit": False},
+                ),
                 # CCI with different thresholds
-                ("Fix,S,noTF,cci80", {"allow_short": True, "trend_filter": False, "use_executor_exit": False}),
-                ("Fix,S,noTF,cci120", {"allow_short": True, "trend_filter": False, "use_executor_exit": False}),
+                (
+                    "Fix,S,noTF,cci80",
+                    {"allow_short": True, "trend_filter": False, "use_executor_exit": False},
+                ),
+                (
+                    "Fix,S,noTF,cci120",
+                    {"allow_short": True, "trend_filter": False, "use_executor_exit": False},
+                ),
             ]
 
             cci_param_variants = [
@@ -198,7 +311,7 @@ async def main():
                 print(f"\n  --- {period_label} ({start} to {end}) ---")
                 print(HEADER)
                 print(SEP)
-                for (cfg_label, kwargs), ccfg in zip(cci_configs, cci_param_variants):
+                for (cfg_label, kwargs), ccfg in zip(cci_configs, cci_param_variants, strict=True):
                     label = f"CCI [{cfg_label}]"
                     r = await run_bt(reader, [CCI], [ccfg], symbol, tf, start, end, label, **kwargs)
                     cci_results.append(r)
@@ -214,28 +327,68 @@ async def main():
             combo_results = []
             combo_configs = [
                 # MA+CCI
-                ("MA+CCI [Fix,S,TF,ag1]", [MA, CCI], [{}, cci_cfg],
-                 {"allow_short": True, "trend_filter": True, "min_agreement": 1}),
-                ("MA+CCI [Fix,S,TF,ag2]", [MA, CCI], [{}, cci_cfg],
-                 {"allow_short": True, "trend_filter": True, "min_agreement": 2}),
-                ("MA+CCI [Fix,S,noTF,ag1]", [MA, CCI], [{}, cci_cfg],
-                 {"allow_short": True, "trend_filter": False, "min_agreement": 1}),
-                ("MA+CCI [Fix,L,TF,ag1]", [MA, CCI], [{}, cci_cfg],
-                 {"allow_short": False, "trend_filter": True, "min_agreement": 1}),
+                (
+                    "MA+CCI [Fix,S,TF,ag1]",
+                    [MA, CCI],
+                    [{}, cci_cfg],
+                    {"allow_short": True, "trend_filter": True, "min_agreement": 1},
+                ),
+                (
+                    "MA+CCI [Fix,S,TF,ag2]",
+                    [MA, CCI],
+                    [{}, cci_cfg],
+                    {"allow_short": True, "trend_filter": True, "min_agreement": 2},
+                ),
+                (
+                    "MA+CCI [Fix,S,noTF,ag1]",
+                    [MA, CCI],
+                    [{}, cci_cfg],
+                    {"allow_short": True, "trend_filter": False, "min_agreement": 1},
+                ),
+                (
+                    "MA+CCI [Fix,L,TF,ag1]",
+                    [MA, CCI],
+                    [{}, cci_cfg],
+                    {"allow_short": False, "trend_filter": True, "min_agreement": 1},
+                ),
                 # MA+MACD
-                ("MA+MACD [Fix,S,TF,ag1]", [MA, MACD], [{}, macd_cfg],
-                 {"allow_short": True, "trend_filter": True, "min_agreement": 1}),
-                ("MA+MACD [Fix,S,TF,ag2]", [MA, MACD], [{}, macd_cfg],
-                 {"allow_short": True, "trend_filter": True, "min_agreement": 2}),
-                ("MA+MACD [Fix,L,TF,ag1]", [MA, MACD], [{}, macd_cfg],
-                 {"allow_short": False, "trend_filter": True, "min_agreement": 1}),
+                (
+                    "MA+MACD [Fix,S,TF,ag1]",
+                    [MA, MACD],
+                    [{}, macd_cfg],
+                    {"allow_short": True, "trend_filter": True, "min_agreement": 1},
+                ),
+                (
+                    "MA+MACD [Fix,S,TF,ag2]",
+                    [MA, MACD],
+                    [{}, macd_cfg],
+                    {"allow_short": True, "trend_filter": True, "min_agreement": 2},
+                ),
+                (
+                    "MA+MACD [Fix,L,TF,ag1]",
+                    [MA, MACD],
+                    [{}, macd_cfg],
+                    {"allow_short": False, "trend_filter": True, "min_agreement": 1},
+                ),
                 # Triple
-                ("MA+CCI+MACD [Fix,S,TF,ag1]", [MA, CCI, MACD], [{}, cci_cfg, macd_cfg],
-                 {"allow_short": True, "trend_filter": True, "min_agreement": 1}),
-                ("MA+CCI+MACD [Fix,S,TF,ag2]", [MA, CCI, MACD], [{}, cci_cfg, macd_cfg],
-                 {"allow_short": True, "trend_filter": True, "min_agreement": 2}),
-                ("MA+CCI+MACD [Fix,L,TF,ag2]", [MA, CCI, MACD], [{}, cci_cfg, macd_cfg],
-                 {"allow_short": False, "trend_filter": True, "min_agreement": 2}),
+                (
+                    "MA+CCI+MACD [Fix,S,TF,ag1]",
+                    [MA, CCI, MACD],
+                    [{}, cci_cfg, macd_cfg],
+                    {"allow_short": True, "trend_filter": True, "min_agreement": 1},
+                ),
+                (
+                    "MA+CCI+MACD [Fix,S,TF,ag2]",
+                    [MA, CCI, MACD],
+                    [{}, cci_cfg, macd_cfg],
+                    {"allow_short": True, "trend_filter": True, "min_agreement": 2},
+                ),
+                (
+                    "MA+CCI+MACD [Fix,L,TF,ag2]",
+                    [MA, CCI, MACD],
+                    [{}, cci_cfg, macd_cfg],
+                    {"allow_short": False, "trend_filter": True, "min_agreement": 2},
+                ),
             ]
 
             for start, end, period_label in periods:
@@ -268,9 +421,20 @@ async def main():
                         for mc in min_confs:
                             label = f"MA[S,TF] bt={bt}/st={st}/mc={mc}"
                             r = await run_bt(
-                                reader, [MA], [{}], symbol, tf, start, end, label,
-                                allow_short=True, trend_filter=True, use_executor_exit=False,
-                                buy_threshold=bt, sell_threshold=st, min_confidence=mc,
+                                reader,
+                                [MA],
+                                [{}],
+                                symbol,
+                                tf,
+                                start,
+                                end,
+                                label,
+                                allow_short=True,
+                                trend_filter=True,
+                                use_executor_exit=False,
+                                buy_threshold=bt,
+                                sell_threshold=st,
+                                min_confidence=mc,
                             )
                             agg_results.append(r)
                             if r.sharpe > 0 or r.profitable:
@@ -287,7 +451,9 @@ async def main():
             print(f"{'=' * 110}")
 
             for start, end, period_label in periods:
-                profitable = [r for r in all_results if r.period == f"{start} to {end}" and r.profitable]
+                profitable = [
+                    r for r in all_results if r.period == f"{start} to {end}" and r.profitable
+                ]
                 if profitable:
                     profitable.sort(key=lambda x: x.sharpe, reverse=True)
                     print(f"\n  --- {period_label} ({len(profitable)} profitable) ---")
@@ -301,32 +467,33 @@ async def main():
             print("  CROSS-PERIOD CONSISTENCY — Profitable in EVERY period")
             print(f"{'=' * 110}")
 
-            config_labels = set(r.label for r in all_results)
-            consistent = []
-            for label in config_labels:
-                label_results = [r for r in all_results if r.label == label]
-                if len(label_results) >= 3 and all(r.return_pct > 0 for r in label_results if r.trades >= 3):
-                    avg_sharpe = sum(r.sharpe for r in label_results) / len(label_results)
-                    avg_return = sum(r.return_pct for r in label_results) / len(label_results)
-                    total_trades = sum(r.trades for r in label_results)
-                    consistent.append((label, avg_sharpe, avg_return, total_trades, label_results))
-
-            consistent.sort(key=lambda x: x[1], reverse=True)
+            config_labels = {r.label for r in all_results}
+            consistent = find_consistent_configs(
+                all_results,
+                required_periods=len(periods),
+                min_trades=3,
+            )
             if consistent:
                 for label, avg_s, avg_r, tt, results in consistent:
-                    print(f"\n  {label} — avg Sharpe={avg_s:+.2f}, avg Return={avg_r:+.2f}%, total trades={tt}")
+                    print(
+                        f"\n  {label} — avg Sharpe={avg_s:+.2f}, avg Return={avg_r:+.2f}%, total trades={tt}"
+                    )
                     for r in results:
-                        print(f"    {r.period}: {r.return_pct:+.2f}% | Sharpe={r.sharpe:+.2f} | {r.trades} trades | WR={r.win_rate:.1f}%")
+                        print(
+                            f"    {r.period}: {r.return_pct:+.2f}% | Sharpe={r.sharpe:+.2f} | {r.trades} trades | WR={r.win_rate:.1f}%"
+                        )
             else:
                 print("  No configs profitable across all periods.")
                 # Show configs profitable in at least 4/6 periods
-                print(f"\n  Configs profitable in >= 4 of 6 periods:")
+                print("\n  Configs profitable in >= 4 of 6 periods:")
                 for label in config_labels:
                     label_results = [r for r in all_results if r.label == label and r.trades >= 3]
                     profitable_count = sum(1 for r in label_results if r.return_pct > 0)
                     if profitable_count >= 4 and len(label_results) >= 4:
                         avg_sharpe = sum(r.sharpe for r in label_results) / len(label_results)
-                        print(f"    {label}: {profitable_count}/{len(label_results)} profitable, avg Sharpe={avg_sharpe:+.2f}")
+                        print(
+                            f"    {label}: {profitable_count}/{len(label_results)} profitable, avg Sharpe={avg_sharpe:+.2f}"
+                        )
                         for r in sorted(label_results, key=lambda x: x.period):
                             status = "+" if r.return_pct > 0 else "-"
                             print(f"      [{status}] {r.period}: {r.return_pct:+.2f}%")

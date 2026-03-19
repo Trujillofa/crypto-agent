@@ -1,164 +1,218 @@
 #!/usr/bin/env python3
-"""Compute basic indicators for downloaded historical data."""
+"""Compute and store indicators for any symbol/timeframe OHLCV history."""
 
+from __future__ import annotations
+
+import argparse
 import asyncio
 import os
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime
 
-import asyncpg
-import pandas as pd
-from src.features.technical import compute_indicators
+from src.db.pool import close_pool, get_pool, init_pool
+from src.features.technical import TechnicalIndicators, compute_indicators
+from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+DEFAULT_LOOKBACK = 250
 
-async def compute_and_store_indicators():
-    """Compute indicators for all OHLCV data."""
-    db_config = {
-        "host": os.getenv("DB_HOST", "localhost"),
-        "port": int(os.getenv("DB_PORT", 15432)),
-        "database": os.getenv("DB_NAME", "marketdata"),
-        "user": os.getenv("DB_USER", "trading"),
-        "password": os.getenv("DB_PASSWORD", "change_me"),
-    }
 
-    pool = await asyncpg.create_pool(
-        host=db_config["host"],
-        port=db_config["port"],
-        database=db_config["database"],
-        user=db_config["user"],
-        password=db_config["password"],
+@dataclass(frozen=True)
+class ComputeArgs:
+    symbol: str
+    timeframe: str
+    lookback: int
+
+
+def parse_args(argv: Sequence[str] | None = None) -> ComputeArgs:
+    parser = argparse.ArgumentParser(
+        description="Compute indicators for OHLCV history and store them in the indicators table."
+    )
+    parser.add_argument("--symbol", required=True, help="Trading pair, for example BTCUSDT")
+    parser.add_argument("--timeframe", required=True, help="Candle timeframe, for example 4h")
+    parser.add_argument(
+        "--lookback",
+        type=int,
+        default=DEFAULT_LOOKBACK,
+        help=f"Rolling window size used for indicator computation (default: {DEFAULT_LOOKBACK})",
+    )
+    parsed = parser.parse_args(argv)
+    return ComputeArgs(
+        symbol=parsed.symbol.upper(),
+        timeframe=parsed.timeframe,
+        lookback=parsed.lookback,
     )
 
+
+def build_db_config(env: Mapping[str, str] | None = None) -> dict[str, object]:
+    source = env or os.environ
+    return {
+        "host": source.get("DB_HOST", "localhost"),
+        "port": int(source.get("DB_PORT", 15432)),
+        "name": source.get("DB_NAME", "marketdata"),
+        "user": source.get("DB_USER", "trading"),
+        "password": source.get("DB_PASSWORD", "change_me"),
+    }
+
+
+def rows_to_ohlcv_series(rows: Sequence[Mapping[str, object]]) -> dict[str, list[float]]:
+    return {
+        "open": [float(row["open_price"]) for row in rows],
+        "high": [float(row["high_price"]) for row in rows],
+        "low": [float(row["low_price"]) for row in rows],
+        "close": [float(row["close_price"]) for row in rows],
+        "volume": [float(row["volume"]) for row in rows],
+    }
+
+
+def build_stored_indicator(
+    *,
+    row_time: datetime,
+    symbol: str,
+    timeframe: str,
+    indicators: TechnicalIndicators,
+) -> StoredIndicator:
+    return StoredIndicator(
+        time=row_time,
+        symbol=symbol,
+        timeframe=timeframe,
+        rsi_14=indicators.rsi_14,
+        rsi_7=indicators.rsi_7,
+        macd=indicators.macd,
+        macd_signal=indicators.macd_signal,
+        macd_hist=indicators.macd_hist,
+        bb_upper_dist=indicators.bb_upper_dist,
+        bb_lower_dist=indicators.bb_lower_dist,
+        atr_14=indicators.atr_14,
+        atr_pct=indicators.atr_pct,
+        ema_12=indicators.ema_12,
+        ema_26=indicators.ema_26,
+        ema_50=indicators.ema_50,
+        ema_200=indicators.ema_200,
+        sma_20=indicators.sma_20,
+        sma_50=indicators.sma_50,
+        sma_200=indicators.sma_200,
+        vwap=indicators.vwap,
+        stoch_k=indicators.stoch_k,
+        stoch_d=indicators.stoch_d,
+        cci=indicators.cci,
+        ema_slope_50=indicators.ema_slope_50,
+        volatility_percentile=indicators.volatility_percentile,
+        atr_percentile=indicators.atr_percentile,
+        volume_regime=indicators.volume_regime,
+        price_vs_weekly=indicators.price_vs_weekly,
+        price_vs_monthly=indicators.price_vs_monthly,
+        rsi_slope=indicators.rsi_slope,
+        trend_consistency=indicators.trend_consistency,
+    )
+
+
+async def fetch_ohlcv_rows(symbol: str, timeframe: str) -> list[Mapping[str, object]]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT time, open_price, high_price, low_price, close_price, volume
+            FROM ohlcv
+            WHERE symbol = $1 AND timeframe = $2
+            ORDER BY time ASC
+            """,
+            symbol,
+            timeframe,
+        )
+    return [dict(row) for row in rows]
+
+
+async def process_rows(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    symbol: str,
+    timeframe: str,
+    lookback: int,
+    writer: IndicatorWriter,
+) -> tuple[int, int]:
+    if len(rows) < lookback:
+        raise ValueError(f"Not enough data. Have {len(rows)}, need at least {lookback}")
+
+    processed = 0
+    errors = 0
+
+    for index in range(lookback, len(rows)):
+        window = rows[max(0, index - lookback) : index + 1]
+        data = rows_to_ohlcv_series(window)
+
+        try:
+            indicators = compute_indicators(data)
+        except Exception as exc:  # noqa: BLE001
+            errors += 1
+            if errors <= 5:
+                logger.warning("Failed at row %s for %s %s: %s", index, symbol, timeframe, exc)
+            elif errors == 6:
+                logger.warning("Suppressing further error messages...")
+            continue
+
+        stored = build_stored_indicator(
+            row_time=rows[index]["time"],
+            symbol=symbol,
+            timeframe=timeframe,
+            indicators=indicators,
+        )
+        await writer.write_indicators(stored)
+        processed += 1
+
+        if processed % 500 == 0:
+            logger.info(
+                "Processed %s rows for %s %s (errors: %s)",
+                processed,
+                symbol,
+                timeframe,
+                errors,
+            )
+
+    return processed, errors
+
+
+async def compute_and_store_indicators(args: ComputeArgs) -> tuple[int, int]:
+    db_config = build_db_config()
+    await init_pool(db_config)
+
     try:
-        async with pool.acquire() as conn:
-            # Get all OHLCV data for BTCUSDT 4h
-            rows = await conn.fetch(
-                """
-                SELECT time, open_price, high_price, low_price, close_price, volume
-                FROM ohlcv
-                WHERE symbol = 'BTCUSDT' AND timeframe = '4h'
-                ORDER BY time ASC
-                """
-            )
+        rows = await fetch_ohlcv_rows(args.symbol, args.timeframe)
+        logger.info(
+            "Found %s OHLCV rows to process for %s %s",
+            len(rows),
+            args.symbol,
+            args.timeframe,
+        )
 
-            logger.info(f"Found {len(rows)} OHLCV rows to process")
-
-            if len(rows) < 250:
-                logger.error(f"Not enough data. Have {len(rows)}, need at least 250")
-                return
-
-            # Build DataFrame for efficient computation
-            df = pd.DataFrame(
+        async with IndicatorWriter(db_config) as writer:
+            processed, errors = await process_rows(
                 rows,
-                columns=["time", "open_price", "high_price", "low_price", "close_price", "volume"],
+                symbol=args.symbol,
+                timeframe=args.timeframe,
+                lookback=args.lookback,
+                writer=writer,
             )
 
-            # Process each row starting from index 250 (need 200 for trend consistency + buffer)
-            processed = 0
-            errors = 0
-
-            for i in range(250, len(rows)):
-                # Get window of data
-                window = df.iloc[: i + 1]
-
-                data = {
-                    "open": window["open_price"].tolist(),
-                    "high": window["high_price"].tolist(),
-                    "low": window["low_price"].tolist(),
-                    "close": window["close_price"].tolist(),
-                    "volume": window["volume"].tolist(),
-                }
-
-                try:
-                    indicators = compute_indicators(data)
-                except Exception as e:
-                    errors += 1
-                    if errors <= 5:
-                        logger.warning(f"Failed at row {i}: {e}")
-                    elif errors == 6:
-                        logger.warning("Suppressing further error messages...")
-                    continue
-
-                row_time = rows[i]["time"]
-
-                # Insert into database
-                try:
-                    await conn.execute(
-                        """
-                        INSERT INTO indicators (
-                            time, symbol, timeframe,
-                            ema_12, ema_26, ema_50, ema_200,
-                            sma_20, sma_50, sma_200,
-                            rsi_14, rsi_7,
-                            macd, macd_signal, macd_hist,
-                            bb_upper_dist, bb_lower_dist,
-                            atr_14, atr_pct,
-                            vwap,
-                            stoch_k, stoch_d, cci,
-                            ema_slope_50, volatility_percentile, atr_percentile,
-                            volume_regime, price_vs_weekly, price_vs_monthly,
-                            rsi_slope, trend_consistency
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
-                        ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
-                            ema_12 = EXCLUDED.ema_12, ema_26 = EXCLUDED.ema_26,
-                            ema_50 = EXCLUDED.ema_50, ema_200 = EXCLUDED.ema_200,
-                            sma_20 = EXCLUDED.sma_20, sma_50 = EXCLUDED.sma_50, sma_200 = EXCLUDED.sma_200,
-                            rsi_14 = EXCLUDED.rsi_14, rsi_7 = EXCLUDED.rsi_7,
-                            macd = EXCLUDED.macd, macd_signal = EXCLUDED.macd_signal, macd_hist = EXCLUDED.macd_hist,
-                            bb_upper_dist = EXCLUDED.bb_upper_dist, bb_lower_dist = EXCLUDED.bb_lower_dist,
-                            atr_14 = EXCLUDED.atr_14, atr_pct = EXCLUDED.atr_pct, vwap = EXCLUDED.vwap,
-                            stoch_k = EXCLUDED.stoch_k, stoch_d = EXCLUDED.stoch_d, cci = EXCLUDED.cci,
-                            ema_slope_50 = EXCLUDED.ema_slope_50, volatility_percentile = EXCLUDED.volatility_percentile,
-                            atr_percentile = EXCLUDED.atr_percentile, volume_regime = EXCLUDED.volume_regime,
-                            price_vs_weekly = EXCLUDED.price_vs_weekly, price_vs_monthly = EXCLUDED.price_vs_monthly,
-                            rsi_slope = EXCLUDED.rsi_slope, trend_consistency = EXCLUDED.trend_consistency
-                        """,
-                        row_time,
-                        "BTCUSDT",
-                        "4h",
-                        indicators.ema_12,
-                        indicators.ema_26,
-                        indicators.ema_50,
-                        indicators.ema_200,
-                        indicators.sma_20,
-                        indicators.sma_50,
-                        indicators.sma_200,
-                        indicators.rsi_14,
-                        indicators.rsi_7,
-                        indicators.macd,
-                        indicators.macd_signal,
-                        indicators.macd_hist,
-                        indicators.bb_upper_dist,
-                        indicators.bb_lower_dist,
-                        indicators.atr_14,
-                        indicators.atr_pct,
-                        indicators.vwap,
-                        indicators.stoch_k,
-                        indicators.stoch_d,
-                        indicators.cci,
-                        indicators.ema_slope_50,
-                        indicators.volatility_percentile,
-                        indicators.atr_percentile,
-                        indicators.volume_regime,
-                        indicators.price_vs_weekly,
-                        indicators.price_vs_monthly,
-                        indicators.rsi_slope,
-                        indicators.trend_consistency,
-                    )
-                    processed += 1
-                except Exception as e:
-                    logger.error(f"Database insert failed at row {i}: {e}")
-                    continue
-
-                if processed % 500 == 0:
-                    logger.info(f"Processed {processed} rows (errors: {errors})")
-
-            logger.info(f"Done! Computed and stored {processed} rows ({errors} errors)")
-
+        logger.info(
+            "Done! Computed and stored %s rows for %s %s (%s errors)",
+            processed,
+            args.symbol,
+            args.timeframe,
+            errors,
+        )
+        return processed, errors
     finally:
-        await pool.close()
+        await close_pool()
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(argv)
+    asyncio.run(compute_and_store_indicators(args))
 
 
 if __name__ == "__main__":
-    asyncio.run(compute_and_store_indicators())
+    main()
