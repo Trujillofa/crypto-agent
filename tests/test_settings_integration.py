@@ -29,6 +29,7 @@ from src.strategy import (
     VWAPReversionStrategy,
 )
 
+
 def test_settings_default_safe():
     """Verify settings.yaml loads with safe defaults (paper mode with test mode)."""
     settings = load_settings(Path("config/settings.yaml"))
@@ -98,6 +99,7 @@ def test_settings_resolves_new_strategy_registry_entries():
     assert len(strategy_classes) == len(settings.strategy.strategies)
     assert len(strategy_configs) == len(settings.strategy.strategies)
     from src.strategy import SimpleMACrossoverStrategy
+
     assert SimpleMACrossoverStrategy in strategy_classes
 
 

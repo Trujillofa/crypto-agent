@@ -196,7 +196,12 @@ class TestSignalAggregator:
     def test_min_confidence_filters_weak_conflicting_vote(self):
         """A weak SELL below min_confidence should not cancel a strong BUY."""
         agg = SignalAggregator(
-            {"buy_threshold": 0.5, "sell_threshold": -0.5, "min_agreement": 1, "min_confidence": 0.5}
+            {
+                "buy_threshold": 0.5,
+                "sell_threshold": -0.5,
+                "min_agreement": 1,
+                "min_confidence": 0.5,
+            }
         )
         signals = [
             self._create_signal(SignalType.BUY, 0.8),
@@ -209,7 +214,12 @@ class TestSignalAggregator:
     def test_min_confidence_keeps_strong_conflicting_vote(self):
         """A strong SELL above min_confidence should still cancel a BUY."""
         agg = SignalAggregator(
-            {"buy_threshold": 0.5, "sell_threshold": -0.5, "min_agreement": 1, "min_confidence": 0.5}
+            {
+                "buy_threshold": 0.5,
+                "sell_threshold": -0.5,
+                "min_agreement": 1,
+                "min_confidence": 0.5,
+            }
         )
         signals = [
             self._create_signal(SignalType.BUY, 0.8),
@@ -230,9 +240,7 @@ class TestSignalAggregator:
 
     def test_min_confidence_per_symbol_override(self):
         """Per-symbol min_confidence should override global."""
-        agg = SignalAggregator(
-            {"buy_threshold": 0.5, "min_agreement": 1, "min_confidence": 0.0}
-        )
+        agg = SignalAggregator({"buy_threshold": 0.5, "min_agreement": 1, "min_confidence": 0.0})
         signals = [
             self._create_signal(SignalType.BUY, 0.8),
             self._create_signal(SignalType.SELL, 0.4),
