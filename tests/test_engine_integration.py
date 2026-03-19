@@ -140,7 +140,10 @@ class TestStrategyEngineIntegration:
             await engine._evaluate_all(on_signal)
 
         assert received_signals == []
-        assert "Blocked by Global Trend Filter" in caplog.text and "of EMA200) for BNBUSDT" in caplog.text
+        assert (
+            "Blocked by Global Trend Filter" in caplog.text
+            and "of EMA200) for BNBUSDT" in caplog.text
+        )
         assert "Consensus HOLD for BNBUSDT: Blocked by Global Trend Filter" in caplog.text
 
     @pytest.mark.asyncio
