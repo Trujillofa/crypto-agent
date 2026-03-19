@@ -150,6 +150,25 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert aggregator_config["buy_threshold"] == 0.6
 
 
+def test_avax_4h_ma_config_resolves_simple_ma_spot_only():
+    settings = load_settings(Path("config/settings.avax_4h_ma.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert settings.agent_id == "avax-4h-ma"
+    assert settings.trading_pairs == ["AVAXUSDT"]
+    assert settings.timeframe == "4h"
+    assert settings.ai.enabled is False
+    assert settings.trading_execution.enabled is True
+    assert settings.strategy.default_trading_mode == "spot"
+    assert settings.futures is None
+    assert strategy_classes == [SimpleMACrossoverStrategy]
+    assert len(strategy_configs) == 1
+    assert aggregator_config["buy_threshold"] == 0.5
+    assert aggregator_config["btc_regime_filter_enabled"] is False
+
+
 def test_eth_4h_config_resolves_simple_ma():
     settings = load_settings(Path("config/settings.btc_1h_mtf.yaml"))
     strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
