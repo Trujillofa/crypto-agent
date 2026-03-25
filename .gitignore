@@ -67,3 +67,7 @@ docs/reports/production-drift-sentinel-*.json
 
 # Database backups
 backups/
+
+# Production Secrets and Backups
+config/nginx/ssl/
+*.bak

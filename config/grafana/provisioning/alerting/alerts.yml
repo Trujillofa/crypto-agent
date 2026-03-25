@@ -16,8 +16,18 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: rate(ingest_errors_total[5m])
+              expr: sum(rate(ingest_errors_total[5m]))
               refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
           - refId: C
             relativeTimeRange:
               from: 0
@@ -25,14 +35,14 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               refId: C
               conditions:
                 - evaluator:
                     type: gt
                     params:
                       - 0.1
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 5m
         annotations:
@@ -52,8 +62,18 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: up{job="trading-agent"}
+              expr: count(up{job="trading-agent"})
               refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
           - refId: C
             relativeTimeRange:
               from: 0
@@ -61,19 +81,19 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               refId: C
               conditions:
                 - evaluator:
                     type: lt
                     params:
-                      - 1
+                      - 7
         noDataState: Alerting
         execErrState: Error
         for: 2m
         annotations:
-          summary: "Crypto trading agent is not reporting"
-          description: "The crypto trading agent has stopped responding to health checks"
+          summary: "Crypto trading agent not reporting"
+          description: "Expected 7 agents, found: {{ $value }}"
         labels:
           severity: critical
           alert_type: agent_down
@@ -88,8 +108,18 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: process_resident_memory_bytes / 1024 / 1024
+              expr: max(process_resident_memory_bytes{job="trading-agent"})
               refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: B
           - refId: C
             relativeTimeRange:
               from: 0
@@ -97,19 +127,19 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               refId: C
               conditions:
                 - evaluator:
                     type: gt
                     params:
-                      - 512
-        noDataState: NoData
+                      - 536870912
+        noDataState: OK
         execErrState: Error
         for: 5m
         annotations:
           summary: "High memory usage detected"
-          description: "Agent memory usage is above 512MB"
+          description: "Max agent memory usage is above 512MB"
         labels:
           severity: warning
           alert_type: resource
