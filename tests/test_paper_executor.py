@@ -411,8 +411,28 @@ class TestOnSignalEntryPath:
         assert "exceeds configured max" in executor._notifier.send_alert.await_args.args[0]
 
     @pytest.mark.asyncio
-    async def test_futures_sell_from_flat_opens_short_position(self):
+    async def test_futures_sell_from_flat_blocked_by_default_long_only_parity(self):
         executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"]))
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.8,
+            reason="Test short blocked",
+            indicators={"atr_14": 250.0},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        pos = executor._positions.get("BTCUSDT:futures")
+        assert pos is None  # No short opened — LONG-only parity
+
+    @pytest.mark.asyncio
+    async def test_futures_sell_from_flat_opens_short_position(self):
+        executor = _make_executor(
+            _make_config(futures_symbols=["BTCUSDT"], allow_short_entry=True)
+        )
         signal = Signal(
             type=SignalType.SELL,
             symbol="BTCUSDT",
@@ -444,6 +464,7 @@ class TestOnSignalEntryPath:
             _make_config(
                 futures_symbols=["BTCUSDT"],
                 use_atr_sizing=True,
+                allow_short_entry=True,
             )
         )
         signal = Signal(
@@ -489,7 +510,9 @@ class TestOnSignalEntryPath:
 
     @pytest.mark.asyncio
     async def test_futures_short_blocks_when_position_limit_exceeded(self):
-        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"]))
+        executor = _make_executor(
+            _make_config(futures_symbols=["BTCUSDT"], allow_short_entry=True)
+        )
         executor._risk_manager.check_position_limit.return_value = (
             False,
             "Position size exceeds configured max",
@@ -558,7 +581,7 @@ class TestOnSignalEntryPath:
             price=49000.0,
             market="futures",
             closing_side="BUY",
-            realized_pnl_override=pytest.approx(29.804),
+            realized_pnl_override=pytest.approx(9.804),
         )
         executor._notifier.send_trade_alert.assert_awaited_once()
         assert executor._notifier.send_trade_alert.await_args.kwargs["side"] == "BUY"
@@ -610,5 +633,5 @@ class TestOnSignalEntryPath:
             price=50500.0,
             market="futures",
             closing_side="SELL",
-            realized_pnl_override=pytest.approx(14.798),
+            realized_pnl_override=pytest.approx(4.798),
         )

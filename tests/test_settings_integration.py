@@ -50,6 +50,7 @@ def test_settings_default_safe():
     assert settings.strategy.evaluation_interval_seconds == int(
         raw["strategy"]["evaluation_interval_seconds"]
     )
+    assert settings.strategy.mirror_spot_to_futures is False
 
 
 def test_settings_has_strategy_section():

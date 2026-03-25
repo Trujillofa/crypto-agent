@@ -69,62 +69,24 @@ async def _cancel_background_tasks(
             await task
 
 
-def _resolve_signal_routing(
+def _should_mirror_spot_signal_to_futures(
     signal: Signal,
+    *,
+    mirror_spot_to_futures: bool,
     futures_symbols: set[str],
-    default_trading_mode: str,
-) -> tuple[Signal, bool]:
-    """Resolve whether a signal should be rerouted or mirrored to futures.
-
-    Returns:
-        tuple[Signal, bool]:
-            - routed signal to execute first
-            - whether a second mirrored futures execution should also occur
-    """
-    if signal.trading_mode == "futures" or signal.symbol not in futures_symbols:
-        return signal, False
-
-    if default_trading_mode == "futures":
-        return (
-            Signal(
-                type=signal.type,
-                symbol=signal.symbol,
-                price=signal.price,
-                confidence=signal.confidence,
-                reason=signal.reason,
-                indicators=signal.indicators,
-                trading_mode="futures",
-            ),
-            False,
-        )
-
-    return signal, True
-
-
-def _resolve_overseer_launch(
-    settings: Settings,
-) -> tuple[bool, str | None]:
-    """Decide whether the chat overseer should start.
-
-    Strategy-side AI usage via xAI is allowed without Telegram. Only the chat
-    overseer requires Telegram to be enabled and configured.
-    """
-    if not settings.ai.enabled:
-        return False, None
-
-    if not settings.telegram.enabled:
-        return False, None
-
-    if not settings.telegram.bot_token:
-        return False, "AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled"
-
-    return True, None
+) -> bool:
+    return (
+        mirror_spot_to_futures
+        and signal.symbol in futures_symbols
+        and signal.trading_mode != "futures"
+    )
 
 
 @dataclass(frozen=True)
 class StrategySettings:
     evaluation_interval_seconds: int
     default_trading_mode: str = "spot"
+    mirror_spot_to_futures: bool = False
     cooldown_candles: int = 3
     strategies: list[Mapping[str, object]] = field(default_factory=list)
     aggregator: Mapping[str, object] = field(default_factory=dict)
@@ -304,6 +266,11 @@ def load_settings(config_path: Path) -> Settings:
             default=60,
         ),
         default_trading_mode=default_trading_mode,
+        mirror_spot_to_futures=_as_bool(
+            strategy.get("mirror_spot_to_futures"),
+            "strategy.mirror_spot_to_futures",
+            default=False,
+        ),
         cooldown_candles=_as_int(
             strategy.get("cooldown_candles"),
             "strategy.cooldown_candles",
@@ -816,11 +783,11 @@ async def run() -> None:
                 "AI features enabled without XAI_API_KEY; sentiment falls back to neutral"
             )
 
-        start_overseer, overseer_warning = _resolve_overseer_launch(settings)
-        if overseer_warning:
-            logger.warning(overseer_warning)
-
-        if start_overseer:
+        if not settings.telegram.enabled:
+            logger.warning("AI overseer enabled but telegram.enabled=false; overseer disabled")
+        elif not settings.telegram.bot_token:
+            logger.warning("AI overseer enabled but TELEGRAM_BOT_TOKEN missing; overseer disabled")
+        else:
             overseer_agent = OverseerAgent(
                 mode=settings.mode,
                 poll_interval_seconds=settings.ai.polling_interval,
@@ -1043,22 +1010,23 @@ async def run() -> None:
         if paper_executor:
             # Paper mode: all signals (spot + futures) go to PaperExecutor
             paper_futures_symbols = set(paper_executor._config.futures_symbols)
+            mirror_spot_to_futures = settings.strategy.mirror_spot_to_futures
+            router_logger = get_logger("signal_router")
 
             async def on_signal_paper(signal: Signal) -> None:
-                routed_signal, should_mirror_to_futures = _resolve_signal_routing(
-                    signal,
-                    paper_futures_symbols,
-                    settings.strategy.default_trading_mode,
-                )
                 execution_metrics.record_signal(
-                    routed_signal.symbol,
-                    routed_signal.trading_mode,
-                    routed_signal.type.value,
+                    signal.symbol,
+                    signal.trading_mode,
+                    signal.type.value,
                 )
-                await paper_executor.on_signal(routed_signal)
+                await paper_executor.on_signal(signal)
 
-                # Mirror to futures if applicable
-                if should_mirror_to_futures:
+                # Mirror spot signals into futures only when explicitly enabled
+                if _should_mirror_spot_signal_to_futures(
+                    signal,
+                    mirror_spot_to_futures=mirror_spot_to_futures,
+                    futures_symbols=paper_futures_symbols,
+                ):
                     mirrored = Signal(
                         type=signal.type,
                         symbol=signal.symbol,
@@ -1084,27 +1052,27 @@ async def run() -> None:
 
         elif futures_executor:
             futures_symbols = set(settings.futures.symbols)
+            mirror_spot_to_futures = settings.strategy.mirror_spot_to_futures
             router_trace_symbols = {"BTCUSDT", "ETHUSDT"}
             router_logger = get_logger("signal_router")
 
             async def on_signal_router(signal: Signal) -> None:
-                routed_signal, should_mirror_to_futures = _resolve_signal_routing(
-                    signal,
-                    futures_symbols,
-                    settings.strategy.default_trading_mode,
-                )
                 execution_metrics.record_signal(
-                    routed_signal.symbol,
-                    routed_signal.trading_mode,
-                    routed_signal.type.value,
+                    signal.symbol,
+                    signal.trading_mode,
+                    signal.type.value,
                 )
 
-                if routed_signal.trading_mode == "futures":
-                    await futures_executor.on_signal(routed_signal)
+                if signal.trading_mode == "futures":
+                    await futures_executor.on_signal(signal)
                 else:
-                    await trading_executor.on_signal(routed_signal)
+                    await trading_executor.on_signal(signal)
 
-                    if should_mirror_to_futures:
+                    if _should_mirror_spot_signal_to_futures(
+                        signal,
+                        mirror_spot_to_futures=mirror_spot_to_futures,
+                        futures_symbols=futures_symbols,
+                    ):
                         mirrored_signal = Signal(
                             type=signal.type,
                             symbol=signal.symbol,

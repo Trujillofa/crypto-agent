@@ -125,3 +125,22 @@ class TestLoadSettings:
             load_settings(config_path)
 
         config_path.unlink()
+
+    def test_explicit_mirror_spot_to_futures_flag_loads(self) -> None:
+        """Test explicit opt-in for spot->futures mirroring loads correctly."""
+        config = {
+            "trading": {"pairs": ["BTCUSDT"]},
+            "database": {},
+            "strategy": {
+                "mirror_spot_to_futures": True,
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            config_path = Path(f.name)
+
+        settings = load_settings(config_path)
+
+        assert settings.strategy.mirror_spot_to_futures is True
+
+        config_path.unlink()

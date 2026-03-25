@@ -71,6 +71,8 @@ class PaperTradingConfig:
     use_atr_sizing: bool = False  # if True, size by (equity × risk_pct) / (atr × multiplier)
     atr_multiplier: float = 1.0  # stop distance multiplier for sizing calc
     risk_per_trade_pct: float = 0.02  # fraction of equity risked per trade
+    # Paper/live parity
+    allow_short_entry: bool = False  # match LONG-only MVP behavior of live futures
 
 
 class PaperExecutor:
@@ -438,7 +440,13 @@ class PaperExecutor:
             elif signal.type == SignalType.SELL:
                 pos_key = self._position_key(signal.symbol, market_tag)
                 if is_futures and pos_key not in self._positions:
-                    await self._handle_short_entry(signal, market_tag)
+                    if self._config.allow_short_entry:
+                        await self._handle_short_entry(signal, market_tag)
+                    else:
+                        self._logger.info(
+                            "Paper SELL from flat ignored for %s [futures] — LONG-only parity (allow_short_entry=False)",
+                            signal.symbol,
+                        )
                 else:
                     self._logger.info(
                         "Strategy SELL ignored for %s [%s] — exits via SL/TP/trailing only",
@@ -919,8 +927,6 @@ class PaperExecutor:
 
         # Calculate PnL with fees
         gross_pnl = position.pnl(signal.price)
-        if is_futures:
-            gross_pnl *= self._config.futures_leverage
 
         fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
         sell_notional = position.quantity * signal.price
