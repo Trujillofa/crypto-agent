@@ -36,14 +36,14 @@ def test_settings_default_safe():
 
     # Paper trading is enabled by default for full pipeline testing
     # Safety is ensured by test_mode=True (uses Binance testnet, not real funds)
-    assert (
-        settings.trading_execution.enabled is True
-    ), "Paper trading should be enabled by default for pipeline testing"
+    assert settings.trading_execution.enabled is True, (
+        "Paper trading should be enabled by default for pipeline testing"
+    )
 
     # Test mode should be enabled by default (crucial safety check)
-    assert (
-        settings.trading_execution.test_mode is True
-    ), "Test mode must be enabled by default for safety"
+    assert settings.trading_execution.test_mode is True, (
+        "Test mode must be enabled by default for safety"
+    )
 
     with Path("config/settings.yaml").open("r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
@@ -59,9 +59,9 @@ def test_settings_has_strategy_section():
         raw = yaml.safe_load(f)
 
     assert "strategy" in raw, "settings.yaml must contain 'strategy' section"
-    assert (
-        "evaluation_interval_seconds" in raw["strategy"]
-    ), "strategy section must have 'evaluation_interval_seconds'"
+    assert "evaluation_interval_seconds" in raw["strategy"], (
+        "strategy section must have 'evaluation_interval_seconds'"
+    )
 
 
 def test_settings_all_required_sections():
