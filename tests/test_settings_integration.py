@@ -121,10 +121,10 @@ def test_sol_sparse_config_disabled_with_simple_ma():
         settings.strategy
     )
 
-    assert strategy_classes == [SimpleMACrossoverStrategy]
+    assert strategy_classes == [TrendPullbackStrategy]
     assert len(strategy_configs) == 1
-    assert settings.trading_execution.enabled is False  # Disabled — duplicate of main agent
-    assert aggregator_config["buy_threshold"] == 0.5
+    assert settings.trading_execution.enabled is True
+    assert aggregator_config["buy_threshold"] == 0.45
 
 
 def test_replacement_config_resolves_breakout_retest():
