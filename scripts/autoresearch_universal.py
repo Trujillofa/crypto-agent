@@ -18,7 +18,7 @@ import itertools
 import os
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -39,14 +39,28 @@ from src.strategy import (
 )
 from src.utils.logger import configure_logger
 
-
 ALL_STRATEGIES = {
     "MA": (SimpleMACrossoverStrategy, {}),
-    "MACD": (MACDHistogramStrategy, {"min_histogram_threshold": 0.0001, "use_atr_filter": True, "atr_min_pct": 0.003}),
-    "RSI": (RSIReversalStrategy, {"rsi_period": 7, "oversold_threshold": 35, "overbought_threshold": 65}),
-    "BB": (BollingerBounceStrategy, {"band_distance_threshold": 0.003, "rsi_oversold": 35, "rsi_overbought": 65}),
-    "CCI": (CCIBreakoutStrategy, {"cci_buy_threshold": 100, "cci_sell_threshold": -100, "atr_min_pct": 0.005}),
-    "VWAP": (VWAPReversionStrategy, {"vwap_atr_multiplier": 1.5, "rsi_oversold": 40, "rsi_overbought": 60}),
+    "MACD": (
+        MACDHistogramStrategy,
+        {"min_histogram_threshold": 0.0001, "use_atr_filter": True, "atr_min_pct": 0.003},
+    ),
+    "RSI": (
+        RSIReversalStrategy,
+        {"rsi_period": 7, "oversold_threshold": 35, "overbought_threshold": 65},
+    ),
+    "BB": (
+        BollingerBounceStrategy,
+        {"band_distance_threshold": 0.003, "rsi_oversold": 35, "rsi_overbought": 65},
+    ),
+    "CCI": (
+        CCIBreakoutStrategy,
+        {"cci_buy_threshold": 100, "cci_sell_threshold": -100, "atr_min_pct": 0.005},
+    ),
+    "VWAP": (
+        VWAPReversionStrategy,
+        {"vwap_atr_multiplier": 1.5, "rsi_oversold": 40, "rsi_overbought": 60},
+    ),
     "Momentum": (MomentumStrategy, {}),
 }
 
@@ -97,8 +111,12 @@ async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kw) 
     }
 
     config = BacktestConfig(
-        symbol=symbol, timeframe=tf, start_date=start, end_date=end,
-        initial_capital=10000.0, fee_rate=0.001,
+        symbol=symbol,
+        timeframe=tf,
+        start_date=start,
+        end_date=end,
+        initial_capital=10000.0,
+        fee_rate=0.001,
         stop_loss_pct=kw.get("stop_loss_pct", 0.02),
         take_profit_pct=kw.get("take_profit_pct", 0.05),
         sl_atr_multiplier=kw.get("sl_atr", 2.0),
@@ -108,7 +126,8 @@ async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kw) 
         use_executor_exit_model=kw.get("use_executor_exit", False),
         apply_global_trend_filter=kw.get("trend_filter", True),
         allow_short=kw.get("allow_short", True),
-        strategy_classes=classes, strategy_configs=configs,
+        strategy_classes=classes,
+        strategy_configs=configs,
         aggregator_config=agg,
     )
 
@@ -118,9 +137,14 @@ async def run_bt(reader, classes, configs, symbol, tf, start, end, label, **kw) 
     losses = len([t for t in r.trades if t.pnl <= 0])
 
     return Result(
-        label=label, trades=r.total_trades, wins=wins, losses=losses,
-        win_rate=r.win_rate, return_pct=r.total_return_pct,
-        max_drawdown=r.max_drawdown * 100, sharpe=r.sharpe_ratio,
+        label=label,
+        trades=r.total_trades,
+        wins=wins,
+        losses=losses,
+        win_rate=r.win_rate,
+        return_pct=r.total_return_pct,
+        max_drawdown=r.max_drawdown * 100,
+        sharpe=r.sharpe_ratio,
         profit_factor=r.profit_factor,
     )
 
@@ -141,9 +165,19 @@ async def phase1(reader, symbol, tf, start, end) -> list[Result]:
                     t = "TF" if trend_filter else "noTF"
                     e = "ATR" if use_exec else "Fix"
                     label = f"{name} [{s},{t},{e}]"
-                    r = await run_bt(reader, [cls], [cfg], symbol, tf, start, end, label,
-                                     allow_short=allow_short, trend_filter=trend_filter,
-                                     use_executor_exit=use_exec)
+                    r = await run_bt(
+                        reader,
+                        [cls],
+                        [cfg],
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
+                        allow_short=allow_short,
+                        trend_filter=trend_filter,
+                        use_executor_exit=use_exec,
+                    )
                     results.append(r)
                     out(r.summary_line())
 
@@ -169,13 +203,26 @@ async def phase2(reader, symbol, tf, start, end, top_strats) -> list[Result]:
                     continue
                 for ta, to_ in trails:
                     label = f"{name}[{s},{t}] SL{sl}/TP{tp}/T{ta},{to_}"
-                    r = await run_bt(reader, [cls], [cfg], symbol, tf, start, end, label,
-                                     allow_short=allow_short, trend_filter=trend_filter,
-                                     use_executor_exit=True, sl_atr=sl, tp_atr=tp,
-                                     trailing_activate=ta, trailing_offset=to_)
+                    r = await run_bt(
+                        reader,
+                        [cls],
+                        [cfg],
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
+                        allow_short=allow_short,
+                        trend_filter=trend_filter,
+                        use_executor_exit=True,
+                        sl_atr=sl,
+                        tp_atr=tp,
+                        trailing_activate=ta,
+                        trailing_offset=to_,
+                    )
                     results.append(r)
 
-    out(f"\n--- Top 20 Exit Configs by Sharpe ---")
+    out("\n--- Top 20 Exit Configs by Sharpe ---")
     out(HEADER)
     out(SEP)
     for r in sorted(results, key=lambda x: x.sharpe if x.trades > 3 else -999, reverse=True)[:20]:
@@ -203,9 +250,20 @@ async def phase3(reader, symbol, tf, start, end, best_exit, top_strats) -> list[
                 for min_agree in [1, 2]:
                     s = "S" if allow_short else "L"
                     label = f"{names} [{s},agree={min_agree}]"
-                    r = await run_bt(reader, classes, configs, symbol, tf, start, end, label,
-                                     allow_short=allow_short, trend_filter=True,
-                                     min_agreement=min_agree, **best_exit)
+                    r = await run_bt(
+                        reader,
+                        classes,
+                        configs,
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
+                        allow_short=allow_short,
+                        trend_filter=True,
+                        min_agreement=min_agree,
+                        **best_exit,
+                    )
                     results.append(r)
                     out(r.summary_line())
 
@@ -229,12 +287,22 @@ async def validation(reader, symbol, tf, start, end, all_results) -> list[Result
                     t = "TF" if trend_filter else "noTF"
                     e = "ATR" if use_exec else "Fix"
                     label = f"{name} [{s},{t},{e}]"
-                    r = await run_bt(reader, [cls], [cfg], symbol, tf, start, end, label,
-                                     allow_short=allow_short, trend_filter=trend_filter,
-                                     use_executor_exit=use_exec)
+                    r = await run_bt(
+                        reader,
+                        [cls],
+                        [cfg],
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
+                        allow_short=allow_short,
+                        trend_filter=trend_filter,
+                        use_executor_exit=use_exec,
+                    )
                     results.append(r)
 
-    out(f"\n--- Validation Top 10 ---")
+    out("\n--- Validation Top 10 ---")
     out(HEADER)
     out(SEP)
     viable = sorted([r for r in results if r.trades >= 3], key=lambda x: x.sharpe, reverse=True)
@@ -279,7 +347,7 @@ async def main():
             p1 = await phase1(reader, symbol, tf, train_start, train_end)
             viable = sorted([r for r in p1 if r.trades >= 5], key=lambda x: x.sharpe, reverse=True)
 
-            out(f"\n--- Phase 1 Winners (Top 10) ---")
+            out("\n--- Phase 1 Winners (Top 10) ---")
             out(HEADER)
             out(SEP)
             for r in viable[:10]:
@@ -322,8 +390,13 @@ async def main():
                     "use_executor_exit": True,
                 }
             else:
-                best_exit = {"sl_atr": 2.0, "tp_atr": 4.5, "trailing_activate": 1.5,
-                             "trailing_offset": 1.0, "use_executor_exit": True}
+                best_exit = {
+                    "sl_atr": 2.0,
+                    "tp_atr": 4.5,
+                    "trailing_activate": 1.5,
+                    "trailing_offset": 1.0,
+                    "use_executor_exit": True,
+                }
 
             # Phase 3
             combo_strats = [(n, c, cfg) for n, c, cfg, _, _ in top[:5]]
@@ -338,7 +411,7 @@ async def main():
             both = [r for r in val_profitable if r.label in train_profitable]
 
             out(f"\n{'=' * 110}")
-            out(f"  CROSS-VALIDATED: Profitable in BOTH training AND validation")
+            out("  CROSS-VALIDATED: Profitable in BOTH training AND validation")
             out(f"{'=' * 110}")
             if both:
                 out(HEADER)
@@ -348,16 +421,22 @@ async def main():
                     # Also show training result
                     train_r = next((tr for tr in p1 if tr.label == r.label), None)
                     if train_r:
-                        out(f"  └─ Training: {train_r.return_pct:+.2f}%, Sharpe={train_r.sharpe:+.2f}, {train_r.trades} trades")
+                        out(
+                            f"  └─ Training: {train_r.return_pct:+.2f}%, Sharpe={train_r.sharpe:+.2f}, {train_r.trades} trades"
+                        )
             else:
                 out("  None found. Showing validation top 5 regardless:")
                 out(HEADER)
                 out(SEP)
-                for r in sorted([r for r in val if r.trades >= 3], key=lambda x: x.sharpe, reverse=True)[:5]:
+                for r in sorted(
+                    [r for r in val if r.trades >= 3], key=lambda x: x.sharpe, reverse=True
+                )[:5]:
                     out(r.summary_line())
 
             # Save report
-            report_path = Path(f"docs/reports/autoresearch-{symbol.lower()}-{tf}-{date.today()}.txt")
+            report_path = Path(
+                f"docs/reports/autoresearch-{symbol.lower()}-{tf}-{date.today()}.txt"
+            )
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text("\n".join(output_lines) + "\n")
             out(f"\nReport saved to {report_path}")

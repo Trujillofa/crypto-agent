@@ -5,7 +5,6 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from datetime import datetime, timezone
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -49,9 +48,7 @@ def test_end_to_end():
 
             async def collect_candle(candle: Ohlcv):
                 candles.append(candle)
-                print(
-                    f"   ✅ Received candle: {candle.symbol} @ {candle.open_time_utc}"
-                )
+                print(f"   ✅ Received candle: {candle.symbol} @ {candle.open_time_utc}")
                 print(
                     f"      O: {candle.open_price:.2f} H: {candle.high_price:.2f} L: {candle.low_price:.2f} C: {candle.close_price:.2f} V: {candle.volume:.4f}"
                 )
@@ -94,7 +91,7 @@ def test_end_to_end():
 
             print()
             print("5️⃣  Checking metrics...")
-            print(f"   ✅ Metrics collected (check Prometheus on port 8000)")
+            print("   ✅ Metrics collected (check Prometheus on port 8000)")
 
         print()
         print("=" * 60)

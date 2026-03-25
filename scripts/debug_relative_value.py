@@ -162,7 +162,7 @@ async def main():
                 engine = BacktestEngine(bt_config, SpreadReader({}))
                 result = await engine.run()
 
-                print(f"\nBacktest result:")
+                print("\nBacktest result:")
                 print(f"  Trades: {result.total_trades}")
                 print(f"  Win rate: {result.win_rate:.1f}%")
                 print(f"  Return: ${result.total_return:.0f}")

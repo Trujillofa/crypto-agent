@@ -1,0 +1,61 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Execute deployment via SSH over Tailscale
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 100.103.209.50
+          username: root
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          script: |
+            cd /opt/crypto-agent
+            git fetch origin main
+            git pull --ff-only origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            sleep 30
+            # Check for any unhealthy containers. Fail the deploy if found.
+            if docker compose -f docker-compose.prod.yml ps | grep "unhealthy"; then
+              echo "Error: One or more containers are unhealthy."
+              exit 1
+            fi
+            docker image prune -f
+
+      - name: Send Telegram Notification on Success
+        if: success()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ✅ Deployment Successful!
+            Repo: ${{ github.repository }}
+            7 agents are running and healthy.
+
+      - name: Send Telegram Notification on Failure
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ❌ Deployment Failed!
+            Repo: ${{ github.repository }}
+            Check GitHub Actions logs for details.

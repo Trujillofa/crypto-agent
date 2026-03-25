@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Debug indicator computation - test specific row."""
 
-import os
-import pandas as pd
-import asyncpg
 import asyncio
+import os
+
+import asyncpg
 
 
 async def debug():
@@ -58,7 +58,7 @@ async def debug():
 
         try:
             indicators = compute_indicators(data)
-            print(f"  SUCCESS!")
+            print("  SUCCESS!")
             print(f"  RSI: {indicators.rsi_14}")
             print(f"  Trend consistency: {indicators.trend_consistency}")
         except Exception as e:

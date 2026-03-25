@@ -182,7 +182,7 @@ class PaperExecutor:
             return True
 
         await self._notifier.send_alert(
-            f"<b>Paper signal blocked</b> [{market_tag}]\n" f"{symbol} {side} — {reason}"
+            f"<b>Paper signal blocked</b> [{market_tag}]\n{symbol} {side} — {reason}"
         )
         return False
 
@@ -776,7 +776,7 @@ class PaperExecutor:
                     {"symbol": signal.symbol, "reason": reason, "stage": "paper_short"},
                 )
             await self._notifier.send_alert(
-                f"<b>Paper signal blocked</b> [{market_tag}]\n" f"{signal.symbol} SELL — {reason}"
+                f"<b>Paper signal blocked</b> [{market_tag}]\n{signal.symbol} SELL — {reason}"
             )
             return
 

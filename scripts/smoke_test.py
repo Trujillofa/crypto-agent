@@ -10,20 +10,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.ingest.binance import BinanceIngestor
-from src.ingest.db import TimescaleWriter
-from src.ingest.metrics import IngestMetrics, MetricsServer
+from src.ingest.metrics import IngestMetrics
 from src.ingest.models import Ohlcv
-from src.features import IndicatorComputer, IndicatorWriter
-from src.features.reader import IndicatorReader
-from src.features.metrics import IndicatorMetrics
-from src.execution import TradingExecutor, TradingConfig
-from src.execution.metrics import ExecutionMetrics
-from src.execution.binance_client import OrderInfo
+from src.notifications.telegram import TelegramNotifier
 from src.portfolio import PortfolioManager
 from src.risk.manager import RiskManager
-from src.strategy import StrategyEngine, EngineConfig, SimpleMACrossoverStrategy
-from src.strategy.signals import Signal, SignalType
-from src.notifications.telegram import TelegramNotifier
+from src.strategy import SimpleMACrossoverStrategy
+from src.strategy.signals import SignalType
 from src.utils.logger import configure_logger
 
 
@@ -174,9 +167,7 @@ async def test_position_tracking():
         # Check position exists
         open_pos = pm.get_position("BTCUSDT")
         if open_pos:
-            print(
-                f"  ✅ Position in cache: {open_pos.symbol}, qty: {open_pos.quantity}"
-            )
+            print(f"  ✅ Position in cache: {open_pos.symbol}, qty: {open_pos.quantity}")
 
         # Calculate unrealized PnL
         current_price = 52000.0
@@ -191,9 +182,7 @@ async def test_position_tracking():
 
         # Get portfolio summary
         summary = await pm.get_portfolio_summary()
-        print(
-            f"  📊 Portfolio: {summary.total_positions} positions, {summary.total_trades} trades"
-        )
+        print(f"  📊 Portfolio: {summary.total_positions} positions, {summary.total_trades} trades")
         print(f"  📊 Total realized PnL: {summary.total_realized_pnl:.2f} USDT")
 
         if realized_pnl > 0 and summary.total_trades == 2:
@@ -248,9 +237,7 @@ async def test_full_pipeline():
     from src.features.technical import compute_indicators
 
     indicators = compute_indicators(ohlcv_data)
-    print(
-        f"  ✅ Computed indicators: RSI={indicators.rsi_14:.2f}, EMA12={indicators.ema_12:.2f}"
-    )
+    print(f"  ✅ Computed indicators: RSI={indicators.rsi_14:.2f}, EMA12={indicators.ema_12:.2f}")
 
     # Step 3: Generate signal
     strategy = SimpleMACrossoverStrategy({})
@@ -266,7 +253,6 @@ async def test_full_pipeline():
     print(f"  ✅ Generated signal: {signal.type.value}")
 
     # Step 4: Check risk manager
-    from src.risk.manager import RiskManager
 
     risk_mgr = RiskManager()
     allowed, reason = risk_mgr.is_trading_allowed()
@@ -302,9 +288,7 @@ async def run_smoke_test():
         results.append(("Indicator Computation", await test_indicator_computation()))
         results.append(("Strategy Signals", await test_strategy_signals()))
         results.append(("Position Tracking (NEW)", await test_position_tracking()))
-        results.append(
-            ("Telegram Notifications (NEW)", await test_telegram_notifications())
-        )
+        results.append(("Telegram Notifications (NEW)", await test_telegram_notifications()))
         results.append(("Full Pipeline", await test_full_pipeline()))
 
     except Exception as e:

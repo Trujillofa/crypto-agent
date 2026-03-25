@@ -823,8 +823,7 @@ async def main() -> None:
         }
 
         print(
-            f"Searching {len(candidates)} candidates for {symbol} {timeframe} "
-            f"from {start} to {end}"
+            f"Searching {len(candidates)} candidates for {symbol} {timeframe} from {start} to {end}"
         )
         print(
             "Gates: "

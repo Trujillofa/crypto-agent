@@ -6,9 +6,8 @@ Run systematic parameter sweeps for MTF strategy research.
 
 import asyncio
 import sys
-from datetime import datetime
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime
 
 sys.path.append(".")
 
@@ -43,7 +42,7 @@ async def run_sweep(
         "rsi_overbought": 60.0,
         "confidence_boost": 1.2,
     }
-    strategy = MTFStrategyTemplate(config=config)
+    MTFStrategyTemplate(config=config)
 
     bt_config = BacktestConfig(
         symbol=symbol,

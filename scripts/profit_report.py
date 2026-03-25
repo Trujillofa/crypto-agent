@@ -5,16 +5,16 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 import asyncpg
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+
 async def generate_report() -> None:
     """Connect to database and generate report."""
-    
+
     # Database config
     host = os.getenv("POSTGRES_HOST", "localhost")
     port = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -41,27 +41,27 @@ async def generate_report() -> None:
         # Comprehensive Profit Report Query
         query = """
         WITH closed_stats AS (
-          SELECT 
+          SELECT
             COUNT(*) as total_closed,
             COUNT(*) FILTER (WHERE realized_pnl > 0) as wins,
             COUNT(*) FILTER (WHERE realized_pnl < 0) as losses,
             COALESCE(SUM(realized_pnl), 0) as total_realized_pnl,
             AVG(realized_pnl) FILTER (WHERE realized_pnl > 0) as avg_win,
             AVG(realized_pnl) FILTER (WHERE realized_pnl < 0) as avg_loss
-          FROM positions 
+          FROM positions
           WHERE status = 'closed'
         ),
         symbol_stats AS (
-          SELECT 
+          SELECT
             symbol,
             COUNT(*) as trades,
             COALESCE(SUM(realized_pnl), 0) as pnl
-          FROM positions 
+          FROM positions
           WHERE status = 'closed'
           GROUP BY symbol
           ORDER BY pnl DESC
         )
-        SELECT 
+        SELECT
           cs.total_closed,
           cs.wins,
           cs.losses,
@@ -82,7 +82,7 @@ async def generate_report() -> None:
             print("=" * 40)
             print(f"{'Metric':<25} | {'Value':>12}")
             print("-" * 40)
-            
+
             print(f"{'Total Closed Trades':<25} | {row['total_closed']:>12}")
             print(f"{'Wins':<25} | {row['wins']:>12}")
             print(f"{'Losses':<25} | {row['losses']:>12}")
@@ -96,28 +96,30 @@ async def generate_report() -> None:
         # Symbol Breakdown
         print("\n📊 PERFORMANCE BY SYMBOL")
         symbol_query = """
-        SELECT 
+        SELECT
             symbol,
             COUNT(*) as trades,
             COALESCE(SUM(realized_pnl), 0) as pnl,
             COUNT(*) FILTER (WHERE realized_pnl > 0) as wins,
             COUNT(*) FILTER (WHERE realized_pnl < 0) as losses
-        FROM positions 
+        FROM positions
         WHERE status = 'closed'
         GROUP BY symbol
         ORDER BY pnl DESC
         """
-        
+
         symbol_rows = await conn.fetch(symbol_query)
-        
+
         if not symbol_rows:
-             print("No symbol data available.")
+            print("No symbol data available.")
         else:
             print("-" * 60)
             print(f"{'Symbol':<15} | {'Trades':>8} | {'PnL':>12} | {'Win/Loss':>10}")
             print("-" * 60)
             for r in symbol_rows:
-                print(f"{r['symbol']:<15} | {r['trades']:>8} | ${r['pnl']:>11.2f} | {r['wins']:>4}/{r['losses']:<4}")
+                print(
+                    f"{r['symbol']:<15} | {r['trades']:>8} | ${r['pnl']:>11.2f} | {r['wins']:>4}/{r['losses']:<4}"
+                )
             print("-" * 60)
 
     finally:

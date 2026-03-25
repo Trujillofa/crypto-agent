@@ -3,9 +3,9 @@
 
 import asyncio
 import subprocess
-import pandas as pd
 from datetime import timedelta
-from pathlib import Path
+
+import pandas as pd
 
 
 def parse_backtest_output(stdout):
@@ -70,8 +70,6 @@ if __name__ == "__main__":
 
     symbol = sys.argv[1] if len(sys.argv) > 1 else "ETHUSDT"
     param_grid = [
-        {"buy": b, "sell": -s}
-        for b in [1.1, 1.2, 1.3, 1.4]
-        for s in [1.1, 1.2, 1.3, 1.4]
+        {"buy": b, "sell": -s} for b in [1.1, 1.2, 1.3, 1.4] for s in [1.1, 1.2, 1.3, 1.4]
     ]
     asyncio.run(wfo_sweep(symbol, "5m", "2023-01-01", "2024-01-01", param_grid))

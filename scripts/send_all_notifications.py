@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.notifications.telegram import TelegramConfig, TelegramNotifier, AlertLevel
+from src.notifications.telegram import AlertLevel, TelegramConfig, TelegramNotifier
 
 
 async def send_all_notifications():
@@ -69,9 +69,7 @@ async def send_all_notifications():
 
         # 6. Daily summary
         print("6️⃣  Sending daily summary...")
-        await notifier.send_daily_summary(
-            total_pnl=245.75, trades_count=12, win_rate=68.5
-        )
+        await notifier.send_daily_summary(total_pnl=245.75, trades_count=12, win_rate=68.5)
 
     print()
     print("=" * 60)

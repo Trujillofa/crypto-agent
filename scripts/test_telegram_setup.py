@@ -9,7 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.notifications.telegram import TelegramNotifier, AlertLevel
+from src.notifications.telegram import AlertLevel, TelegramNotifier
 
 
 async def test_telegram():
@@ -33,7 +33,7 @@ async def test_telegram():
         print("   2. Edit .env and uncomment: TELEGRAM_CHAT_ID=your_id")
         return False
 
-    print(f"✅ Configuration found:")
+    print("✅ Configuration found:")
     print(f"   Bot Token: {token[:10]}...{token[-5:]}")
     print(f"   Chat ID: {chat_id}")
     print()
@@ -55,9 +55,7 @@ async def test_telegram():
 
         print()
         print("2️⃣  Sending kill switch test...")
-        success = await notifier.send_kill_switch_alert(
-            "Test: Manual kill switch activation"
-        )
+        success = await notifier.send_kill_switch_alert("Test: Manual kill switch activation")
 
         if success:
             print("   ✅ Kill switch alert sent!")

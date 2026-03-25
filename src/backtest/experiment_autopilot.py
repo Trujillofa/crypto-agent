@@ -186,7 +186,7 @@ def evaluate_gates(summary: ExperimentSummary, gates: GateConfig) -> list[str]:
     else:
         if summary.wfo_total_trades < gates.min_wfo_trades:
             failures.append(
-                "min_wfo_trades failed " f"({summary.wfo_total_trades} < {gates.min_wfo_trades})"
+                f"min_wfo_trades failed ({summary.wfo_total_trades} < {gates.min_wfo_trades})"
             )
         if summary.wfo_mean_sharpe < gates.min_wfo_sharpe:
             failures.append(

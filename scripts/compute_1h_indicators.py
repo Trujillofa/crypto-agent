@@ -6,6 +6,7 @@ import os
 
 import asyncpg
 import pandas as pd
+
 from src.features.technical import compute_indicators
 from src.utils.logger import get_logger
 
@@ -99,7 +100,7 @@ async def compute_and_store_indicators():
                 row_time = rows_1h[i]["time"]
 
                 # Find matching 4h indicator (most recent before or at this time)
-                regime_4h = (
+                (
                     df_4h[df_4h["time"] <= row_time].iloc[-1]
                     if len(df_4h[df_4h["time"] <= row_time]) > 0
                     else None

@@ -5,7 +5,7 @@ import asyncio
 import os
 
 import asyncpg
-import pandas as pd
+
 from src.features.technical import compute_indicators
 from src.utils.logger import get_logger
 

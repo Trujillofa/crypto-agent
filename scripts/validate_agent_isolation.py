@@ -22,7 +22,7 @@ def load_all_configs(config_dir: Path = Path("config")) -> dict[str, dict]:
 
     for yaml_file in config_dir.glob("settings*.yaml"):
         try:
-            with open(yaml_file, "r") as f:
+            with open(yaml_file) as f:
                 configs[yaml_file.name] = yaml.safe_load(f)
         except Exception as e:
             print(f"⚠️  Warning: Could not load {yaml_file}: {e}")
@@ -60,7 +60,7 @@ def validate_isolation(configs: dict[str, dict]) -> tuple[bool, list[str]]:
             agents.append(info)
 
     # Check 1: Unique agent_ids
-    agent_ids = [a["agent_id"] for a in agents]
+    [a["agent_id"] for a in agents]
     seen_ids = set()
     for agent in agents:
         agent_id = agent["agent_id"]

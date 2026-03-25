@@ -499,7 +499,7 @@ class FuturesTradingExecutor:
                 # Step 4: Safety checks before closing
                 if exchange_position_side != agent_position_side:
                     self._logger.error(
-                        "SELL refused: Position side mismatch for %s. " "Agent: %s, Exchange: %s",
+                        "SELL refused: Position side mismatch for %s. Agent: %s, Exchange: %s",
                         signal.symbol,
                         agent_position_side,
                         exchange_position_side,

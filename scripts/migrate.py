@@ -179,7 +179,9 @@ def show_status() -> int:
         print(f"  {version} | {status:8} | {path.stem} ({checksum})")
 
     print("-" * 60)
-    print(f"Total: {len(migrations)} | Applied: {len(applied)} | Pending: {len(migrations) - len(applied)}")
+    print(
+        f"Total: {len(migrations)} | Applied: {len(applied)} | Pending: {len(migrations) - len(applied)}"
+    )
 
     conn.close()
     return 0

@@ -9,7 +9,6 @@ Test cross-asset strategies:
 import asyncio
 import sys
 from datetime import datetime
-from collections import defaultdict
 
 sys.path.append(".")
 
@@ -42,8 +41,8 @@ class ETHBTCMeanReversion(BaseStrategy):
         # Get spread (ETHBTC)
         spread = indicators.get("ethbtc_spread")
         z_score = indicators.get("ethbtc_zscore")
-        ema_50 = indicators.get("ema_50")
-        ema_200 = indicators.get("ema_200_4h")
+        indicators.get("ema_50")
+        indicators.get("ema_200_4h")
 
         if spread is None or z_score is None:
             return Signal(SignalType.HOLD, symbol, 0, 0, "No spread data", {})

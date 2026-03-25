@@ -9,7 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.notifications.telegram import TelegramConfig, TelegramNotifier, AlertLevel
+from src.notifications.telegram import AlertLevel, TelegramConfig, TelegramNotifier
 
 
 async def test_direct():
@@ -49,7 +49,7 @@ Your Telegram notifications are now configured!
 
 You will receive alerts for:
 • Kill switch activation
-• Circuit breaker triggers  
+• Circuit breaker triggers
 • Trade executions
 • Daily summaries"""
 

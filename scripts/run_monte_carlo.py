@@ -250,7 +250,7 @@ async def main() -> None:
         aggregator_config=aggregator_config,
     )
 
-    print(f"Running baseline backtest: {args.symbol} {args.timeframe} " f"{args.start}→{args.end}")
+    print(f"Running baseline backtest: {args.symbol} {args.timeframe} {args.start}→{args.end}")
     await init_pool(db_config)
     try:
         reader = IndicatorReader(db_config)
@@ -290,15 +290,15 @@ async def main() -> None:
     print("BOOTSTRAP RESULTS")
     print("=" * 60)
     print(
-        f"Return:      {sum(ret_vals)/len(ret_vals):.2f}% ± {math.sqrt(sum((x - sum(ret_vals)/len(ret_vals))**2 for x in ret_vals)/len(ret_vals)):.2f}%"
+        f"Return:      {sum(ret_vals) / len(ret_vals):.2f}% ± {math.sqrt(sum((x - sum(ret_vals) / len(ret_vals)) ** 2 for x in ret_vals) / len(ret_vals)):.2f}%"
     )
     print(f"  5th/95th:  {_percentile(ret_vals, 5):.2f}% / {_percentile(ret_vals, 95):.2f}%")
     print(
-        f"Win Rate:    {sum(win_vals)/len(win_vals):.1f}% ± {math.sqrt(sum((x - sum(win_vals)/len(win_vals))**2 for x in win_vals)/len(win_vals)):.1f}%"
+        f"Win Rate:    {sum(win_vals) / len(win_vals):.1f}% ± {math.sqrt(sum((x - sum(win_vals) / len(win_vals)) ** 2 for x in win_vals) / len(win_vals)):.1f}%"
     )
     print(f"  5th/95th:  {_percentile(win_vals, 5):.1f}% / {_percentile(win_vals, 95):.1f}%")
     print(
-        f"Trade Sharpe:{sum(sharpe_vals)/len(sharpe_vals):.2f} ± {math.sqrt(sum((x - sum(sharpe_vals)/len(sharpe_vals))**2 for x in sharpe_vals)/len(sharpe_vals)):.2f}"
+        f"Trade Sharpe:{sum(sharpe_vals) / len(sharpe_vals):.2f} ± {math.sqrt(sum((x - sum(sharpe_vals) / len(sharpe_vals)) ** 2 for x in sharpe_vals) / len(sharpe_vals)):.2f}"
     )
     pct_loss = sum(1 for r in ret_vals if r < 0) / len(ret_vals) * 100
     print(f"P(loss):     {pct_loss:.1f}%")

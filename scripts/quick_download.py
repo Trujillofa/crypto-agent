@@ -8,6 +8,7 @@ from datetime import datetime
 import aiohttp
 import asyncpg
 import pandas as pd
+
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -99,7 +100,7 @@ async def main():
         logger.error("No data downloaded")
         return
 
-    logger.info(f"Connecting to database...")
+    logger.info("Connecting to database...")
     pool = await asyncpg.create_pool(
         host=db_config["host"],
         port=db_config["port"],

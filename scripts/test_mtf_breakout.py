@@ -132,7 +132,7 @@ async def main():
 
             if is_viable:
                 viable_count += 1
-                print(f"      ✅ VIABLE")
+                print("      ✅ VIABLE")
             else:
                 # Check which stop condition failed
                 failures = []

@@ -58,7 +58,7 @@ def _score(signal: Signal) -> float:
 
 
 def _format_signal(name: str, signal: Signal) -> str:
-    return f"{name}: {signal.type.value:<4} conf={signal.confidence:.2f} " f"reason={signal.reason}"
+    return f"{name}: {signal.type.value:<4} conf={signal.confidence:.2f} reason={signal.reason}"
 
 
 def _effective_thresholds(

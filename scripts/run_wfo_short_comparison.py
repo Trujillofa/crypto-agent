@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Walk-Forward Optimization comparison: Long-Only vs Long+Short."""
 
-import asyncio
+import os
 import subprocess
-import pandas as pd
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-import sys
-import os
+
+import pandas as pd
 
 sys.path.append(os.getcwd())
 
@@ -151,7 +151,7 @@ def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3,
         print(f"  Total Trades:  {df_short['trades'].sum()}")
 
     if not df_long.empty and not df_short.empty:
-        print(f"\n[DELTA] (Short - Long):")
+        print("\n[DELTA] (Short - Long):")
         print(f"  Win Rate Δ:    {df_short['win_rate'].mean() - df_long['win_rate'].mean():+.1f}%")
         print(f"  Sharpe Δ:      {df_short['sharpe'].mean() - df_long['sharpe'].mean():+.2f}")
         print(
@@ -164,13 +164,13 @@ def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3,
         winrate_improvement = df_short["win_rate"].mean() > df_long["win_rate"].mean()
 
         if sharpe_improvement and winrate_improvement:
-            print(f"\n✅ RECOMMENDATION: Enable shorts — both Sharpe and Win Rate improved")
+            print("\n✅ RECOMMENDATION: Enable shorts — both Sharpe and Win Rate improved")
         elif sharpe_improvement:
             print(
-                f"\n⚠️  RECOMMENDATION: Shorts improve Sharpe but lower Win Rate — evaluate risk tolerance"
+                "\n⚠️  RECOMMENDATION: Shorts improve Sharpe but lower Win Rate — evaluate risk tolerance"
             )
         else:
-            print(f"\n❌ RECOMMENDATION: Keep long-only — shorts degrade performance")
+            print("\n❌ RECOMMENDATION: Keep long-only — shorts degrade performance")
 
     # Save results
     timestamp = datetime.now().strftime("%Y-%m-%d")
@@ -188,8 +188,8 @@ def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3,
 
         f.write("## Long-Only Results\n\n")
         if not df_long.empty:
-            f.write(f"| Window | Test Period | Trades | Win Rate | Sharpe | Return | Max DD |\n")
-            f.write(f"|--------|-------------|--------|----------|--------|--------|--------|\n")
+            f.write("| Window | Test Period | Trades | Win Rate | Sharpe | Return | Max DD |\n")
+            f.write("|--------|-------------|--------|----------|--------|--------|--------|\n")
             for _, row in df_long.iterrows():
                 f.write(
                     f"| {row['window']} | {row['test_period']} | {row.get('trades', 0)} | "
@@ -203,8 +203,8 @@ def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3,
 
         f.write("\n## Long+Short Results\n\n")
         if not df_short.empty:
-            f.write(f"| Window | Test Period | Trades | Win Rate | Sharpe | Return | Max DD |\n")
-            f.write(f"|--------|-------------|--------|----------|--------|--------|--------|\n")
+            f.write("| Window | Test Period | Trades | Win Rate | Sharpe | Return | Max DD |\n")
+            f.write("|--------|-------------|--------|----------|--------|--------|--------|\n")
             for _, row in df_short.iterrows():
                 f.write(
                     f"| {row['window']} | {row['test_period']} | {row.get('trades', 0)} | "

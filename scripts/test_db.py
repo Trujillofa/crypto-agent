@@ -4,8 +4,8 @@
 import asyncio
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 # Add project root to path for absolute imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -27,7 +27,7 @@ def test_timescaledb_connection():
     user = os.getenv("POSTGRES_USER", "trading")
     password = os.getenv("POSTGRES_PASSWORD", "")
 
-    print(f"1️⃣  Configuration:")
+    print("1️⃣  Configuration:")
     print(f"   Host: {host}")
     print(f"   Port: {port}")
     print(f"   Database: {database}")
@@ -51,7 +51,7 @@ def test_timescaledb_connection():
         # Use async context manager properly
         async def test_connection():
             async with writer as w:
-                print(f"   ✅ Connection established!")
+                print("   ✅ Connection established!")
                 print()
 
                 # Test insert
@@ -59,8 +59,8 @@ def test_timescaledb_connection():
                 test_candle = Ohlcv(
                     symbol="TESTUSDT",
                     timeframe="1m",
-                    open_time=datetime.now(timezone.utc),
-                    close_time=datetime.now(timezone.utc),
+                    open_time=datetime.now(UTC),
+                    close_time=datetime.now(UTC),
                     open_price=50000.0,
                     high_price=51000.0,
                     low_price=49000.0,
@@ -69,13 +69,13 @@ def test_timescaledb_connection():
                 )
 
                 await w.write_ohlcv(test_candle)
-                print(f"   ✅ Successfully inserted test candle")
+                print("   ✅ Successfully inserted test candle")
                 print()
 
                 # Check if using SQLite fallback
                 if writer._use_sqlite:
                     print("   ⚠️  Using SQLite fallback (TimescaleDB unavailable)")
-                    print(f"   SQLite path: data/ohlcv.sqlite")
+                    print("   SQLite path: data/ohlcv.sqlite")
                 else:
                     print("   ✅ Using TimescaleDB")
 
@@ -86,9 +86,9 @@ def test_timescaledb_connection():
                     )
                     result = cursor.fetchone()
                     if result:
-                        print(f"   ✅ Hypertable 'ohlcv' exists")
+                        print("   ✅ Hypertable 'ohlcv' exists")
                     else:
-                        print(f"   ⚠️  Hypertable 'ohlcv' not found")
+                        print("   ⚠️  Hypertable 'ohlcv' not found")
 
                 print()
                 print("=" * 50)

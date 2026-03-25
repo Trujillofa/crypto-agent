@@ -684,5 +684,5 @@ class TradingExecutor:
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Signal rejected: %s — %s", signal, exc)
             await self._notifier.send_alert(
-                f"<b>Signal rejected</b> [spot]\n" f"{signal.symbol} {signal.type.value} — {exc}"
+                f"<b>Signal rejected</b> [spot]\n{signal.symbol} {signal.type.value} — {exc}"
             )

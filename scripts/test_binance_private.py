@@ -20,17 +20,13 @@ def get_signature(query_string: str, secret: str) -> str:
     ).hexdigest()
 
 
-def make_signed_request(
-    endpoint: str, params: dict | None = None, method: str = "GET"
-) -> dict:
+def make_signed_request(endpoint: str, params: dict | None = None, method: str = "GET") -> dict:
     """Make a signed request to Binance private API."""
     api_key = os.getenv("BINANCE_API_KEY", "").strip()
     api_secret = os.getenv("BINANCE_API_SECRET", "").strip()
 
     if not api_key or not api_secret:
-        raise ValueError(
-            "BINANCE_API_KEY and BINANCE_API_SECRET must be set in environment"
-        )
+        raise ValueError("BINANCE_API_KEY and BINANCE_API_SECRET must be set in environment")
 
     # Add timestamp
     params = params or {}
@@ -79,7 +75,7 @@ def test_balance():
         # Find USDT balance
         for asset in balances:
             if asset.get("asset") == "USDT":
-                print(f"   USDT Balance:")
+                print("   USDT Balance:")
                 print(f"     Free: {asset.get('free', 'N/A')}")
                 print(f"     Locked: {asset.get('locked', 'N/A')}")
                 break
@@ -152,7 +148,7 @@ def test_api_key_permissions():
     print("8️⃣  Testing API Key Permissions (/api/v3/account)...")
     try:
         data = make_signed_request("/api/v3/account")
-        print(f"   ✅ SUCCESS - API Key permissions retrieved")
+        print("   ✅ SUCCESS - API Key permissions retrieved")
 
         print(f"   Can Trade: {data.get('canTrade', False)}")
         print(f"   Can Withdraw: {data.get('canWithdraw', False)}")

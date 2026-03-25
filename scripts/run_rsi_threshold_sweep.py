@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Backtest sweep for RSI threshold comparison."""
 
-import asyncio
+import os
 import subprocess
 import sys
-import os
 import tempfile
-import yaml
 from pathlib import Path
-from datetime import datetime
+
+import yaml
 
 # Add project root to path
 sys.path.append(os.getcwd())

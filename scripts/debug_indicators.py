@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Debug indicator computation to identify which one is failing."""
 
+import asyncio
 import os
-import pandas as pd
-from src.features.technical import compute_indicators, _atr, _atr_percentile
+
+import asyncpg
+
+from src.features.technical import _atr
 from src.utils.logger import get_logger
+
+"""Debug indicator computation to identify which one is failing."""
+
 
 logger = get_logger(__name__)
 
@@ -16,9 +22,6 @@ db_config = {
     "user": os.getenv("DB_USER", "trading"),
     "password": os.getenv("DB_PASSWORD", "change_me"),
 }
-
-import asyncpg
-import asyncio
 
 
 async def debug():
@@ -60,12 +63,11 @@ async def debug():
         low = data["low"]
         close = data["close"]
 
-        print(f"\nDebug _atr_percentile:")
+        print("\nDebug _atr_percentile:")
         print(f"len(close) = {len(close)}")
-        print(f"Need: lookback(20) + atr_period(14) + 1 = 35")
+        print("Need: lookback(20) + atr_period(14) + 1 = 35")
 
         atr_period = 14
-        lookback = 20
 
         # Check the logic
         print(f"\nLoop: for i in range({atr_period}, {len(close)})")
@@ -83,8 +85,8 @@ async def debug():
         print(f"  l_window = low[{i - atr_period}:{i + 1}] -> size {len(l_window)}")
         print(f"  c_window = close[{i - atr_period}:{i + 1}] -> size {len(c_window)}")
 
-        print(f"\nIn _atr function:")
-        print(f"  for index in range(1, len(c_window)):")
+        print("\nIn _atr function:")
+        print("  for index in range(1, len(c_window)):")
         print(f"  len(c_window) = {len(c_window)}")
         print(f"  So index goes from 1 to {len(c_window) - 1}")
         print(f"  h_window has {len(h_window)} elements (indices 0 to {len(h_window) - 1})")

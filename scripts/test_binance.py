@@ -3,7 +3,6 @@
 
 import json
 import urllib.error
-import time
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -59,7 +58,7 @@ def test_binance_connection():
                 f"   Latest candle - Open: {candle[1]}, High: {candle[2]}, Low: {candle[3]}, Close: {candle[4]}, Volume: {candle[5]}"
             )
         else:
-            print(f"   ⚠️  Unexpected response format")
+            print("   ⚠️  Unexpected response format")
             return False
     except urllib.error.HTTPError as exc:
         print(f"   ❌ FAILED - HTTP Error {exc.code}: {exc.reason}")

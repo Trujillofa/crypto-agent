@@ -208,7 +208,7 @@ class StrategyEngine:
                             symbol=symbol,
                             price=price,
                             confidence=0.0,
-                            reason=f"Blocked by Global Trend Filter (Price < {buffer_pct*100:.0f}% of EMA200)",
+                            reason=f"Blocked by Global Trend Filter (Price < {buffer_pct * 100:.0f}% of EMA200)",
                             indicators=final_signal.indicators,
                             trading_mode=final_signal.trading_mode,
                         )

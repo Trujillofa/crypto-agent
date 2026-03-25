@@ -83,7 +83,7 @@ class CCIBreakoutStrategy(BaseStrategy):
                 signal_type = SignalType.SELL
                 confidence = 0.5 + min(0.4, abs(cci_current - self._cci_sell_threshold) / 200.0)
                 reason = (
-                    f"CCI crossed below {self._cci_sell_threshold:.0f} " f"(CCI: {cci_current:.1f})"
+                    f"CCI crossed below {self._cci_sell_threshold:.0f} (CCI: {cci_current:.1f})"
                 )
 
         signal = Signal(

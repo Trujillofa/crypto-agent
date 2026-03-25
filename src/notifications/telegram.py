@@ -382,7 +382,7 @@ Trading may be paused until conditions normalize.
                 )
                 if response.status in (401, 403):
                     raise RuntimeError(
-                        f"Telegram auth failed ({response.status}). " "Check TELEGRAM_BOT_TOKEN."
+                        f"Telegram auth failed ({response.status}). Check TELEGRAM_BOT_TOKEN."
                     )
                 return []
 

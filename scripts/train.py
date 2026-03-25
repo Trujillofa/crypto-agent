@@ -9,17 +9,13 @@ from src.features.technical import compute_indicators
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Compute technical indicators from OHLCV CSV"
-    )
+    parser = argparse.ArgumentParser(description="Compute technical indicators from OHLCV CSV")
     parser.add_argument(
         "--input",
         required=True,
         help="CSV with columns: time, open, high, low, close, volume",
     )
-    parser.add_argument(
-        "--output", required=True, help="Output CSV with indicator columns"
-    )
+    parser.add_argument("--output", required=True, help="Output CSV with indicator columns")
     args = parser.parse_args()
 
     data = pd.read_csv(args.input)

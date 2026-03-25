@@ -99,6 +99,7 @@ async def main():
     base_aggregator_config = dict(result[2])
 
     import yaml
+
     with config_path.open() as f:
         raw = yaml.safe_load(f) or {}
     exit_config = raw.get("trading_execution", {}).get("exit_rules", {}) or {}
@@ -130,9 +131,11 @@ async def main():
     min_confidence_values = [0.0, 0.3, 0.4, 0.5, 0.6, 0.7]
 
     print(f"Strategies: {[c.__name__ for c in strategy_classes]}")
-    print(f"Base aggregator: buy_threshold={base_aggregator_config.get('buy_threshold')}, "
-          f"sell_threshold={base_aggregator_config.get('sell_threshold')}, "
-          f"min_agreement={base_aggregator_config.get('min_agreement')}")
+    print(
+        f"Base aggregator: buy_threshold={base_aggregator_config.get('buy_threshold')}, "
+        f"sell_threshold={base_aggregator_config.get('sell_threshold')}, "
+        f"min_agreement={base_aggregator_config.get('min_agreement')}"
+    )
     print(f"Exit: SL={exit_config.get('stop_loss_pct')}, TP={exit_config.get('take_profit_pct')}")
     print()
 
@@ -143,14 +146,23 @@ async def main():
                 print(f"{'=' * 70}")
                 print(f"  {symbol} {timeframe} — {label} ({start} to {end})")
                 print(f"{'=' * 70}")
-                print(f"{'min_conf':>8} | {'Trades':>6} | {'W':>3}/{'L':>3} | {'Win%':>6} | {'Return%':>8} | {'MaxDD%':>6} | {'Sharpe':>7} | {'PF':>5}")
+                print(
+                    f"{'min_conf':>8} | {'Trades':>6} | {'W':>3}/{'L':>3} | {'Win%':>6} | {'Return%':>8} | {'MaxDD%':>6} | {'Sharpe':>7} | {'PF':>5}"
+                )
                 print(f"{'-' * 70}")
 
                 results = []
                 for mc in min_confidence_values:
                     r = await run_single(
-                        reader, strategy_classes, strategy_configs,
-                        base_aggregator_config, mc, symbol, timeframe, start, end,
+                        reader,
+                        strategy_classes,
+                        strategy_configs,
+                        base_aggregator_config,
+                        mc,
+                        symbol,
+                        timeframe,
+                        start,
+                        end,
                         exit_config,
                     )
                     results.append(r)
@@ -166,8 +178,10 @@ async def main():
                 baseline = results[0]
                 best = max(results, key=lambda r: r.sharpe if r.trades > 0 else -999)
                 if best.min_confidence != baseline.min_confidence and best.trades > 0:
-                    print(f"\n  Best: min_confidence={best.min_confidence} "
-                          f"(Sharpe {best.sharpe:+.2f} vs baseline {baseline.sharpe:+.2f})")
+                    print(
+                        f"\n  Best: min_confidence={best.min_confidence} "
+                        f"(Sharpe {best.sharpe:+.2f} vs baseline {baseline.sharpe:+.2f})"
+                    )
                 print()
     finally:
         await close_pool()

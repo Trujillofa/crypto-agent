@@ -10,7 +10,6 @@ import asyncio
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -81,7 +80,7 @@ async def run_mtf_backtest():
         allow_short=True,
     )
 
-    print(f"\nBacktest Parameters:")
+    print("\nBacktest Parameters:")
     print(f"  Symbol: {config.symbol}")
     print(f"  Entry Timeframe: {config.timeframe}")
     print(f"  Date Range: {config.start_date.date()} to {config.end_date.date()}")
@@ -128,7 +127,7 @@ async def run_mtf_backtest():
 
             if result.total_trades > 0:
                 print(f"✓ MTF strategy generated {result.total_trades} trades")
-                print(f"✓ Strategy correctly processed multi-timeframe data")
+                print("✓ Strategy correctly processed multi-timeframe data")
 
                 # Check trade distribution
                 # Trade side can be BUY/SELL (signal type) or LONG/SHORT (position side)

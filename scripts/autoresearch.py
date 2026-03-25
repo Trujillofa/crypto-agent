@@ -34,13 +34,27 @@ from src.strategy import (
 )
 from src.utils.logger import configure_logger
 
-
 ALL_STRATEGIES = {
-    "RSI": (RSIReversalStrategy, {"rsi_period": 7, "oversold_threshold": 35, "overbought_threshold": 65}),
-    "MACD": (MACDHistogramStrategy, {"min_histogram_threshold": 0.0001, "use_atr_filter": True, "atr_min_pct": 0.003}),
-    "BB": (BollingerBounceStrategy, {"band_distance_threshold": 0.003, "rsi_oversold": 35, "rsi_overbought": 65}),
-    "CCI": (CCIBreakoutStrategy, {"cci_buy_threshold": 100, "cci_sell_threshold": -100, "atr_min_pct": 0.005}),
-    "VWAP": (VWAPReversionStrategy, {"vwap_atr_multiplier": 1.5, "rsi_oversold": 40, "rsi_overbought": 60}),
+    "RSI": (
+        RSIReversalStrategy,
+        {"rsi_period": 7, "oversold_threshold": 35, "overbought_threshold": 65},
+    ),
+    "MACD": (
+        MACDHistogramStrategy,
+        {"min_histogram_threshold": 0.0001, "use_atr_filter": True, "atr_min_pct": 0.003},
+    ),
+    "BB": (
+        BollingerBounceStrategy,
+        {"band_distance_threshold": 0.003, "rsi_oversold": 35, "rsi_overbought": 65},
+    ),
+    "CCI": (
+        CCIBreakoutStrategy,
+        {"cci_buy_threshold": 100, "cci_sell_threshold": -100, "atr_min_pct": 0.005},
+    ),
+    "VWAP": (
+        VWAPReversionStrategy,
+        {"vwap_atr_multiplier": 1.5, "rsi_oversold": 40, "rsi_overbought": 60},
+    ),
     "MA": (SimpleMACrossoverStrategy, {}),
     "Breakout": (BreakoutRetestStrategy, {}),
     "Pullback": (TrendPullbackStrategy, {}),
@@ -172,7 +186,14 @@ async def phase1_individual(reader, symbol, tf, start, end) -> list[Result]:
                     label = f"{name} [{short_tag},{tf_tag},{exit_tag}]"
 
                     r = await run_backtest(
-                        reader, [cls], [cfg], symbol, tf, start, end, label,
+                        reader,
+                        [cls],
+                        [cfg],
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
                         allow_short=allow_short,
                         trend_filter=trend_filter,
                         use_executor_exit=use_exec_exit,
@@ -183,7 +204,9 @@ async def phase1_individual(reader, symbol, tf, start, end) -> list[Result]:
     return results
 
 
-async def phase2_exit_sweep(reader, symbol, tf, start, end, top_strategies: list[tuple]) -> list[Result]:
+async def phase2_exit_sweep(
+    reader, symbol, tf, start, end, top_strategies: list[tuple]
+) -> list[Result]:
     """Sweep exit parameters on the best individual strategies."""
     print(f"\n{'=' * 105}")
     print(f"  PHASE 2: Exit Parameter Sweep — {symbol} {tf} ({start} to {end})")
@@ -208,7 +231,14 @@ async def phase2_exit_sweep(reader, symbol, tf, start, end, top_strategies: list
                     label = f"{name}[{short_tag},{tf_tag}] SL{sl}/TP{tp}/T{trail_act},{trail_off}"
 
                     r = await run_backtest(
-                        reader, [cls], [cfg], symbol, tf, start, end, label,
+                        reader,
+                        [cls],
+                        [cfg],
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
                         allow_short=allow_short,
                         trend_filter=trend_filter,
                         use_executor_exit=True,
@@ -222,7 +252,7 @@ async def phase2_exit_sweep(reader, symbol, tf, start, end, top_strategies: list
                         print(r.summary_line())
 
     # Print top 20 by Sharpe
-    print(f"\n--- Top 20 by Sharpe ---")
+    print("\n--- Top 20 by Sharpe ---")
     print(HEADER)
     print(SEP)
     for r in sorted(results, key=lambda x: x.sharpe if x.trades > 3 else -999, reverse=True)[:20]:
@@ -232,7 +262,11 @@ async def phase2_exit_sweep(reader, symbol, tf, start, end, top_strategies: list
 
 
 async def phase3_combinations(
-    reader, symbol, tf, start, end,
+    reader,
+    symbol,
+    tf,
+    start,
+    end,
     best_exit: dict,
     top_strats: list[tuple],
 ) -> list[Result]:
@@ -257,7 +291,14 @@ async def phase3_combinations(
                 label = f"{names} [{short_tag},agree={min_agree}]"
 
                 r = await run_backtest(
-                    reader, classes, configs, symbol, tf, start, end, label,
+                    reader,
+                    classes,
+                    configs,
+                    symbol,
+                    tf,
+                    start,
+                    end,
+                    label,
                     allow_short=allow_short,
                     trend_filter=True,
                     min_agreement=min_agree,
@@ -279,7 +320,14 @@ async def phase3_combinations(
                     label = f"{names} [{short_tag},agree={min_agree}]"
 
                     r = await run_backtest(
-                        reader, classes, configs, symbol, tf, start, end, label,
+                        reader,
+                        classes,
+                        configs,
+                        symbol,
+                        tf,
+                        start,
+                        end,
+                        label,
                         allow_short=allow_short,
                         trend_filter=True,
                         min_agreement=min_agree,
@@ -290,7 +338,7 @@ async def phase3_combinations(
                         print(r.summary_line())
 
     # Print top 20
-    print(f"\n--- Top 20 Combos by Sharpe ---")
+    print("\n--- Top 20 Combos by Sharpe ---")
     print(HEADER)
     print(SEP)
     for r in sorted(results, key=lambda x: x.sharpe if x.trades > 3 else -999, reverse=True)[:20]:
@@ -300,7 +348,11 @@ async def phase3_combinations(
 
 
 async def phase4_aggregator_tuning(
-    reader, symbol, tf, start, end,
+    reader,
+    symbol,
+    tf,
+    start,
+    end,
     best_combo: tuple,  # (classes, configs, allow_short)
     best_exit: dict,
 ) -> list[Result]:
@@ -323,7 +375,14 @@ async def phase4_aggregator_tuning(
             for mc in min_confidences:
                 label = f"buy={bt}/sell={st}/mc={mc}"
                 r = await run_backtest(
-                    reader, classes, configs, symbol, tf, start, end, label,
+                    reader,
+                    classes,
+                    configs,
+                    symbol,
+                    tf,
+                    start,
+                    end,
+                    label,
                     allow_short=allow_short,
                     trend_filter=True,
                     buy_threshold=bt,
@@ -335,7 +394,7 @@ async def phase4_aggregator_tuning(
                 if r.sharpe > -0.5 or r.profitable:
                     print(r.summary_line())
 
-    print(f"\n--- Top 20 Aggregator Configs ---")
+    print("\n--- Top 20 Aggregator Configs ---")
     print(HEADER)
     print(SEP)
     for r in sorted(results, key=lambda x: x.sharpe if x.trades > 3 else -999, reverse=True)[:20]:
@@ -407,7 +466,11 @@ async def main():
 
             # ── PHASE 2: Exit parameter sweep on top 3 strategies ──
             p2_results = await phase2_exit_sweep(
-                reader, symbol, timeframe, train_start, train_end,
+                reader,
+                symbol,
+                timeframe,
+                train_start,
+                train_end,
                 top_for_exit[:3],
             )
 
@@ -425,6 +488,7 @@ async def main():
 
                 # Extract numeric values
                 import re
+
                 sl_match = re.search(r"SL([\d.]+)", exit_part)
                 tp_match = re.search(r"TP([\d.]+)", exit_part)
                 trail_match = re.search(r"T([\d.]+),([\d.]+)", exit_part)
@@ -438,8 +502,10 @@ async def main():
                 }
             else:
                 best_exit = {
-                    "sl_atr": 2.0, "tp_atr": 4.5,
-                    "trailing_activate": 1.5, "trailing_offset": 1.0,
+                    "sl_atr": 2.0,
+                    "tp_atr": 4.5,
+                    "trailing_activate": 1.5,
+                    "trailing_offset": 1.0,
                     "use_executor_exit": True,
                 }
 
@@ -447,8 +513,13 @@ async def main():
             # Use top 5 unique strategies for combos
             combo_strats = [(n, c, cfg) for n, c, cfg, _, _ in top_for_exit[:5]]
             p3_results = await phase3_combinations(
-                reader, symbol, timeframe, train_start, train_end,
-                best_exit, combo_strats,
+                reader,
+                symbol,
+                timeframe,
+                train_start,
+                train_end,
+                best_exit,
+                combo_strats,
             )
 
             # Find best combo
@@ -471,7 +542,11 @@ async def main():
 
                 # ── PHASE 4: Aggregator tuning ──
                 p4_results = await phase4_aggregator_tuning(
-                    reader, symbol, timeframe, train_start, train_end,
+                    reader,
+                    symbol,
+                    timeframe,
+                    train_start,
+                    train_end,
                     (classes, configs, allow_short),
                     best_exit,
                 )
@@ -488,9 +563,10 @@ async def main():
             if best_p3:
                 all_results += p4_results
 
-            top_all = sorted(
+            sorted(
                 [r for r in all_results if r.trades >= 5],
-                key=lambda x: x.sharpe, reverse=True,
+                key=lambda x: x.sharpe,
+                reverse=True,
             )[:15]
 
             # For validation, re-run top configs
@@ -507,15 +583,18 @@ async def main():
                 best_overall = viable[0] if viable else None
 
             if best_overall:
-                print(f"\n  Training best: {best_overall.label} → Sharpe={best_overall.sharpe:+.2f}, Return={best_overall.return_pct:+.2f}%")
+                print(
+                    f"\n  Training best: {best_overall.label} → Sharpe={best_overall.sharpe:+.2f}, Return={best_overall.return_pct:+.2f}%"
+                )
 
             # Also run all individual strategies on validation for comparison
-            print(f"\n  Running all individuals on validation period...")
+            print("\n  Running all individuals on validation period...")
             val_results = await phase1_individual(reader, symbol, timeframe, val_start, val_end)
 
             val_viable = sorted(
                 [r for r in val_results if r.trades >= 3],
-                key=lambda x: x.sharpe, reverse=True,
+                key=lambda x: x.sharpe,
+                reverse=True,
             )
 
             print(f"\n{'=' * 105}")
@@ -527,7 +606,11 @@ async def main():
                 print(r.summary_line())
 
             # Final summary of profitable configs
-            all_profitable = [r for r in p1_results + p2_results + p3_results + (p4_results if best_p3 else []) if r.profitable]
+            all_profitable = [
+                r
+                for r in p1_results + p2_results + p3_results + (p4_results if best_p3 else [])
+                if r.profitable
+            ]
             if all_profitable:
                 print(f"\n{'=' * 105}")
                 print(f"  ALL PROFITABLE CONFIGS FOUND ({len(all_profitable)})")
@@ -537,8 +620,10 @@ async def main():
                 for r in sorted(all_profitable, key=lambda x: x.sharpe, reverse=True):
                     print(r.summary_line())
             else:
-                print(f"\n  ⚠ No profitable configurations found in training period.")
-                print("  Consider: different timeframes, different symbols, or strategy parameter tuning.")
+                print("\n  ⚠ No profitable configurations found in training period.")
+                print(
+                    "  Consider: different timeframes, different symbols, or strategy parameter tuning."
+                )
 
     finally:
         await close_pool()
