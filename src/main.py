@@ -647,6 +647,7 @@ def _wire_optional_strategy_dependencies(
     xai_client: XAIClient | None,
     event_log: EventLog | None = None,
     ai_model: str = "",
+    telegram: TelegramNotifier | None = None,
 ) -> None:
     """Attach optional external dependencies to configured strategies.
 
@@ -666,9 +667,18 @@ def _wire_optional_strategy_dependencies(
         }
         await event_log.log("sentiment_score", enriched_payload)
 
+    async def _send_degradation_alert(message: str) -> None:
+        if telegram is not None and telegram.is_configured():
+            await telegram.send_alert(
+                f"⚠️ <b>SENTIMENT DEGRADED</b>\n\n{message}",
+                parse_mode="HTML",
+                respect_rate_limit=True,
+            )
+
     sentiment_scorer = SentimentScorer(
         xai_client=xai_client,
         observation_recorder=_record_sentiment_observation if event_log is not None else None,
+        degradation_alert=_send_degradation_alert if telegram is not None else None,
     )
     has_sentiment_strategy = False
     has_macro_strategy = False
@@ -975,6 +985,7 @@ async def run() -> None:
         xai_client,
         event_log=event_log,
         ai_model=settings.ai.model,
+        telegram=telegram_notifier,
     )
 
     stop_event = asyncio.Event()

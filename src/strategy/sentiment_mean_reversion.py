@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
 
 from src.strategy.base import BaseStrategy
@@ -27,12 +28,27 @@ class SentimentScorer:
         xai_client: object | None = None,
         cache_ttl_seconds: float = 300.0,
         observation_recorder: Callable[[dict[str, object]], Awaitable[None]] | None = None,
+        degradation_alert: Callable[[str], Awaitable[None]] | None = None,
+        degradation_window: int = 10,
+        degradation_error_pct: float = 0.5,
+        degradation_stuck_pct: float = 0.8,
+        degradation_cooldown: float = 3600.0,
     ) -> None:
         self._xai_client = xai_client
         self._cache_ttl = cache_ttl_seconds
         self._cache: dict[str, tuple[float, float]] = {}  # symbol -> (timestamp, score)
         self._observation_recorder = observation_recorder
         self._logger = get_logger(self.__class__.__name__)
+
+        # Degradation detection
+        self._degradation_alert = degradation_alert
+        self._degradation_window = degradation_window
+        self._degradation_error_pct = degradation_error_pct
+        self._degradation_stuck_pct = degradation_stuck_pct
+        self._degradation_cooldown = degradation_cooldown
+        self._recent_sources: deque[str] = deque(maxlen=degradation_window)
+        self._recent_scores: deque[float] = deque(maxlen=degradation_window)
+        self._last_alert_time: float = 0.0
 
     async def get_score(self, symbol: str) -> float:
         """Get sentiment score for a symbol.
@@ -76,6 +92,11 @@ class SentimentScorer:
         source: str,
         error: str | None = None,
     ) -> None:
+        # Track for degradation detection regardless of recorder
+        self._recent_sources.append(source)
+        self._recent_scores.append(score)
+        await self._check_degradation()
+
         if self._observation_recorder is None:
             return
         payload: dict[str, object] = {
@@ -89,6 +110,45 @@ class SentimentScorer:
             await self._observation_recorder(payload)
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Sentiment observation recorder failed for %s: %s", symbol, exc)
+
+    async def _check_degradation(self) -> None:
+        """Check recent observations for degradation patterns and alert once per cooldown."""
+        if self._degradation_alert is None:
+            return
+        if len(self._recent_sources) < self._degradation_window:
+            return
+
+        now = time.monotonic()
+        if now - self._last_alert_time < self._degradation_cooldown:
+            return
+
+        n = len(self._recent_sources)
+        issues: list[str] = []
+
+        # High error/fallback rate
+        error_count = sum(1 for s in self._recent_sources if s != "xai_live")
+        error_pct = error_count / n
+        if error_pct >= self._degradation_error_pct:
+            live_pct = (1 - error_pct) * 100
+            issues.append(f"Only {live_pct:.0f}% live responses (last {n} obs)")
+
+        # Scores stuck at 50 (fallback neutral)
+        stuck_count = sum(1 for s in self._recent_scores if s == 50.0)
+        stuck_pct = stuck_count / n
+        if stuck_pct >= self._degradation_stuck_pct:
+            issues.append(f"{stuck_pct * 100:.0f}% of scores are 50.0 (likely fallback)")
+
+        if not issues:
+            return
+
+        self._last_alert_time = now
+        detail = "; ".join(issues)
+        message = f"Grok sentiment degraded: {detail}"
+        self._logger.warning(message)
+        try:
+            await self._degradation_alert(message)
+        except Exception as exc:  # noqa: BLE001
+            self._logger.warning("Degradation alert failed: %s", exc)
 
     async def _query_llm(self, symbol: str) -> float:
         """Query xAI/Grok for sentiment analysis."""

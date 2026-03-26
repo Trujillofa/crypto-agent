@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from src.strategy.sentiment_mean_reversion import (
@@ -262,3 +264,149 @@ class TestSentimentScorer:
                 "error": "API timeout",
             }
         ]
+
+
+class TestDegradationAlert:
+    @pytest.mark.asyncio
+    async def test_alert_fires_when_error_rate_exceeds_threshold(self):
+        """Degradation alert fires when >50% of recent obs are non-live."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=None,
+            degradation_alert=on_alert,
+            degradation_window=4,
+            degradation_error_pct=0.5,
+        )
+        # 4 neutral fallbacks → 100% non-live → triggers alert
+        for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT"]:
+            await scorer.get_score(sym)
+
+        assert len(alerts) == 1
+        assert "live" in alerts[0].lower() or "degraded" in alerts[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_alert_fires_when_scores_stuck_at_50(self):
+        """Degradation alert fires when >=80% of scores are exactly 50.0."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        class FlakyClient:
+            def __init__(self) -> None:
+                self.call_count = 0
+
+            async def chat(self, messages):
+                self.call_count += 1
+                raise RuntimeError("timeout")
+
+        scorer = SentimentScorer(
+            xai_client=FlakyClient(),
+            degradation_alert=on_alert,
+            degradation_window=5,
+            degradation_stuck_pct=0.8,
+            cache_ttl_seconds=0,  # Disable cache to get fresh obs each time
+        )
+        for i in range(5):
+            await scorer.get_score(f"SYM{i}")
+
+        assert len(alerts) == 1
+        assert "50.0" in alerts[0]
+
+    @pytest.mark.asyncio
+    async def test_no_alert_when_healthy(self):
+        """No alert when all observations are live with varied scores."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        class HealthyClient:
+            def __init__(self) -> None:
+                self._scores = iter([65, 70, 55, 80, 60])
+
+            async def chat(self, messages):
+                return f'{{"score": {next(self._scores)}, "reason": "ok"}}'
+
+        scorer = SentimentScorer(
+            xai_client=HealthyClient(),
+            degradation_alert=on_alert,
+            degradation_window=5,
+            cache_ttl_seconds=0,
+        )
+        for i in range(5):
+            await scorer.get_score(f"SYM{i}")
+
+        assert alerts == []
+
+    @pytest.mark.asyncio
+    async def test_cooldown_prevents_repeated_alerts(self):
+        """Alert fires once, then cooldown prevents another."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=None,
+            degradation_alert=on_alert,
+            degradation_window=3,
+            degradation_error_pct=0.5,
+            degradation_cooldown=3600.0,
+        )
+        # First batch → triggers alert
+        for sym in ["A", "B", "C"]:
+            await scorer.get_score(sym)
+        assert len(alerts) == 1
+
+        # More obs → cooldown blocks second alert
+        for sym in ["D", "E", "F"]:
+            await scorer.get_score(sym)
+        assert len(alerts) == 1
+
+    @pytest.mark.asyncio
+    async def test_alert_fires_again_after_cooldown(self):
+        """After cooldown expires, alert can fire again."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=None,
+            degradation_alert=on_alert,
+            degradation_window=3,
+            degradation_error_pct=0.5,
+            degradation_cooldown=3600.0,
+        )
+        for sym in ["A", "B", "C"]:
+            await scorer.get_score(sym)
+        assert len(alerts) == 1
+
+        # Simulate cooldown expired
+        scorer._last_alert_time = time.monotonic() - 3601
+        await scorer.get_score("D")
+        assert len(alerts) == 2
+
+    @pytest.mark.asyncio
+    async def test_no_alert_below_window_size(self):
+        """No alert until we have enough observations to fill the window."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=None,
+            degradation_alert=on_alert,
+            degradation_window=10,
+            degradation_error_pct=0.5,
+        )
+        # Only 3 obs, window is 10 → no alert yet
+        for sym in ["A", "B", "C"]:
+            await scorer.get_score(sym)
+        assert alerts == []
