@@ -41,7 +41,7 @@ Co-Authored-By: <Agent Name> <agent-email>
 
 Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
 
-Scopes: `ingest`, `features`, `execution`, `risk`, `strategy`, `notifications`, `config`, `tests`
+Scopes: `ingest`, `features`, `execution`, `risk`, `strategy`, `notifications`, `config`, `tests`, `backtest`, `portfolio`, `overseer`, `db`, `core`
 
 Agent identities for Co-Authored-By:
 - Claude Code: `Claude Opus 4.6 <noreply@anthropic.com>`
@@ -61,15 +61,23 @@ git add <specific-files>  # Stage only your changes
 
 | Module | Purpose | Key files |
 |--------|---------|-----------|
-| `src/ingest/` | Binance WebSocket data ingestion, DB writes | `binance.py`, `db.py`, `models.py` |
-| `src/features/` | Technical indicator computation | `computer.py`, `technical.py`, `writer.py` |
-| `src/execution/` | Order execution (paper + live) | `executor.py`, `binance_client.py` |
-| `src/risk/` | Risk management, circuit breakers | `manager.py` |
-| `src/strategy/` | Strategy engine, signal generation | `engine.py`, `base.py`, `signals.py` |
+| `src/ingest/` | Binance data ingestion (REST + WebSocket), DB writes | `binance.py`, `websocket.py`, `db.py`, `models.py` |
+| `src/features/` | Technical indicator computation & storage | `computer.py`, `technical.py`, `writer.py`, `reader.py` |
+| `src/execution/` | Order execution (paper, spot, futures) | `executor.py`, `binance_client.py`, `futures_executor.py`, `futures_client.py`, `paper_executor.py`, `guards.py`, `staged.py` |
+| `src/risk/` | Risk management, circuit breakers, guard protocol | `manager.py`, `guards.py` |
+| `src/strategy/` | Strategy engine, 20+ strategy implementations | `engine.py`, `base.py`, `signals.py`, `aggregator.py`, `lifecycle.py` |
 | `src/notifications/` | Telegram alerts | `telegram.py` |
-| `src/utils/` | Shared utilities (logging, rate limiting) | `logger.py`, `rate_limiter.py` |
+| `src/portfolio/` | Position tracking, PnL calculation | `manager.py`, `models.py` |
+| `src/overseer/` | AI-powered strategy oversight (LLM integration) | `agent.py`, `xai.py`, `prompts.py` |
+| `src/backtest/` | Backtesting engine & experiment automation | `engine.py`, `experiment_autopilot.py` |
+| `src/db/` | Async TimescaleDB connection pool | `pool.py` |
+| `src/core/` | Event logging & audit trail | `event_log.py` |
+| `src/rl/` | Reinforcement learning agent (research) | `agent.py` |
+| `src/utils/` | Logging, rate limiting, diagnostics | `logger.py`, `rate_limiter.py`, `config_doctor.py`, `production_drift_sentinel.py` |
 | `config/` | Settings, risk params, infra config | `settings.yaml`, `risk.yaml` |
-| `tests/` | Pytest suite (asyncio auto mode) | `conftest.py`, `test_*.py` |
+| `tests/` | Pytest suite (asyncio auto mode, 60 test files) | `conftest.py`, `test_*.py` |
+| `scripts/` | CLI tools, backtests, research, diagnostics | `run_backtest.py`, `smoke_test.py`, `migrate.py`, etc. |
+| `migrations/` | TimescaleDB schema migrations | `001_initial_schema.sql` through `007_add_regime_features.sql` |
 
 ## 5-Step Engineering Framework (MANDATORY)
 
@@ -165,6 +173,15 @@ Automate only after the process is refined and proven:
 - Keep changes **minimal and surgical**. Do not refactor unrelated code.
 - No unused imports, no dead code, no commented-out blocks.
 - Use `snake_case` for functions/variables, `PascalCase` for classes.
+- Line length: 100 characters (configured in `pyproject.toml`).
+
+### Linting & Formatting
+
+- **Formatter**: `black` (line-length 100, target Python 3.11+)
+- **Linter**: `ruff` (pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade)
+- **Type checker**: `mypy` (permissive mode, `ignore_missing_imports = true`)
+- **Pre-commit hooks**: ruff (with auto-fix), ruff-format, trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-added-large-files, debug-statements, check-merge-conflict
+- CI runs `black --check` and `ruff check` on every push/PR.
 
 ## Safety Rules
 
@@ -172,6 +189,18 @@ Automate only after the process is refined and proven:
 - **Risk checks are mandatory** before any order placement. Use `RiskManager`.
 - **Never commit secrets.** `.env` is gitignored. Use `.env.example` for templates.
 - **Never bypass risk limits** without explicit human approval and config change.
+
+## CI/CD Pipeline
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on push to `main`/`develop` and on PRs to `main`:
+
+| Job | What it does |
+|-----|-------------|
+| **test** | `pytest tests/ -v --tb=short` on Python 3.11 + 3.12 matrix |
+| **lint** | `black --check` + `ruff check` on Python 3.12 |
+| **docker** | Build image and verify imports |
+
+Smoke test runs on push (not PRs) using Binance API secrets.
 
 ## How to Run
 
@@ -183,8 +212,15 @@ docker-compose up --build
 # Tests
 pytest
 
+# Linting
+black --check src/ tests/
+ruff check src/ tests/
+
 # Entrypoint
 python -m src.main
+
+# Database migrations
+python scripts/migrate.py
 ```
 
 ## Test Writing Patterns
@@ -283,12 +319,14 @@ pytest -v                       # Verbose output
 
 ### Add a New Strategy
 
-1. Create `src/strategy/strategies/my_strategy.py`
-2. Inherit from `BaseStrategy`
+1. Create `src/strategy/my_strategy.py` (strategies live directly in `src/strategy/`)
+2. Inherit from `BaseStrategy` (from `src/strategy/base.py`)
 3. Implement `evaluate()` returning `Signal | None`
 4. Export in `src/strategy/__init__.py`
 5. Add to `config/settings.yaml` under `strategy.strategies`
 6. Write tests in `tests/test_my_strategy.py`
+
+Existing strategies for reference: `simple_ma.py`, `rsi_reversal.py`, `bollinger_strategy.py`, `macd_strategy.py`, `momentum_strategy.py`, `cci_strategy.py`, `vwap_strategy.py`, `mean_reversion.py`, `trend_pullback.py`, `breakout_retest.py`, `sentiment_mean_reversion.py`, `macro_volatility.py`. Multi-timeframe: `mtf_template.py`, `mtf_breakout.py`, `mtf_continuation.py`, `regime_router.py`.
 
 ### Add Configuration Option
 
@@ -352,30 +390,56 @@ ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20
 | **Entry Points** | |
 | Main app | `src/main.py` |
 | CLI scripts | `scripts/run_backtest.py`, `scripts/smoke_test.py` |
+| DB migrations | `scripts/migrate.py` |
 | **Configuration** | |
 | Trading settings | `config/settings.yaml` |
 | Risk parameters | `config/risk.yaml` |
+| Per-agent configs | `config/settings.agent2.yaml`, `config/settings.btc-4h.yaml`, etc. |
 | Environment template | `.env.example` |
 | **Core Modules** | |
 | Data ingestion | `src/ingest/binance.py`, `src/ingest/websocket.py` |
-| Database | `src/ingest/db.py`, `src/db/pool.py` |
-| Indicators | `src/features/technical.py`, `src/features/computer.py` |
-| Execution | `src/execution/executor.py`, `src/execution/binance_client.py` |
-| Futures | `src/execution/futures_executor.py`, `src/execution/futures_client.py` |
-| Risk management | `src/risk/manager.py` |
-| Strategies | `src/strategy/engine.py`, `src/strategy/aggregator.py` |
-| Strategy implementations | `src/strategy/simple_ma.py`, `src/strategy/rsi_reversal.py`, etc. |
+| Database pool | `src/db/pool.py` |
+| OHLCV persistence | `src/ingest/db.py` |
+| Data models | `src/ingest/models.py` |
+| Indicators (compute) | `src/features/computer.py`, `src/features/technical.py` |
+| Indicators (I/O) | `src/features/reader.py`, `src/features/writer.py` |
+| Spot execution | `src/execution/executor.py`, `src/execution/binance_client.py` |
+| Futures execution | `src/execution/futures_executor.py`, `src/execution/futures_client.py` |
+| Paper execution | `src/execution/paper_executor.py` |
+| Execution guards | `src/execution/guards.py`, `src/execution/staged.py`, `src/execution/staged_orders.py` |
+| Retry & circuit breaker | `src/execution/retry.py` |
+| Risk management | `src/risk/manager.py`, `src/risk/guards.py` |
+| Strategy engine | `src/strategy/engine.py`, `src/strategy/aggregator.py` |
+| Strategy base & signals | `src/strategy/base.py`, `src/strategy/signals.py` |
+| Trade lifecycle | `src/strategy/lifecycle.py` |
+| Strategy implementations | `src/strategy/simple_ma.py`, `src/strategy/rsi_reversal.py`, + 14 more |
 | Notifications | `src/notifications/telegram.py` |
-| Portfolio | `src/portfolio/manager.py` |
-| Backtesting | `src/backtest/engine.py` |
-| AI/Overseer | `src/overseer/agent.py` |
+| Portfolio | `src/portfolio/manager.py`, `src/portfolio/models.py` |
+| Backtesting | `src/backtest/engine.py`, `src/backtest/experiment_autopilot.py` |
+| AI/Overseer | `src/overseer/agent.py`, `src/overseer/xai.py`, `src/overseer/prompts.py` |
+| Event logging | `src/core/event_log.py` |
+| RL agent (research) | `src/rl/agent.py` |
+| **Utilities** | |
+| Logging | `src/utils/logger.py` |
+| Rate limiting | `src/utils/rate_limiter.py` |
+| Config diagnostics | `src/utils/config_doctor.py` |
+| Production monitoring | `src/utils/production_drift_sentinel.py` |
 | **Testing** | |
 | Fixtures | `tests/conftest.py` |
-| Test utilities | `tests/conftest.py` |
+| Test files | `tests/test_*.py` (60 files) |
 | **Infrastructure** | |
-| Docker Compose | `docker-compose.yml`, `docker-compose.prod.yml` |
-| Prometheus config | `config/prometheus.yml` |
-| Grafana dashboards | `config/grafana/` |
+| Docker Compose (dev) | `docker-compose.yml` |
+| Docker Compose (prod) | `docker-compose.prod.yml` |
+| Dockerfile (dev) | `Dockerfile` |
+| Dockerfile (prod) | `Dockerfile.prod` |
+| CI/CD | `.github/workflows/ci.yml` |
+| Pre-commit hooks | `.pre-commit-config.yaml` |
+| Prometheus config | `config/prometheus.yml`, `config/prometheus-alerts.yml` |
+| Grafana dashboards | `config/grafana/dashboards/` |
+| Nginx | `config/nginx/nginx.conf` |
+| DB migrations | `migrations/001_*.sql` through `migrations/007_*.sql` |
+| **GitHub Agents** | |
+| Copilot agent definitions | `.github/agents/*.agent.md` (7 specialized agents) |
 
 ## Trading Modes Reference
 
@@ -383,7 +447,38 @@ ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20
 |------|--------|------|
 | **Paper** | `enabled: false` | No real orders |
 | **Testnet** | `enabled: true, test_mode: true` | Fake funds (demo.binance.com) |
-| **Live** | `enabled: true, test_mode: false` | Real money |
+| **Live Spot** | `enabled: true, test_mode: false` | Real money (spot) |
+| **Live Futures** | `futures.enabled: true, test_mode: false` | Real money (leveraged) |
+
+## Multi-Agent Architecture
+
+The system supports running multiple isolated trading agents simultaneously. Each agent has its own config file and runs as a separate Docker service:
+
+| Agent | Config | Description |
+|-------|--------|-------------|
+| `agent` | `config/settings.yaml` | Default agent |
+| `agent_2` | `config/settings.agent2.yaml` | Secondary agent |
+| `agent_btc` | `config/settings.btc-4h.yaml` | BTC 4h trading |
+| `agent_btc_mtf` | `config/settings.btc_1h_mtf.yaml` | BTC multi-timeframe |
+| `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
+| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Macro sentiment |
+| `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h MA |
+
+Agents are isolated via `AGENT_ID` environment variable. Database tables use `agent_id` columns for state separation (see `migrations/005_add_agent_isolation.sql`).
+
+## Database Migrations
+
+Schema lives in `migrations/` and is applied via `scripts/migrate.py`:
+
+| Migration | Purpose |
+|-----------|---------|
+| `001_initial_schema.sql` | OHLCV candles, trades tables |
+| `002_add_indicators_table.sql` | Technical indicators hypertable |
+| `003_add_portfolio_tables.sql` | Positions, portfolio tracking |
+| `004_add_strategy_lifecycle.sql` | Trade lifecycle tracking |
+| `005_add_agent_isolation.sql` | Multi-agent isolation columns |
+| `006_normalize_position_market_labels.sql` | Schema normalization |
+| `007_add_regime_features.sql` | Regime detection features |
 
 ## Quick Config Reference
 
@@ -410,9 +505,30 @@ loss_limits:
   max_drawdown_pct: 0.15       # 15% kill switch
 ```
 
+## Key Scripts Reference
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/run_backtest.py` | Run single backtest |
+| `scripts/run_full_backtest.py` | Full parameter backtest |
+| `scripts/run_monte_carlo.py` | Monte Carlo analysis |
+| `scripts/run_wfo.py` | Walk-forward optimization |
+| `scripts/smoke_test.py` | Quick connectivity check |
+| `scripts/migrate.py` | Apply database migrations |
+| `scripts/config_doctor.py` | Validate configuration |
+| `scripts/download_historical.py` | Download OHLCV from Binance |
+| `scripts/diagnose_signals.py` | Debug strategy signals |
+| `scripts/profit_report.py` | Generate PnL reports |
+| `scripts/production_drift_sentinel.py` | Monitor production agent |
+| `scripts/autoresearch.py` | Automated strategy research |
+| `scripts/backup_db.sh` | Database backup |
+
 ## Related Files
 
 - `AGENTS.md` — Full list of active agents and coordination details
 - `copilot-instructions.md` — GitHub Copilot-specific context
 - `codex-instructions.md` — OpenCode/Codex-specific context
 - `gemini-instructions.md` — Gemini CLI-specific context
+- `sisyphus-instructions.md` — Sisyphus agent-specific context
+- `docs/` — Extended documentation (trading execution, indicators, MTF guide, deployment reports)
+- `.github/agents/` — GitHub Copilot agent definitions (7 specialized agents)
