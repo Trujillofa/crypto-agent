@@ -139,6 +139,10 @@ async def main():
     print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")
     print(f"Final Equity: ${result.final_equity:.2f}")
     print(f"Sharpe Ratio: {result.sharpe_ratio:.2f}")
+    wins = [t.pnl for t in result.trades if t.pnl > 0]
+    losses = [abs(t.pnl) for t in result.trades if t.pnl <= 0]
+    pf = sum(wins) / sum(losses) if sum(losses) > 0 else float("inf")
+    print(f"Profit Factor: {pf:.2f}")
     print("=" * 40)
 
     if result.trades:

@@ -18,6 +18,8 @@ class MultiTimeframeRegimeRouter(BaseStrategy):
     This produces significantly more trade opportunities while maintaining quality.
     """
 
+    REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
+
     def __init__(self, config: Mapping[str, object] | None = None) -> None:
         super().__init__(config)
 
