@@ -160,14 +160,22 @@ class TelegramNotifier:
             self._logger.error("Failed to fetch Telegram updates: %s", exc)
             return []
 
-    async def send_kill_switch_alert(self, reason: str) -> bool:
+    async def send_kill_switch_alert(
+        self,
+        reason: str,
+        auto_reset_minutes: int = 0,
+    ) -> bool:
         """Send kill switch activation alert."""
         ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        if auto_reset_minutes > 0:
+            action = f"⏱ Auto-reset in {auto_reset_minutes} min (paper mode)"
+        else:
+            action = "⏱ All trading halted — manual /reset required"
         message = (
             "🚨 <b>KILL SWITCH ACTIVATED</b>\n"
             "\n"
             f"🔒 Reason: {reason}\n"
-            f"⏱ All trading halted — manual /reset required\n"
+            f"{action}\n"
             f"🕐 {ts}"
         )
         return await self.send_alert(message, AlertLevel.CRITICAL)

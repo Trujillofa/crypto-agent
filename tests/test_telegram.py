@@ -253,7 +253,18 @@ class TestSpecializedAlerts:
             assert "KILL SWITCH ACTIVATED" in args[0]
             assert "Test reason" in args[0]
             assert "🚨" in args[0]
+            assert "manual /reset required" in args[0]
             assert args[1] == AlertLevel.CRITICAL
+
+    @pytest.mark.asyncio
+    async def test_send_kill_switch_alert_paper_auto_reset(self, notifier: TelegramNotifier) -> None:
+        """Test kill switch alert shows auto-reset in paper mode."""
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
+            await notifier.send_kill_switch_alert("Test reason", auto_reset_minutes=60)
+            args, _kwargs = mock_send.call_args
+            assert "Auto-reset in 60 min" in args[0]
+            assert "paper mode" in args[0]
+            assert "manual /reset" not in args[0]
 
     @pytest.mark.asyncio
     async def test_send_circuit_breaker_alert(self, notifier: TelegramNotifier) -> None:

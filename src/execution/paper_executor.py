@@ -944,7 +944,7 @@ class PaperExecutor:
         self._trade_count += 1
 
         # Record in risk manager
-        self._risk_manager.record_trade(signal.symbol, net_pnl, self._balance)
+        self._risk_manager.record_trade(signal.symbol, net_pnl, self._portfolio_value())
         self._risk_manager.register_close_position(pos_key)
 
         # Record in portfolio DB for overseer visibility

@@ -505,7 +505,14 @@ class RiskManager:
                 notification_type, details = self._pending_notifications.get_nowait()
 
                 if notification_type == "kill_switch":
-                    await self._notifier.send_kill_switch_alert(details)
+                    auto_reset = (
+                        self._config.kill_switch.auto_reset_minutes
+                        if self._paper_mode
+                        else 0
+                    )
+                    await self._notifier.send_kill_switch_alert(
+                        details, auto_reset_minutes=auto_reset
+                    )
                 elif notification_type == "circuit_breaker":
                     await self._notifier.send_circuit_breaker_alert(details)
 
