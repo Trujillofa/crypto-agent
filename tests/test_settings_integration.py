@@ -115,7 +115,7 @@ def test_replacement_config_resolves_trend_pullback():
     assert aggregator_config["buy_threshold"] == 0.45
 
 
-def test_sol_sparse_config_disabled_with_simple_ma():
+def test_sol_sparse_config_trend_pullback():
     settings = load_settings(Path("config/settings.sol_trend_pullback_sparse.yaml"))
     strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
         settings.strategy
@@ -124,6 +124,7 @@ def test_sol_sparse_config_disabled_with_simple_ma():
     assert strategy_classes == [TrendPullbackStrategy]
     assert len(strategy_configs) == 1
     assert settings.trading_execution.enabled is True
+    assert settings.futures.enabled is True
     assert aggregator_config["buy_threshold"] == 0.45
 
 
