@@ -18,9 +18,9 @@ database:
   password: ""
 
 telegram:
-  enabled: false
-  bot_token: ""
-  chat_id: ""
+  enabled: true
+  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
+  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
   rate_limit_seconds: 5
   allowed_updates:
     - message
