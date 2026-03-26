@@ -1,0 +1,6 @@
+# Relaxed aggregator - easier signal generation
+strategy:
+  aggregator:
+    min_agreement: 1
+    buy_threshold: 0.5
+    sell_threshold: -0.5

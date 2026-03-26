@@ -1,0 +1,6 @@
+# Stricter aggregator - require more strategy agreement
+strategy:
+  aggregator:
+    min_agreement: 2
+    buy_threshold: 0.8
+    sell_threshold: -0.8

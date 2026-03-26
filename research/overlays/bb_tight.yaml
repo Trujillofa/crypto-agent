@@ -1,0 +1,11 @@
+# Tighter BB distance - require closer to band for entry
+strategy:
+  strategies:
+    - name: sentiment_mean_reversion
+      config:
+        rsi_oversold: 35.0
+        rsi_overbought: 65.0
+        bb_distance_threshold: 0.003
+        sentiment_gate_threshold: 35.0
+        sentiment_panic_threshold: 20.0
+        sentiment_boost_threshold: 65.0

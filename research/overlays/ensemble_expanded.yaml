@@ -1,0 +1,25 @@
+# Expanded ensemble with complementary strategies
+strategy:
+  strategies:
+    - name: sentiment_mean_reversion
+      config:
+        rsi_oversold: 35.0
+        rsi_overbought: 65.0
+        bb_distance_threshold: 0.005
+        sentiment_gate_threshold: 35.0
+        sentiment_panic_threshold: 20.0
+        sentiment_boost_threshold: 65.0
+    - name: vwap_reversion
+      config:
+        vwap_atr_multiplier: 1.5
+        rsi_oversold: 40
+        rsi_overbought: 60
+    - name: bollinger_bounce
+      config:
+        band_distance_threshold: 0.003
+        rsi_oversold: 35
+        rsi_overbought: 65
+  aggregator:
+    min_agreement: 2
+    buy_threshold: 0.6
+    sell_threshold: -0.6
