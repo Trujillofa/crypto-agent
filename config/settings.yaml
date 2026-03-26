@@ -26,7 +26,7 @@ telegram:
     - message
 
 ai:
-  enabled: true
+  enabled: false
   provider: xai
   model: grok-4-1-fast-reasoning
   polling_interval: 1.0

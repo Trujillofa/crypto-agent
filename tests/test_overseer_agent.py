@@ -108,7 +108,7 @@ class TestOverseerAgent:
         timestamp = datetime(2026, 3, 4, 15, 25, tzinfo=UTC)
         overseer._portfolio_manager.get_portfolio_summary.return_value.last_trade_time = timestamp
         result = await overseer._cmd_status()
-        assert "Agent Status" in result
+        assert "default" in result
         assert "PAPER" in result
         assert "Kill Switch: OFF" in result
         assert "Positions: 2 open" in result
@@ -171,7 +171,7 @@ class TestOverseerAgent:
         mock_telegram.send_alert.assert_called_once()
         call_args = mock_telegram.send_alert.call_args
         assert call_args[1]["chat_id"] == "123456"
-        assert "Agent Status" in call_args[0][0]
+        assert "default" in call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_handle_help_command(self, overseer, mock_telegram):

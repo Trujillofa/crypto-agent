@@ -822,6 +822,7 @@ async def run() -> None:
                 portfolio_manager=portfolio_manager,
                 risk_manager=risk_manager,
                 xai_client=xai_client,
+                agent_id=settings.agent_id,
             )
 
     # Initialize executors based on mode

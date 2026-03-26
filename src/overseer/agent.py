@@ -23,9 +23,11 @@ class OverseerAgent:
         risk_manager: RiskManager,
         xai_client: XAIClient | None,
         max_tracked_chats: int = 50,
+        agent_id: str = "default",
     ) -> None:
         self._logger = get_logger(self.__class__.__name__)
         self._mode = mode
+        self._agent_id = agent_id
         self._poll_interval_seconds = max(0.2, poll_interval_seconds)
         self._max_history = max(0, max_history)
         self._allowed_chat_ids = {chat_id for chat_id in allowed_chat_ids if chat_id}
@@ -149,7 +151,7 @@ class OverseerAgent:
         ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
         return (
-            f"{kill_emoji} <b>Agent Status</b> — {mode_label}\n"
+            f"{kill_emoji} <b>{self._agent_id}</b> — {mode_label}\n"
             f"\n"
             f"💼 Realized P&L: {pnl_sign}{summary.total_realized_pnl:.2f} USDT\n"
             f"📂 Positions: {summary.open_positions} open\n"
