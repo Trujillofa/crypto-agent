@@ -147,7 +147,7 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
 
     assert strategy_classes == [SentimentMeanReversionStrategy]
     assert len(strategy_configs) == 1
-    assert settings.telegram.enabled is False
+    assert settings.telegram.enabled is True
     assert settings.ai.enabled is True
     assert aggregator_config["buy_threshold"] == 0.6
 

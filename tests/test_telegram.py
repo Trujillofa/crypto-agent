@@ -257,7 +257,9 @@ class TestSpecializedAlerts:
             assert args[1] == AlertLevel.CRITICAL
 
     @pytest.mark.asyncio
-    async def test_send_kill_switch_alert_paper_auto_reset(self, notifier: TelegramNotifier) -> None:
+    async def test_send_kill_switch_alert_paper_auto_reset(
+        self, notifier: TelegramNotifier
+    ) -> None:
         """Test kill switch alert shows auto-reset in paper mode."""
         with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
             await notifier.send_kill_switch_alert("Test reason", auto_reset_minutes=60)

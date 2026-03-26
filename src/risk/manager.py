@@ -506,9 +506,7 @@ class RiskManager:
 
                 if notification_type == "kill_switch":
                     auto_reset = (
-                        self._config.kill_switch.auto_reset_minutes
-                        if self._paper_mode
-                        else 0
+                        self._config.kill_switch.auto_reset_minutes if self._paper_mode else 0
                     )
                     await self._notifier.send_kill_switch_alert(
                         details, auto_reset_minutes=auto_reset

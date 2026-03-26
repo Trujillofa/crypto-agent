@@ -221,7 +221,8 @@ def print_report(report: Report) -> None:
 def fetch_remote() -> list[str]:
     """Fetch event log from server via SSH + docker exec."""
     cmd = [
-        "ssh", "crypto-agent",
+        "ssh",
+        "crypto-agent",
         "docker exec crypto-agent-agent_sentiment_macro-1 "
         "cat /app/data/event_log_sentiment-macro-bot.jsonl",
     ]

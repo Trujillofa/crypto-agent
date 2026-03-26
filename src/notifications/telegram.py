@@ -171,13 +171,7 @@ class TelegramNotifier:
             action = f"⏱ Auto-reset in {auto_reset_minutes} min (paper mode)"
         else:
             action = "⏱ All trading halted — manual /reset required"
-        message = (
-            "🚨 <b>KILL SWITCH ACTIVATED</b>\n"
-            "\n"
-            f"🔒 Reason: {reason}\n"
-            f"{action}\n"
-            f"🕐 {ts}"
-        )
+        message = f"🚨 <b>KILL SWITCH ACTIVATED</b>\n\n🔒 Reason: {reason}\n{action}\n🕐 {ts}"
         return await self.send_alert(message, AlertLevel.CRITICAL)
 
     async def send_circuit_breaker_alert(
