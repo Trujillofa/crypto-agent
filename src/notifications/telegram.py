@@ -161,23 +161,15 @@ class TelegramNotifier:
             return []
 
     async def send_kill_switch_alert(self, reason: str) -> bool:
-        """Send kill switch activation alert.
-
-        Args:
-            reason: Reason for kill switch activation
-
-        Returns:
-            True if message was sent successfully
-        """
-        message = f"""
-<b>KILL SWITCH ACTIVATED</b>
-
-<b>Reason:</b> {reason}
-<b>Time:</b> {datetime.now(UTC).isoformat()}
-
-All trading has been halted. Manual intervention required.
-        """.strip()
-
+        """Send kill switch activation alert."""
+        ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        message = (
+            "🚨 <b>KILL SWITCH ACTIVATED</b>\n"
+            "\n"
+            f"🔒 Reason: {reason}\n"
+            f"⏱ All trading halted — manual /reset required\n"
+            f"🕐 {ts}"
+        )
         return await self.send_alert(message, AlertLevel.CRITICAL)
 
     async def send_circuit_breaker_alert(
@@ -185,25 +177,15 @@ All trading has been halted. Manual intervention required.
         breaker_name: str,
         details: str = "",
     ) -> bool:
-        """Send circuit breaker activation alert.
-
-        Args:
-            breaker_name: Name of the triggered circuit breaker
-            details: Additional details about the trigger
-
-        Returns:
-            True if message was sent successfully
-        """
-        details_line = f"\n<b>Details:</b> {details}" if details else ""
-        message = f"""
-<b>CIRCUIT BREAKER TRIGGERED</b>
-
-<b>Breaker:</b> {breaker_name}
-<b>Time:</b> {datetime.now(UTC).isoformat()}{details_line}
-
-Trading may be paused until conditions normalize.
-        """.strip()
-
+        """Send circuit breaker activation alert."""
+        ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        details_line = f"\n🔒 Details: {details}" if details else ""
+        message = (
+            f"⚠️ <b>CIRCUIT BREAKER</b> — {breaker_name}\n"
+            f"{details_line}\n"
+            f"⏱ Trading paused until conditions normalize\n"
+            f"🕐 {ts}"
+        )
         return await self.send_alert(message, AlertLevel.WARNING)
 
     async def send_trade_alert(
@@ -216,38 +198,51 @@ Trading may be paused until conditions normalize.
         market: str | None = None,
         stop_loss: float | None = None,
         take_profit: float | None = None,
+        entry_price: float | None = None,
+        close_reason: str | None = None,
+        balance: float | None = None,
     ) -> bool:
-        """Send trade execution alert.
+        """Send trade execution alert (entry or close).
 
-        Args:
-            symbol: Trading pair symbol
-            side: Trade side (BUY/SELL)
-            quantity: Trade quantity
-            price: Execution price
-            pnl: Profit/loss if closing position
-            stop_loss: Stop loss level (if available)
-            take_profit: Take profit level (if available)
-
-        Returns:
-            True if message was sent successfully
+        When pnl is provided, formats as a CLOSE message.
+        Otherwise, formats as an OPEN/entry message.
         """
-        pnl_text = ""
+        ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        market_label = self._format_market_label(market)
+        side_emoji = "🟢" if side == "BUY" else "🔴"
+        notional = quantity * price
+
         if pnl is not None:
-            pnl_emoji = "+" if pnl >= 0 else ""
-            pnl_text = f"\n<b>PnL:</b> {pnl_emoji}{pnl:.2f} USDT"
-        market_text = f"<b>Market:</b> {market}\n" if market else ""
-        sl_text = f"\n<b>SL:</b> {stop_loss:.4f}" if stop_loss is not None else ""
-        tp_text = f"\n<b>TP:</b> {take_profit:.4f}" if take_profit is not None else ""
+            # --- CLOSE message ---
+            reason_text = self._humanize_close_reason(close_reason) if close_reason else "Signal"
+            pnl_sign = "+" if pnl >= 0 else ""
+            pnl_emoji = "📈" if pnl >= 0 else "📉"
 
-        message = f"""
-<b>Trade Executed</b>
+            lines = [f"{side_emoji} <b>CLOSED {symbol}</b> — {market_label}\n"]
+            lines.append(f"🔒 Reason: {reason_text}")
+            if entry_price is not None:
+                lines.append(f"🎯 Entry:  {entry_price:.4f}")
+            lines.append(f"📤 Exit:   {price:.4f}")
+            lines.append(f"📦 Size:   {quantity:.6f} (${notional:.2f})")
+            lines.append(f"{pnl_emoji} P&L:    {pnl_sign}{pnl:.2f} USDT")
+            if balance is not None:
+                lines.append(f"💼 Balance: ${balance:,.2f}")
+            lines.append(f"🕐 {ts}")
+        else:
+            # --- OPEN/ENTRY message ---
+            action = "BUY" if side == "BUY" else "SELL"
+            lines = [f"{side_emoji} <b>{action} {symbol}</b> — {market_label}\n"]
+            lines.append(f"🎯 Entry: {price:.4f}")
+            if stop_loss is not None:
+                lines.append(f"🛑 SL:    {stop_loss:.4f}")
+            if take_profit is not None:
+                lines.append(f"✅ TP:    {take_profit:.4f}")
+            lines.append(f"📦 Size:  {quantity:.6f} (${notional:.2f})")
+            if balance is not None:
+                lines.append(f"💼 Balance: ${balance:,.2f}")
+            lines.append(f"🕐 {ts}")
 
-<b>Symbol:</b> {symbol}
-{market_text}<b>Side:</b> {side}
-<b>Quantity:</b> {quantity}
-<b>Price:</b> {price}{sl_text}{tp_text}{pnl_text}
-        """.strip()
-
+        message = "\n".join(lines)
         return await self.send_alert(message, AlertLevel.INFO)
 
     async def send_daily_summary(
@@ -257,39 +252,50 @@ Trading may be paused until conditions normalize.
         win_rate: float,
         summary_date: date,
     ) -> bool:
-        """Send daily trading summary.
+        """Send daily trading summary."""
+        pnl_sign = "+" if total_pnl >= 0 else ""
+        pnl_emoji = "📈" if total_pnl >= 0 else "📉"
 
-        Args:
-            total_pnl: Total profit/loss for the day
-            trades_count: Number of trades executed
-            win_rate: Winning trade percentage
-            summary_date: UTC day covered by the summary
-
-        Returns:
-            True if message was sent successfully
-        """
-        pnl_emoji = "+" if total_pnl >= 0 else ""
-
-        message = f"""
-<b>Daily Trading Summary</b>
-
-<b>Total PnL:</b> {pnl_emoji}{total_pnl:.2f} USDT
-<b>Trades:</b> {trades_count}
-<b>Win Rate:</b> {win_rate:.1f}%
-<b>Date:</b> {summary_date.isoformat()}
-        """.strip()
-
+        message = (
+            f"📊 <b>Daily Summary</b> — {summary_date.isoformat()}\n"
+            f"\n"
+            f"🔢 Trades:   {trades_count}\n"
+            f"🎯 Win Rate: {win_rate:.1f}%\n"
+            f"{pnl_emoji} P&L:     {pnl_sign}{total_pnl:.2f} USDT"
+        )
         return await self.send_alert(message, AlertLevel.INFO)
 
+    @staticmethod
+    def _format_market_label(market: str | None) -> str:
+        """Convert raw market tag to display label."""
+        if not market:
+            return "📄 PAPER"
+        m = market.lower()
+        if "paper" in m:
+            return "📄 PAPER"
+        if "futures" in m:
+            return "⚡ FUTURES"
+        if "spot" in m:
+            return "💰 SPOT"
+        return market.upper()
+
+    @staticmethod
+    def _humanize_close_reason(reason: str) -> str:
+        """Convert raw exit reason to human-readable text."""
+        r = reason.upper()
+        if r.startswith("STOP_LOSS"):
+            return "Stop Loss"
+        if r.startswith("TAKE_PROFIT"):
+            return "Take Profit"
+        if r.startswith("TRAILING_STOP"):
+            return "Trailing Stop"
+        if r.startswith("TIME_STOP"):
+            return "Time Stop"
+        return reason
+
     def _format_message(self, message: str, level: AlertLevel) -> str:
-        """Format message with level indicator."""
-        level_emoji = {
-            AlertLevel.INFO: "ℹ️",
-            AlertLevel.WARNING: "⚠️",
-            AlertLevel.CRITICAL: "🚨",
-        }
-        emoji = level_emoji.get(level, "")
-        return f"{emoji} {message}" if emoji else message
+        """Format message. Level emojis are embedded in messages directly."""
+        return message
 
     async def _send_message(
         self,

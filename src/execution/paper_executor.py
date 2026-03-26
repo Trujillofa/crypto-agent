@@ -465,7 +465,7 @@ class PaperExecutor:
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Paper signal failed: %s — %s", signal.symbol, exc)
             await self._notifier.send_alert(
-                f"<b>Paper signal failed</b> [{market_tag}]\n"
+                f"🚨 <b>Signal Failed</b> [{market_tag}]\n"
                 f"{signal.symbol} {signal.type.value} — {exc}"
             )
 
@@ -514,10 +514,6 @@ class PaperExecutor:
             sl_info,
             tp_info,
         )
-        await self._notifier.send_alert(
-            f"<b>Paper exit</b> [{market_tag}]\n"
-            f"{position.symbol} {reason} — entry {entry_price:.4f} → {current_price:.4f}"
-        )
 
         exit_signal = Signal(
             type=SignalType.SELL if position.side == "LONG" else SignalType.BUY,
@@ -565,9 +561,9 @@ class PaperExecutor:
 
         if margin_needed > self._balance:
             await self._notifier.send_alert(
-                f"<b>Paper signal skipped</b> [{market_tag}]\n"
+                f"⚠️ <b>Signal Skipped</b> [{market_tag}]\n"
                 f"{signal.symbol} BUY — insufficient balance "
-                f"(need {margin_needed:.2f}, have {self._balance:.2f})"
+                f"(need ${margin_needed:.2f}, have ${self._balance:.2f})"
             )
             return
 
@@ -585,7 +581,7 @@ class PaperExecutor:
                     {"symbol": signal.symbol, "reason": reason, "stage": "paper_buy"},
                 )
             await self._notifier.send_alert(
-                f"<b>Paper signal blocked</b> [{market_tag}]\n{signal.symbol} BUY — {reason}"
+                f"🛑 <b>Signal Blocked</b> [{market_tag}]\n{signal.symbol} BUY — {reason}"
             )
             return
 
@@ -733,6 +729,7 @@ class PaperExecutor:
             market=f"paper-{market_tag}{leverage_text}",
             stop_loss=sl_price if sl_price > 0 else None,
             take_profit=tp_price if tp_price > 0 else None,
+            balance=self._balance,
         )
 
     async def _handle_short_entry(self, signal: Signal, market_tag: str) -> None:
@@ -915,6 +912,7 @@ class PaperExecutor:
             market=f"paper-{market_tag} ({self._config.futures_leverage}x)",
             stop_loss=sl_price if sl_price > 0 else None,
             take_profit=tp_price if tp_price > 0 else None,
+            balance=self._balance,
         )
 
     async def _handle_sell(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
@@ -1009,6 +1007,9 @@ class PaperExecutor:
             price=signal.price,
             pnl=net_pnl,
             market=f"paper-{market_tag}{leverage_text}",
+            entry_price=position.entry_price,
+            close_reason=signal.reason,
+            balance=self._balance,
         )
 
     def get_positions(self) -> dict[str, Any]:

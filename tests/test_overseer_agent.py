@@ -108,19 +108,19 @@ class TestOverseerAgent:
         timestamp = datetime(2026, 3, 4, 15, 25, tzinfo=UTC)
         overseer._portfolio_manager.get_portfolio_summary.return_value.last_trade_time = timestamp
         result = await overseer._cmd_status()
-        assert "AI Overseer Status" in result
-        assert "<b>Mode:</b> paper" in result
-        assert "<b>Kill Switch:</b> OFF" in result
-        assert "<b>Open Positions Now:</b> 2" in result
-        assert "<b>Last Trade:</b> 2026-03-04 15:25 UTC" in result
-        assert "<b>Lifetime Trades:</b> 10" in result
-        assert "<b>Realized PnL (Lifetime):</b> 150.50 USDT" in result
+        assert "Agent Status" in result
+        assert "PAPER" in result
+        assert "Kill Switch: OFF" in result
+        assert "Positions: 2 open" in result
+        assert "2026-03-04 15:25 UTC" in result
+        assert "10 trades" in result
+        assert "+150.50 USDT" in result
 
     @pytest.mark.asyncio
     async def test_cmd_risk(self, overseer):
         result = overseer._cmd_risk()
         assert "Risk Snapshot" in result
-        assert "<b>Kill Switch:</b> OFF" in result
+        assert "Kill Switch: OFF" in result
 
     @pytest.mark.asyncio
     async def test_cmd_positions(self, overseer):
@@ -136,7 +136,7 @@ class TestOverseerAgent:
             "circuit_breakers": {},
         }
         result = overseer._cmd_reset()
-        assert "No active blocks" in result
+        assert "already allowed" in result
         mock_risk_manager.clear_trading_blocks.assert_not_called()
 
     @pytest.mark.asyncio
@@ -151,10 +151,11 @@ class TestOverseerAgent:
 
     def test_help_text(self, overseer):
         result = overseer._help_text()
-        assert "AI Overseer Commands" in result
+        assert "Crypto Agent Commands" in result
         assert "/status" in result
         assert "/risk" in result
         assert "/ask" in result
+        assert "/help" in result
 
     @pytest.mark.asyncio
     async def test_handle_status_command(self, overseer, mock_telegram):
@@ -170,7 +171,7 @@ class TestOverseerAgent:
         mock_telegram.send_alert.assert_called_once()
         call_args = mock_telegram.send_alert.call_args
         assert call_args[1]["chat_id"] == "123456"
-        assert "AI Overseer Status" in call_args[0][0]
+        assert "Agent Status" in call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_handle_help_command(self, overseer, mock_telegram):
@@ -185,7 +186,7 @@ class TestOverseerAgent:
         await overseer._handle_update(update)
         mock_telegram.send_alert.assert_called_once()
         call_args = mock_telegram.send_alert.call_args
-        assert "AI Overseer Commands" in call_args[0][0]
+        assert "Crypto Agent Commands" in call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_handle_unknown_command(self, overseer, mock_telegram):

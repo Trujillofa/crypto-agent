@@ -139,20 +139,26 @@ class OverseerAgent:
             name for name, active in risk.get("circuit_breakers", {}).items() if bool(active)
         ]
         breakers = ", ".join(active_breakers) if active_breakers else "none"
+        kill_emoji = "🔴" if risk.get("kill_switch_active") else "🟢"
         kill_switch = "ON" if risk.get("kill_switch_active") else "OFF"
-        last_trade_text = "never"
+        mode_label = "📄 PAPER" if "paper" in self._mode.lower() else "💰 LIVE"
+        last_trade_text = "—"
         if summary.last_trade_time is not None:
             last_trade_text = summary.last_trade_time.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        pnl_sign = "+" if summary.total_realized_pnl >= 0 else ""
+        ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
         return (
-            "<b>AI Overseer Status</b>\n"
-            f"<b>Mode:</b> {self._mode}\n"
-            f"<b>Kill Switch:</b> {kill_switch}\n"
-            f"<b>Active Breakers:</b> {breakers}\n"
-            f"<b>Open Positions Now:</b> {summary.open_positions}\n"
-            f"<b>Last Trade:</b> {last_trade_text}\n"
-            f"<b>Lifetime Trades:</b> {summary.total_trades}\n"
-            f"<b>Realized PnL (Lifetime):</b> {summary.total_realized_pnl:.2f} USDT"
+            f"{kill_emoji} <b>Agent Status</b> — {mode_label}\n"
+            f"\n"
+            f"💼 Realized P&L: {pnl_sign}{summary.total_realized_pnl:.2f} USDT\n"
+            f"📂 Positions: {summary.open_positions} open\n"
+            f"🛡 Kill Switch: {kill_switch}\n"
+            f"⚡ Breakers: {breakers}\n"
+            f"\n"
+            f"📈 Last Trade: {last_trade_text}\n"
+            f"🔢 Lifetime:  {summary.total_trades} trades\n"
+            f"🕐 {ts}"
         )
 
     def _cmd_risk(self) -> str:
@@ -161,30 +167,34 @@ class OverseerAgent:
             name for name, active in risk.get("circuit_breakers", {}).items() if bool(active)
         ]
         breakers = ", ".join(active_breakers) if active_breakers else "none"
+        kill_text = "ON" if risk.get("kill_switch_active") else "OFF"
+        daily_pnl = float(risk.get("daily_pnl", 0.0))
+        pnl_sign = "+" if daily_pnl >= 0 else ""
 
         return (
-            "<b>Risk Snapshot</b>\n"
-            f"<b>Kill Switch:</b> {'ON' if risk.get('kill_switch_active') else 'OFF'}\n"
-            f"<b>Breakers:</b> {breakers}\n"
-            f"<b>Daily PnL:</b> {float(risk.get('daily_pnl', 0.0)):.2f} USDT\n"
-            f"<b>Consecutive Losses:</b> {int(risk.get('consecutive_losses', 0))}\n"
-            f"<b>API Errors:</b> {int(risk.get('api_errors', 0))}\n"
-            f"<b>Avg Latency:</b> {float(risk.get('avg_latency_ms', 0.0)):.1f} ms"
+            "🛡 <b>Risk Snapshot</b>\n"
+            "\n"
+            f"⚡ Kill Switch: {kill_text}\n"
+            f"🔌 Breakers: {breakers}\n"
+            f"📈 Daily P&L: {pnl_sign}{daily_pnl:.2f} USDT\n"
+            f"📉 Consecutive Losses: {int(risk.get('consecutive_losses', 0))}\n"
+            f"🌐 API Errors: {int(risk.get('api_errors', 0))}\n"
+            f"⏱ Avg Latency: {float(risk.get('avg_latency_ms', 0.0)):.1f} ms"
         )
 
     def _cmd_positions(self) -> str:
         positions = self._portfolio_manager.get_all_positions()
         if not positions:
-            return "<b>Open Positions:</b> none"
+            return "📂 <b>Open Positions:</b> none"
 
-        lines = ["<b>Open Positions</b>"]
+        lines = ["📂 <b>Open Positions</b>\n"]
         for position in positions[:10]:
             lines.append(
-                f"- {position.symbol}: qty={position.quantity:.6f}, entry={position.entry_price:.4f}"
+                f"🔸 {position.symbol} — {position.quantity:.6f} @ {position.entry_price:.4f}"
             )
 
         if len(positions) > 10:
-            lines.append(f"... and {len(positions) - 10} more")
+            lines.append(f"\n… and {len(positions) - 10} more")
 
         return "\n".join(lines)
 
@@ -269,30 +279,34 @@ class OverseerAgent:
             risk_before.get("circuit_breakers", {}).values()
         )
         if not was_blocked:
-            return "<b>Reset:</b> No active blocks. Trading is already allowed."
+            return "✅ No active blocks. Trading is already allowed."
 
+        ks_before = "ON" if risk_before.get("kill_switch_active") else "OFF"
         self._risk_manager.clear_trading_blocks(
             reset_counters=True,
             reset_peak_balance=True,
         )
         risk_after = self._risk_manager.get_risk_summary()
+        ks_after = "ON" if risk_after.get("kill_switch_active") else "OFF"
         self._logger.warning("Kill switch / breakers reset via Telegram overseer")
 
         return (
-            "<b>Risk Reset Complete</b>\n"
-            f"<b>Kill Switch:</b> {'ON' if risk_before.get('kill_switch_active') else 'OFF'} → "
-            f"{'ON' if risk_after.get('kill_switch_active') else 'OFF'}\n"
-            f"<b>Breakers:</b> cleared\n"
-            f"<b>Counters:</b> reset\n"
-            f"<b>Peak Balance:</b> reset"
+            "✅ <b>Risk Reset Complete</b>\n"
+            "\n"
+            f"⚡ Kill Switch: {ks_before} → {ks_after}\n"
+            "🔌 Breakers: cleared\n"
+            "🔢 Counters: reset\n"
+            "💼 Peak Balance: reset"
         )
 
     def _help_text(self) -> str:
         return (
-            "<b>AI Overseer Commands</b>\n"
-            "/status - Trading and PnL snapshot\n"
-            "/risk - Risk and breaker snapshot\n"
-            "/positions - Open positions\n"
-            "/reset - Clear kill switch and breakers\n"
-            "/ask &lt;question&gt; - Advisory Q&A"
+            "🤖 <b>Crypto Agent Commands</b>\n"
+            "\n"
+            "/status — Balance, positions, kill switch\n"
+            "/risk — Risk metrics and breakers\n"
+            "/positions — Open positions with entry prices\n"
+            "/reset — Clear kill switch and breakers\n"
+            "/ask &lt;question&gt; — AI-powered Q&A\n"
+            "/help — This message"
         )

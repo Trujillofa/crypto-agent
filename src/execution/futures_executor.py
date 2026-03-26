@@ -586,6 +586,7 @@ class FuturesTradingExecutor:
                         price=filled_price,
                         pnl=pnl,
                         market="futures",
+                        entry_price=exchange_entry_price if exchange_entry_price > 0 else None,
                     )
                 else:
                     self._logger.warning(

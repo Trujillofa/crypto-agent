@@ -668,6 +668,7 @@ class TradingExecutor:
                             price=filled_price,
                             pnl=pnl,
                             market="spot",
+                            entry_price=entry_price,
                         )
                     else:
                         self._logger.info(
