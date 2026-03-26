@@ -231,6 +231,63 @@ def test_wire_optional_strategy_dependencies_sets_sentiment_scorer_and_leaves_ma
 
 
 @pytest.mark.asyncio
+async def test_wire_optional_strategy_dependencies_records_enriched_sentiment_event():
+    class FakeXAIClient:
+        async def chat(self, messages):
+            return '{"score": 64, "reason": "healthy drift"}'
+
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    reader = MagicMock()
+    engine = StrategyEngine(
+        EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[SentimentMeanReversionStrategy],
+            strategy_configs=[{}],
+        ),
+        reader,
+    )
+    event_log = FakeEventLog()
+
+    _wire_optional_strategy_dependencies(
+        engine,
+        xai_client=FakeXAIClient(),
+        event_log=event_log,
+        ai_model="grok-4-1-fast-reasoning",
+    )
+
+    strategy = engine._strategies["BTCUSDT"][0]  # pylint: disable=protected-access
+    signal = await strategy.evaluate(
+        "BTCUSDT",
+        {
+            "rsi_14": 25.0,
+            "bb_lower_dist": 0.001,
+            "bb_upper_dist": 0.05,
+            "close_price": 50000.0,
+        },
+    )
+
+    assert signal.type in {SignalType.BUY, SignalType.HOLD, SignalType.SELL}
+    assert event_log.events == [
+        (
+            "sentiment_score",
+            {
+                "symbol": "BTCUSDT",
+                "score": 64.0,
+                "source": "xai_live",
+                "provider": "xai",
+                "model": "grok-4-1-fast-reasoning",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""
     from src.features.reader import IndicatorReader

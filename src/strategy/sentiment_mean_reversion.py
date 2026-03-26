@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
@@ -26,10 +26,12 @@ class SentimentScorer:
         self,
         xai_client: object | None = None,
         cache_ttl_seconds: float = 300.0,
+        observation_recorder: Callable[[dict[str, object]], Awaitable[None]] | None = None,
     ) -> None:
         self._xai_client = xai_client
         self._cache_ttl = cache_ttl_seconds
         self._cache: dict[str, tuple[float, float]] = {}  # symbol -> (timestamp, score)
+        self._observation_recorder = observation_recorder
         self._logger = get_logger(self.__class__.__name__)
 
     async def get_score(self, symbol: str) -> float:
@@ -46,15 +48,47 @@ class SentimentScorer:
                 return score
 
         if self._xai_client is None:
-            return 50.0
+            score = 50.0
+            self._cache[symbol] = (now, score)
+            await self._record_observation(symbol, score, source="neutral_fallback")
+            return score
 
         try:
             score = await self._query_llm(symbol)
             self._cache[symbol] = (now, score)
+            await self._record_observation(symbol, score, source="xai_live")
             return score
         except Exception as exc:
             self._logger.warning("Sentiment query failed for %s: %s", symbol, exc)
+            await self._record_observation(
+                symbol,
+                50.0,
+                source="xai_error_fallback",
+                error=str(exc),
+            )
             return 50.0
+
+    async def _record_observation(
+        self,
+        symbol: str,
+        score: float,
+        *,
+        source: str,
+        error: str | None = None,
+    ) -> None:
+        if self._observation_recorder is None:
+            return
+        payload: dict[str, object] = {
+            "symbol": symbol,
+            "score": round(float(score), 4),
+            "source": source,
+        }
+        if error:
+            payload["error"] = error[:500]
+        try:
+            await self._observation_recorder(payload)
+        except Exception as exc:  # noqa: BLE001
+            self._logger.warning("Sentiment observation recorder failed for %s: %s", symbol, exc)
 
     async def _query_llm(self, symbol: str) -> float:
         """Query xAI/Grok for sentiment analysis."""

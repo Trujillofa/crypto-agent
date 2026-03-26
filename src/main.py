@@ -645,6 +645,8 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
 def _wire_optional_strategy_dependencies(
     strategy_engine: StrategyEngine,
     xai_client: XAIClient | None,
+    event_log: EventLog | None = None,
+    ai_model: str = "",
 ) -> None:
     """Attach optional external dependencies to configured strategies.
 
@@ -653,7 +655,21 @@ def _wire_optional_strategy_dependencies(
     integrated, so it should not be advertised as operational by default.
     """
     logger = get_logger("strategy_wiring")
-    sentiment_scorer = SentimentScorer(xai_client=xai_client) if xai_client is not None else None
+
+    async def _record_sentiment_observation(payload: dict[str, object]) -> None:
+        if event_log is None:
+            return
+        enriched_payload = {
+            **payload,
+            "provider": "xai" if xai_client is not None else "none",
+            "model": ai_model,
+        }
+        await event_log.log("sentiment_score", enriched_payload)
+
+    sentiment_scorer = SentimentScorer(
+        xai_client=xai_client,
+        observation_recorder=_record_sentiment_observation if event_log is not None else None,
+    )
     has_sentiment_strategy = False
     has_macro_strategy = False
 
@@ -662,12 +678,11 @@ def _wire_optional_strategy_dependencies(
         for strategy in symbol_strategies:
             if isinstance(strategy, SentimentMeanReversionStrategy):
                 has_sentiment_strategy = True
-                if sentiment_scorer is not None:
-                    strategy.set_scorer(sentiment_scorer)
+                strategy.set_scorer(sentiment_scorer)
             elif isinstance(strategy, MacroVolatilityStrategy):
                 has_macro_strategy = True
 
-    if has_sentiment_strategy and sentiment_scorer is None:
+    if has_sentiment_strategy and xai_client is None:
         logger.warning(
             "SentimentMeanReversionStrategy configured without XAI_API_KEY; "
             "using neutral sentiment fallback"
@@ -955,7 +970,12 @@ async def run() -> None:
 
     strategy_engine = StrategyEngine(config=engine_config, reader=indicator_reader)
 
-    _wire_optional_strategy_dependencies(strategy_engine, xai_client)
+    _wire_optional_strategy_dependencies(
+        strategy_engine,
+        xai_client,
+        event_log=event_log,
+        ai_model=settings.ai.model,
+    )
 
     stop_event = asyncio.Event()
 
@@ -1146,6 +1166,10 @@ async def run() -> None:
                 )
 
             risk_summary = risk_manager.get_risk_summary()
+            ai_status = "disabled"
+            if settings.ai.enabled:
+                ai_status = "enabled" if xai_client is not None else "enabled_no_key"
+
             logger.info(
                 "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s executor=%s futures=%s ai=%s",
                 is_connected(),
@@ -1161,7 +1185,7 @@ async def run() -> None:
                     or (paper_executor and paper_executor._config.futures_symbols)
                     else "disabled"
                 ),
-                "enabled" if overseer_agent else "disabled",
+                ai_status,
             )
             # Log startup event to force event log file creation
             await event_log.log(

@@ -167,3 +167,98 @@ class TestSentimentScorer:
         # Second call should hit cache
         score2 = await scorer.get_score("BTCUSDT")
         assert score2 == 50.0
+
+    @pytest.mark.asyncio
+    async def test_records_neutral_observation_once_per_fresh_query(self):
+        """Neutral fallback is recorded once and then served from cache."""
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=None,
+            cache_ttl_seconds=300.0,
+            observation_recorder=recorder,
+        )
+
+        score1 = await scorer.get_score("BTCUSDT")
+        score2 = await scorer.get_score("BTCUSDT")
+
+        assert score1 == 50.0
+        assert score2 == 50.0
+        assert observations == [
+            {
+                "symbol": "BTCUSDT",
+                "score": 50.0,
+                "source": "neutral_fallback",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_records_live_observation_once_per_fresh_query(self):
+        """Fresh live sentiment queries are recorded; cache hits are not duplicated."""
+
+        class FakeXAIClient:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def chat(self, messages):
+                self.calls += 1
+                return '{"score": 61, "reason": "calm recovery"}'
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        client = FakeXAIClient()
+        scorer = SentimentScorer(
+            xai_client=client,
+            cache_ttl_seconds=300.0,
+            observation_recorder=recorder,
+        )
+
+        score1 = await scorer.get_score("BTCUSDT")
+        score2 = await scorer.get_score("BTCUSDT")
+
+        assert score1 == 61.0
+        assert score2 == 61.0
+        assert client.calls == 1
+        assert observations == [
+            {
+                "symbol": "BTCUSDT",
+                "score": 61.0,
+                "source": "xai_live",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_records_error_fallback_on_llm_failure(self):
+        """xAI failures are recorded as error fallbacks with truncated error text."""
+
+        class FailingClient:
+            async def chat(self, messages):
+                raise RuntimeError("API timeout")
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=FailingClient(),
+            observation_recorder=recorder,
+        )
+
+        score = await scorer.get_score("BTCUSDT")
+
+        assert score == 50.0
+        assert observations == [
+            {
+                "symbol": "BTCUSDT",
+                "score": 50.0,
+                "source": "xai_error_fallback",
+                "error": "API timeout",
+            }
+        ]
