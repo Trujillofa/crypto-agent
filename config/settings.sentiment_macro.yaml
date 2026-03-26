@@ -54,6 +54,8 @@ trading_execution:
   use_atr_sizing: true
   atr_multiplier: 1.0
   risk_per_trade_pct: 0.02
+  exit_rules:
+    time_stop_minutes: 1440
 
 futures:
   enabled: true

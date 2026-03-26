@@ -49,6 +49,13 @@ computation_errors_total = Counter(
     ["symbol", "error_type"],
 )
 
+# Gauge for regime features NULL detection
+regime_features_null = Gauge(
+    "indicator_regime_features_null",
+    "Whether regime features are NULL for the active pair (1=null, 0=ok)",
+    ["symbol"],
+)
+
 # Gauge for computation loop status
 computation_running = Gauge(
     "indicator_computation_running",

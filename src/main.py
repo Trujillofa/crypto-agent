@@ -630,6 +630,12 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
         "breakout_retest": ("src.strategy.breakout_retest", "BreakoutRetestStrategy"),
         "trend_pullback": ("src.strategy.trend_pullback", "TrendPullbackStrategy"),
         "mtf_template": ("src.strategy.mtf_template", "MTFStrategyTemplate"),
+        "multi_timeframe_regime": (
+            "src.strategy.multi_timeframe_regime",
+            "MultiTimeframeRegimeRouter",
+        ),
+        "mtf_continuation": ("src.strategy.mtf_continuation", "MTFContinuationTemplate"),
+        "mtf_breakout": ("src.strategy.mtf_breakout", "MTFBreakoutExpansionTemplate"),
     }
     for strategy_name, (module_name, class_name) in optional_strategies.items():
         try:
@@ -1176,6 +1182,23 @@ async def run() -> None:
                         "rsi_14",
                     )
                 )
+
+            # Check for NULL regime features that silently break MTF strategies
+            regime_features = ("ema_slope_50", "volatility_percentile", "trend_consistency")
+            if latest_row is not None and any(latest_row.get(f) is None for f in regime_features):
+                from src.features.metrics import regime_features_null
+
+                pair = settings.trading_pairs[0]
+                logger.warning(
+                    "Regime features are NULL for %s — MTF strategies will silently fail. "
+                    "Run backfill_regime_features.py to fix.",
+                    pair,
+                )
+                regime_features_null.labels(symbol=pair).set(1)
+            elif latest_row is not None:
+                from src.features.metrics import regime_features_null
+
+                regime_features_null.labels(symbol=settings.trading_pairs[0]).set(0)
 
             risk_summary = risk_manager.get_risk_summary()
             ai_status = "disabled"
