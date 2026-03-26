@@ -430,7 +430,9 @@ class TestOnSignalEntryPath:
 
     @pytest.mark.asyncio
     async def test_futures_sell_from_flat_opens_short_position(self):
-        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"], allow_short_entry=True))
+        executor = _make_executor(
+            _make_config(futures_symbols=["BTCUSDT"], allow_short_entry=True)
+        )
         signal = Signal(
             type=SignalType.SELL,
             symbol="BTCUSDT",
@@ -508,7 +510,9 @@ class TestOnSignalEntryPath:
 
     @pytest.mark.asyncio
     async def test_futures_short_blocks_when_position_limit_exceeded(self):
-        executor = _make_executor(_make_config(futures_symbols=["BTCUSDT"], allow_short_entry=True))
+        executor = _make_executor(
+            _make_config(futures_symbols=["BTCUSDT"], allow_short_entry=True)
+        )
         executor._risk_manager.check_position_limit.return_value = (
             False,
             "Position size exceeds configured max",
