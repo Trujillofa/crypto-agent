@@ -4,13 +4,15 @@
 
 set -e
 
-SYMBOL="${1:-BTCUSDT}"
-TIMEFRAME="${2:-1h}"
-DESCRIPTION="${3:-baseline}"
-TRAIN_MONTHS="${4:-3}"
-TEST_MONTHS="${5:-2}"
-GATE_PROFILE="${6:-standard}"
-LOCAL_PORT="${7:-15433}"
+# Defaults
+SYMBOL="BTCUSDT"
+TIMEFRAME="1h"
+DESCRIPTION="baseline"
+TRAIN_MONTHS="3"
+TEST_MONTHS="2"
+GATE_PROFILE="standard"
+LOCAL_PORT="15433"
+OVERLAY=""
 
 # Parse named args
 while [[ $# -gt 0 ]]; do
@@ -22,9 +24,9 @@ while [[ $# -gt 0 ]]; do
         --test-months) TEST_MONTHS="$2"; shift 2 ;;
         --gate-profile) GATE_PROFILE="$2"; shift 2 ;;
         --local-port) LOCAL_PORT="$2"; shift 2 ;;
-        *) shift ;;
+        --overlay) OVERLAY="$2"; shift 2 ;;
+        *) echo "Unknown arg: $1"; shift ;;
     esac
-    shift
 done
 
 REMOTE_HOST="crypto-agent"
@@ -32,15 +34,18 @@ REMOTE_DB_PORT="5432"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "=========================================="
-echo "Autoresearch via SSH Tunnel: ${SYMBOL} ${TIMEFRAME}"
+echo "Autoresearch via SSH Tunnel"
+echo "Symbol: ${SYMBOL} | Timeframe: ${TIMEFRAME}"
 echo "Description: ${DESCRIPTION}"
 echo "Gate Profile: ${GATE_PROFILE}"
 echo "Train/Test: ${TRAIN_MONTHS}mo / ${TEST_MONTHS}mo"
 echo "Local Port: ${LOCAL_PORT}"
+[[ -n "$OVERLAY" ]] && echo "Overlay: ${OVERLAY}"
 echo "=========================================="
 
 # Kill any existing tunnel on this port
 pkill -f "ssh.*${LOCAL_PORT}.*${REMOTE_HOST}" 2>/dev/null || true
+sleep 1
 
 # Establish SSH tunnel to remote TimescaleDB
 echo "Establishing SSH tunnel to ${REMOTE_HOST}:${REMOTE_DB_PORT}..."
@@ -72,17 +77,24 @@ echo ""
 echo "Running autoresearch..."
 echo ""
 
-# Run autoresearch with tunnel
-python scripts/run_autoresearch.py \
+# Build command
+CMD="python scripts/run_autoresearch.py \
     --config config/settings.sentiment_macro.yaml \
     --symbol ${SYMBOL} \
     --timeframe ${TIMEFRAME} \
     --train-months ${TRAIN_MONTHS} \
     --test-months ${TEST_MONTHS} \
     --gate-profile ${GATE_PROFILE} \
-    --description "${SYMBOL}_${DESCRIPTION}" \
-    --timeout-seconds 1800
+    --description \"${SYMBOL}_${DESCRIPTION}\" \
+    --timeout-seconds 1800"
 
+# Add overlay if specified
+if [[ -n "$OVERLAY" ]]; then
+    CMD="$CMD --overlay ${OVERLAY}"
+fi
+
+# Run
+eval $CMD
 RESULT=$?
 
 # Kill tunnel
@@ -90,9 +102,9 @@ pkill -f "ssh.*${LOCAL_PORT}.*${REMOTE_HOST}" 2>/dev/null || true
 
 echo ""
 if [ $RESULT -eq 0 ]; then
-    echo "Done! Results in: research/last_result.json"
+    echo "✅ Done! Results in: research/last_result.json"
 else
-    echo "Autoresearch failed with exit code: ${RESULT}"
+    echo "❌ Autoresearch failed with exit code: ${RESULT}"
 fi
 
 exit ${RESULT}
