@@ -48,7 +48,7 @@ class SentimentScorer:
         self._degradation_cooldown = degradation_cooldown
         self._recent_sources: deque[str] = deque(maxlen=degradation_window)
         self._recent_scores: deque[float] = deque(maxlen=degradation_window)
-        self._last_alert_time: float = 0.0
+        self._last_alert_time: float = -degradation_cooldown
 
     async def get_score(self, symbol: str) -> float:
         """Get sentiment score for a symbol.
