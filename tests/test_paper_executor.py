@@ -251,6 +251,52 @@ class TestCheckExits:
             assert "TIME_STOP" in signal.reason
 
     @pytest.mark.asyncio
+    async def test_stop_loss_exit_fills_at_threshold_not_observed_price(self):
+        executor = _make_executor()
+        executor._positions["BTCUSDT:spot"] = PaperPosition(
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.004,
+            entry_price=50000.0,
+            open_time=time.time(),
+            atr_at_entry=100.0,
+            sl_price=49800.0,
+            tp_price=50500.0,
+            high_water_mark=50000.0,
+        )
+        executor._fetch_latest_price = AsyncMock(return_value=49500.0)
+
+        with patch.object(executor, "_handle_sell", new_callable=AsyncMock) as mock_sell:
+            await executor._check_exits()
+            mock_sell.assert_called_once()
+            signal = mock_sell.call_args[0][0]
+            assert signal.reason == "STOP_LOSS"
+            assert signal.price == 49800.0
+
+    @pytest.mark.asyncio
+    async def test_take_profit_exit_fills_at_threshold_not_observed_price(self):
+        executor = _make_executor()
+        executor._positions["BTCUSDT:spot"] = PaperPosition(
+            symbol="BTCUSDT",
+            side="LONG",
+            quantity=0.004,
+            entry_price=50000.0,
+            open_time=time.time(),
+            atr_at_entry=100.0,
+            sl_price=49800.0,
+            tp_price=50500.0,
+            high_water_mark=50000.0,
+        )
+        executor._fetch_latest_price = AsyncMock(return_value=50750.0)
+
+        with patch.object(executor, "_handle_sell", new_callable=AsyncMock) as mock_sell:
+            await executor._check_exits()
+            mock_sell.assert_called_once()
+            signal = mock_sell.call_args[0][0]
+            assert signal.reason == "TAKE_PROFIT"
+            assert signal.price == 50500.0
+
+    @pytest.mark.asyncio
     async def test_skips_position_when_price_unavailable(self):
         executor = _make_executor()
         executor._positions["BTCUSDT:spot"] = PaperPosition(

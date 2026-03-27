@@ -498,27 +498,42 @@ class PaperExecutor:
         if reason is None:
             return False
 
+        fill_price = self._resolve_exit_fill_price(position, current_price, reason)
+
         sl_info = (
             f"sl={position.sl_price:.4f}" if atr > 0 else f"sl_pct={self._config.stop_loss_pct}"
         )
         tp_info = (
             f"tp={position.tp_price:.4f}" if atr > 0 else f"tp_pct={self._config.take_profit_pct}"
         )
-        self._logger.info(
-            "Paper %s triggered for %s [%s]: entry=%.4f current=%.4f (%s, %s)",
-            reason,
-            position.symbol,
-            market_tag,
-            entry_price,
-            current_price,
-            sl_info,
-            tp_info,
-        )
+        if fill_price != current_price:
+            self._logger.info(
+                "Paper %s triggered for %s [%s]: entry=%.4f observed=%.4f fill=%.4f (%s, %s)",
+                reason,
+                position.symbol,
+                market_tag,
+                entry_price,
+                current_price,
+                fill_price,
+                sl_info,
+                tp_info,
+            )
+        else:
+            self._logger.info(
+                "Paper %s triggered for %s [%s]: entry=%.4f current=%.4f (%s, %s)",
+                reason,
+                position.symbol,
+                market_tag,
+                entry_price,
+                current_price,
+                sl_info,
+                tp_info,
+            )
 
         exit_signal = Signal(
             type=SignalType.SELL if position.side == "LONG" else SignalType.BUY,
             symbol=position.symbol,
-            price=current_price,
+            price=fill_price,
             confidence=1.0,
             reason=reason,
             indicators={},
@@ -526,6 +541,21 @@ class PaperExecutor:
         )
         await self._handle_sell(exit_signal, market_tag, is_futures)
         return True
+
+    def _resolve_exit_fill_price(
+        self, position: PaperPosition, current_price: float, reason: str
+    ) -> float:
+        """Choose a paper fill price from the triggered threshold.
+
+        Paper mode may only observe sparse sampled prices. For SL/TP and trailing
+        exits, fill at the configured threshold instead of the later sampled close
+        so alerts and PnL better reflect the intended risk model.
+        """
+        if reason.startswith(("STOP_LOSS", "TRAILING_STOP")) and position.sl_price > 0:
+            return position.sl_price
+        if reason.startswith("TAKE_PROFIT") and position.tp_price > 0:
+            return position.tp_price
+        return current_price
 
     async def _handle_buy(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
         pos_key = self._position_key(signal.symbol, market_tag)

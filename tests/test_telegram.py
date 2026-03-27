@@ -421,7 +421,13 @@ class TestHelpers:
         assert TelegramNotifier._humanize_close_reason("custom reason") == "custom reason"
 
     def test_format_market_label_paper(self) -> None:
-        assert TelegramNotifier._format_market_label("paper-spot") == "📄 PAPER"
+        assert TelegramNotifier._format_market_label("paper-spot") == "📄 PAPER SPOT"
+
+    def test_format_market_label_paper_futures_with_leverage(self) -> None:
+        assert (
+            TelegramNotifier._format_market_label("paper-futures (3x)")
+            == "📄 PAPER FUTURES (3X)"
+        )
 
     def test_format_market_label_futures(self) -> None:
         assert TelegramNotifier._format_market_label("futures") == "⚡ FUTURES"

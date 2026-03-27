@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
@@ -303,10 +304,20 @@ class TelegramNotifier:
         if not market:
             return "📄 PAPER"
         m = market.lower()
+        leverage_match = re.search(r"\(([^)]+)\)", market)
+        leverage_suffix = f" ({leverage_match.group(1).upper()})" if leverage_match else ""
+        if "paper-futures" in m:
+            return f"📄 PAPER FUTURES{leverage_suffix}"
+        if "paper-spot" in m:
+            return "📄 PAPER SPOT"
+        if "paper" in m and "futures" in m:
+            return f"📄 PAPER FUTURES{leverage_suffix}"
+        if "paper" in m and "spot" in m:
+            return "📄 PAPER SPOT"
         if "paper" in m:
             return "📄 PAPER"
         if "futures" in m:
-            return "⚡ FUTURES"
+            return f"⚡ FUTURES{leverage_suffix}"
         if "spot" in m:
             return "💰 SPOT"
         return market.upper()
