@@ -124,6 +124,7 @@ class AISettings:
 @dataclass(frozen=True)
 class Settings:
     agent_id: str
+    display_name: str
     mode: str
     log_level: str
     trading_pairs: list[str]
@@ -147,6 +148,9 @@ def load_settings(config_path: Path) -> Settings:
     agent_id = _as_str(root.get("agent_id"), "agent_id", default="").strip()
     if not agent_id:
         agent_id = os.getenv("AGENT_ID", "default").strip() or "default"
+    display_name = _as_str(root.get("display_name"), "display_name", default="").strip()
+    if not display_name:
+        display_name = agent_id
     trading = _as_mapping(root.get("trading"), "trading section")
     database = _as_mapping(root.get("database"), "database section")
     prometheus = _as_mapping(root.get("prometheus"), "prometheus section")
@@ -318,6 +322,16 @@ def load_settings(config_path: Path) -> Settings:
             default=5,
         ),
         allowed_updates=tuple(telegram_allowed_updates),
+        daily_summary_enabled=_as_bool(
+            telegram.get("daily_summary_enabled"),
+            "telegram.daily_summary_enabled",
+            default=True,
+        ),
+        daily_summary_send_empty=_as_bool(
+            telegram.get("daily_summary_send_empty"),
+            "telegram.daily_summary_send_empty",
+            default=False,
+        ),
     )
 
     ai_api_key = _as_str(ai.get("api_key"), "ai.api_key", default="")
@@ -447,6 +461,7 @@ def load_settings(config_path: Path) -> Settings:
 
     return Settings(
         agent_id=agent_id,
+        display_name=display_name,
         mode=global_mode,
         log_level=_as_str(root.get("log_level"), "log_level", default="INFO"),
         trading_pairs=trading_pairs,
@@ -1251,15 +1266,35 @@ async def run() -> None:
                 wait_seconds = (next_midnight - now).total_seconds()
                 await asyncio.sleep(wait_seconds)
                 try:
+                    if not settings.telegram.daily_summary_enabled:
+                        continue
+
                     summary_date = (next_midnight - timedelta(days=1)).date()
                     total_pnl, trades_count, win_rate = await portfolio_manager.get_daily_stats(
                         summary_date
                     )
+                    if (
+                        not settings.telegram.daily_summary_send_empty
+                        and trades_count == 0
+                        and abs(total_pnl) < 1e-9
+                    ):
+                        continue
+
+                    strategy_names = [
+                        str(entry.get("name", "unknown"))
+                        for entry in settings.strategy.strategies
+                    ]
                     await telegram_notifier.send_daily_summary(
                         total_pnl=total_pnl,
                         trades_count=trades_count,
                         win_rate=win_rate,
                         summary_date=summary_date,
+                        display_name=settings.display_name,
+                        agent_id=settings.agent_id,
+                        strategy_names=strategy_names,
+                        trading_pairs=settings.trading_pairs,
+                        timeframe=settings.timeframe,
+                        mode=settings.mode,
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger = get_logger("main")

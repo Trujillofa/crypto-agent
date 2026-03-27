@@ -1,5 +1,6 @@
 mode: paper
 agent_id: sentiment-macro-bot
+display_name: sentiment-macro-1h-multiasset
 log_level: INFO
 
 trading:
@@ -21,6 +22,8 @@ database:
 
 telegram:
   enabled: true
+  daily_summary_enabled: true
+  daily_summary_send_empty: false
   bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
   chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
   rate_limit_seconds: 5

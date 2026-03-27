@@ -51,6 +51,7 @@ def test_settings_default_safe():
         raw["strategy"]["evaluation_interval_seconds"]
     )
     assert settings.strategy.mirror_spot_to_futures is False
+    assert settings.display_name == "sol-4h-simple-ma"
 
 
 def test_settings_has_strategy_section():
@@ -90,6 +91,9 @@ def test_settings_telegram_config():
     assert settings.telegram is not None, "Telegram config required"
     assert settings.telegram.rate_limit_seconds == 5
     assert isinstance(settings.telegram.enabled, bool)
+    assert settings.telegram.daily_summary_enabled is False
+    assert settings.telegram.daily_summary_send_empty is False
+    assert settings.display_name == "sol-4h-simple-ma"
 
 
 def test_settings_resolves_new_strategy_registry_entries():
@@ -148,6 +152,9 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert strategy_classes == [SentimentMeanReversionStrategy]
     assert len(strategy_configs) == 1
     assert settings.telegram.enabled is True
+    assert settings.telegram.daily_summary_enabled is True
+    assert settings.telegram.daily_summary_send_empty is False
+    assert settings.display_name == "sentiment-macro-1h-multiasset"
     assert settings.ai.enabled is True
     assert aggregator_config["buy_threshold"] == 0.6
 
@@ -159,6 +166,7 @@ def test_avax_4h_ma_config_resolves_simple_ma_spot_only():
     )
 
     assert settings.agent_id == "avax-4h-ma"
+    assert settings.display_name == "avax-4h-simple-ma"
     assert settings.trading_pairs == ["AVAXUSDT"]
     assert settings.timeframe == "4h"
     assert settings.ai.enabled is False
@@ -178,6 +186,7 @@ def test_eth_4h_config_resolves_simple_ma():
     )
 
     assert settings.agent_id == "eth-4h"
+    assert settings.display_name == "eth-4h-simple-ma"
     assert settings.trading_pairs == ["ETHUSDT"]
     assert settings.timeframe == "4h"
     assert settings.ai.enabled is False

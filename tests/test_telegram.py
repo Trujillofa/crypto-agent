@@ -367,10 +367,22 @@ class TestSpecializedAlerts:
                 trades_count=10,
                 win_rate=60.0,
                 summary_date=date(2026, 3, 12),
+                display_name="sol-4h-trend-pullback-sparse",
+                agent_id="sol-trend-pullback-sparse",
+                strategy_names=["trend_pullback"],
+                trading_pairs=["SOLUSDT"],
+                timeframe="4h",
+                mode="paper",
             )
             mock_send.assert_called_once()
             message = mock_send.call_args[0][0]
             assert "Daily Summary" in message
+            assert "sol-4h-trend-pullback-sparse" in message
+            assert "sol-trend-pullback-sparse" in message
+            assert "trend_pullback" in message
+            assert "SOLUSDT" in message
+            assert "4h" in message
+            assert "PAPER" in message
             assert "+500.00" in message
             assert "60.0%" in message
             assert "2026-03-12" in message

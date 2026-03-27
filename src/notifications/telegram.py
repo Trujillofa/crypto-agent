@@ -45,6 +45,8 @@ class TelegramConfig:
     enabled: bool = True
     rate_limit_seconds: int = 5  # Minimum seconds between messages
     allowed_updates: tuple[str, ...] = ("message",)
+    daily_summary_enabled: bool = True
+    daily_summary_send_empty: bool = False
 
 
 _TELEGRAM_MAX_MESSAGE_LENGTH = 4096
@@ -76,6 +78,8 @@ class TelegramNotifier:
             enabled=os.getenv("TELEGRAM_ENABLED", "true").lower() == "true",
             rate_limit_seconds=int(os.getenv("TELEGRAM_RATE_LIMIT", "5")),
             allowed_updates=("message",),
+            daily_summary_enabled=os.getenv("TELEGRAM_DAILY_SUMMARY_ENABLED", "true").lower() == "true",
+            daily_summary_send_empty=os.getenv("TELEGRAM_DAILY_SUMMARY_SEND_EMPTY", "false").lower() == "true",
         )
 
     async def __aenter__(self) -> TelegramNotifier:
@@ -253,19 +257,45 @@ class TelegramNotifier:
         trades_count: int,
         win_rate: float,
         summary_date: date,
+        *,
+        display_name: str | None = None,
+        agent_id: str | None = None,
+        strategy_names: list[str] | tuple[str, ...] | None = None,
+        trading_pairs: list[str] | tuple[str, ...] | None = None,
+        timeframe: str | None = None,
+        mode: str | None = None,
     ) -> bool:
         """Send daily trading summary."""
         pnl_sign = "+" if total_pnl >= 0 else ""
         pnl_emoji = "📈" if total_pnl >= 0 else "📉"
 
-        message = (
-            f"📊 <b>Daily Summary</b> — {summary_date.isoformat()}\n"
-            f"\n"
-            f"🔢 Trades:   {trades_count}\n"
-            f"🎯 Win Rate: {win_rate:.1f}%\n"
-            f"{pnl_emoji} P&L:     {pnl_sign}{total_pnl:.2f} USDT"
+        lines = [f"📊 <b>Daily Summary</b> — {summary_date.isoformat()}", ""]
+
+        if display_name:
+            lines.append(f"🤖 Agent:    <b>{display_name}</b>")
+        if agent_id and agent_id != display_name:
+            lines.append(f"🆔 Agent ID: <code>{agent_id}</code>")
+        if strategy_names:
+            lines.append(f"🧠 Strategy: {', '.join(strategy_names)}")
+        pair_bits: list[str] = []
+        if trading_pairs:
+            pair_bits.append("/".join(trading_pairs))
+        if timeframe:
+            pair_bits.append(timeframe)
+        if mode:
+            pair_bits.append(mode.upper())
+        if pair_bits:
+            lines.append(f"🪙 Scope:    {' • '.join(pair_bits)}")
+
+        lines.extend(
+            [
+                f"🔢 Trades:   {trades_count}",
+                f"🎯 Win Rate: {win_rate:.1f}%",
+                f"{pnl_emoji} P&L:     {pnl_sign}{total_pnl:.2f} USDT",
+            ]
         )
-        return await self.send_alert(message, AlertLevel.INFO)
+
+        return await self.send_alert("\n".join(lines), AlertLevel.INFO)
 
     @staticmethod
     def _format_market_label(market: str | None) -> str:
