@@ -90,6 +90,7 @@ strategy:
     # The class is available, but it needs a real macro event provider before it
     # can produce signals in runtime. Add it only once that provider exists.
   global_trend_filter_enabled: true
+  global_trend_filter_buffer_pct: 0.0
   aggregator:
     min_agreement: 1
     buy_threshold: 0.6
