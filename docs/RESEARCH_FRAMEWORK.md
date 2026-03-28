@@ -305,8 +305,8 @@ Kill the live strategy immediately if:
 | Artifact | Location | Naming |
 |----------|---------|--------|
 | Hypothesis notes | `docs/research/<strategy>.md` | Free-form |
-| Autoresearch results | `docs/research/<strategy>_sweep_<date>.json` | Auto-generated |
-| WFO results | `docs/research/<strategy>_wfo_<date>.json` | Auto-generated |
+| Autoresearch results | `docs/reports/<strategy>_sweep_<date>.txt` | Auto-generated |
+| WFO results | `docs/reports/<strategy>_wfo_<date>.csv` | Auto-generated |
 | Backtest reports | `docs/reports/<strategy>_backtest_<date>.md` | Manual summary |
 | Abandonment notes | `docs/reports/<strategy>_abandoned_<date>.md` | Required on abandon |
 | Paper validation | `docs/PAPER_VALIDATION_REPORT.md` | Appended per strategy |
