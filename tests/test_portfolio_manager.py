@@ -233,27 +233,53 @@ async def test_get_daily_stats_uses_full_utc_day_window():
     mock_pool = MagicMock()
     mock_conn = AsyncMock()
     mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
-    mock_conn.fetch.return_value = []
-    mock_conn.fetchval.side_effect = [123.45, 6, 4]
+    mock_conn.fetch.return_value = [
+        {
+            "symbol": "BTCUSDT",
+            "market": "paper",
+            "position_side": "LONG",
+            "realized_pnl": 100.0,
+            "entry_price": 1.0,
+            "exit_price": 2.0,
+            "exit_time": datetime(2026, 3, 12, 12, 0, tzinfo=UTC),
+        },
+        {
+            "symbol": "ETHUSDT",
+            "market": "paper",
+            "position_side": "LONG",
+            "realized_pnl": 23.45,
+            "entry_price": 1.0,
+            "exit_price": 2.0,
+            "exit_time": datetime(2026, 3, 12, 13, 0, tzinfo=UTC),
+        },
+        {
+            "symbol": "SOLUSDT",
+            "market": "paper",
+            "position_side": "LONG",
+            "realized_pnl": -10.0,
+            "entry_price": 1.0,
+            "exit_price": 2.0,
+            "exit_time": datetime(2026, 3, 12, 14, 0, tzinfo=UTC),
+        },
+    ]
 
-    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+    with (
+        patch("src.portfolio.manager.get_pool", return_value=mock_pool),
+        patch.object(manager, "_load_open_positions", new=AsyncMock()),
+        patch.object(manager, "_ensure_schema", new=AsyncMock()),
+    ):
         async with manager:
             total_pnl, trades_count, win_rate = await manager.get_daily_stats(date(2026, 3, 12))
 
-    assert total_pnl == pytest.approx(123.45)
-    assert trades_count == 6
+    assert total_pnl == pytest.approx(113.45)
+    assert trades_count == 3
     assert win_rate == pytest.approx(66.6666666667)
 
-    first_call = mock_conn.fetchval.call_args_list[0]
-    second_call = mock_conn.fetchval.call_args_list[1]
-    third_call = mock_conn.fetchval.call_args_list[2]
+    fetch_call = mock_conn.fetch.call_args_list[0]
 
     expected_start = datetime(2026, 3, 12, 0, 0, tzinfo=UTC)
     expected_end = datetime(2026, 3, 13, 0, 0, tzinfo=UTC)
 
-    assert first_call.args[2] == expected_start
-    assert first_call.args[3] == expected_end
-    assert second_call.args[2] == expected_start
-    assert second_call.args[3] == expected_end
-    assert third_call.args[2] == expected_start
-    assert third_call.args[3] == expected_end
+    assert fetch_call.args[1] == manager._agent_id
+    assert fetch_call.args[2] == expected_start
+    assert fetch_call.args[3] == expected_end

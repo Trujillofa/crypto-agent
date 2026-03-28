@@ -69,7 +69,23 @@ async def send_all_notifications():
 
         # 6. Daily summary
         print("6️⃣  Sending daily summary...")
-        await notifier.send_daily_summary(total_pnl=245.75, trades_count=12, win_rate=68.5)
+        from datetime import UTC, datetime
+        await notifier.send_daily_summary(
+            total_pnl=245.75,
+            trades_count=12,
+            win_rate=68.5,
+            summary_date=datetime.now(UTC).date(),
+            by_symbol={
+                "BTCUSDT": {"trades": 5, "wins": 3, "pnl": 120.25},
+                "ETHUSDT": {"trades": 4, "wins": 3, "pnl": 95.50},
+                "SOLUSDT": {"trades": 3, "wins": 2, "pnl": 30.00},
+            },
+            wins=8,
+            losses=4,
+            largest_win={"symbol": "BTCUSDT", "pnl": 85.75},
+            largest_loss={"symbol": "SOLUSDT", "pnl": -24.50},
+            notes=["Example enhanced summary output"],
+        )
 
     print()
     print("=" * 60)

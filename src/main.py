@@ -1270,9 +1270,10 @@ async def run() -> None:
                         continue
 
                     summary_date = (next_midnight - timedelta(days=1)).date()
-                    total_pnl, trades_count, win_rate = await portfolio_manager.get_daily_stats(
-                        summary_date
-                    )
+                    details = await portfolio_manager.get_daily_summary_details(summary_date)
+                    total_pnl = float(details["total_pnl"])
+                    trades_count = int(details["trades_count"])
+                    win_rate = float(details["win_rate"])
                     if (
                         not settings.telegram.daily_summary_send_empty
                         and trades_count == 0
@@ -1284,6 +1285,9 @@ async def run() -> None:
                         str(entry.get("name", "unknown"))
                         for entry in settings.strategy.strategies
                     ]
+                    summary_notes: list[str] = []
+                    if trades_count == 0:
+                        summary_notes.append("No closed trades for this day.")
                     await telegram_notifier.send_daily_summary(
                         total_pnl=total_pnl,
                         trades_count=trades_count,
@@ -1295,6 +1299,12 @@ async def run() -> None:
                         trading_pairs=settings.trading_pairs,
                         timeframe=settings.timeframe,
                         mode=settings.mode,
+                        by_symbol=details.get("by_symbol"),
+                        wins=int(details.get("wins", 0)),
+                        losses=int(details.get("losses", 0)),
+                        largest_win=details.get("largest_win"),
+                        largest_loss=details.get("largest_loss"),
+                        notes=summary_notes,
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger = get_logger("main")

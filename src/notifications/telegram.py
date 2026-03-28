@@ -17,6 +17,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from html import escape
 from enum import Enum
 from typing import Any
 
@@ -265,6 +266,12 @@ class TelegramNotifier:
         trading_pairs: list[str] | tuple[str, ...] | None = None,
         timeframe: str | None = None,
         mode: str | None = None,
+        by_symbol: dict[str, dict[str, float | int]] | None = None,
+        wins: int | None = None,
+        losses: int | None = None,
+        largest_win: dict[str, Any] | None = None,
+        largest_loss: dict[str, Any] | None = None,
+        notes: list[str] | tuple[str, ...] | None = None,
     ) -> bool:
         """Send daily trading summary."""
         pnl_sign = "+" if total_pnl >= 0 else ""
@@ -295,6 +302,43 @@ class TelegramNotifier:
                 f"{pnl_emoji} P&L:     {pnl_sign}{total_pnl:.2f} USDT",
             ]
         )
+
+        if wins is not None or losses is not None:
+            wins_v = wins if wins is not None else 0
+            losses_v = losses if losses is not None else max(0, trades_count - wins_v)
+            lines.append(f"✅ Wins/Losses: {wins_v}/{losses_v}")
+
+        if by_symbol:
+            lines.append("")
+            lines.append("📦 <b>By Symbol</b>")
+            for symbol, stats in sorted(
+                by_symbol.items(),
+                key=lambda item: float(item[1].get("pnl", 0.0)),
+                reverse=True,
+            ):
+                symbol_pnl = float(stats.get("pnl", 0.0))
+                symbol_trades = int(stats.get("trades", 0))
+                symbol_wins = int(stats.get("wins", 0))
+                symbol_sign = "+" if symbol_pnl >= 0 else ""
+                lines.append(
+                    f"• <b>{escape(symbol)}</b>: {symbol_trades} trades, {symbol_wins} wins, {symbol_sign}{symbol_pnl:.2f} USDT"
+                )
+
+        if largest_win and trades_count > 0:
+            lines.append("")
+            lines.append(
+                f"🏆 Best Trade: <b>{escape(str(largest_win.get('symbol', '?')))}</b> {float(largest_win.get('pnl', 0.0)):+.2f} USDT"
+            )
+        if largest_loss and trades_count > 0:
+            lines.append(
+                f"🩸 Worst Trade: <b>{escape(str(largest_loss.get('symbol', '?')))}</b> {float(largest_loss.get('pnl', 0.0)):+.2f} USDT"
+            )
+
+        if notes:
+            lines.append("")
+            lines.append("📝 <b>Notes</b>")
+            for note in notes:
+                lines.append(f"• {escape(str(note))}")
 
         return await self.send_alert("\n".join(lines), AlertLevel.INFO)
 

@@ -424,6 +424,11 @@ class PortfolioManager:
 
     async def get_daily_stats(self, day: date) -> tuple[float, int, float]:
         """Return stats for a specific UTC calendar day."""
+        details = await self.get_daily_summary_details(day)
+        return details["total_pnl"], details["trades_count"], details["win_rate"]
+
+    async def get_daily_summary_details(self, day: date) -> dict[str, object]:
+        """Return richer daily summary details for notifications/reporting."""
         async with self._db_lock:
             pool = get_pool()
             async with pool.acquire() as conn:
@@ -432,30 +437,62 @@ class PortfolioManager:
                 agent_filter = "agent_id = $1"
                 agent_param = self._agent_id
 
-                total_pnl = await conn.fetchval(
-                    f"SELECT COALESCE(SUM(realized_pnl), 0) FROM positions"
-                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND {agent_filter}",
-                    agent_param,
-                    day_start,
-                    day_end,
-                )
-                trades_count = await conn.fetchval(
-                    f"SELECT COUNT(*) FROM positions"
-                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND {agent_filter}",
-                    agent_param,
-                    day_start,
-                    day_end,
-                )
-                wins = await conn.fetchval(
-                    f"SELECT COUNT(*) FROM positions"
-                    f" WHERE status = 'closed' AND exit_time >= $2 AND exit_time < $3 AND realized_pnl > 0 AND {agent_filter}",
+                rows = await conn.fetch(
+                    f"""
+                    SELECT symbol, market, position_side, realized_pnl, entry_price, exit_price, exit_time
+                    FROM positions
+                    WHERE status = 'closed'
+                      AND exit_time >= $2
+                      AND exit_time < $3
+                      AND {agent_filter}
+                    ORDER BY exit_time ASC
+                    """,
                     agent_param,
                     day_start,
                     day_end,
                 )
 
-                total_pnl_f = float(total_pnl or 0)
-                trades_count_i = int(trades_count or 0)
-                wins_i = int(wins or 0)
-                win_rate = (wins_i / trades_count_i * 100.0) if trades_count_i > 0 else 0.0
-                return total_pnl_f, trades_count_i, win_rate
+                trades_count = len(rows)
+                total_pnl = float(sum(float(row["realized_pnl"] or 0.0) for row in rows))
+                wins = sum(1 for row in rows if float(row["realized_pnl"] or 0.0) > 0)
+                win_rate = (wins / trades_count * 100.0) if trades_count > 0 else 0.0
+
+                by_symbol: dict[str, dict[str, float | int]] = {}
+                largest_win: dict[str, object] | None = None
+                largest_loss: dict[str, object] | None = None
+
+                for row in rows:
+                    raw_symbol = str(row["symbol"])
+                    symbol = self._descope_symbol(raw_symbol) or raw_symbol
+                    pnl = float(row["realized_pnl"] or 0.0)
+                    symbol_stats = by_symbol.setdefault(
+                        symbol,
+                        {"trades": 0, "pnl": 0.0, "wins": 0},
+                    )
+                    symbol_stats["trades"] = int(symbol_stats["trades"]) + 1
+                    symbol_stats["pnl"] = float(symbol_stats["pnl"]) + pnl
+                    if pnl > 0:
+                        symbol_stats["wins"] = int(symbol_stats["wins"]) + 1
+
+                    trade_info = {
+                        "symbol": symbol,
+                        "pnl": pnl,
+                        "market": row["market"],
+                        "position_side": row["position_side"],
+                        "exit_time": row["exit_time"],
+                    }
+                    if largest_win is None or pnl > float(largest_win["pnl"]):
+                        largest_win = trade_info
+                    if largest_loss is None or pnl < float(largest_loss["pnl"]):
+                        largest_loss = trade_info
+
+                return {
+                    "total_pnl": total_pnl,
+                    "trades_count": trades_count,
+                    "win_rate": win_rate,
+                    "wins": wins,
+                    "losses": trades_count - wins,
+                    "by_symbol": by_symbol,
+                    "largest_win": largest_win,
+                    "largest_loss": largest_loss,
+                }
