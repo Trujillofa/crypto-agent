@@ -3,10 +3,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from src.backtest.sentiment_replay import ReplaySentimentScorer
 from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
+from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
 from src.utils.logger import get_logger
 
 
@@ -31,12 +33,15 @@ class BacktestConfig:
     use_atr_sizing: bool = False
     atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
     apply_global_trend_filter: bool = True
+    global_trend_filter_buffer_pct: float = 0.0
     allow_short: bool = False
     use_executor_exit_model: bool = False
     ignore_signal_sells: bool = False
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
+    replay_sentiment_path: str | None = None
+    replay_sentiment_max_age_seconds: float | None = None
 
 
 @dataclass
@@ -129,11 +134,20 @@ class BacktestEngine:
 
         # Instantiate strategies first to check if any require MTF
         strategies = []
+        replay_scorer = None
+        if self._config.replay_sentiment_path:
+            replay_scorer = ReplaySentimentScorer(
+                self._config.replay_sentiment_path,
+                max_age_seconds=self._config.replay_sentiment_max_age_seconds,
+            )
         for idx, cls in enumerate(self._config.strategy_classes):
             cfg = None
             if idx < len(self._config.strategy_configs):
                 cfg = self._config.strategy_configs[idx]
-            strategies.append(cls(cfg))
+            strategy = cls(cfg)
+            if replay_scorer is not None and isinstance(strategy, SentimentMeanReversionStrategy):
+                strategy.set_scorer(replay_scorer)
+            strategies.append(strategy)
 
         mtf_timeframes = self._validate_strategy_timeframes(strategies)
 
@@ -194,13 +208,16 @@ class BacktestEngine:
 
             if self._config.apply_global_trend_filter and final_signal.type == SignalType.BUY:
                 ema_200 = row.get("ema_200")
-                if ema_200 is not None and current_price < ema_200:
+                buffer_pct = self._config.global_trend_filter_buffer_pct
+                if ema_200 is not None and current_price < ema_200 * (1 - buffer_pct):
                     final_signal = Signal(
                         type=SignalType.HOLD,
                         symbol=final_signal.symbol,
                         price=final_signal.price,
                         confidence=0.0,
-                        reason="Blocked by Global Trend Filter (Price < EMA200)",
+                        reason=(
+                            f"Blocked by Global Trend Filter (Price < {buffer_pct * 100:.1f}% below EMA200)"
+                        ),
                         indicators=final_signal.indicators,
                         trading_mode=final_signal.trading_mode,
                     )
@@ -219,6 +236,17 @@ class BacktestEngine:
             last_price = data[-1]["close_price"]
             last_time = str(data[-1]["time"])
             self._close_position(last_time, last_price)
+
+        if replay_scorer is not None:
+            stats = replay_scorer.stats()
+            self._logger.info(
+                "Replay sentiment coverage: hits=%d misses=%d stale=%d loaded_obs=%d loaded_symbols=%d",
+                stats["hits"],
+                stats["misses"],
+                stats["stale_misses"],
+                stats["loaded_observations"],
+                stats["loaded_symbols"],
+            )
 
         return self._calculate_metrics()
 

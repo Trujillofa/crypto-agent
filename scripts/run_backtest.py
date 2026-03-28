@@ -46,6 +46,18 @@ async def main():
         action="store_true",
         help="Disable the EMA200 global trend filter for this backtest run",
     )
+    parser.add_argument(
+        "--replay-sentiment-log",
+        type=str,
+        default=None,
+        help="Path to event_log JSONL with sentiment_score events for replay during backtest",
+    )
+    parser.add_argument(
+        "--replay-sentiment-max-age-hours",
+        type=float,
+        default=None,
+        help="Max age in hours for replayed sentiment lookup before falling back to neutral",
+    )
 
     args = parser.parse_args()
 
@@ -93,12 +105,21 @@ async def main():
         atr_multiplier=settings.trading_execution.atr_multiplier,
         risk_per_trade=settings.trading_execution.risk_per_trade_pct,
         apply_global_trend_filter=not args.disable_trend_filter,
+        global_trend_filter_buffer_pct=float(
+            raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.05)
+        ),
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
         allow_short=args.allow_short,
+        replay_sentiment_path=args.replay_sentiment_log,
+        replay_sentiment_max_age_seconds=(
+            args.replay_sentiment_max_age_hours * 3600
+            if args.replay_sentiment_max_age_hours is not None
+            else None
+        ),
     )
 
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
@@ -121,6 +142,11 @@ async def main():
     )
     print(f"Trend Filter: {not args.disable_trend_filter}")
     print(f"Allow Short: {args.allow_short}")
+    print(f"Replay Sentiment Log: {args.replay_sentiment_log or 'disabled'}")
+    print(
+        "Replay Sentiment Max Age (hours): "
+        f"{args.replay_sentiment_max_age_hours if args.replay_sentiment_max_age_hours is not None else 'unbounded'}"
+    )
 
     await init_pool(db_config)
     try:

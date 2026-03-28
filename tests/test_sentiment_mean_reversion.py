@@ -1,4 +1,5 @@
 import time
+from datetime import UTC, datetime
 
 import pytest
 
@@ -15,8 +16,10 @@ class FakeScorer(SentimentScorer):
     def __init__(self, score: float = 50.0) -> None:
         super().__init__(xai_client=None)
         self._fixed_score = score
+        self.calls: list[tuple[str, object | None]] = []
 
-    async def get_score(self, symbol: str) -> float:
+    async def get_score(self, symbol: str, at_time=None) -> float:
+        self.calls.append((symbol, at_time))
         return self._fixed_score
 
 
@@ -44,6 +47,7 @@ def _indicators(
         "bb_lower_dist": bb_lower_dist,
         "bb_upper_dist": bb_upper_dist,
         "close_price": close,
+        "time": datetime(2026, 3, 27, 12, 0, tzinfo=UTC),
     }
 
 
@@ -149,6 +153,19 @@ class TestSentimentMeanReversion:
             _indicators(rsi=25.0, bb_lower_dist=0.001),
         )
         assert signal.indicators.get("sentiment_score") == 72.0
+
+    @pytest.mark.asyncio
+    async def test_passes_row_time_to_replay_capable_scorer(self):
+        """Backtest/replay scorers can receive candle time for historical lookup."""
+        strategy = _make_strategy()
+        scorer = FakeScorer(score=72.0)
+        strategy.set_scorer(scorer)
+        indicators = _indicators(rsi=25.0, bb_lower_dist=0.001)
+        signal = await strategy.evaluate("BTCUSDT", indicators)
+        assert signal.type == SignalType.BUY
+        assert scorer.calls
+        assert scorer.calls[-1][0] == "BTCUSDT"
+        assert scorer.calls[-1][1] == indicators["time"]
 
 
 class TestSentimentScorer:

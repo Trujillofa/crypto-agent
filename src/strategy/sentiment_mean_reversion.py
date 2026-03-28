@@ -221,11 +221,23 @@ class SentimentMeanReversionStrategy(BaseStrategy):
         """Inject a SentimentScorer instance."""
         self._scorer = scorer
 
-    async def _get_sentiment(self, symbol: str) -> float:
-        """Get sentiment score, defaulting to neutral if no scorer."""
+    async def _get_sentiment(self, symbol: str, indicators: Mapping[str, float]) -> float:
+        """Get sentiment score, defaulting to neutral if no scorer.
+
+        If the injected scorer supports replay lookup with a candle timestamp,
+        pass the current row time so backtests can use historical sentiment.
+        """
         if self._scorer is None:
             return 50.0
-        score = await self._scorer.get_score(symbol)
+
+        row_time = indicators.get("time")
+        if row_time is not None:
+            try:
+                score = await self._scorer.get_score(symbol, row_time)
+            except TypeError:
+                score = await self._scorer.get_score(symbol)
+        else:
+            score = await self._scorer.get_score(symbol)
         self._last_sentiment[symbol] = score
         return score
 
@@ -243,7 +255,7 @@ class SentimentMeanReversionStrategy(BaseStrategy):
 
         self._previous_rsi[symbol] = rsi
 
-        sentiment = await self._get_sentiment(symbol)
+        sentiment = await self._get_sentiment(symbol, indicators)
 
         # Default: HOLD
         signal = Signal(
