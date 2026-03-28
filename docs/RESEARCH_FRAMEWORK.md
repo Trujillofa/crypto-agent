@@ -143,7 +143,12 @@ A trend-following strategy that only works on one symbol is suspicious.
 #### 3e. Monte Carlo stress test
 
 ```bash
-python scripts/run_monte_carlo.py --strategy <name> --config <config>
+python scripts/run_monte_carlo.py \
+  --config configs/strategies/<strategy>.yaml \
+  --symbol <symbol> \
+  --timeframe <timeframe> \
+  --start <YYYY-MM-DD> \
+  --end <YYYY-MM-DD>
 ```
 
 Acceptable result: 5th-percentile outcome still positive. Max drawdown at 95th
