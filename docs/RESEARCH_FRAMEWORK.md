@@ -117,7 +117,7 @@ python scripts/run_monte_carlo.py        # Monte Carlo analysis
 WFO is the primary validation tool. Fixed-window backtests are insufficient alone.
 
 ```bash
-python scripts/run_wfo.py --strategy <name> --symbol BTCUSDT --config <config>
+python scripts/run_wfo.py BTCUSDT 1h 2021-01-01 2022-01-01 --config <config>
 ```
 
 Acceptable result: OOS Sharpe ≥ 0.6 across ≥ 3 folds.
