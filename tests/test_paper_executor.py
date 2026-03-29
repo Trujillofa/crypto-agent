@@ -677,3 +677,58 @@ class TestOnSignalEntryPath:
             closing_side="SELL",
             realized_pnl_override=pytest.approx(4.798),
         )
+
+
+class TestSignalIgnoredLogging:
+    """Verify signal_ignored events only fire for actually ignored signals."""
+
+    @pytest.mark.asyncio
+    async def test_buy_signal_does_not_log_signal_ignored(self):
+        executor = _make_executor()
+        mock_event_log = AsyncMock()
+        mock_event_log.log = AsyncMock()
+        executor._event_log = mock_event_log
+
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.9,
+            reason="Test BUY",
+            indicators={"close_price": 50000.0, "atr_14": 500.0},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        # signal_received should be logged, but NOT signal_ignored
+        logged_types = [call.args[0] for call in mock_event_log.log.call_args_list]
+        assert "signal_received" in logged_types
+        assert "signal_ignored" not in logged_types
+
+    @pytest.mark.asyncio
+    async def test_sell_from_flat_futures_logs_signal_ignored(self):
+        executor = _make_executor()
+        mock_event_log = AsyncMock()
+        mock_event_log.log = AsyncMock()
+        executor._event_log = mock_event_log
+
+        signal = Signal(
+            type=SignalType.SELL,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.9,
+            reason="Test SELL",
+            indicators={"close_price": 50000.0},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(signal)
+
+        logged_types = [call.args[0] for call in mock_event_log.log.call_args_list]
+        assert "signal_ignored" in logged_types
+        # Check the reason is correct
+        ignored_call = [
+            call for call in mock_event_log.log.call_args_list if call.args[0] == "signal_ignored"
+        ][0]
+        assert ignored_call.args[1]["reason"] == "futures_sell_from_flat_long_only"

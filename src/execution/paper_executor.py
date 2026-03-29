@@ -447,21 +447,30 @@ class PaperExecutor:
                             "Paper SELL from flat ignored for %s [futures] — LONG-only parity (allow_short_entry=False)",
                             signal.symbol,
                         )
+                        if self._event_log:
+                            await self._event_log.log(
+                                "signal_ignored",
+                                {
+                                    "symbol": signal.symbol,
+                                    "reason": "futures_sell_from_flat_long_only",
+                                    "market_tag": market_tag,
+                                },
+                            )
                 else:
                     self._logger.info(
                         "Strategy SELL ignored for %s [%s] — exits via SL/TP/trailing only",
                         signal.symbol,
                         market_tag,
                     )
-            if self._event_log:
-                await self._event_log.log(
-                    "signal_ignored",
-                    {
-                        "symbol": signal.symbol,
-                        "reason": "strategy_sell_ignored_spot_mode",
-                        "market_tag": market_tag,
-                    },
-                )
+                    if self._event_log:
+                        await self._event_log.log(
+                            "signal_ignored",
+                            {
+                                "symbol": signal.symbol,
+                                "reason": "strategy_sell_exits_via_sl_tp_only",
+                                "market_tag": market_tag,
+                            },
+                        )
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Paper signal failed: %s — %s", signal.symbol, exc)
             await self._notifier.send_alert(
