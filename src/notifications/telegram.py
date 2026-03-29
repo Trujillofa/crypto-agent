@@ -17,8 +17,8 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from html import escape
 from enum import Enum
+from html import escape
 from typing import Any
 
 import aiohttp
@@ -80,8 +80,10 @@ class TelegramNotifier:
             enabled=os.getenv("TELEGRAM_ENABLED", "true").lower() == "true",
             rate_limit_seconds=int(os.getenv("TELEGRAM_RATE_LIMIT", "5")),
             allowed_updates=("message",),
-            daily_summary_enabled=os.getenv("TELEGRAM_DAILY_SUMMARY_ENABLED", "true").lower() == "true",
-            daily_summary_send_empty=os.getenv("TELEGRAM_DAILY_SUMMARY_SEND_EMPTY", "false").lower() == "true",
+            daily_summary_enabled=os.getenv("TELEGRAM_DAILY_SUMMARY_ENABLED", "true").lower()
+            == "true",
+            daily_summary_send_empty=os.getenv("TELEGRAM_DAILY_SUMMARY_SEND_EMPTY", "false").lower()
+            == "true",
         )
 
     async def __aenter__(self) -> TelegramNotifier:
@@ -272,6 +274,7 @@ class TelegramNotifier:
         largest_win: dict[str, Any] | None = None,
         largest_loss: dict[str, Any] | None = None,
         notes: list[str] | tuple[str, ...] | None = None,
+        sentiment_health: dict[str, Any] | None = None,
     ) -> bool:
         """Send daily trading summary."""
         pnl_sign = "+" if total_pnl >= 0 else ""
@@ -333,6 +336,19 @@ class TelegramNotifier:
             lines.append(
                 f"🩸 Worst Trade: <b>{escape(str(largest_loss.get('symbol', '?')))}</b> {float(largest_loss.get('pnl', 0.0)):+.2f} USDT"
             )
+
+        if sentiment_health:
+            total = sentiment_health.get("total_24h", 0)
+            if total > 0:
+                lines.append("")
+                lines.append("📡 <b>Sentiment Health</b>")
+                live_pct = sentiment_health.get("live_pct", 0.0)
+                lines.append(f"• Observations (24h): {total}")
+                by_sym = sentiment_health.get("by_symbol", {})
+                if by_sym:
+                    sym_parts = [f"{s}: {c}" for s, c in sorted(by_sym.items())]
+                    lines.append(f"• Per symbol: {' | '.join(sym_parts)}")
+                lines.append(f"• Live: {live_pct:.0f}% | Fallback: {100 - live_pct:.0f}%")
 
         if notes:
             lines.append("")

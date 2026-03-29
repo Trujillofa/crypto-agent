@@ -1282,12 +1282,35 @@ async def run() -> None:
                         continue
 
                     strategy_names = [
-                        str(entry.get("name", "unknown"))
-                        for entry in settings.strategy.strategies
+                        str(entry.get("name", "unknown")) for entry in settings.strategy.strategies
                     ]
                     summary_notes: list[str] = []
                     if trades_count == 0:
                         summary_notes.append("No closed trades for this day.")
+
+                    # Compute sentiment health stats for daily summary
+                    sentiment_health: dict[str, object] | None = None
+                    cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
+                    recent_sentiment = [
+                        e
+                        for e in event_log.get_recent_by_type("sentiment_score", limit=500)
+                        if e.ts >= cutoff
+                    ]
+                    if recent_sentiment:
+                        total_obs = len(recent_sentiment)
+                        by_sym: dict[str, int] = {}
+                        live_count = 0
+                        for e in recent_sentiment:
+                            sym = e.payload.get("symbol", "unknown")
+                            by_sym[sym] = by_sym.get(sym, 0) + 1
+                            if e.payload.get("source") == "xai_live":
+                                live_count += 1
+                        sentiment_health = {
+                            "total_24h": total_obs,
+                            "by_symbol": by_sym,
+                            "live_pct": live_count / total_obs * 100,
+                        }
+
                     await telegram_notifier.send_daily_summary(
                         total_pnl=total_pnl,
                         trades_count=trades_count,
@@ -1305,6 +1328,7 @@ async def run() -> None:
                         largest_win=details.get("largest_win"),
                         largest_loss=details.get("largest_loss"),
                         notes=summary_notes,
+                        sentiment_health=sentiment_health,
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger = get_logger("main")

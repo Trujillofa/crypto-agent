@@ -387,6 +387,30 @@ class TestSpecializedAlerts:
             assert "60.0%" in message
             assert "2026-03-12" in message
 
+    @pytest.mark.asyncio
+    async def test_send_daily_summary_with_sentiment_health(
+        self, notifier: TelegramNotifier
+    ) -> None:
+        """Test daily summary includes sentiment health section when provided."""
+        with patch.object(notifier, "send_alert", new=AsyncMock(return_value=True)) as mock_send:
+            await notifier.send_daily_summary(
+                total_pnl=100.0,
+                trades_count=5,
+                win_rate=60.0,
+                summary_date=date(2026, 3, 28),
+                sentiment_health={
+                    "total_24h": 142,
+                    "by_symbol": {"BTCUSDT": 71, "ETHUSDT": 71},
+                    "live_pct": 68.0,
+                },
+            )
+            message = mock_send.call_args[0][0]
+            assert "Sentiment Health" in message
+            assert "142" in message
+            assert "BTCUSDT: 71" in message
+            assert "Live: 68%" in message
+            assert "Fallback: 32%" in message
+
 
 class TestFormatMessage:
     """Test suite for message formatting."""
@@ -425,8 +449,7 @@ class TestHelpers:
 
     def test_format_market_label_paper_futures_with_leverage(self) -> None:
         assert (
-            TelegramNotifier._format_market_label("paper-futures (3x)")
-            == "📄 PAPER FUTURES (3X)"
+            TelegramNotifier._format_market_label("paper-futures (3x)") == "📄 PAPER FUTURES (3X)"
         )
 
     def test_format_market_label_futures(self) -> None:
