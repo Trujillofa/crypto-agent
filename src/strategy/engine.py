@@ -178,6 +178,25 @@ class StrategyEngine:
                     " | ".join(non_hold_votes),
                 )
 
+            # Stamp default_trading_mode onto signals that weren't explicitly set
+            if self._config.default_trading_mode != "spot" and generated_signals:
+                generated_signals = [
+                    (
+                        Signal(
+                            type=sig.type,
+                            symbol=sig.symbol,
+                            price=sig.price,
+                            confidence=sig.confidence,
+                            reason=sig.reason,
+                            indicators=sig.indicators,
+                            trading_mode=self._config.default_trading_mode,
+                        )
+                        if sig.trading_mode == "spot"
+                        else sig
+                    )
+                    for sig in generated_signals
+                ]
+
             if generated_signals:
                 # Get per-symbol aggregator config if available
                 symbol_config = self._config.per_symbol_aggregator_config.get(symbol, {})

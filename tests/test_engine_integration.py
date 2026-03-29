@@ -173,3 +173,28 @@ class TestStrategyEngineIntegration:
 
         assert len(received_signals) == 1
         assert received_signals[0].type == SignalType.BUY
+
+    @pytest.mark.asyncio
+    async def test_default_trading_mode_futures_stamps_signals(self, mock_reader):
+        """Signals should inherit default_trading_mode from engine config."""
+        config = EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[MockStrategy],
+            aggregator_config={"buy_threshold": 0.5, "min_agreement": 1},
+            default_trading_mode="futures",
+        )
+
+        engine = StrategyEngine(config, mock_reader)
+        strategy = engine._strategies["BTCUSDT"][0]
+        strategy.signal_to_emit = SignalType.BUY
+        strategy.confidence = 0.9
+
+        received_signals = []
+
+        async def on_signal(sig):
+            received_signals.append(sig)
+
+        await engine._evaluate_all(on_signal)
+
+        assert len(received_signals) == 1
+        assert received_signals[0].trading_mode == "futures"

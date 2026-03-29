@@ -195,7 +195,11 @@ class SignalAggregator:
     def _resolve_trading_mode(self, signals: list[Signal]) -> str:
         modes = {signal.trading_mode for signal in signals}
         if len(modes) == 1:
-            return next(iter(modes))
+            mode = next(iter(modes))
+            # If all signals just have the dataclass default, prefer configured default
+            if mode == "spot" and self._default_trading_mode != "spot":
+                return self._default_trading_mode
+            return mode
         if len(modes) > 1:
             self._logger.warning(
                 "Mixed trading_mode values detected (%s). Falling back to default '%s'.",

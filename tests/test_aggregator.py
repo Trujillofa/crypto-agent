@@ -87,6 +87,15 @@ class TestSignalAggregator:
         result = agg.aggregate("BTCUSDT", signals)
         assert result.trading_mode == "spot"
 
+    def test_trading_mode_futures_default_overrides_dataclass_spot(self):
+        """When config says futures but signals have dataclass default spot, use futures."""
+        agg = SignalAggregator(default_trading_mode="futures")
+        signals = [
+            self._create_signal(SignalType.BUY, trading_mode="spot"),
+        ]
+        result = agg.aggregate("BTCUSDT", signals)
+        assert result.trading_mode == "futures"
+
     def test_per_symbol_buy_threshold_override(self, aggregator):
         """Per-symbol buy_threshold should override default."""
         signals = [self._create_signal(SignalType.BUY, 0.8)]
