@@ -17,6 +17,8 @@ def run_backtest(
     start: str,
     end: str,
     config_path: str,
+    replay_sentiment_log: str | None = None,
+    replay_sentiment_max_age_hours: float | None = None,
 ) -> dict[str, float] | None:
     cmd = [
         "python",
@@ -32,6 +34,10 @@ def run_backtest(
         "--config",
         config_path,
     ]
+    if replay_sentiment_log:
+        cmd.extend(["--replay-sentiment-log", replay_sentiment_log])
+    if replay_sentiment_max_age_hours is not None:
+        cmd.extend(["--replay-sentiment-max-age-hours", str(replay_sentiment_max_age_hours)])
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         print(f"Backtest failed: {result.stderr}")
@@ -57,6 +63,8 @@ async def wfo(
     test_months: int = 3,
     output_path: str = "wfo_results.csv",
     config_path: str = "config/settings.yaml",
+    replay_sentiment_log: str | None = None,
+    replay_sentiment_max_age_hours: float | None = None,
 ) -> list[dict[str, str | float]]:
     start_dt = datetime.fromisoformat(start)
     end_dt = datetime.fromisoformat(end)
@@ -78,7 +86,15 @@ async def wfo(
             f"Train: {current.strftime('%Y-%m')} - {train_str} | Test: {train_end.strftime('%Y-%m')} - {test_str}"
         )
 
-        metrics = run_backtest(symbol, timeframe, train_str, test_str, config_path)
+        metrics = run_backtest(
+            symbol,
+            timeframe,
+            train_str,
+            test_str,
+            config_path,
+            replay_sentiment_log=replay_sentiment_log,
+            replay_sentiment_max_age_hours=replay_sentiment_max_age_hours,
+        )
         if metrics:
             results.append(
                 {
@@ -137,6 +153,18 @@ def parse_args() -> argparse.Namespace:
         "--config",
         default=os.getenv("SETTINGS_PATH", "config/settings.yaml"),
     )
+    parser.add_argument(
+        "--replay-sentiment-log",
+        type=str,
+        default=None,
+        help="Path to event_log JSONL with sentiment_score events for replay",
+    )
+    parser.add_argument(
+        "--replay-sentiment-max-age-hours",
+        type=float,
+        default=None,
+        help="Max age in hours for replayed sentiment lookup",
+    )
     return parser.parse_args()
 
 
@@ -152,5 +180,7 @@ if __name__ == "__main__":
             test_months=args.test_months,
             output_path=args.output,
             config_path=args.config,
+            replay_sentiment_log=args.replay_sentiment_log,
+            replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
         )
     )

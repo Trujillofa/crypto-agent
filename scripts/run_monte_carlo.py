@@ -201,6 +201,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable the EMA200 global trend filter for this run",
     )
+    parser.add_argument(
+        "--replay-sentiment-log",
+        type=str,
+        default=None,
+        help="Path to event_log JSONL with sentiment_score events for replay",
+    )
+    parser.add_argument(
+        "--replay-sentiment-max-age-hours",
+        type=float,
+        default=None,
+        help="Max age in hours for replayed sentiment lookup",
+    )
     return parser.parse_args()
 
 
@@ -248,6 +260,12 @@ async def main() -> None:
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
+        replay_sentiment_path=args.replay_sentiment_log,
+        replay_sentiment_max_age_seconds=(
+            args.replay_sentiment_max_age_hours * 3600
+            if args.replay_sentiment_max_age_hours is not None
+            else None
+        ),
     )
 
     print(f"Running baseline backtest: {args.symbol} {args.timeframe} {args.start}→{args.end}")
