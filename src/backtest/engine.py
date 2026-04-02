@@ -7,8 +7,8 @@ from src.backtest.sentiment_replay import ReplaySentimentScorer
 from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
-from src.strategy.signals import Signal, SignalType
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
+from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
 
