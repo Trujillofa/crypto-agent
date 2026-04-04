@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+"""Context Hub CLI entry point."""
+
+import sys
+from pathlib import Path
+
+# Add project root to path so 'from src.chub...' imports work
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.chub.cli import cli
+
+if __name__ == "__main__":
+    cli()
