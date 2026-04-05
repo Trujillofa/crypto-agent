@@ -23,6 +23,7 @@ from src.execution import (
 )
 from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
+from src.execution.staged_orders import StagedOrderManager
 from src.features import IndicatorComputer, IndicatorWriter
 from src.features.metrics import IndicatorMetrics
 from src.features.reader import IndicatorReader
@@ -33,6 +34,12 @@ from src.ingest.websocket import BinanceWebSocketIngestor
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.overseer import OverseerAgent, XAIClient
 from src.portfolio import PortfolioManager
+from src.risk.guards import (
+    CircuitBreakerGuard,
+    CooldownGuard,
+    GuardPipeline,
+    PositionLimitGuard,
+)
 from src.risk.manager import RiskManager
 from src.strategy import (
     BaseStrategy,
@@ -140,9 +147,30 @@ class Settings:
     exit_rules: Mapping[str, object] = field(default_factory=dict)
 
 
+def _deep_merge(base: dict[str, object], overlay: dict[str, object]) -> dict[str, object]:
+    merged = dict(base)
+    for key, value in overlay.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(
+                cast(dict[str, object], merged[key]),
+                cast(dict[str, object], value),
+            )
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_settings(config_path: Path) -> Settings:
+    base_path = config_path.parent / "base.yaml"
+    base_raw: dict[str, object] = {}
+    if base_path.exists():
+        with base_path.open("r", encoding="utf-8") as file_handle:
+            base_raw = cast(dict[str, object], yaml.safe_load(file_handle)) or {}
+
     with config_path.open("r", encoding="utf-8") as file_handle:
-        raw = cast(object, yaml.safe_load(file_handle))
+        overlay_raw = cast(dict[str, object], yaml.safe_load(file_handle)) or {}
+
+    raw = _deep_merge(base_raw, overlay_raw)
 
     root = _as_mapping(raw, "root configuration")
     agent_id = _as_str(root.get("agent_id"), "agent_id", default="").strip()
@@ -853,6 +881,21 @@ async def run() -> None:
     futures_executor = None
     futures_ingestor = None
 
+    # Execution safety: composable guard pipeline + staged order lifecycle
+    # Guards run before every order as an additive pre-check alongside RiskManager.
+    # Staged orders wrap every order in stage -> commit -> execute lifecycle.
+    guard_pipeline = GuardPipeline(
+        guards=[
+            CircuitBreakerGuard(risk_manager=risk_manager),
+            PositionLimitGuard(
+                max_position_pct=risk_manager._config.position_limits.max_position_pct,
+                risk_manager=risk_manager,
+            ),
+            CooldownGuard(min_seconds=60.0),
+        ]
+    )
+    staged_manager = StagedOrderManager(auto_commit=True)
+
     if use_paper:
         # Internal paper trading — no Binance API calls for execution
         futures_symbols = (
@@ -894,6 +937,8 @@ async def run() -> None:
             db_config=settings.database,
             agent_id=settings.agent_id,
             event_log=event_log,
+            guard_pipeline=guard_pipeline,
+            staged_manager=staged_manager,
         )
         get_logger("main").info("Paper mode: using internal PaperExecutor (no Binance API)")
     else:
@@ -905,6 +950,8 @@ async def run() -> None:
             portfolio_manager=portfolio_manager,
             notifier=telegram_notifier,
             event_log=event_log,
+            guard_pipeline=guard_pipeline,
+            staged_manager=staged_manager,
         )
 
         if settings.futures and settings.futures.enabled:
@@ -936,6 +983,8 @@ async def run() -> None:
                 portfolio_manager=portfolio_manager,
                 notifier=telegram_notifier,
                 event_log=event_log,
+                guard_pipeline=guard_pipeline,
+                staged_manager=staged_manager,
             )
 
             # Initialize futures mark price WebSocket
@@ -1165,6 +1214,16 @@ async def run() -> None:
 
         async def _log_startup_diagnostics() -> None:
             logger = get_logger("startup")
+
+            # Warn if spot-to-futures mirroring is enabled (opt-in, can cause duplicate exposure)
+            if settings.strategy.mirror_spot_to_futures:
+                logger.warning(
+                    "mirror_spot_to_futures is ENABLED — spot signals for symbols in futures_symbols "
+                    "will be duplicated into futures execution. Ensure this is intentional. "
+                    "Disable with strategy.mirror_spot_to_futures: false if only spot or only "
+                    "futures signals are desired."
+                )
+
             try:
                 ohlcv_rows = await writer.count_rows("ohlcv")
             except Exception:
@@ -1221,7 +1280,7 @@ async def run() -> None:
                 ai_status = "enabled" if xai_client is not None else "enabled_no_key"
 
             logger.info(
-                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s executor=%s futures=%s ai=%s",
+                "Startup diagnostics: db_connected=%s ohlcv_rows=%d indicator_rows=%d indicator_ready=%s risk=%s telegram_configured=%s executor=%s futures=%s ai=%s mirror_spot_to_futures=%s default_trading_mode=%s",
                 is_connected(),
                 ohlcv_rows,
                 indicator_rows,
@@ -1236,6 +1295,8 @@ async def run() -> None:
                     else "disabled"
                 ),
                 ai_status,
+                settings.strategy.mirror_spot_to_futures,
+                settings.strategy.default_trading_mode,
             )
             # Log startup event to force event log file creation
             await event_log.log(
@@ -1247,6 +1308,8 @@ async def run() -> None:
                     "futures_enabled": futures_executor is not None
                     or (paper_executor and paper_executor._config.futures_symbols),
                     "risk_summary": risk_summary,
+                    "mirror_spot_to_futures": settings.strategy.mirror_spot_to_futures,
+                    "default_trading_mode": settings.strategy.default_trading_mode,
                 },
             )
 

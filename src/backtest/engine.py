@@ -42,6 +42,9 @@ class BacktestConfig:
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
     replay_sentiment_path: str | None = None
     replay_sentiment_max_age_seconds: float | None = None
+    futures_mode: bool = False
+    futures_leverage: int = 5
+    futures_funding_rate: float = 0.0001
 
 
 @dataclass
@@ -57,6 +60,7 @@ class Trade:
     pnl: float
     return_pct: float
     exit_reason: str = "SIGNAL"
+    margin_used: float = 0.0
 
 
 @dataclass
@@ -94,6 +98,8 @@ class BacktestEngine:
         self._position_sl_price = 0.0
         self._position_tp_price = 0.0
         self._position_high_water_mark = 0.0
+        self._position_margin_used = 0.0
+        self._position_funding_paid = 0.0
         self._equity_curve: list[float] = []
         self._trades: list[Trade] = []
 
@@ -187,6 +193,9 @@ class BacktestEngine:
             low_price = row.get("low_price", current_price)
 
             if self._position_qty != 0:
+                self._apply_funding(current_time, current_price)
+                if self._check_liquidation(current_time, current_price):
+                    continue
                 if self._config.use_executor_exit_model:
                     if self._check_executor_exit(current_time, high_price, low_price):
                         continue
@@ -225,12 +234,7 @@ class BacktestEngine:
             atr = row.get("atr_14", 0.0)
             self._process_signal(final_signal, current_time, current_price, atr)
 
-            equity = self._cash
-            if self._position_qty > 0:
-                equity += (current_price - self._position_entry_price) * self._position_qty
-            elif self._position_qty < 0:
-                equity += (self._position_entry_price - current_price) * abs(self._position_qty)
-            self._equity_curve.append(equity)
+            self._equity_curve.append(self._calculate_equity(current_price))
 
         if self._position_qty != 0:
             last_price = data[-1]["close_price"]
@@ -324,6 +328,16 @@ class BacktestEngine:
         if entry_price <= 0:
             return 0.0
 
+        if self._config.futures_mode:
+            leverage = max(self._config.futures_leverage, 1)
+            max_qty = self._cash / (entry_price * ((1 / leverage) + self._config.fee_rate))
+            if self._config.use_atr_sizing and atr > 0:
+                risk_amount = self._cash * self._config.risk_per_trade
+                stop_distance = atr * self._config.atr_multiplier
+                target_qty = risk_amount / stop_distance if stop_distance > 0 else 0.0
+                return min(target_qty, max_qty)
+            return max_qty
+
         if self._config.use_atr_sizing and atr > 0:
             risk_amount = self._cash * self._config.risk_per_trade
             stop_distance = atr * self._config.atr_multiplier
@@ -339,7 +353,13 @@ class BacktestEngine:
         notional = qty * entry_price
         fee = notional * self._config.fee_rate
 
-        self._cash -= fee
+        if self._config.futures_mode:
+            margin = self._calculate_margin(notional)
+            self._cash -= margin + fee
+            self._position_margin_used = margin
+            self._position_funding_paid = 0.0
+        else:
+            self._cash -= fee
         self._position_qty = qty
         self._position_entry_price = entry_price
         self._position_entry_fee = fee
@@ -367,7 +387,13 @@ class BacktestEngine:
         notional = qty * entry_price
         fee = notional * self._config.fee_rate
 
-        self._cash -= fee
+        if self._config.futures_mode:
+            margin = self._calculate_margin(notional)
+            self._cash -= margin + fee
+            self._position_margin_used = margin
+            self._position_funding_paid = 0.0
+        else:
+            self._cash -= fee
         self._position_qty = -qty
         self._position_entry_price = entry_price
         self._position_entry_fee = fee
@@ -380,6 +406,7 @@ class BacktestEngine:
     def _close_position(self, timestamp: str, price: float, reason: str = "SIGNAL") -> None:
         is_long = self._position_qty > 0
         qty = abs(self._position_qty)
+        margin_used = self._position_margin_used
 
         if is_long:
             exit_price = price * (1 - self._config.slippage_pct)
@@ -393,11 +420,14 @@ class BacktestEngine:
         exit_notional = qty * exit_price
         exit_fee = exit_notional * self._config.fee_rate
 
-        pnl = gross_pnl - self._position_entry_fee - exit_fee
-        self._cash += gross_pnl - exit_fee
-
-        entry_notional = qty * self._position_entry_price
-        total_cost = entry_notional + self._position_entry_fee
+        pnl = gross_pnl - self._position_entry_fee - exit_fee - self._position_funding_paid
+        if self._config.futures_mode:
+            self._cash += margin_used + gross_pnl - exit_fee
+            total_cost = margin_used + self._position_entry_fee
+        else:
+            self._cash += gross_pnl - exit_fee
+            entry_notional = qty * self._position_entry_price
+            total_cost = entry_notional + self._position_entry_fee
         return_pct = (pnl / total_cost) * 100 if total_cost > 0 else 0.0
 
         trade = Trade(
@@ -410,6 +440,7 @@ class BacktestEngine:
             pnl=pnl,
             return_pct=return_pct,
             exit_reason=reason,
+            margin_used=margin_used,
         )
 
         self._trades.append(trade)
@@ -424,6 +455,58 @@ class BacktestEngine:
         self._position_sl_price = 0.0
         self._position_tp_price = 0.0
         self._position_high_water_mark = 0.0
+        self._position_margin_used = 0.0
+        self._position_funding_paid = 0.0
+
+    def _calculate_margin(self, notional: float) -> float:
+        leverage = max(self._config.futures_leverage, 1)
+        return notional / leverage
+
+    def _calculate_unrealized_pnl(self, current_price: float) -> float:
+        if self._position_qty > 0:
+            return (current_price - self._position_entry_price) * self._position_qty
+        if self._position_qty < 0:
+            return (self._position_entry_price - current_price) * abs(self._position_qty)
+        return 0.0
+
+    def _calculate_equity(self, current_price: float) -> float:
+        unrealized_pnl = self._calculate_unrealized_pnl(current_price)
+        if self._config.futures_mode:
+            return self._cash + self._position_margin_used + unrealized_pnl
+        return self._cash + unrealized_pnl
+
+    def _apply_funding(self, timestamp: str, current_price: float) -> None:
+        if not self._config.futures_mode or self._position_qty == 0:
+            return
+
+        funding_cost = abs(self._position_qty) * current_price * self._config.futures_funding_rate
+        self._cash -= funding_cost
+        self._position_funding_paid += funding_cost
+        self._logger.debug(
+            "Applied futures funding at %s: cost=%.6f price=%.6f qty=%.6f",
+            timestamp,
+            funding_cost,
+            current_price,
+            abs(self._position_qty),
+        )
+
+    def _check_liquidation(self, timestamp: str, current_price: float) -> bool:
+        if not self._config.futures_mode or self._position_qty == 0:
+            return False
+
+        equity = self._calculate_equity(current_price)
+        if equity > 0:
+            return False
+
+        self._logger.warning(
+            "Liquidating futures position at %s: price=%.6f equity=%.6f margin_used=%.6f",
+            timestamp,
+            current_price,
+            equity,
+            self._position_margin_used,
+        )
+        self._close_position(timestamp, current_price, reason="LIQUIDATION")
+        return True
 
     def _calculate_metrics(self) -> BacktestResult:
         import math
