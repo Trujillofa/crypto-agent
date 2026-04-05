@@ -8,9 +8,12 @@ from typing import Any
 
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
+from src.execution.binance_client import OrderInfo
 from src.execution.metrics import ExecutionMetrics
+from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
+from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -92,6 +95,8 @@ class PaperExecutor:
         db_config: Mapping[str, object] | None = None,
         agent_id: str = "default",
         event_log: EventLog | None = None,
+        guard_pipeline: GuardPipeline | None = None,
+        staged_manager: StagedOrderManager | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -100,6 +105,8 @@ class PaperExecutor:
         self._portfolio_manager = portfolio_manager
         self._db_config = db_config
         self._event_log = event_log
+        self._guard_pipeline = guard_pipeline
+        self._staged_manager = staged_manager
         self._agent_id = self._normalize_agent_id(agent_id)
         self._agent_id = self._normalize_agent_id(agent_id)
         self._position_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
@@ -148,6 +155,30 @@ class PaperExecutor:
             else:
                 portfolio_value += position.notional
         return portfolio_value
+
+    def _run_guards(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        portfolio_value: float,
+        signal_confidence: float = 0.0,
+    ) -> None:
+        """Run guard pipeline pre-check. Raises RuntimeError if blocked."""
+        if self._guard_pipeline is None:
+            return
+        context = GuardContext(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            portfolio_value=portfolio_value,
+            signal_confidence=signal_confidence,
+        )
+        result = self._guard_pipeline.check(context)
+        if result.blocked:
+            self._logger.warning("Guard blocked %s %s: %s", side, symbol, result.reason)
+            raise RuntimeError(f"Guard blocked: {result.reason}")
+        self._logger.debug("Guard passed for %s %s: %s", side, symbol, result.reason)
 
     def _cap_atr_sized_order_usdt(self, symbol: str, market_tag: str, order_usdt: float) -> float:
         """Clamp ATR-sized orders to the configured max position notional."""
@@ -471,6 +502,21 @@ class PaperExecutor:
                                 "market_tag": market_tag,
                             },
                         )
+        except RuntimeError as exc:
+            if str(exc).startswith("Guard blocked:"):
+                self._logger.info("Paper signal ignored by guard: %s %s", signal.symbol, exc)
+                if self._event_log:
+                    await self._event_log.log(
+                        "signal_ignored",
+                        {
+                            "symbol": signal.symbol,
+                            "reason": str(exc),
+                            "market_tag": market_tag,
+                            "signal_type": signal.type.value,
+                        },
+                    )
+                return
+            raise
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Paper signal failed: %s — %s", signal.symbol, exc)
             await self._notifier.send_alert(
@@ -548,8 +594,7 @@ class PaperExecutor:
             indicators={},
             trading_mode="futures" if is_futures else "spot",
         )
-        await self._handle_sell(exit_signal, market_tag, is_futures)
-        return True
+        return await self._handle_sell(exit_signal, market_tag, is_futures)
 
     def _resolve_exit_fill_price(
         self, position: PaperPosition, current_price: float, reason: str
@@ -606,6 +651,43 @@ class PaperExecutor:
             )
             return
 
+        try:
+            self._run_guards(
+                signal.symbol,
+                "BUY",
+                order_usdt,
+                self._portfolio_value(),
+                signal.confidence,
+            )
+        except RuntimeError as exc:
+            if self._guard_pipeline is not None and self._event_log:
+                await self._event_log.log(
+                    "guard_blocked",
+                    {
+                        "symbol": signal.symbol,
+                        "side": "BUY",
+                        "quantity": order_usdt,
+                        "portfolio_value": self._portfolio_value(),
+                        "signal_confidence": signal.confidence,
+                        "market": market_tag,
+                        "reason": str(exc),
+                    },
+                )
+            raise
+
+        if self._guard_pipeline is not None and self._event_log:
+            await self._event_log.log(
+                "guard_passed",
+                {
+                    "symbol": signal.symbol,
+                    "side": "BUY",
+                    "quantity": order_usdt,
+                    "portfolio_value": self._portfolio_value(),
+                    "signal_confidence": signal.confidence,
+                    "market": market_tag,
+                },
+            )
+
         # Risk check
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
@@ -657,50 +739,137 @@ class PaperExecutor:
         ):
             return
 
-        # Simulate fill with fee
-        fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
-        fee = order_usdt * fee_rate
-        self._balance -= margin_needed + fee
-        self._total_fees += fee
-
-        # Compute ATR-based SL/TP levels
-        atr_14 = signal.indicators.get("atr_14", 0.0)
-        entry_price = signal.price
-        if atr_14 > 0:
-            sl_price = entry_price - self._config.sl_atr_multiplier * atr_14
-            tp_price = entry_price + self._config.tp_atr_multiplier * atr_14
-        else:
-            # Fallback to fixed pct
-            sl_price = (
-                entry_price * (1 - self._config.stop_loss_pct)
-                if self._config.stop_loss_pct > 0
-                else 0.0
+        staged_order = None
+        if self._staged_manager is not None:
+            staged_order = await self._staged_manager.stage(
+                symbol=signal.symbol,
+                side="BUY",
+                quantity=quantity,
+                metadata={"market": market_tag},
             )
-            tp_price = (
-                entry_price * (1 + self._config.take_profit_pct)
-                if self._config.take_profit_pct > 0
-                else 0.0
+            if self._event_log:
+                await self._event_log.log(
+                    "staged_order_created",
+                    {
+                        "order_id": staged_order.order_id,
+                        "symbol": signal.symbol,
+                        "side": "BUY",
+                        "quantity": quantity,
+                        "market": market_tag,
+                        "stage": staged_order.stage.name,
+                    },
+                )
+
+        try:
+            if staged_order is not None:
+                staged_order = await self._staged_manager.mark_executing(staged_order.order_id)
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_executing",
+                        {
+                            "order_id": staged_order.order_id,
+                            "symbol": signal.symbol,
+                            "side": "BUY",
+                            "quantity": quantity,
+                            "market": market_tag,
+                            "stage": staged_order.stage.name,
+                        },
+                    )
+
+            # Simulate fill with fee
+            fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
+            fee = order_usdt * fee_rate
+            self._balance -= margin_needed + fee
+            self._total_fees += fee
+
+            # Compute ATR-based SL/TP levels
+            atr_14 = signal.indicators.get("atr_14", 0.0)
+            entry_price = signal.price
+            if atr_14 > 0:
+                sl_price = entry_price - self._config.sl_atr_multiplier * atr_14
+                tp_price = entry_price + self._config.tp_atr_multiplier * atr_14
+            else:
+                # Fallback to fixed pct
+                sl_price = (
+                    entry_price * (1 - self._config.stop_loss_pct)
+                    if self._config.stop_loss_pct > 0
+                    else 0.0
+                )
+                tp_price = (
+                    entry_price * (1 + self._config.take_profit_pct)
+                    if self._config.take_profit_pct > 0
+                    else 0.0
+                )
+
+            self._positions[pos_key] = PaperPosition(
+                symbol=signal.symbol,
+                side="LONG",
+                quantity=quantity,
+                entry_price=entry_price,
+                open_time=time.time(),
+                atr_at_entry=atr_14,
+                sl_price=sl_price,
+                tp_price=tp_price,
+                high_water_mark=entry_price,
+            )
+            self._trade_count += 1
+
+            # Register with risk manager for position limit tracking
+            self._risk_manager.register_open_position(
+                pos_key,
+                order_usdt,
+                signal.price,
             )
 
-        self._positions[pos_key] = PaperPosition(
-            symbol=signal.symbol,
-            side="LONG",
-            quantity=quantity,
-            entry_price=entry_price,
-            open_time=time.time(),
-            atr_at_entry=atr_14,
-            sl_price=sl_price,
-            tp_price=tp_price,
-            high_water_mark=entry_price,
-        )
-        self._trade_count += 1
+            if staged_order is not None:
+                staged_order = await self._staged_manager.mark_completed(
+                    staged_order.order_id,
+                    OrderInfo(
+                        order_id=staged_order.order_id,
+                        symbol=signal.symbol,
+                        side="BUY",
+                        order_type="MARKET",
+                        quantity=quantity,
+                        price=entry_price,
+                        status="FILLED",
+                        executed_quantity=quantity,
+                        create_time=int(time.time() * 1000),
+                        executed_price=entry_price,
+                    ),
+                )
+        except Exception as exc:
+            if staged_order is not None:
+                staged_order = await self._staged_manager.mark_rejected(
+                    staged_order.order_id,
+                    str(exc),
+                )
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_rejected",
+                        {
+                            "order_id": staged_order.order_id,
+                            "symbol": signal.symbol,
+                            "side": "BUY",
+                            "quantity": quantity,
+                            "market": market_tag,
+                            "stage": staged_order.stage.name,
+                            "reason": str(exc),
+                        },
+                    )
+            raise
 
-        # Register with risk manager for position limit tracking
-        self._risk_manager.register_open_position(
-            pos_key,
-            order_usdt,
-            signal.price,
-        )
+        if staged_order is not None and self._event_log:
+            await self._event_log.log(
+                "staged_order_completed",
+                {
+                    "order_id": staged_order.order_id,
+                    "symbol": signal.symbol,
+                    "side": "BUY",
+                    "quantity": quantity,
+                    "market": market_tag,
+                    "stage": staged_order.stage.name,
+                },
+            )
 
         # Record in portfolio DB for overseer visibility
         if self._portfolio_manager:
@@ -803,6 +972,43 @@ class PaperExecutor:
                 f"(need {margin_needed:.2f}, have {self._balance:.2f})"
             )
             return
+
+        try:
+            self._run_guards(
+                signal.symbol,
+                "SELL",
+                order_usdt,
+                self._portfolio_value(),
+                signal.confidence,
+            )
+        except RuntimeError as exc:
+            if self._guard_pipeline is not None and self._event_log:
+                await self._event_log.log(
+                    "guard_blocked",
+                    {
+                        "symbol": signal.symbol,
+                        "side": "SELL",
+                        "quantity": order_usdt,
+                        "portfolio_value": self._portfolio_value(),
+                        "signal_confidence": signal.confidence,
+                        "market": market_tag,
+                        "reason": str(exc),
+                    },
+                )
+            raise
+
+        if self._guard_pipeline is not None and self._event_log:
+            await self._event_log.log(
+                "guard_passed",
+                {
+                    "symbol": signal.symbol,
+                    "side": "SELL",
+                    "quantity": order_usdt,
+                    "portfolio_value": self._portfolio_value(),
+                    "signal_confidence": signal.confidence,
+                    "market": market_tag,
+                },
+            )
 
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
@@ -954,13 +1160,62 @@ class PaperExecutor:
             balance=self._balance,
         )
 
-    async def _handle_sell(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
+    async def _handle_sell(self, signal: Signal, market_tag: str, is_futures: bool) -> bool:
         pos_key = self._position_key(signal.symbol, market_tag)
         position = self._positions.get(pos_key)
 
         if position is None:
             self._logger.debug("SELL ignored: no %s position for %s", market_tag, signal.symbol)
-            return
+            return False
+
+        close_usdt = position.quantity * signal.price
+        try:
+            self._run_guards(
+                signal.symbol,
+                "SELL",
+                close_usdt,
+                self._portfolio_value(),
+                signal.confidence,
+            )
+        except RuntimeError as exc:
+            if self._guard_pipeline is not None and self._event_log:
+                await self._event_log.log(
+                    "guard_blocked",
+                    {
+                        "symbol": signal.symbol,
+                        "side": "SELL",
+                        "quantity": close_usdt,
+                        "portfolio_value": self._portfolio_value(),
+                        "signal_confidence": signal.confidence,
+                        "market": market_tag,
+                        "reason": str(exc),
+                        "stage": "paper_close",
+                    },
+                )
+                await self._event_log.log(
+                    "signal_ignored",
+                    {
+                        "symbol": signal.symbol,
+                        "reason": str(exc),
+                        "market_tag": market_tag,
+                        "signal_type": signal.type.value,
+                    },
+                )
+            return False
+
+        if self._guard_pipeline is not None and self._event_log:
+            await self._event_log.log(
+                "guard_passed",
+                {
+                    "symbol": signal.symbol,
+                    "side": "SELL",
+                    "quantity": close_usdt,
+                    "portfolio_value": self._portfolio_value(),
+                    "signal_confidence": signal.confidence,
+                    "market": market_tag,
+                    "stage": "paper_close",
+                },
+            )
 
         # Calculate PnL with fees
         gross_pnl = position.pnl(signal.price)
@@ -1050,6 +1305,7 @@ class PaperExecutor:
             close_reason=signal.reason,
             balance=self._balance,
         )
+        return True
 
     def get_positions(self) -> dict[str, Any]:
         """Return current positions for status reporting."""

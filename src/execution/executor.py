@@ -11,8 +11,10 @@ from src.execution.binance_client import (
     OrderInfo,
 )
 from src.execution.metrics import ExecutionMetrics
+from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
+from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -50,6 +52,8 @@ class TradingExecutor:
         portfolio_manager: PortfolioManager | None = None,
         notifier: TelegramNotifier | None = None,
         event_log: EventLog | None = None,
+        guard_pipeline: GuardPipeline | None = None,
+        staged_manager: StagedOrderManager | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -57,9 +61,52 @@ class TradingExecutor:
         self._portfolio_manager = portfolio_manager
         self._notifier = notifier or TelegramNotifier()
         self._event_log = event_log
+        self._guard_pipeline = guard_pipeline
+        self._staged_manager = staged_manager
         self._logger = get_logger(self.__class__.__name__)
         self._client: BinancePrivateClient | None = None
         self._running = False
+
+    def _run_guards(self, symbol: str, side: str, quantity: float, portfolio_value: float) -> None:
+        if self._guard_pipeline is None:
+            return
+
+        context = GuardContext(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            portfolio_value=portfolio_value,
+        )
+        result = self._guard_pipeline.check(context)
+        if result.blocked:
+            self._logger.warning("Guard blocked %s %s: %s", side, symbol, result.reason)
+            if self._event_log:
+                asyncio.get_event_loop().create_task(
+                    self._event_log.log(
+                        "guard_block",
+                        {
+                            "symbol": symbol,
+                            "side": side,
+                            "guard_name": result.guard_name,
+                            "reason": result.reason,
+                        },
+                    )
+                )
+            raise RuntimeError(f"Guard blocked: {result.reason}")
+
+        self._logger.info("Guard passed for %s %s: %s", side, symbol, result.reason)
+        if self._event_log:
+            asyncio.get_event_loop().create_task(
+                self._event_log.log(
+                    "guard_pass",
+                    {
+                        "symbol": symbol,
+                        "side": side,
+                        "guard_name": result.guard_name,
+                        "reason": result.reason,
+                    },
+                )
+            )
 
     async def __aenter__(self) -> TradingExecutor:
         if not self._config.enabled:
@@ -188,11 +235,7 @@ class TradingExecutor:
         if not self._config.enabled:
             raise RuntimeError("Trading executor is disabled")
 
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
-        if not is_allowed:
-            self._metrics.record_risk_block(symbol, reason)
-            raise RuntimeError(f"Trading blocked: {reason}")
+        staged_order_id: str | None = None
 
         # Get account info for portfolio value
         try:
@@ -207,6 +250,18 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
+        try:
+            self._run_guards(symbol, side, quantity, portfolio_value)
+        except RuntimeError:
+            self._metrics.record_risk_block(symbol, "guard_pipeline")
+            raise
+
+        # Check if trading is allowed
+        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        if not is_allowed:
+            self._metrics.record_risk_block(symbol, reason)
+            raise RuntimeError(f"Trading blocked: {reason}")
+
         # Check position limits (skip for SELL — closing a position shouldn't be blocked)
         if side == "BUY":
             allowed, risk_reason = self._risk_manager.check_position_limit(
@@ -219,6 +274,48 @@ class TradingExecutor:
         # Place order
         start_time = time.perf_counter()
         try:
+            if self._staged_manager is not None:
+                staged = await self._staged_manager.stage(
+                    symbol=symbol,
+                    side=side,
+                    quantity=quantity,
+                    metadata={"signal_confidence": 1.0, "order_type": "MARKET"},
+                )
+                staged_order_id = staged.order_id
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_staged",
+                        {
+                            "staged_order_id": staged.order_id,
+                            "symbol": symbol,
+                            "side": side,
+                            "quantity": quantity,
+                            "order_type": "MARKET",
+                        },
+                    )
+
+                await self._staged_manager.commit(staged.order_id)
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_committed",
+                        {
+                            "staged_order_id": staged.order_id,
+                            "symbol": symbol,
+                            "side": side,
+                        },
+                    )
+
+                await self._staged_manager.mark_executing(staged.order_id)
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_executing",
+                        {
+                            "staged_order_id": staged.order_id,
+                            "symbol": symbol,
+                            "side": side,
+                        },
+                    )
+
             order = await self._client.place_market_order(
                 symbol=symbol, side=side, quantity=quantity
             )
@@ -238,6 +335,36 @@ class TradingExecutor:
                         "Polling failed for order %s: %s", order.order_id, poll_exc
                     )
                     # We continue with the last known state of 'order'
+
+            if self._staged_manager is not None and staged_order_id is not None:
+                if order.status == "FILLED":
+                    await self._staged_manager.mark_completed(staged_order_id, order)
+                    if self._event_log:
+                        await self._event_log.log(
+                            "staged_order_completed",
+                            {
+                                "staged_order_id": staged_order_id,
+                                "symbol": symbol,
+                                "side": side,
+                                "exchange_order_id": str(order.order_id),
+                                "status": order.status,
+                            },
+                        )
+                else:
+                    rejection_reason = f"Order {order.status}"
+                    await self._staged_manager.mark_rejected(staged_order_id, rejection_reason)
+                    if self._event_log:
+                        await self._event_log.log(
+                            "staged_order_rejected",
+                            {
+                                "staged_order_id": staged_order_id,
+                                "symbol": symbol,
+                                "side": side,
+                                "exchange_order_id": str(order.order_id),
+                                "reason": rejection_reason,
+                                "status": order.status,
+                            },
+                        )
 
             self._metrics.record_order_placed(
                 symbol=symbol,
@@ -301,6 +428,19 @@ class TradingExecutor:
 
         except Exception as exc:  # noqa: BLE001
             elapsed = time.perf_counter() - start_time
+            if self._staged_manager is not None and staged_order_id is not None:
+                await self._staged_manager.mark_rejected(staged_order_id, str(exc))
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_rejected",
+                        {
+                            "staged_order_id": staged_order_id,
+                            "symbol": symbol,
+                            "side": side,
+                            "reason": str(exc),
+                            "status": "FAILED",
+                        },
+                    )
             self._logger.error("Failed to place market order: %s", exc)
             self._metrics.record_order_placed(
                 symbol=symbol,
@@ -335,11 +475,7 @@ class TradingExecutor:
         if not self._config.enabled:
             raise RuntimeError("Trading executor is disabled")
 
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
-        if not is_allowed:
-            self._metrics.record_risk_block(symbol, reason)
-            raise RuntimeError(f"Trading blocked: {reason}")
+        staged_order_id: str | None = None
 
         # Get account info for portfolio value
         try:
@@ -354,6 +490,18 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
+        try:
+            self._run_guards(symbol, side, quantity, portfolio_value)
+        except RuntimeError:
+            self._metrics.record_risk_block(symbol, "guard_pipeline")
+            raise
+
+        # Check if trading is allowed
+        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        if not is_allowed:
+            self._metrics.record_risk_block(symbol, reason)
+            raise RuntimeError(f"Trading blocked: {reason}")
+
         # Check position limits (skip for SELL — closing a position shouldn't be blocked)
         if side == "BUY":
             allowed, risk_reason = self._risk_manager.check_position_limit(
@@ -366,6 +514,49 @@ class TradingExecutor:
         # Place order
         start_time = time.perf_counter()
         try:
+            if self._staged_manager is not None:
+                staged = await self._staged_manager.stage(
+                    symbol=symbol,
+                    side=side,
+                    quantity=quantity,
+                    metadata={"signal_confidence": 1.0, "order_type": "LIMIT"},
+                )
+                staged_order_id = staged.order_id
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_staged",
+                        {
+                            "staged_order_id": staged.order_id,
+                            "symbol": symbol,
+                            "side": side,
+                            "quantity": quantity,
+                            "order_type": "LIMIT",
+                            "price": price,
+                        },
+                    )
+
+                await self._staged_manager.commit(staged.order_id)
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_committed",
+                        {
+                            "staged_order_id": staged.order_id,
+                            "symbol": symbol,
+                            "side": side,
+                        },
+                    )
+
+                await self._staged_manager.mark_executing(staged.order_id)
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_executing",
+                        {
+                            "staged_order_id": staged.order_id,
+                            "symbol": symbol,
+                            "side": side,
+                        },
+                    )
+
             order = await self._client.place_limit_order(
                 symbol=symbol,
                 side=side,
@@ -390,6 +581,36 @@ class TradingExecutor:
                         poll_exc,
                     )
 
+            if self._staged_manager is not None and staged_order_id is not None:
+                if order.status == "FILLED":
+                    await self._staged_manager.mark_completed(staged_order_id, order)
+                    if self._event_log:
+                        await self._event_log.log(
+                            "staged_order_completed",
+                            {
+                                "staged_order_id": staged_order_id,
+                                "symbol": symbol,
+                                "side": side,
+                                "exchange_order_id": str(order.order_id),
+                                "status": order.status,
+                            },
+                        )
+                else:
+                    rejection_reason = f"Order {order.status}"
+                    await self._staged_manager.mark_rejected(staged_order_id, rejection_reason)
+                    if self._event_log:
+                        await self._event_log.log(
+                            "staged_order_rejected",
+                            {
+                                "staged_order_id": staged_order_id,
+                                "symbol": symbol,
+                                "side": side,
+                                "exchange_order_id": str(order.order_id),
+                                "reason": rejection_reason,
+                                "status": order.status,
+                            },
+                        )
+
             self._metrics.record_order_placed(
                 symbol=symbol,
                 order_type="LIMIT",
@@ -411,6 +632,19 @@ class TradingExecutor:
 
         except Exception as exc:  # noqa: BLE001
             elapsed = time.perf_counter() - start_time
+            if self._staged_manager is not None and staged_order_id is not None:
+                await self._staged_manager.mark_rejected(staged_order_id, str(exc))
+                if self._event_log:
+                    await self._event_log.log(
+                        "staged_order_rejected",
+                        {
+                            "staged_order_id": staged_order_id,
+                            "symbol": symbol,
+                            "side": side,
+                            "reason": str(exc),
+                            "status": "FAILED",
+                        },
+                    )
             self._logger.error("Failed to place limit order: %s", exc)
             self._metrics.record_order_placed(
                 symbol=symbol,

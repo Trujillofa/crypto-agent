@@ -13,8 +13,10 @@ from src.execution.futures_client import (
     FuturesOrderInfo,
 )
 from src.execution.metrics import ExecutionMetrics
+from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
+from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -53,6 +55,8 @@ class FuturesTradingExecutor:
         portfolio_manager: PortfolioManager | None = None,
         notifier: TelegramNotifier | None = None,
         event_log: EventLog | None = None,
+        guard_pipeline: GuardPipeline | None = None,
+        staged_manager: StagedOrderManager | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -61,6 +65,8 @@ class FuturesTradingExecutor:
         self._notifier = notifier or TelegramNotifier()
         self._logger = get_logger(self.__class__.__name__)
         self._event_log = event_log
+        self._guard_pipeline = guard_pipeline
+        self._staged_manager = staged_manager
         self._client: BinanceFuturesClient | None = None
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
@@ -120,6 +126,29 @@ class FuturesTradingExecutor:
         await self._notifier.__aexit__(exc_type, exc, tb)
         self._metrics.stop_trading()
         self._logger.info("FuturesTradingExecutor stopped")
+
+    def _run_guards(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        portfolio_value: float,
+        signal_confidence: float = 0.0,
+    ) -> None:
+        if self._guard_pipeline is None:
+            return
+        context = GuardContext(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            portfolio_value=portfolio_value,
+            signal_confidence=signal_confidence,
+        )
+        result = self._guard_pipeline.check(context)
+        if result.blocked:
+            self._logger.warning("Guard blocked %s %s: %s", side, symbol, result.reason)
+            raise RuntimeError(f"Guard blocked: {result.reason}")
+        self._logger.debug("Guard passed for %s %s: %s", side, symbol, result.reason)
 
     async def run(self) -> None:
         """Main futures trading loop."""
@@ -275,6 +304,21 @@ class FuturesTradingExecutor:
             raise RuntimeError(f"Margin check failed: {margin_reason}")
 
         request_position_side = "BOTH" if self._active_position_mode == "one-way" else position_side
+        staged_order_id: str | None = None
+
+        if self._staged_manager is not None:
+            staged_order = await self._staged_manager.stage(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                order_type="MARKET",
+                metadata={
+                    "position_side": request_position_side,
+                    "reduce_only": reduce_only,
+                    "market": "futures",
+                },
+            )
+            staged_order_id = staged_order.order_id
 
         # Place order
         start_time = time.perf_counter()
@@ -310,6 +354,8 @@ class FuturesTradingExecutor:
             )
 
             if order.status == "FILLED":
+                if staged_order_id is not None:
+                    await self._staged_manager.mark_completed(staged_order_id, order)
                 self._metrics.record_order_filled(symbol, side)
 
                 # Update position tracking
@@ -357,6 +403,8 @@ class FuturesTradingExecutor:
         except Exception as exc:
             elapsed = time.perf_counter() - start_time
             self._logger.error("Failed to place futures order: %s", exc)
+            if staged_order_id is not None:
+                await self._staged_manager.mark_rejected(staged_order_id, str(exc))
             self._metrics.record_order_placed(
                 symbol=symbol,
                 order_type="FUTURES_MARKET",
@@ -424,11 +472,27 @@ class FuturesTradingExecutor:
                     )
                 else:
                     # No position — open new LONG
-                    qty = self._calculate_quantity(signal.symbol, signal.price)
+                    order_size = self._calculate_quantity(signal.symbol, signal.price)
+                    if self._guard_pipeline is not None:
+                        account_info = await self._client.get_account_info()
+                        portfolio_value = account_info.available_balance
+                        try:
+                            self._run_guards(
+                                signal.symbol,
+                                "BUY",
+                                order_size,
+                                portfolio_value,
+                                signal.confidence,
+                            )
+                        except RuntimeError:
+                            self._logger.info(
+                                "BUY signal for %s blocked by guard pipeline", signal.symbol
+                            )
+                            return
                     order = await self.place_futures_order(
                         symbol=signal.symbol,
                         side="BUY",
-                        quantity=qty,
+                        quantity=order_size,
                         position_side="LONG",
                         reduce_only=False,
                     )
@@ -436,7 +500,9 @@ class FuturesTradingExecutor:
                         entry_price = (
                             float(order.price) if order.price and order.price > 0 else signal.price
                         )
-                        filled_qty = order.executed_quantity if order.executed_quantity > 0 else qty
+                        filled_qty = (
+                            order.executed_quantity if order.executed_quantity > 0 else order_size
+                        )
                         atr_14 = float(signal.indicators.get("atr_14") or 0.0)
                         sl_price, tp_price = await self._place_sl_tp_orders(
                             signal.symbol, entry_price, filled_qty, atr_14
@@ -553,6 +619,23 @@ class FuturesTradingExecutor:
                     signal.symbol,
                     agent_position_qty,
                 )
+
+                if self._guard_pipeline is not None:
+                    account_info = await self._client.get_account_info()
+                    portfolio_value = account_info.available_balance
+                    try:
+                        self._run_guards(
+                            signal.symbol,
+                            "SELL",
+                            agent_position_qty,
+                            portfolio_value,
+                            signal.confidence,
+                        )
+                    except RuntimeError:
+                        self._logger.info(
+                            "SELL signal for %s blocked by guard pipeline", signal.symbol
+                        )
+                        return
 
                 await self._cancel_sl_tp_orders(signal.symbol)
                 order = await self.place_futures_order(
