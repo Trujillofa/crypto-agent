@@ -1,201 +1,219 @@
-"""Tests for staged order queue."""
+from __future__ import annotations
 
-from src.execution.staged import (
-    OrderStage,
-    StagedOrder,
-    StagedOrderQueue,
-    get_staged_order_queue,
-)
-from src.strategy.signals import SignalType
+from dataclasses import dataclass
+
+import pytest
+
+from src.execution.staged_orders import OrderStage, StagedOrder, StagedOrderManager
+
+pytestmark = pytest.mark.asyncio
+
+
+@dataclass(frozen=True)
+class CompletedOrderResult:
+    order_id: str
+    symbol: str
+    side: str
+    order_type: str
+    quantity: float
+    price: float | None
+    status: str
+    executed_quantity: float
+    create_time: int
+    filled_qty: float
+    executed_price: float | None = None
 
 
 class TestStagedOrder:
-    """Tests for StagedOrder dataclass."""
-
-    def test_create_staged_order(self):
+    async def test_create_staged_order(self) -> None:
         order = StagedOrder(
-            id="test_001",
+            order_id="test_001",
             symbol="BTCUSDT",
-            side=SignalType.BUY,
+            side="BUY",
             quantity=0.01,
         )
-        assert order.id == "test_001"
+
+        assert order.order_id == "test_001"
         assert order.symbol == "BTCUSDT"
-        assert order.side == SignalType.BUY
+        assert order.side == "BUY"
         assert order.quantity == 0.01
         assert order.stage == OrderStage.STAGED
-        assert order.hash == ""
+        assert order.metadata == {}
 
-    def test_to_dict(self):
-        order = StagedOrder(
-            id="test_001",
+
+class TestStagedOrderManager:
+    async def test_stage_order(self) -> None:
+        manager = StagedOrderManager()
+
+        order = await manager.stage(
             symbol="BTCUSDT",
-            side=SignalType.BUY,
+            side="BUY",
             quantity=0.01,
-            signal_confidence=0.75,
-            signal_reason="Test signal",
+            metadata={"strategy": "test"},
         )
-        data = order.to_dict()
-        assert data["id"] == "test_001"
-        assert data["symbol"] == "BTCUSDT"
-        assert data["side"] == "BUY"
-        assert data["quantity"] == 0.01
-        assert data["stage"] == "staged"
-        assert data["signal_confidence"] == 0.75
-        assert data["filled_at"] is None
 
-
-class TestStagedOrderQueue:
-    """Tests for StagedOrderQueue."""
-
-    def test_stage_order(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(
-            symbol="BTCUSDT",
-            side=SignalType.BUY,
-            quantity=0.01,
-            signal_confidence=0.8,
-            signal_reason="Test",
-        )
         assert order.symbol == "BTCUSDT"
+        assert order.side == "BUY"
+        assert order.quantity == 0.01
         assert order.stage == OrderStage.STAGED
+        assert order.metadata == {"strategy": "test"}
+        assert manager.get_staged(order.order_id) is order
 
-    def test_commit_order(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(
+    async def test_commit_order(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+
+        committed = await manager.commit(order.order_id)
+
+        assert committed is order
+        assert committed.stage == OrderStage.COMMITTED
+        assert committed.committed_at is not None
+
+    async def test_commit_nonexistent_order_raises_value_error(self) -> None:
+        manager = StagedOrderManager()
+
+        with pytest.raises(ValueError, match="not found"):
+            await manager.commit("missing")
+
+    async def test_commit_already_committed_order_raises_value_error(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        await manager.commit(order.order_id)
+
+        with pytest.raises(ValueError, match="not in STAGED state"):
+            await manager.commit(order.order_id)
+
+    async def test_get_all_staged_returns_only_staged_orders(self) -> None:
+        manager = StagedOrderManager()
+        staged_order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        committed_order = await manager.stage(symbol="ETHUSDT", side="BUY", quantity=0.1)
+        await manager.commit(committed_order.order_id)
+
+        staged = manager.get_all_staged()
+
+        assert staged == [staged_order]
+
+    async def test_get_all_committed_returns_only_committed_orders(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        await manager.stage(symbol="ETHUSDT", side="BUY", quantity=0.1)
+        await manager.commit(order.order_id)
+
+        committed = manager.get_all_committed()
+
+        assert len(committed) == 1
+        assert committed[0].symbol == "BTCUSDT"
+        assert committed[0].stage == OrderStage.COMMITTED
+
+    async def test_mark_executing_updates_stage_and_timestamp(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        await manager.commit(order.order_id)
+
+        executing = await manager.mark_executing(order.order_id)
+
+        assert executing.stage == OrderStage.EXECUTING
+        assert executing.executed_at is not None
+
+    async def test_mark_completed_sets_result_and_filled_stage(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        await manager.commit(order.order_id)
+        await manager.mark_executing(order.order_id)
+        result = CompletedOrderResult(
+            order_id="exchange-123",
             symbol="BTCUSDT",
-            side=SignalType.BUY,
+            side="BUY",
+            order_type="MARKET",
             quantity=0.01,
+            price=None,
+            status="FILLED",
+            executed_quantity=0.01,
+            create_time=1234567890,
+            filled_qty=0.01,
+            executed_price=65000.0,
         )
-        order_id = order.id
 
-        commit_hash = queue.commit(order_id)
-        assert commit_hash is not None
-        assert len(commit_hash) == 8
+        completed = await manager.mark_completed(order.order_id, result)
 
-        committed_order = queue._orders[order_id]
-        assert committed_order.stage == OrderStage.COMMITTED
-        assert committed_order.hash == commit_hash
-        assert committed_order.committed_at is not None
+        assert completed.stage == OrderStage.FILLED
+        assert completed.result == result
 
-    def test_commit_nonexistent_order(self):
-        queue = StagedOrderQueue()
-        result = queue.commit("nonexistent")
-        assert result is None
+    async def test_mark_rejected_sets_reason_and_rejected_stage(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
 
-    def test_commit_already_committed(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.commit(order.id)
+        rejected = await manager.mark_rejected(order.order_id, "Risk block")
 
-        result = queue.commit(order.id)
-        assert result is None
+        assert rejected.stage == OrderStage.REJECTED
+        assert rejected.reject_reason == "Risk block"
 
-    def test_get_pending(self):
-        queue = StagedOrderQueue()
-        queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
+    async def test_cancel_marks_order_canceled(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
 
-        pending = queue.get_pending()
-        assert len(pending) == 2
+        canceled = await manager.cancel(order.order_id)
 
-    def test_get_ready(self):
-        queue = StagedOrderQueue()
-        o1 = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
+        assert canceled.stage == OrderStage.CANCELED
 
-        queue.commit(o1.id)
+    async def test_cancel_executing_order_raises_value_error(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        await manager.commit(order.order_id)
+        await manager.mark_executing(order.order_id)
 
-        ready = queue.get_ready()
-        assert len(ready) == 1
-        assert ready[0].symbol == "BTCUSDT"
+        with pytest.raises(ValueError, match="Cannot cancel order"):
+            await manager.cancel(order.order_id)
 
-    def test_commit_all_pending(self):
-        queue = StagedOrderQueue()
-        queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
+    async def test_cancel_filled_order_raises_value_error(self) -> None:
+        manager = StagedOrderManager()
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        await manager.commit(order.order_id)
+        await manager.mark_executing(order.order_id)
+        result = CompletedOrderResult(
+            order_id="exchange-123",
+            symbol="BTCUSDT",
+            side="BUY",
+            order_type="MARKET",
+            quantity=0.01,
+            price=None,
+            status="FILLED",
+            executed_quantity=0.01,
+            create_time=1234567890,
+            filled_qty=0.01,
+        )
+        await manager.mark_completed(order.order_id, result)
 
-        hashes = queue.commit_all_pending()
-        assert len(hashes) == 2
-        assert all(len(h) == 8 for h in hashes)
+        with pytest.raises(ValueError, match="Cannot cancel order"):
+            await manager.cancel(order.order_id)
 
-    def test_update_stage(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
+    async def test_auto_commit_moves_new_orders_to_committed(self) -> None:
+        manager = StagedOrderManager(auto_commit=True)
 
-        success = queue.update_stage(order.id, OrderStage.PUSHED, exchange_order_id="12345")
-        assert success is True
-        assert queue._orders[order.id].stage == OrderStage.PUSHED
-        assert queue._orders[order.id].exchange_order_id == "12345"
+        order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
 
-    def test_get_by_hash(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        commit_hash = queue.commit(order.id)
+        assert order.stage == OrderStage.COMMITTED
+        assert order.committed_at is not None
+        assert manager.get_all_staged() == []
+        assert manager.get_all_committed() == [order]
 
-        found = queue.get_by_hash(commit_hash)
-        assert found is not None
-        assert found.id == order.id
+    async def test_get_stats_counts_orders_by_stage(self) -> None:
+        manager = StagedOrderManager()
+        committed = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
+        staged = await manager.stage(symbol="ETHUSDT", side="BUY", quantity=0.1)
+        rejected = await manager.stage(symbol="SOLUSDT", side="SELL", quantity=0.2)
+        canceled = await manager.stage(symbol="XRPUSDT", side="SELL", quantity=10)
 
-    def test_get_history(self):
-        queue = StagedOrderQueue()
-        for i in range(5):
-            queue.stage(symbol=f"SYM{i}USDT", side=SignalType.BUY, quantity=0.01)
+        await manager.commit(committed.order_id)
+        await manager.mark_rejected(rejected.order_id, "Risk check failed")
+        await manager.cancel(canceled.order_id)
 
-        history = queue.get_history(limit=3)
-        assert len(history) == 3
+        stats = manager.get_stats()
 
-    def test_get_stats(self):
-        queue = StagedOrderQueue()
-        o1 = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
-
-        queue.commit(o1.id)
-
-        stats = queue.get_stats()
-        assert stats["staged"] == 1
-        assert stats["committed"] == 1
-
-    def test_stage_trims_oldest_when_history_limit_exceeded(self):
-        queue = StagedOrderQueue(max_history=2)
-        first = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.stage(symbol="ETHUSDT", side=SignalType.BUY, quantity=0.1)
-        third = queue.stage(symbol="SOLUSDT", side=SignalType.BUY, quantity=0.2)
-
-        assert first.id not in queue._orders
-        assert third.id in queue._orders
-        assert len(queue._orders) == 2
-
-    def test_update_stage_filled_sets_filled_at_without_overwriting_pushed_at(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-        queue.update_stage(order.id, OrderStage.PUSHED, exchange_order_id="12345")
-        pushed_at = queue._orders[order.id].pushed_at
-
-        success = queue.update_stage(order.id, OrderStage.FILLED)
-
-        assert success is True
-        updated = queue._orders[order.id]
-        assert updated.stage == OrderStage.FILLED
-        assert updated.filled_at is not None
-        assert updated.pushed_at == pushed_at
-
-    def test_update_stage_filled_without_pushed_logs_warning(self):
-        queue = StagedOrderQueue()
-        order = queue.stage(symbol="BTCUSDT", side=SignalType.BUY, quantity=0.01)
-
-        success = queue.update_stage(order.id, OrderStage.FILLED)
-
-        assert success is True
-        updated = queue._orders[order.id]
-        assert updated.pushed_at is None
-        assert updated.filled_at is not None
-
-
-class TestGlobalQueue:
-    """Tests for global queue singleton."""
-
-    def test_get_staged_order_queue(self):
-        queue1 = get_staged_order_queue()
-        queue2 = get_staged_order_queue()
-        assert queue1 is queue2
+        assert stats[OrderStage.STAGED.name] == 1
+        assert stats[OrderStage.COMMITTED.name] == 1
+        assert stats[OrderStage.REJECTED.name] == 1
+        assert stats[OrderStage.CANCELED.name] == 1
+        assert stats[OrderStage.EXECUTING.name] == 0
+        assert stats[OrderStage.FILLED.name] == 0
+        assert staged.stage == OrderStage.STAGED
