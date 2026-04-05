@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import yaml
 
 from src.main import (
     _build_strategy_registry,
@@ -45,24 +44,16 @@ def test_settings_default_safe():
         "Test mode must be enabled by default for safety"
     )
 
-    with Path("config/settings.yaml").open("r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
-    assert settings.strategy.evaluation_interval_seconds == int(
-        raw["strategy"]["evaluation_interval_seconds"]
-    )
+    assert settings.strategy.evaluation_interval_seconds == 14400
     assert settings.strategy.mirror_spot_to_futures is False
     assert settings.display_name == "sol-4h-simple-ma"
 
 
 def test_settings_has_strategy_section():
-    """Verify settings.yaml contains strategy section."""
-    with Path("config/settings.yaml").open("r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
+    settings = load_settings(Path("config/settings.yaml"))
 
-    assert "strategy" in raw, "settings.yaml must contain 'strategy' section"
-    assert "evaluation_interval_seconds" in raw["strategy"], (
-        "strategy section must have 'evaluation_interval_seconds'"
-    )
+    assert settings.strategy is not None
+    assert settings.strategy.evaluation_interval_seconds == 14400
 
 
 def test_settings_all_required_sections():

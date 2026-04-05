@@ -1,75 +1,21 @@
-mode: paper
 agent_id: avax-4h-ma
 display_name: avax-4h-simple-ma
-log_level: INFO
 
 trading:
   pairs:
     - AVAXUSDT
   timeframe: 4h
 
-ingest:
-  use_websocket: true
-
-database:
-  host: timescaledb
-  port: 5432
-  name: marketdata
-  user: trading
-  password: ""
-
-telegram:
-  enabled: true
-  daily_summary_enabled: false
-  daily_summary_send_empty: false
-  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
-  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
-  rate_limit_seconds: 5
-  allowed_updates:
-    - message
-
-ai:
-  enabled: false
-
-prometheus:
-  port: 8000
-
 trading_execution:
-  enabled: true
-  api_key: ""
-  api_secret: ""
-  test_mode: true
-  order_size_usdt: 100.0
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.05
-  sl_atr_multiplier: 2.0
-  tp_atr_multiplier: 4.5
-  trailing_activate_atr: 1.5
-  trailing_offset_atr: 1.0
   use_atr_sizing: false
-  atr_multiplier: 1.0
-  risk_per_trade_pct: 0.02
-  exit_rules:
-    time_stop_minutes: 240
 
 futures:
   enabled: false
 
 strategy:
-  evaluation_interval_seconds: 14400
-  cooldown_candles: 1
   default_trading_mode: spot
   strategies:
     - name: simple_ma
       config: {}
-    # Phase-A AVAX winner: MA [Fix,L,TF]
-    # Phase-2 average across all periods: +14.48% return, +1.25 Sharpe, 73 trades
-  global_trend_filter_enabled: true
-  global_trend_filter_buffer_pct: 0.05
   aggregator:
-    min_agreement: 1
-    buy_threshold: 0.5
-    buy_threshold_uptrend: 0.5
-    sell_threshold: -0.5
-    min_confidence: 0.0
     btc_regime_filter_enabled: false

@@ -1,7 +1,5 @@
 # Temporary config for MTF backtest testing
-mode: paper
 agent_id: mtf-test
-log_level: INFO
 
 trading:
   pairs:
@@ -14,52 +12,19 @@ ingest:
 database:
   host: localhost
   port: 15432
-  name: marketdata
-  user: trading
-  password: ""
 
 telegram:
   enabled: false
 
-ai:
-  enabled: false
-
-prometheus:
-  port: 8000
-
 trading_execution:
   enabled: false
-  api_key: ""
-  api_secret: ""
-  test_mode: true
-  order_size_usdt: 100.0
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.05
-  sl_atr_multiplier: 2.0
-  tp_atr_multiplier: 4.5
-  trailing_activate_atr: 1.5
-  trailing_offset_atr: 1.0
-  use_atr_sizing: true
-  atr_multiplier: 1.0
-  risk_per_trade_pct: 0.02
-  exit_rules:
-    time_stop_minutes: 240
 
 futures:
-  enabled: true
   symbols:
     - BTCUSDT
-  default_leverage: 3
-  max_leverage: 10
-  margin_mode: isolated
-  position_mode: one-way
-  test_mode: true
-  liquidation_buffer_pct: 5.0
 
 strategy:
   evaluation_interval_seconds: 3600
-  cooldown_candles: 1
-  default_trading_mode: futures
   strategies:
     - name: mtf_template
       config:
@@ -68,9 +33,7 @@ strategy:
         rsi_oversold: 40.0
         rsi_overbought: 60.0
         confidence_boost: 1.2
-  global_trend_filter_enabled: true
   aggregator:
-    min_agreement: 1
     buy_threshold: 0.7
     buy_threshold_uptrend: 0.7
     sell_threshold: -0.6

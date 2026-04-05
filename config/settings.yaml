@@ -1,95 +1,26 @@
-mode: paper
 agent_id: default
 display_name: sol-4h-simple-ma
-log_level: INFO
 
 trading:
   pairs:
     - SOLUSDT
   timeframe: 4h
 
-ingest:
-  use_websocket: true
-
-database:
-  host: timescaledb
-  port: 5432
-  name: marketdata
-  user: trading
-  password: ""
-
-telegram:
-  enabled: true
-  daily_summary_enabled: false
-  daily_summary_send_empty: false
-  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
-  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
-  rate_limit_seconds: 5
-  allowed_updates:
-    - message
-
-ai:
-  enabled: false
-  provider: xai
-  model: grok-4-1-fast-reasoning
-  polling_interval: 1.0
-  max_history: 10
-  allowed_chat_ids: []
-  api_key: ""
-
-prometheus:
-  port: 8000
-
 trading_execution:
-  enabled: true  # Futures demo trading via demo-fapi.binance.com
-  api_key: ""  # Set via BINANCE_API_KEY environment variable
-  api_secret: ""  # Set via BINANCE_API_SECRET environment variable
-  test_mode: true  # Set to false for live trading
-  order_size_usdt: 100.0  # 1% of $10k paper balance
-  # Fixed SL/TP as fallback only (ATR-based is primary)
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.05
-  # ATR-based SL/TP — tighter SL, wider trail (validated by autoresearch)
-  sl_atr_multiplier: 1.0   # SL = entry - 1.0 * ATR(14) — tight stop
-  tp_atr_multiplier: 3.0   # TP = entry + 3.0 * ATR(14)
-  trailing_activate_atr: 2.5  # activate trailing after +2.5 * ATR profit
-  trailing_offset_atr: 1.5    # trail SL at highest - 1.5 * ATR
-  # ATR-based position sizing
-  use_atr_sizing: true         # size by (equity × risk_pct) / (atr × multiplier) instead of flat USDT
-  atr_multiplier: 1.0          # stop distance multiplier for sizing calc
-  risk_per_trade_pct: 0.02     # 2% of current equity risked per trade
-  exit_rules:
-    time_stop_minutes: 240      # align with 4h strategy cadence (avoid 60m forced exits)
+  sl_atr_multiplier: 1.0
+  tp_atr_multiplier: 3.0
+  trailing_activate_atr: 2.5
+  trailing_offset_atr: 1.5
 
 futures:
-  enabled: true  # Futures demo trading enabled
   symbols:
     - SOLUSDT
-  default_leverage: 3  # Conservative default
-  max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
-  margin_mode: isolated  # isolated only for MVP
-  position_mode: one-way  # one-way only for MVP
-  test_mode: true  # Use demo.binance.com for paper trading
-  liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
 
 strategy:
-  evaluation_interval_seconds: 14400
-  cooldown_candles: 1
-  default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
       config: {}
-    # Previous 5-strategy ensemble dropped — autoresearch (2024-2025) showed
-    # only MA Crossover was consistently profitable. RSI, Bollinger, VWAP, and
-    # Momentum all had negative Sharpe across every period tested.
-  global_trend_filter_enabled: true  # block BUY when price < EMA200 (with buffer); set false to disable
-  global_trend_filter_buffer_pct: 0.05  # Allow buys within 5% below EMA200 (0.05 = 5%)
   aggregator:
-    min_agreement: 1
-    buy_threshold: 0.5          # single-strategy, lower threshold to allow signals through
-    buy_threshold_uptrend: 0.5
-    sell_threshold: -0.5
-    min_confidence: 0.0         # single strategy — no conflicting votes to filter
     btc_regime_filter_enabled: true
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0

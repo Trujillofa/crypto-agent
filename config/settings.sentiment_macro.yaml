@@ -1,7 +1,5 @@
-mode: paper
 agent_id: sentiment-macro-bot
 display_name: sentiment-macro-1h-multiasset
-log_level: INFO
 
 trading:
   pairs:
@@ -10,73 +8,25 @@ trading:
     - SOLUSDT
   timeframe: 1h
 
-ingest:
-  use_websocket: true
-
-database:
-  host: timescaledb
-  port: 5432
-  name: marketdata
-  user: trading
-  password: ""
-
 telegram:
-  enabled: true
   daily_summary_enabled: true
-  daily_summary_send_empty: false
-  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
-  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
-  rate_limit_seconds: 5
-  allowed_updates:
-    - message
 
 ai:
   enabled: true
-  provider: xai
-  model: grok-4-1-fast-reasoning
   polling_interval: 60.0
-  max_history: 10
-  allowed_chat_ids: []
-  api_key: ""
-
-prometheus:
-  port: 8000
 
 trading_execution:
-  enabled: true
-  api_key: ""
-  api_secret: ""
-  test_mode: true
-  order_size_usdt: 100.0
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.05
-  sl_atr_multiplier: 2.0
-  tp_atr_multiplier: 4.5
-  trailing_activate_atr: 1.5
-  trailing_offset_atr: 1.0
-  use_atr_sizing: true
-  atr_multiplier: 1.0
-  risk_per_trade_pct: 0.02
   exit_rules:
     time_stop_minutes: 1440
 
 futures:
-  enabled: true
   symbols:
     - BTCUSDT
     - ETHUSDT
     - SOLUSDT
-  default_leverage: 3
-  max_leverage: 10
-  margin_mode: isolated
-  position_mode: one-way
-  test_mode: true
-  liquidation_buffer_pct: 5.0
 
 strategy:
   evaluation_interval_seconds: 3600
-  cooldown_candles: 1
-  default_trading_mode: futures
   strategies:
     - name: sentiment_mean_reversion
       config:
@@ -86,12 +36,7 @@ strategy:
         sentiment_gate_threshold: 35.0
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
-    # MacroVolatilityStrategy is intentionally not enabled in this sample.
-    # The class is available, but it needs a real macro event provider before it
-    # can produce signals in runtime. Add it only once that provider exists.
-  global_trend_filter_enabled: true
   global_trend_filter_buffer_pct: 0.0
   aggregator:
-    min_agreement: 1
     buy_threshold: 0.6
     sell_threshold: -0.6

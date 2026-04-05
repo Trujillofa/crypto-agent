@@ -1,93 +1,21 @@
-mode: paper
 agent_id: agent2
 display_name: bnb-4h-simple-ma
-log_level: INFO
 
 trading:
   pairs:
     - BNBUSDT
   timeframe: 4h
 
-ingest:
-  use_websocket: true
-
-database:
-  host: timescaledb
-  port: 5432
-  name: marketdata
-  user: trading
-  password: ""
-
-telegram:
-  enabled: true
-  daily_summary_enabled: false
-  daily_summary_send_empty: false
-  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env var
-  chat_id: ""    # Set via TELEGRAM_CHAT_ID env var
-  rate_limit_seconds: 5
-  allowed_updates:
-    - message
-
-ai:
-  enabled: false
-  provider: xai
-  model: grok-4-1-fast-reasoning
-  polling_interval: 1.0
-  max_history: 10
-  allowed_chat_ids: []
-  api_key: ""
-
-prometheus:
-  port: 8000
-
-trading_execution:
-  enabled: true  # Futures demo trading via demo-fapi.binance.com
-  api_key: ""  # Set via BINANCE_API_KEY environment variable
-  api_secret: ""  # Set via BINANCE_API_SECRET environment variable
-  test_mode: true  # Set to false for live trading
-  order_size_usdt: 100.0  # 1% of $10k paper balance
-  # Fixed SL/TP as fallback only (ATR-based is primary)
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.05
-  # ATR-based SL/TP (primary)
-  sl_atr_multiplier: 2.0   # SL = entry - 2.0 * ATR(14)
-  tp_atr_multiplier: 4.5   # TP = entry + 4.5 * ATR(14)
-  trailing_activate_atr: 1.5  # activate trailing after +1.5 * ATR profit
-  trailing_offset_atr: 1.0    # trail SL at highest - 1.0 * ATR
-  # ATR-based position sizing
-  use_atr_sizing: true         # size by (equity × risk_pct) / (atr × multiplier) instead of flat USDT
-  atr_multiplier: 1.0          # stop distance multiplier for sizing calc
-  risk_per_trade_pct: 0.02     # 2% of current equity risked per trade
-  exit_rules:
-    time_stop_minutes: 240      # align with 4h strategy cadence (avoid 60m forced exits)
-
 futures:
-  enabled: true  # Futures demo trading enabled
   symbols:
     - BNBUSDT
-  default_leverage: 3  # Conservative default
-  max_leverage: 10  # Configurable max (hard cap 20x enforced in code)
-  margin_mode: isolated  # isolated only for MVP
-  position_mode: one-way  # one-way only for MVP
-  test_mode: true  # Use demo.binance.com for paper trading
-  liquidation_buffer_pct: 5.0  # Block orders if within 5% of liquidation price
 
 strategy:
-  evaluation_interval_seconds: 14400
-  cooldown_candles: 1
-  default_trading_mode: futures  # "spot" or "futures" - determines where signals are routed
   strategies:
     - name: simple_ma
       config: {}
-    # Autoresearch: MA [S,noTF,ATR] best for BNBUSDT — Training +11.56%, Val +10.41%
-  global_trend_filter_enabled: false  # BNB performs better WITHOUT trend filter (autoresearch validated)
-  global_trend_filter_buffer_pct: 0.05
+  global_trend_filter_enabled: false
   aggregator:
-    min_agreement: 1
-    buy_threshold: 0.5
-    buy_threshold_uptrend: 0.5
-    sell_threshold: -0.5
-    min_confidence: 0.0
     btc_regime_filter_enabled: true
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0
