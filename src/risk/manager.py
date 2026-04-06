@@ -98,6 +98,7 @@ class RiskManager:
         self._latency_readings: deque[float] = deque(maxlen=100)
         self._kill_switch_triggered: bool = False
         self._kill_switch_triggered_at: float = 0.0
+        self._reconciliation_block: str | None = None
         self._stale_anchor_warning_emitted: bool = False
         self._circuit_breakers: dict[str, bool] = {
             "consecutive_losses": False,
@@ -167,6 +168,7 @@ class RiskManager:
             self._api_error_count = state.get("api_error_count", 0)
             self._kill_switch_triggered = state.get("kill_switch_triggered", False)
             self._kill_switch_triggered_at = state.get("kill_switch_triggered_at", 0.0)
+            self._reconciliation_block = state.get("reconciliation_block")
             self._circuit_breakers = state.get("circuit_breakers", self._circuit_breakers)
             self._last_reset = state.get("last_reset", time.time())
             updated_at = state.get("updated_at")
@@ -206,6 +208,7 @@ class RiskManager:
                 "api_error_count": self._api_error_count,
                 "kill_switch_triggered": self._kill_switch_triggered,
                 "kill_switch_triggered_at": self._kill_switch_triggered_at,
+                "reconciliation_block": self._reconciliation_block,
                 "circuit_breakers": self._circuit_breakers,
                 "last_reset": self._last_reset,
                 "updated_at": datetime.now(UTC).isoformat(),
@@ -413,6 +416,9 @@ class RiskManager:
 
     def is_trading_allowed(self) -> tuple[bool, str]:
         """Check if trading is currently allowed."""
+        if self._reconciliation_block:
+            return False, f"Reconciliation block: {self._reconciliation_block}"
+
         if self._kill_switch_triggered:
             return False, "Kill switch is active"
 
@@ -422,10 +428,24 @@ class RiskManager:
 
         return True, "Trading allowed"
 
+    def set_reconciliation_block(self, reason: str) -> None:
+        """Block trading due to reconciliation divergence."""
+        self._reconciliation_block = reason
+        self._logger.error("Trading blocked by reconciliation: %s", reason)
+        self._save_state()
+
+    def clear_reconciliation_block(self) -> None:
+        """Clear reconciliation block (manual resolution)."""
+        if self._reconciliation_block:
+            self._logger.warning("Reconciliation block cleared")
+            self._reconciliation_block = None
+            self._save_state()
+
     def get_risk_summary(self) -> dict[str, Any]:
         """Get current risk status summary."""
         return {
             "kill_switch_active": self._kill_switch_triggered,
+            "reconciliation_block": self._reconciliation_block,
             "circuit_breakers": self._circuit_breakers,
             "daily_pnl": self._daily_pnl,
             "consecutive_losses": self._consecutive_losses,
@@ -445,6 +465,7 @@ class RiskManager:
     ) -> None:
         self._kill_switch_triggered = False
         self._kill_switch_triggered_at = 0.0
+        self._reconciliation_block = None
         self._circuit_breakers = dict.fromkeys(self._circuit_breakers, False)
         if reset_counters:
             self._consecutive_losses = 0

@@ -23,6 +23,11 @@ from src.execution import (
 )
 from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
+from src.execution.reconciliation import (
+    DivergencePolicy,
+    ExchangeReconciler,
+    ReconciliationConfig,
+)
 from src.execution.staged_orders import StagedOrderManager
 from src.features import IndicatorComputer, IndicatorWriter
 from src.features.metrics import IndicatorMetrics
@@ -145,6 +150,7 @@ class Settings:
     use_websocket: bool
     futures: FuturesSettings | None = None
     exit_rules: Mapping[str, object] = field(default_factory=dict)
+    reconciliation: ReconciliationConfig = field(default_factory=ReconciliationConfig)
 
 
 def _deep_merge(base: dict[str, object], overlay: dict[str, object]) -> dict[str, object]:
@@ -487,6 +493,30 @@ def load_settings(config_path: Path) -> Settings:
 
     exit_rules = _as_mapping(trading_exec.get("exit_rules"), "trading_execution.exit_rules")
 
+    # Parse reconciliation config
+    recon_raw = _as_mapping(root.get("reconciliation"), "reconciliation section")
+    recon_config = ReconciliationConfig(
+        enabled=_as_bool(recon_raw.get("enabled"), "reconciliation.enabled", default=True),
+        on_divergence=DivergencePolicy(
+            _as_str(recon_raw.get("on_divergence"), "reconciliation.on_divergence", default="alert")
+        ),
+        quantity_tolerance_pct=_as_float(
+            recon_raw.get("quantity_tolerance_pct"),
+            "reconciliation.quantity_tolerance_pct",
+            default=1.0,
+        ),
+        periodic_interval_seconds=_as_int(
+            recon_raw.get("periodic_interval_seconds"),
+            "reconciliation.periodic_interval_seconds",
+            default=0,
+        ),
+        dust_threshold_usdt=_as_float(
+            recon_raw.get("dust_threshold_usdt"),
+            "reconciliation.dust_threshold_usdt",
+            default=1.0,
+        ),
+    )
+
     return Settings(
         agent_id=agent_id,
         display_name=display_name,
@@ -506,6 +536,7 @@ def load_settings(config_path: Path) -> Settings:
         use_websocket=_as_bool(ingest.get("use_websocket"), "ingest.use_websocket", default=False),
         futures=futures_config,
         exit_rules=exit_rules,
+        reconciliation=recon_config,
     )
 
 
@@ -1089,6 +1120,34 @@ async def run() -> None:
         for cm in context_managers:
             await stack.enter_async_context(cm)
 
+        # Exchange reconciliation (skip for paper mode)
+        recon_task = None
+        if not use_paper and settings.reconciliation.enabled:
+            spot_client = trading_executor._client if trading_executor else None
+            futures_client = futures_executor._client if futures_executor else None
+            futures_symbols = (
+                settings.futures.symbols
+                if settings.futures and settings.futures.enabled
+                else []
+            )
+            reconciler = ExchangeReconciler(
+                portfolio_manager=portfolio_manager,
+                spot_client=spot_client,
+                futures_client=futures_client,
+                spot_symbols=settings.trading_pairs,
+                futures_symbols=futures_symbols,
+                notifier=telegram_notifier,
+                event_log=event_log,
+                risk_manager=risk_manager,
+                config=settings.reconciliation,
+                agent_id=settings.agent_id,
+            )
+            recon_results = await reconciler.reconcile_all()
+            await reconciler.handle_divergences(recon_results)
+
+            if settings.reconciliation.periodic_interval_seconds > 0:
+                recon_task = asyncio.create_task(reconciler.run_periodic())
+
         # Start risk monitoring in background
         risk_task = asyncio.create_task(risk_manager.monitor_loop())
 
@@ -1428,6 +1487,7 @@ async def run() -> None:
             overseer_task,
             futures_task,
             futures_ingest_task,
+            recon_task,
         )
 
         await close_pool()

@@ -97,6 +97,13 @@ strategy:
     btc_reference_symbol: BTCUSDT
     btc_dump_threshold_pct: -1.0
     btc_dump_require_below_ema200: true
+
+reconciliation:
+  enabled: true
+  on_divergence: alert
+  quantity_tolerance_pct: 1.0
+  periodic_interval_seconds: 0
+  dust_threshold_usdt: 1.0
 """
 
 _ORIGINAL_BTC_4H = """
@@ -187,6 +194,13 @@ strategy:
     sell_threshold: -0.5
     min_confidence: 0.0
     btc_regime_filter_enabled: false
+
+reconciliation:
+  enabled: true
+  on_divergence: alert
+  quantity_tolerance_pct: 1.0
+  periodic_interval_seconds: 0
+  dust_threshold_usdt: 1.0
 """
 
 _ORIGINAL_SENTIMENT_MACRO = """

@@ -74,3 +74,11 @@ strategy:
     buy_threshold_uptrend: 0.5
     sell_threshold: -0.5
     min_confidence: 0.0
+
+# Exchange reconciliation: compare DB positions vs Binance on startup
+reconciliation:
+  enabled: true
+  on_divergence: alert  # alert | block | auto_fix
+  quantity_tolerance_pct: 1.0
+  periodic_interval_seconds: 0  # 0 = startup only
+  dust_threshold_usdt: 1.0

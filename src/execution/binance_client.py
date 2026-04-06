@@ -299,6 +299,20 @@ class BinancePrivateClient:
 
         return format(normalized_qty.normalize(), "f")
 
+    async def get_all_balances(self) -> dict[str, float]:
+        """Get all non-zero asset balances (free + locked).
+
+        Returns:
+            Dict mapping asset name to total balance, e.g. {"BTC": 0.5, "USDT": 1000.0}
+        """
+        data = await self._request("GET", "/api/v3/account", signed=True)
+        result: dict[str, float] = {}
+        for bal in data.get("balances", []):
+            total = float(bal.get("free", 0)) + float(bal.get("locked", 0))
+            if total > 0:
+                result[bal["asset"]] = total
+        return result
+
     async def get_account_info(self) -> AccountInfo:
         """Get current spot account information.
 
