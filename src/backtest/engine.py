@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from src.backtest.sentiment_replay import ReplaySentimentScorer
 from src.features.reader import IndicatorReader
@@ -40,6 +41,7 @@ class BacktestConfig:
     strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
     strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
     aggregator_config: Mapping[str, object] = field(default_factory=dict)
+    time_stop_minutes: float = 0  # 0 = disabled
     replay_sentiment_path: str | None = None
     replay_sentiment_max_age_seconds: float | None = None
     futures_mode: bool = False
@@ -202,6 +204,8 @@ class BacktestEngine:
                 else:
                     if self._check_fixed_exit(current_time, high_price, low_price):
                         continue
+                if self._check_time_stop(current_time, current_price):
+                    continue
 
             signals = []
             for strategy in strategies:
@@ -323,6 +327,17 @@ class BacktestEngine:
             return False
 
         return self._check_fixed_exit(timestamp, high_price, low_price)
+
+    def _check_time_stop(self, timestamp: str, current_price: float) -> bool:
+        if self._config.time_stop_minutes <= 0 or not self._position_entry_time:
+            return False
+        entry_dt = datetime.fromisoformat(str(self._position_entry_time))
+        current_dt = datetime.fromisoformat(str(timestamp))
+        elapsed_minutes = (current_dt - entry_dt).total_seconds() / 60
+        if elapsed_minutes >= self._config.time_stop_minutes:
+            self._close_position(timestamp, current_price, reason="TIME_STOP")
+            return True
+        return False
 
     def _calculate_entry_qty(self, entry_price: float, atr: float) -> float:
         if entry_price <= 0:

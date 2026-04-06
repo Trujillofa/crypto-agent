@@ -108,6 +108,7 @@ async def main():
         global_trend_filter_buffer_pct=float(
             raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.05)
         ),
+        time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
         strategy_classes=strategy_classes,
