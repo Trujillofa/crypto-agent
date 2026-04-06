@@ -65,7 +65,7 @@ trading_execution:
   atr_multiplier: 1.0
   risk_per_trade_pct: 0.02
   exit_rules:
-    time_stop_minutes: 240
+    time_stop_minutes: 720
 
 futures:
   enabled: true
@@ -165,7 +165,7 @@ trading_execution:
   atr_multiplier: 1.0
   risk_per_trade_pct: 0.02
   exit_rules:
-    time_stop_minutes: 240
+    time_stop_minutes: 720
 
 futures:
   enabled: true

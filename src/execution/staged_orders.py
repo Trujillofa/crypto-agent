@@ -200,7 +200,7 @@ class StagedOrderManager:
             order.side,
             order.quantity,
             order.symbol,
-            result.filled_qty,
+            result.executed_quantity,
             order_id[:8],
         )
 
