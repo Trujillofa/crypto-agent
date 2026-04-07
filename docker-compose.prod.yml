@@ -187,14 +187,14 @@ services:
   #     AGENT_ID: btc-4h
   #     SETTINGS_PATH: config/settings.btc-4h.yaml
 
-  agent_btc_mtf:
+  agent_eth:
     <<: *agent-common
     environment:
       POSTGRES_HOST: timescaledb
       POSTGRES_PORT: "5432"
       PROMETHEUS_PORT: "8000"
-      AGENT_ID: btc-1h-mtf
-      SETTINGS_PATH: config/settings.btc_1h_mtf.yaml
+      AGENT_ID: eth-4h
+      SETTINGS_PATH: config/settings.eth_4h.yaml
 
   agent_avax:
     <<: *agent-common

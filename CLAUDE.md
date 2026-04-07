@@ -459,7 +459,7 @@ The system supports running multiple isolated trading agents simultaneously. Eac
 | `agent` | `config/settings.yaml` | Default agent |
 | `agent_2` | `config/settings.agent2.yaml` | Secondary agent |
 | ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — no edge on BTC 4h simple_ma |
-| `agent_btc_mtf` | `config/settings.btc_1h_mtf.yaml` | ETH 4h simple_ma (misnamed) |
+| `agent_eth` | `config/settings.eth_4h.yaml` | ETH 4h simple_ma |
 | `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
 | `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Macro sentiment |
 | `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h MA |

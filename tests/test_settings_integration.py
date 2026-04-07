@@ -171,7 +171,7 @@ def test_avax_4h_ma_config_resolves_simple_ma_spot_only():
 
 
 def test_eth_4h_config_resolves_simple_ma():
-    settings = load_settings(Path("config/settings.btc_1h_mtf.yaml"))
+    settings = load_settings(Path("config/settings.eth_4h.yaml"))
     strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
         settings.strategy
     )

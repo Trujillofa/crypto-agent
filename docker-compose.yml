@@ -132,7 +132,7 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  agent_btc_mtf:
+  agent_eth:
     build: .
     depends_on:
       timescaledb:
@@ -142,8 +142,8 @@ services:
     env_file:
       - .env
     environment:
-      - AGENT_ID=btc-1h-mtf
-      - SETTINGS_PATH=config/settings.btc_1h_mtf.yaml
+      - AGENT_ID=eth-4h
+      - SETTINGS_PATH=config/settings.eth_4h.yaml
     volumes:
       - ./:/app
     command: ["python", "-m", "src.main"]
@@ -178,30 +178,6 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  agent_sol_validated:
-    build: .
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      prometheus:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - AGENT_ID=sol-trend-pullback-validated
-      - SETTINGS_PATH=config/settings.sol_trend_pullback.yaml
-    volumes:
-      - ./:/app
-    command: ["python", "-m", "src.main"]
-    ports:
-      - "127.0.0.1:18005:8000"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
 
   agent_sentiment_macro:
     build: .
