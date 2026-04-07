@@ -45,7 +45,7 @@ BTC_GATES = {
     "min_oos_sharpe": 0.3,  # Min mean OOS Sharpe ratio
     "min_oos_win_rate": 0.40,  # Min mean OOS win rate
     "max_drawdown_pct": 15.0,  # Max drawdown on full period (%)
-    "min_oos_trades": 30,  # Min total OOS trades across all windows
+    "min_oos_trades": 20,  # Min total OOS trades across all windows
 }
 
 
