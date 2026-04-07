@@ -279,7 +279,7 @@ async def _run_wfo(
 
         r = await BacktestEngine(cfg, local_reader).run()
         window_sharpes.append(r.sharpe_ratio)
-        window_win_rates.append(r.win_rate)
+        window_win_rates.append(r.win_rate / 100.0)
         window_trade_counts.append(r.total_trades)
         window_returns.append(r.total_return_pct)
         current = train_end
@@ -592,7 +592,7 @@ async def _evaluate_candidate(
         start=start,
         end=end,
         total_trades=full_result.total_trades,
-        win_rate=full_result.win_rate,
+        win_rate=full_result.win_rate / 100.0,
         total_return_pct=full_result.total_return_pct,
         max_drawdown_pct=full_result.max_drawdown * 100,
         sharpe_ratio=full_result.sharpe_ratio,
