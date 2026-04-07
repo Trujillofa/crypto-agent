@@ -15,13 +15,6 @@
 	},
 	{
 		"labels": {
-			"service": "agent_btc",
-			"agent_id": "btc-4h"
-		},
-		"targets": ["agent_btc:8000"]
-	},
-	{
-		"labels": {
 			"service": "agent_btc_mtf",
 			"agent_id": "btc-1h-mtf"
 		},

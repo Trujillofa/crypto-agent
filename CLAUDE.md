@@ -238,10 +238,10 @@ async def test_feature_xyz():
     """Description of what this test verifies."""
     # Arrange
     subject = ClassToTest(param="value")
-    
+
     # Act
     result = await subject.method()
-    
+
     # Assert
     assert result == expected
 ```
@@ -258,7 +258,7 @@ async def test_with_binance_api():
         mock_instance.place_order = AsyncMock(return_value={"orderId": 123, "status": "FILLED"})
         mock_instance.get_balance = AsyncMock(return_value={"USDT": "1000.0"})
         mock.return_value = mock_instance
-        
+
         # Your test logic
         result = await executor.execute_order(...)
         assert result["orderId"] == 123
@@ -297,10 +297,10 @@ async def test_strategy_signal_generation():
         "ema_long": 49500.0,
         "rsi": 65.0,
     }
-    
+
     strategy = MyStrategy(config={})
     signal = await strategy.evaluate("BTCUSDT", indicators)
-    
+
     assert signal is not None
     assert signal.type == SignalType.BUY
 ```
@@ -458,8 +458,8 @@ The system supports running multiple isolated trading agents simultaneously. Eac
 |-------|--------|-------------|
 | `agent` | `config/settings.yaml` | Default agent |
 | `agent_2` | `config/settings.agent2.yaml` | Secondary agent |
-| `agent_btc` | `config/settings.btc-4h.yaml` | BTC 4h trading |
-| `agent_btc_mtf` | `config/settings.btc_1h_mtf.yaml` | BTC multi-timeframe |
+| ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — no edge on BTC 4h simple_ma |
+| `agent_btc_mtf` | `config/settings.btc_1h_mtf.yaml` | ETH 4h simple_ma (misnamed) |
 | `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
 | `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Macro sentiment |
 | `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h MA |
