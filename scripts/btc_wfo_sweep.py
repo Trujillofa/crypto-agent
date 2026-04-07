@@ -155,6 +155,7 @@ def _resolve_all_strategies() -> None:
     from src.strategy.mtf_template import MTFStrategyTemplate
     from src.strategy.multi_timeframe_regime import MultiTimeframeRegimeRouter
     from src.strategy.simple_ma import SimpleMACrossoverStrategy
+    from src.strategy.trend_pullback import TrendPullbackStrategy
 
     STRATEGY_CLASSES.update(
         {
@@ -163,6 +164,7 @@ def _resolve_all_strategies() -> None:
             "macd_histogram": MACDHistogramStrategy,
             "multi_timeframe_regime": MultiTimeframeRegimeRouter,
             "mtf_template": MTFStrategyTemplate,
+            "trend_pullback": TrendPullbackStrategy,
         }
     )
 
@@ -496,6 +498,112 @@ async def _generate_mtf_regime_configs(
     return configs
 
 
+def _trend_pullback_param_grid() -> list[dict]:
+    """Parameter grid for trend_pullback strategy."""
+    return [
+        # rsi_reclaim, min_trend_strength, max_pullback, continuation_rsi
+        {
+            "rsi_reclaim_level": 45.0,
+            "min_trend_strength_pct": 0.005,
+            "max_pullback_distance_pct": 0.015,
+            "continuation_rsi_level": 50.0,
+        },
+        {
+            "rsi_reclaim_level": 45.0,
+            "min_trend_strength_pct": 0.008,
+            "max_pullback_distance_pct": 0.020,
+            "continuation_rsi_level": 54.0,
+        },
+        {
+            "rsi_reclaim_level": 48.0,
+            "min_trend_strength_pct": 0.008,
+            "max_pullback_distance_pct": 0.020,
+            "continuation_rsi_level": 54.0,
+        },
+        {
+            "rsi_reclaim_level": 50.0,
+            "min_trend_strength_pct": 0.010,
+            "max_pullback_distance_pct": 0.025,
+            "continuation_rsi_level": 54.0,
+        },
+        {
+            "rsi_reclaim_level": 48.0,
+            "min_trend_strength_pct": 0.005,
+            "max_pullback_distance_pct": 0.015,
+            "continuation_rsi_level": 50.0,
+        },
+        {
+            "rsi_reclaim_level": 50.0,
+            "min_trend_strength_pct": 0.008,
+            "max_pullback_distance_pct": 0.020,
+            "continuation_rsi_level": 58.0,
+        },
+        # Wider pullback variants
+        {
+            "rsi_reclaim_level": 45.0,
+            "min_trend_strength_pct": 0.010,
+            "max_pullback_distance_pct": 0.030,
+            "continuation_rsi_level": 54.0,
+        },
+        {
+            "rsi_reclaim_level": 48.0,
+            "min_trend_strength_pct": 0.012,
+            "max_pullback_distance_pct": 0.025,
+            "continuation_rsi_level": 56.0,
+        },
+    ]
+
+
+async def _generate_trend_pullback_configs(
+    base_settings: object,
+    base_raw_config: dict,
+    symbol: str,
+    timeframe: str,
+    reader: IndicatorReader,
+    db_config: dict,
+) -> list[StrategyConfig]:
+    """Generate trend_pullback configs across key parameter combos, time_stops, exits."""
+    configs: list[StrategyConfig] = []
+    _resolve_all_strategies()
+
+    # Use best exit config from Phase 2
+    top_exit = (2.5, 3.0, 2.5, 1.5)
+    time_stops = [240, 720, 1440]
+
+    for params, ts_min in itertools.product(_trend_pullback_param_grid(), time_stops):
+        strategy_params = {
+            "rsi_reclaim_level": params["rsi_reclaim_level"],
+            "min_trend_strength_pct": params["min_trend_strength_pct"],
+            "max_pullback_distance_pct": params["max_pullback_distance_pct"],
+            "vwap_pullback_distance_pct": 0.03,
+            "min_atr_pct": 0.008,
+            "min_macd_hist": -0.01,
+            "strong_trend_strength_pct": params["min_trend_strength_pct"] * 1.5,
+            "continuation_rsi_level": params["continuation_rsi_level"],
+            "continuation_max_vwap_distance_pct": 0.04,
+            "continuation_max_ema50_extension_pct": 0.03,
+            "continuation_min_macd_hist": -0.01,
+        }
+
+        cfg = StrategyConfig(
+            name=f"TP_RSI{int(params['rsi_reclaim_level'])}_TS{ts_min}_STR{int(params['min_trend_strength_pct'] * 1000)}",
+            strategy_names=["trend_pullback"],
+            strategy_classes=[STRATEGY_CLASSES["trend_pullback"]],
+            strategy_params=[strategy_params],
+            time_stop_minutes=ts_min,
+            sl_atr=top_exit[0],
+            tp_atr=top_exit[1],
+            trailing_act=top_exit[2],
+            trailing_off=top_exit[3],
+            use_executor_exit=True,
+            allow_short=False,
+            apply_trend_filter=True,
+        )
+        configs.append(cfg)
+
+    return configs
+
+
 # ─── Main Evaluator ─────────────────────────────────────────────────────────
 
 
@@ -654,6 +762,9 @@ def _build_generator_map(base_settings, base_raw_config, symbol, timeframe, read
         "mtf_regime": lambda: _generate_mtf_regime_configs(
             base_settings, base_raw_config, symbol, timeframe, reader, db_config
         ),
+        "trend_pullback": lambda: _generate_trend_pullback_configs(
+            base_settings, base_raw_config, symbol, timeframe, reader, db_config
+        ),
         "all": None,  # Special: run all
     }
 
@@ -662,10 +773,10 @@ def _build_generator_map(base_settings, base_raw_config, symbol, timeframe, read
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="BTCUSDT 4h WFO Strategy Sweep")
+    parser = argparse.ArgumentParser(description="Multi-pair 4h WFO Strategy Sweep")
     parser.add_argument(
         "--strategy",
-        choices=["simple_ma", "cci", "ma_cci", "mtf_regime", "all"],
+        choices=["simple_ma", "cci", "ma_cci", "mtf_regime", "trend_pullback", "all"],
         default="all",
     )
     parser.add_argument(
@@ -738,14 +849,14 @@ async def main() -> None:
     configure_logger("WARNING")
     args = parse_args()
 
-    # Resolve DB config
+    # Resolve DB config — prefer POSTGRES_* env vars (set in Docker containers)
     base_settings = load_settings(Path(args.config))
     db_config = {
-        "host": str(os.getenv("DB_HOST", base_settings.database.get("host", "localhost"))),
-        "port": int(os.getenv("DB_PORT", int(base_settings.database.get("port", 5432)))),
-        "name": str(os.getenv("DB_NAME", base_settings.database.get("name", "marketdata"))),
-        "user": str(os.getenv("DB_USER", base_settings.database.get("user", "trading"))),
-        "password": str(os.getenv("DB_PASSWORD", base_settings.database.get("password", ""))),
+        "host": str(os.getenv("POSTGRES_HOST", base_settings.database.get("host", "localhost"))),
+        "port": int(os.getenv("POSTGRES_PORT", int(base_settings.database.get("port", 5432)))),
+        "name": str(os.getenv("POSTGRES_DB", base_settings.database.get("name", "marketdata"))),
+        "user": str(os.getenv("POSTGRES_USER", base_settings.database.get("user", "trading"))),
+        "password": str(os.getenv("POSTGRES_PASSWORD", base_settings.database.get("password", ""))),
     }
 
     with Path(args.config).open("r", encoding="utf-8") as f:
