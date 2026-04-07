@@ -1,0 +1,4 @@
+symbol,timeframe,train_start_month,train_end_date,test_start_month,test_end_date,trades,win_rate,sharpe
+BTCUSDT,4h,2024-02,2024-08-01,2024-08,2024-10-30,6.0,0.3333,0.0
+BTCUSDT,4h,2024-08,2025-01-28,2025-01,2025-04-28,1.0,0.0,0.0
+BTCUSDT,4h,2025-01,2025-07-27,2025-07,2025-10-25,3.0,0.3333,0.0

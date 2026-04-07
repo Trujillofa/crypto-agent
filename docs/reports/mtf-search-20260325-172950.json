@@ -1,0 +1,24 @@
+[
+	{
+		"name": "mtf-0001",
+		"strategy_name": "multi_timeframe_regime",
+		"symbol": "ETHUSDT",
+		"timeframe": "1h",
+		"start": "2024-01-09T07:00:00+00:00",
+		"end": "2026-02-23T17:00:00+00:00",
+		"total_trades": 3,
+		"win_rate": 33.33333333333333,
+		"total_return_pct": -3.916064650784374,
+		"max_drawdown_pct": 4.339341113136979,
+		"sharpe_ratio": -0.9451108541531591,
+		"sortino_ratio": -1.065827691202105,
+		"profit_factor": 0.1246363562081462,
+		"avg_win_loss_ratio": 0.2492727124162924,
+		"wfo_windows": 3,
+		"wfo_total_trades": 2,
+		"wfo_mean_sharpe": -1.7171601542360502,
+		"wfo_total_return_pct": -4.464755534803966,
+		"passes_gates": true,
+		"failure_reasons": ""
+	}
+]

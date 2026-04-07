@@ -1,0 +1,203 @@
+================================================================================
+  ETHUSDT Multi-Timeframe (MTF) Strategy Parameter Sweep — Full Report
+================================================================================
+
+Date:           2026-03-25
+Symbol:         ETHUSDT
+Entry TF:       1h
+Regime TF:      4h
+Data Period:    2024-01-09 to 2026-02-23 (~25 months)
+Data Points:    18,635 (1h bars), 4,510 (4h bars)
+WFO Config:     6-month train / 3-month test (3 OOS windows)
+Total Runs:     300 candidates (75 per strategy × 4 strategies)
+Script:         scripts/run_mtf_search.py
+Config:         config/settings.eth_1h_mtf.yaml
+
+================================================================================
+  1. EXECUTIVE SUMMARY
+================================================================================
+
+  VERDICT: ALL MTF STRATEGIES FAIL ON ETHUSDT. NOT PRODUCTION-READY.
+
+  - 0 out of 300 candidates pass even relaxed gates (Sharpe >= 0, DD <= 25%)
+  - Every single configuration produced negative returns
+  - The target of >1.2 profit factor is not achievable with current MTF strategies
+  - This is NOT a tuning problem — it is a structural mismatch between the
+    strategy family (trend-following pullbacks) and ETHUSDT's price regime
+    (choppy, mean-reverting at macro scale, 2024-2026)
+
+================================================================================
+  2. STRATEGY COMPARISON
+================================================================================
+
+Strategy                     | Best Return | Worst Return | Best PF  | Trade Range
+-----------------------------|-------------|--------------|----------|------------
+multi_timeframe_regime       |   -3.08%    |   -24.61%    |   0.71   |   3 — 43
+mtf_template                 |  -12.67%    |   -93.74%    |   0.57   |   9 — 392
+mtf_continuation             |  -86.83%    |   -94.02%    |   0.66   | 366 — 609
+mtf_breakout                 |  -72.25%    |   -92.71%    |   0.61   | 207 — 490
+
+Rankings (least bad to worst):
+  1. multi_timeframe_regime — smallest losses, but too few trades (3-43)
+  2. mtf_template — moderate losses, more trades but all underwater
+  3. mtf_breakout — heavy losses, enters too frequently in chop
+  4. mtf_continuation — catastrophic, effectively random selling
+
+================================================================================
+  3. BEST CANDIDATES (multi_timeframe_regime only)
+================================================================================
+
+These are the "least bad" — none are deployable.
+
+Name      | Trades | Return  | Sharpe | Max DD  | PF   | WFO Trades | WFO Return
+----------|--------|---------|--------|---------|------|------------|----------
+mtf-0017  |    6   |  -3.08% | -0.55  |  3.77%  | 0.31 |     3      |  -4.46%
+mtf-0001  |    3   |  -3.92% | -0.95  |  4.34%  | 0.12 |     2      |  -4.46%
+mtf-0002  |    8   |  -8.34% | -0.71  | 10.34%  | 0.37 |     6      |  -6.72%
+mtf-0018  |   19   | -11.85% | -0.64  | 15.53%  | 0.55 |     9      |  -4.58%
+mtf-0004  |   10   | -13.06% | -1.09  | 14.96%  | 0.28 |     8      | -11.52%
+
+Parameters for mtf-0017 (best return):
+  trend_strength_threshold:    0.002
+  vol_pct_threshold:          25.0
+  trend_consistency_threshold: 25.0
+  entry_zone_pct:             0.01
+  deep_pullback_pct:          0.015
+  rsi_oversold/overbought:    40.0 / 60.0
+  trending_confidence:         1.0
+  buy_threshold:               0.6
+  global_trend_filter:         True
+  allow_short:                 False
+
+NOTE: Even the "best" candidate (mtf-0017) has only 6 trades over 25 months
+and negative Sharpe. The profit factor of 0.31 means losing $3 for every $1
+won. This is not a tradeable edge.
+
+================================================================================
+  4. PARAMETER SENSITIVITY ANALYSIS
+================================================================================
+
+Key findings from 300-candidate grid:
+
+a) REGIME PARAMETERS MATTER MOST
+   - Strict regime thresholds (0.005 trend strength, 50+ consistency) = fewer
+     trades but not better outcomes. They just avoid entries entirely.
+   - Loose thresholds (0.002, 25) = more entries but into whipsawing ranges.
+
+b) RSI IS THE DOMINANT TRADE FILTER
+   - Tight RSI (45/55): 3-9 trades — too few to be statistically meaningful
+   - Moderate (40/60): 8-20 trades — still negative
+   - Wide (35/65): 16-44 trades — more negative, more drawdown
+
+c) MANY PARAMETERS ARE IRRELEVANT
+   - buy_threshold, trending_confidence, trend_filter produce DUPLICATE results
+   - 75 candidates per strategy often collapse to only 4-12 unique outcomes
+   - The grid is degenerate — most parameters don't reach the signal path
+
+d) MORE TRADES = WORSE RESULTS (monotonically)
+   - This confirms the entry logic is anti-predictive on ETHUSDT
+
+================================================================================
+  5. LOOKAHEAD BIAS VERIFICATION
+================================================================================
+
+VERIFIED: No lookahead bias present.
+
+The backtest engine uses the IndicatorReader._join_timeframes() method with
+STRICT as-of join semantics:
+
+  Code: src/features/reader.py, line 472
+  Logic: regime_close_time <= entry_time
+
+This ensures:
+  - A 4h bar that opens at 08:00 and closes at 12:00 is only available to
+    1h entry bars at 12:00 or later
+  - Same-timestamp availability (close_time == entry_time) is allowed,
+    which is correct — the bar is fully formed at that point
+  - No future regime data leaks into historical entries
+
+================================================================================
+  6. ROOT CAUSE ANALYSIS
+================================================================================
+
+Why MTF fails on ETHUSDT (2024-2026):
+
+1. WRONG MARKET REGIME
+   ETHUSDT has been predominantly choppy/ranging at macro scale. The MTF
+   strategies are all trend-following variants that need sustained directional
+   moves on 4h timeframe. ETH provides these <20% of the time.
+
+2. ENTRY LOGIC IS COUNTER-PRODUCTIVE
+   "Buy the pullback in a trend" sounds good, but in ETH's regime:
+   - Pullbacks to VWAP/EMA50 during weak trends often continue as reversals
+   - The 2x ATR stop loss is too tight for the volatility during trend tests
+   - By the time 4h confirms a trend (high slope + consistency), the move is
+     often exhausted
+
+3. EXIT RULES DON'T COMPENSATE
+   - TP at 4.5x ATR rarely gets hit in choppy trends
+   - Time stop (240 min) often exits positions that haven't resolved
+   - Trailing stop at 1.5x ATR activates then gets stopped out by noise
+
+4. HIGH-FREQUENCY STRATEGIES ARE WORSE (NOT BETTER)
+   mtf_continuation, mtf_breakout, and mtf_template all produce far more
+   trades (100-600+) but dramatically worse outcomes (up to -94% return).
+   The entry logic is actively losing money on most trades.
+
+================================================================================
+  7. RECOMMENDATIONS
+================================================================================
+
+DO NOT deploy any MTF configuration on ETHUSDT.
+
+To achieve >1.2 profit factor on ETH, consider:
+
+a) ABANDON TREND-FOLLOWING FOR ETH
+   - ETH in 2024-2026 is a mean-reversion market
+   - Consider regime-aware mean reversion: sell strength, buy weakness
+   - Bollinger bounce or VWAP reversion with regime filter may work better
+
+b) TEST MTF ON BTCUSDT INSTEAD
+   - BTC shows stronger and longer trend persistence
+   - The MTF regime router may be viable on a more trending asset
+
+c) IF CONTINUING MTF RESEARCH ON ETH
+   - Widen SL to 3-4x ATR (current 2x gets whipsawed)
+   - Add a bounce-confirmation filter (don't enter on touch, enter on reclaim)
+   - Reduce regime timeframe to 2h or use multi-regime confirmation (1h+4h)
+   - Consider inverted signals: SHORT the MTF trend entries instead of LONG
+
+d) STRUCTURAL IMPROVEMENTS
+   - Fix the parameter grid degeneracy — many params have zero effect
+   - Add early termination for strategies losing >50% in backtest
+   - Profile which regime windows the losses concentrate in
+
+================================================================================
+  8. OUTPUT FILES
+================================================================================
+
+Sweep artifacts saved:
+
+  multi_timeframe_regime (75 candidates):
+    CSV:  docs/reports/mtf-search-regime-20260325-175423.csv
+    JSON: docs/reports/mtf-search-regime-20260325-175423.json
+
+  mtf_template (75 candidates):
+    CSV:  docs/reports/mtf-search-template-20260325-175541.csv
+    JSON: docs/reports/mtf-search-template-20260325-175541.json
+
+  mtf_continuation (75 candidates):
+    CSV:  docs/reports/mtf-search-continuation-20260325-175704.csv
+    JSON: docs/reports/mtf-search-continuation-20260325-175704.json
+
+  mtf_breakout (75 candidates):
+    CSV:  docs/reports/mtf-search-breakout-20260325-175823.csv
+    JSON: docs/reports/mtf-search-breakout-20260325-175823.json
+
+  Previous analysis (50 candidates, multi_timeframe_regime only):
+    docs/reports/mtf-ethusdt-sweep-analysis.md
+    docs/reports/mtf-search-20260325-173556.csv
+
+================================================================================
+  END OF REPORT
+================================================================================
