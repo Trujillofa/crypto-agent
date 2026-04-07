@@ -882,9 +882,7 @@ async def main() -> None:
                 gates["min_oos_trades"] = args.min_oos_trades
 
             strategies_to_run = (
-                ["simple_ma", "cci", "ma_cci", "mtf_regime"]
-                if args.strategy == "all"
-                else [args.strategy]
+                [k for k in gen_map if k != "all"] if args.strategy == "all" else [args.strategy]
             )
 
             all_results: dict[str, list[WFOMetrics]] = {}
