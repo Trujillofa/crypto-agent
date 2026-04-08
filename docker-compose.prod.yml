@@ -154,16 +154,17 @@ services:
 
   # === Trading Agents (all use Dockerfile.prod — no bind mounts) ===
 
-  agent:
-    <<: *agent-common
-    environment:
-      POSTGRES_HOST: timescaledb
-      POSTGRES_PORT: "5432"
-      PROMETHEUS_PORT: "8000"
-      AGENT_ID: default
-      SETTINGS_PATH: config/settings.yaml
-    ports:
-      - "127.0.0.1:18000:8000"
+  # agent (default): DISABLED 2026-04-08 — WFO: no edge on SOLUSDT 4h simple_ma
+  # agent:
+  #   <<: *agent-common
+  #   environment:
+  #     POSTGRES_HOST: timescaledb
+  #     POSTGRES_PORT: "5432"
+  #     PROMETHEUS_PORT: "8000"
+  #     AGENT_ID: default
+  #     SETTINGS_PATH: config/settings.yaml
+  #   ports:
+  #     - "127.0.0.1:18000:8000"
 
   # agent_2: DISABLED 2026-04-08 — WFO: no edge on BNBUSDT 4h (all strategies negative OOS)
   # agent_2:

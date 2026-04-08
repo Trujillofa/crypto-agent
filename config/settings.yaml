@@ -7,6 +7,7 @@ trading:
   timeframe: 4h
 
 trading_execution:
+  enabled: false
   sl_atr_multiplier: 1.0
   tp_atr_multiplier: 3.0
   trailing_activate_atr: 2.5

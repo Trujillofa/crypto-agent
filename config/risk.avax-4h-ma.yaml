@@ -1,0 +1,26 @@
+position_limits:
+  max_position_pct: 0.10
+  max_open_positions: 4
+
+loss_limits:
+  max_daily_loss_pct: 0.05
+  max_drawdown_pct: 0.20
+  max_single_loss_pct: 0.02
+
+circuit_breakers:
+  consecutive_losses: 10
+  api_errors: 3
+  latency_spike_ms: 5000
+
+kill_switch:
+  enabled: true
+  telegram_confirm: true
+  auto_reset_minutes: 60
+
+futures_limits:
+  max_leverage: 10
+  liquidation_buffer_pct: 5.0
+  max_daily_loss_pct: 5.0
+  max_margin_usage_pct: 50.0
+  margin_mode: isolated
+  position_mode: one-way

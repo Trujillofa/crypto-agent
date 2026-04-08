@@ -801,9 +801,10 @@ async def run() -> None:
         agent_id=settings.agent_id,
     )
 
-    # Initialize risk manager
+    agent_risk_path = Path(f"config/risk.{settings.agent_id}.yaml")
+    risk_config_path = agent_risk_path if agent_risk_path.exists() else Path("config/risk.yaml")
     risk_manager = RiskManager(
-        Path("config/risk.yaml"),
+        risk_config_path,
         agent_id=settings.agent_id,
         paper_mode=settings.mode == "paper",
         event_log=event_log,
@@ -1126,9 +1127,7 @@ async def run() -> None:
             spot_client = trading_executor._client if trading_executor else None
             futures_client = futures_executor._client if futures_executor else None
             futures_symbols = (
-                settings.futures.symbols
-                if settings.futures and settings.futures.enabled
-                else []
+                settings.futures.symbols if settings.futures and settings.futures.enabled else []
             )
             reconciler = ExchangeReconciler(
                 portfolio_manager=portfolio_manager,

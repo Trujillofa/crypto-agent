@@ -33,10 +33,9 @@ def test_settings_default_safe():
     """Verify settings.yaml loads with safe defaults (paper mode with test mode)."""
     settings = load_settings(Path("config/settings.yaml"))
 
-    # Paper trading is enabled by default for full pipeline testing
-    # Safety is ensured by test_mode=True (uses Binance testnet, not real funds)
-    assert settings.trading_execution.enabled is True, (
-        "Paper trading should be enabled by default for pipeline testing"
+    # Default agent (SOLUSDT simple_ma) disabled — WFO showed no edge
+    assert settings.trading_execution.enabled is False, (
+        "Default agent should be disabled (no WFO-validated edge)"
     )
 
     # Test mode should be enabled by default (crucial safety check)

@@ -50,7 +50,7 @@ prometheus:
   port: 8000
 
 trading_execution:
-  enabled: true
+  enabled: false
   api_key: ""
   api_secret: ""
   test_mode: true
