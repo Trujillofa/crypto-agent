@@ -5,6 +5,7 @@ from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.breakout_retest import BreakoutRetestStrategy
 from src.strategy.cci_strategy import CCIBreakoutStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine
+from src.strategy.funding_rate import FundingRateStrategy
 from src.strategy.macd_strategy import MACDHistogramStrategy
 from src.strategy.macro_volatility import MacroVolatilityStrategy
 from src.strategy.mean_reversion import MeanReversionStrategy
@@ -32,6 +33,7 @@ __all__ = [
     "BollingerBounceStrategy",
     "MomentumStrategy",
     "CCIBreakoutStrategy",
+    "FundingRateStrategy",
     "VWAPReversionStrategy",
     "MeanReversionStrategy",
     "SentimentMeanReversionStrategy",

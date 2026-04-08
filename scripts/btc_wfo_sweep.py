@@ -150,8 +150,12 @@ def _resolve_all_strategies() -> None:
     """Import and cache all strategy classes."""
     if STRATEGY_CLASSES:
         return
+    from src.strategy.bollinger_strategy import BollingerBounceStrategy
+    from src.strategy.breakout_retest import BreakoutRetestStrategy
     from src.strategy.cci_strategy import CCIBreakoutStrategy
     from src.strategy.macd_strategy import MACDHistogramStrategy
+    from src.strategy.mean_reversion import MeanReversionStrategy
+    from src.strategy.momentum_strategy import MomentumStrategy
     from src.strategy.mtf_template import MTFStrategyTemplate
     from src.strategy.multi_timeframe_regime import MultiTimeframeRegimeRouter
     from src.strategy.simple_ma import SimpleMACrossoverStrategy
@@ -159,9 +163,13 @@ def _resolve_all_strategies() -> None:
 
     STRATEGY_CLASSES.update(
         {
+            "bollinger_bounce": BollingerBounceStrategy,
+            "breakout_retest": BreakoutRetestStrategy,
             "simple_ma": SimpleMACrossoverStrategy,
             "cci_breakout": CCIBreakoutStrategy,
             "macd_histogram": MACDHistogramStrategy,
+            "mean_reversion": MeanReversionStrategy,
+            "momentum": MomentumStrategy,
             "multi_timeframe_regime": MultiTimeframeRegimeRouter,
             "mtf_template": MTFStrategyTemplate,
             "trend_pullback": TrendPullbackStrategy,
@@ -554,6 +562,120 @@ def _trend_pullback_param_grid() -> list[dict]:
     ]
 
 
+def _mean_reversion_param_grid() -> list[dict]:
+    """Parameter grid for mean_reversion using EMA50 as the reference series."""
+    return [
+        {
+            "lookback": 96,
+            "adf_min_samples": 64,
+            "z_entry_threshold": 1.75,
+            "z_exit_threshold": 0.35,
+            "max_hold_bars": 12,
+            "pair_price_key": "ema_50",
+            "pair_symbol": "EMA50",
+        },
+        {
+            "lookback": 120,
+            "adf_min_samples": 80,
+            "z_entry_threshold": 2.0,
+            "z_exit_threshold": 0.25,
+            "max_hold_bars": 18,
+            "pair_price_key": "ema_50",
+            "pair_symbol": "EMA50",
+        },
+        {
+            "lookback": 160,
+            "adf_min_samples": 100,
+            "z_entry_threshold": 2.25,
+            "z_exit_threshold": 0.50,
+            "max_hold_bars": 24,
+            "pair_price_key": "ema_50",
+            "pair_symbol": "EMA50",
+        },
+    ]
+
+
+def _bollinger_param_grid() -> list[dict]:
+    """Parameter grid for Bollinger bounce strategy."""
+    return [
+        {
+            "band_distance_threshold": 0.0,
+            "rsi_oversold": 30.0,
+            "rsi_overbought": 70.0,
+        },
+        {
+            "band_distance_threshold": 0.003,
+            "rsi_oversold": 32.0,
+            "rsi_overbought": 68.0,
+        },
+        {
+            "band_distance_threshold": 0.005,
+            "rsi_oversold": 35.0,
+            "rsi_overbought": 65.0,
+        },
+    ]
+
+
+def _breakout_retest_param_grid() -> list[dict]:
+    """Focused parameter grid for breakout retest strategy."""
+    return [
+        {
+            "min_trend_strength_pct": 0.008,
+            "min_atr_pct": 0.008,
+            "breakout_rsi_level": 58.0,
+            "retest_window_bars": 4,
+            "retest_vwap_distance_pct": 0.015,
+            "retest_ema50_distance_pct": 0.015,
+            "reclaim_rsi_level": 50.0,
+            "max_extension_after_retest_pct": 0.025,
+        },
+        {
+            "min_trend_strength_pct": 0.010,
+            "min_atr_pct": 0.010,
+            "breakout_rsi_level": 60.0,
+            "retest_window_bars": 4,
+            "retest_vwap_distance_pct": 0.012,
+            "retest_ema50_distance_pct": 0.012,
+            "reclaim_rsi_level": 52.0,
+            "max_extension_after_retest_pct": 0.020,
+        },
+        {
+            "min_trend_strength_pct": 0.006,
+            "min_atr_pct": 0.008,
+            "breakout_rsi_level": 56.0,
+            "retest_window_bars": 6,
+            "retest_vwap_distance_pct": 0.020,
+            "retest_ema50_distance_pct": 0.020,
+            "reclaim_rsi_level": 50.0,
+            "max_extension_after_retest_pct": 0.030,
+        },
+    ]
+
+
+def _momentum_param_grid() -> list[dict]:
+    """Parameter grid for momentum strategy."""
+    return [
+        {
+            "rsi_buy_threshold": 50.0,
+            "rsi_sell_threshold": 50.0,
+            "rsi_max_entry": 70.0,
+            "rsi_min_entry": 30.0,
+        },
+        {
+            "rsi_buy_threshold": 55.0,
+            "rsi_sell_threshold": 45.0,
+            "rsi_max_entry": 72.0,
+            "rsi_min_entry": 28.0,
+        },
+        {
+            "rsi_buy_threshold": 60.0,
+            "rsi_sell_threshold": 40.0,
+            "rsi_max_entry": 75.0,
+            "rsi_min_entry": 25.0,
+        },
+    ]
+
+
 async def _generate_trend_pullback_configs(
     base_settings: object,
     base_raw_config: dict,
@@ -598,6 +720,186 @@ async def _generate_trend_pullback_configs(
             use_executor_exit=True,
             allow_short=False,
             apply_trend_filter=True,
+        )
+        configs.append(cfg)
+
+    return configs
+
+
+async def _generate_mean_reversion_configs(
+    base_settings: object,
+    base_raw_config: dict,
+    symbol: str,
+    timeframe: str,
+    reader: IndicatorReader,
+    db_config: dict,
+) -> list[StrategyConfig]:
+    """Generate mean_reversion configs across core thresholds and exits."""
+    del base_settings, base_raw_config, symbol, timeframe, reader, db_config
+    configs: list[StrategyConfig] = []
+    _resolve_all_strategies()
+
+    time_stops = [720, 1440]
+    exit_grid = [
+        (2.0, 3.0, 2.0, 1.0),
+        (2.5, 3.0, 2.5, 1.5),
+        (2.0, 4.5, 1.5, 1.0),
+    ]
+
+    for params, ts_min, (sl, tp, ta, toff) in itertools.product(
+        _mean_reversion_param_grid(), time_stops, exit_grid
+    ):
+        cfg = StrategyConfig(
+            name=(
+                f"MR_L{params['lookback']}_ZE{params['z_entry_threshold']}_"
+                f"ZX{params['z_exit_threshold']}_TS{ts_min}_SL{sl}_TP{tp}"
+            ),
+            strategy_names=["mean_reversion"],
+            strategy_classes=[STRATEGY_CLASSES["mean_reversion"]],
+            strategy_params=[params],
+            time_stop_minutes=ts_min,
+            sl_atr=sl,
+            tp_atr=tp,
+            trailing_act=ta,
+            trailing_off=toff,
+            use_executor_exit=True,
+            allow_short=True,
+            apply_trend_filter=False,
+        )
+        configs.append(cfg)
+
+    return configs
+
+
+async def _generate_bollinger_configs(
+    base_settings: object,
+    base_raw_config: dict,
+    symbol: str,
+    timeframe: str,
+    reader: IndicatorReader,
+    db_config: dict,
+) -> list[StrategyConfig]:
+    """Generate Bollinger bounce configs for 4h mean-reversion testing."""
+    del base_settings, base_raw_config, symbol, timeframe, reader, db_config
+    configs: list[StrategyConfig] = []
+    _resolve_all_strategies()
+
+    time_stops = [240, 720]
+    exit_grid = [
+        (2.0, 3.0, 2.0, 1.0),
+        (2.5, 3.0, 2.5, 1.5),
+        (1.5, 3.0, 2.0, 1.0),
+    ]
+
+    for params, ts_min, (sl, tp, ta, toff) in itertools.product(
+        _bollinger_param_grid(), time_stops, exit_grid
+    ):
+        cfg = StrategyConfig(
+            name=(
+                f"BB_D{params['band_distance_threshold']}_RSI{int(params['rsi_oversold'])}_"
+                f"{int(params['rsi_overbought'])}_TS{ts_min}_SL{sl}_TP{tp}"
+            ),
+            strategy_names=["bollinger_bounce"],
+            strategy_classes=[STRATEGY_CLASSES["bollinger_bounce"]],
+            strategy_params=[params],
+            time_stop_minutes=ts_min,
+            sl_atr=sl,
+            tp_atr=tp,
+            trailing_act=ta,
+            trailing_off=toff,
+            use_executor_exit=True,
+            allow_short=True,
+            apply_trend_filter=False,
+        )
+        configs.append(cfg)
+
+    return configs
+
+
+async def _generate_breakout_retest_configs(
+    base_settings: object,
+    base_raw_config: dict,
+    symbol: str,
+    timeframe: str,
+    reader: IndicatorReader,
+    db_config: dict,
+) -> list[StrategyConfig]:
+    """Generate breakout_retest configs across focused trend/retest settings."""
+    del base_settings, base_raw_config, symbol, timeframe, reader, db_config
+    configs: list[StrategyConfig] = []
+    _resolve_all_strategies()
+
+    time_stops = [720, 1440]
+    exit_grid = [
+        (2.0, 3.0, 2.0, 1.0),
+        (2.5, 3.0, 2.5, 1.5),
+        (2.0, 4.5, 1.5, 1.0),
+    ]
+
+    for params, ts_min, (sl, tp, ta, toff) in itertools.product(
+        _breakout_retest_param_grid(), time_stops, exit_grid
+    ):
+        cfg = StrategyConfig(
+            name=(
+                f"BR_TS{ts_min}_STR{int(params['min_trend_strength_pct'] * 1000)}_"
+                f"RSI{int(params['breakout_rsi_level'])}_SL{sl}_TP{tp}"
+            ),
+            strategy_names=["breakout_retest"],
+            strategy_classes=[STRATEGY_CLASSES["breakout_retest"]],
+            strategy_params=[params],
+            time_stop_minutes=ts_min,
+            sl_atr=sl,
+            tp_atr=tp,
+            trailing_act=ta,
+            trailing_off=toff,
+            use_executor_exit=True,
+            allow_short=False,
+            apply_trend_filter=True,
+        )
+        configs.append(cfg)
+
+    return configs
+
+
+async def _generate_momentum_configs(
+    base_settings: object,
+    base_raw_config: dict,
+    symbol: str,
+    timeframe: str,
+    reader: IndicatorReader,
+    db_config: dict,
+) -> list[StrategyConfig]:
+    """Generate momentum configs across RSI thresholds and exit shapes."""
+    del base_settings, base_raw_config, symbol, timeframe, reader, db_config
+    configs: list[StrategyConfig] = []
+    _resolve_all_strategies()
+
+    time_stops = [240, 720, 1440]
+    exit_grid = [
+        (2.0, 3.0, 2.0, 1.0),
+        (2.5, 3.0, 2.5, 1.5),
+        (2.0, 4.5, 1.5, 1.0),
+    ]
+
+    for params, ts_min, (sl, tp, ta, toff) in itertools.product(
+        _momentum_param_grid(), time_stops, exit_grid
+    ):
+        cfg = StrategyConfig(
+            name=(
+                f"MOM_B{int(params['rsi_buy_threshold'])}_S{int(params['rsi_sell_threshold'])}_"
+                f"TS{ts_min}_SL{sl}_TP{tp}"
+            ),
+            strategy_names=["momentum"],
+            strategy_classes=[STRATEGY_CLASSES["momentum"]],
+            strategy_params=[params],
+            time_stop_minutes=ts_min,
+            sl_atr=sl,
+            tp_atr=tp,
+            trailing_act=ta,
+            trailing_off=toff,
+            use_executor_exit=True,
+            allow_short=True,
+            apply_trend_filter=False,
         )
         configs.append(cfg)
 
@@ -750,6 +1052,18 @@ STRATEGY_GENERATORS: dict[str, callable] = {}
 
 def _build_generator_map(base_settings, base_raw_config, symbol, timeframe, reader, db_config):
     return {
+        "mean_reversion": lambda: _generate_mean_reversion_configs(
+            base_settings, base_raw_config, symbol, timeframe, reader, db_config
+        ),
+        "bollinger": lambda: _generate_bollinger_configs(
+            base_settings, base_raw_config, symbol, timeframe, reader, db_config
+        ),
+        "breakout_retest": lambda: _generate_breakout_retest_configs(
+            base_settings, base_raw_config, symbol, timeframe, reader, db_config
+        ),
+        "momentum_strategy": lambda: _generate_momentum_configs(
+            base_settings, base_raw_config, symbol, timeframe, reader, db_config
+        ),
         "simple_ma": lambda: _generate_simple_ma_configs(
             base_settings, base_raw_config, symbol, timeframe, reader, db_config
         ),
@@ -776,7 +1090,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Multi-pair 4h WFO Strategy Sweep")
     parser.add_argument(
         "--strategy",
-        choices=["simple_ma", "cci", "ma_cci", "mtf_regime", "trend_pullback", "all"],
+        choices=[
+            "mean_reversion",
+            "bollinger",
+            "breakout_retest",
+            "momentum_strategy",
+            "simple_ma",
+            "cci",
+            "ma_cci",
+            "mtf_regime",
+            "trend_pullback",
+            "all",
+        ],
         default="all",
     )
     parser.add_argument(

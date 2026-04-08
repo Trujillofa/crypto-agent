@@ -1,0 +1,29 @@
+agent_id: funding-avax-test
+display_name: funding-rate-avax-4h
+
+trading:
+  pairs:
+    - AVAXUSDT
+  timeframe: 4h
+
+trading_execution:
+  enabled: false  # Start in paper mode for validation
+  sl_atr_multiplier: 1.5
+  tp_atr_multiplier: 2.5
+  trailing_activate_atr: 2.0
+  trailing_offset_atr: 1.0
+
+futures:
+  symbols:
+    - AVAXUSDT
+
+strategy:
+  strategies:
+    - name: funding_rate
+      config:
+        entry_threshold: 0.0005  # 0.05%
+        exit_threshold: 0.0001   # 0.01%
+        lookback_periods: 1
+  aggregator:
+    buy_threshold: 0.6
+    sell_threshold: -0.6

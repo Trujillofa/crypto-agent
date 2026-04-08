@@ -113,6 +113,7 @@ class IndicatorReader:
                 i.price_vs_monthly,
                 i.rsi_slope,
                 i.trend_consistency,
+                fr.funding_rate,
                 o.high_price,
                 o.low_price
             FROM indicators i
@@ -120,6 +121,14 @@ class IndicatorReader:
                 ON i.time = o.time
                 AND i.symbol = o.symbol
                 AND i.timeframe = o.timeframe
+            LEFT JOIN LATERAL (
+                SELECT funding_rate
+                FROM funding_rates
+                WHERE symbol = i.symbol
+                  AND funding_time <= i.time
+                ORDER BY funding_time DESC
+                LIMIT 1
+            ) fr ON TRUE
             WHERE i.symbol = $1 AND i.timeframe = $2
             AND i.time >= $3 AND i.time <= $4
             ORDER BY i.time ASC
@@ -206,6 +215,9 @@ class IndicatorReader:
                         if row["trend_consistency"] is not None
                         else None
                     ),
+                    "funding_rate": (
+                        float(row["funding_rate"]) if row["funding_rate"] is not None else None
+                    ),
                     "high_price": (
                         float(high_price) if high_price is not None else float(row["close_price"])
                     ),
@@ -251,12 +263,23 @@ class IndicatorReader:
                 i.price_vs_weekly,
                 i.price_vs_monthly,
                 i.rsi_slope,
-                i.trend_consistency
+                i.trend_consistency,
+                fr.funding_rate,
+                o.high_price,
+                o.low_price
             FROM indicators i
             INNER JOIN ohlcv o
                 ON i.time = o.time
                 AND i.symbol = o.symbol
                 AND i.timeframe = o.timeframe
+            LEFT JOIN LATERAL (
+                SELECT funding_rate
+                FROM funding_rates
+                WHERE symbol = i.symbol
+                  AND funding_time <= i.time
+                ORDER BY funding_time DESC
+                LIMIT 1
+            ) fr ON TRUE
             WHERE i.symbol = $1 AND i.timeframe = $2
             ORDER BY i.time DESC
             LIMIT $3
@@ -338,6 +361,9 @@ class IndicatorReader:
                         float(row["trend_consistency"])
                         if row["trend_consistency"] is not None
                         else None
+                    ),
+                    "funding_rate": (
+                        float(row["funding_rate"]) if row["funding_rate"] is not None else None
                     ),
                     "high_price": (
                         float(high_price) if high_price is not None else float(row["close_price"])

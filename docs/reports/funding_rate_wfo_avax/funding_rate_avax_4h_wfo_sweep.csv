@@ -1,0 +1,7 @@
+entry_threshold,exit_threshold,wfo_windows,oos_total_trades,oos_mean_sharpe,oos_win_rate_pct,full_period_trades,full_period_win_rate_pct,full_period_max_drawdown_pct,full_period_sharpe,full_period_profit_factor,passes_wfo_gates,config_path,wfo_csv_path
+0.0003,0.0001,6,3,0.0,5.6,24,12.5,19.91,-1.85,0.3,False,docs/reports/funding_rate_wfo_avax/config_entry_0.00030_exit_0.00010.yaml,docs/reports/funding_rate_wfo_avax/wfo_entry_0.00030_exit_0.00010.csv
+0.0003,5e-05,6,3,0.0,5.6,24,12.5,19.91,-1.85,0.3,False,docs/reports/funding_rate_wfo_avax/config_entry_0.00030_exit_0.00005.yaml,docs/reports/funding_rate_wfo_avax/wfo_entry_0.00030_exit_0.00005.csv
+0.001,0.0001,6,0,0.0,0.0,0,0.0,0.0,0.0,inf,False,docs/reports/funding_rate_wfo_avax/config_entry_0.00100_exit_0.00010.yaml,docs/reports/funding_rate_wfo_avax/wfo_entry_0.00100_exit_0.00010.csv
+0.001,5e-05,6,0,0.0,0.0,0,0.0,0.0,0.0,inf,False,docs/reports/funding_rate_wfo_avax/config_entry_0.00100_exit_0.00005.yaml,docs/reports/funding_rate_wfo_avax/wfo_entry_0.00100_exit_0.00005.csv
+0.0005,0.0001,6,0,0.0,0.0,1,0.0,1.77,-0.5,0.0,False,docs/reports/funding_rate_wfo_avax/config_entry_0.00050_exit_0.00010.yaml,docs/reports/funding_rate_wfo_avax/wfo_entry_0.00050_exit_0.00010.csv
+0.0005,5e-05,6,0,0.0,0.0,1,0.0,1.77,-0.5,0.0,False,docs/reports/funding_rate_wfo_avax/config_entry_0.00050_exit_0.00005.yaml,docs/reports/funding_rate_wfo_avax/wfo_entry_0.00050_exit_0.00005.csv

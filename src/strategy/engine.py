@@ -352,7 +352,45 @@ class StrategyEngine:
         rows = await self._fetch_indicator_rows(symbol)
         if rows is None:
             return None
-        return rows[-1]
+        indicators = rows[-1]
+
+        # Inject funding rate if available (for funding_rate strategy)
+        funding_rate = await self._fetch_latest_funding_rate(symbol)
+        if funding_rate is not None:
+            indicators["funding_rate"] = funding_rate
+
+        return indicators
+
+    async def _fetch_latest_funding_rate(self, symbol: str) -> float | None:
+        """Fetch the latest funding rate for a symbol from funding_rates table.
+
+        Args:
+            symbol: Trading pair symbol (e.g., "AVAXUSDT")
+
+        Returns:
+            Latest funding rate or None if not available
+        """
+        try:
+            from src.db import get_pool
+
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT funding_rate
+                    FROM funding_rates
+                    WHERE symbol = $1
+                    ORDER BY funding_time DESC
+                    LIMIT 1
+                    """,
+                    symbol,
+                )
+                if row:
+                    return float(row["funding_rate"])
+        except Exception:
+            # Funding rates table may not exist or be populated yet
+            pass
+        return None
 
     def get_strategy_names(self) -> list[str]:
         """Get names of all active strategies."""

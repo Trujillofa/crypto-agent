@@ -86,6 +86,9 @@ class TestFetchLatest:
                 "price_vs_monthly": None,
                 "rsi_slope": None,
                 "trend_consistency": None,
+                "funding_rate": None,
+                "high_price": 45200.0,
+                "low_price": 45000.0,
             },
             {
                 "time": "2024-01-01T00:00:00Z",
@@ -118,6 +121,9 @@ class TestFetchLatest:
                 "stoch_k": None,
                 "stoch_d": None,
                 "cci": None,
+                "funding_rate": None,
+                "high_price": 45100.0,
+                "low_price": 44900.0,
             },
         ]
         mock_conn.fetch.return_value = mock_rows
