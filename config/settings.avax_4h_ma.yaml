@@ -8,6 +8,7 @@ trading:
 
 trading_execution:
   use_atr_sizing: false
+  order_size_usdt: 150.0
 
 futures:
   enabled: false

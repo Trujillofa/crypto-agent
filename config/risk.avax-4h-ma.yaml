@@ -1,5 +1,5 @@
 position_limits:
-  max_position_pct: 0.10
+  max_position_pct: 0.15
   max_open_positions: 4
 
 loss_limits:
