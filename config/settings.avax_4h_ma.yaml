@@ -15,7 +15,7 @@ futures:
 strategy:
   default_trading_mode: spot
   strategies:
-    - name: simple_ma
+    - name: cci_breakout
       config: {}
   aggregator:
     btc_regime_filter_enabled: false

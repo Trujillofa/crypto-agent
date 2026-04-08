@@ -8,20 +8,6 @@
 	},
 	{
 		"labels": {
-			"service": "agent_2",
-			"agent_id": "agent2"
-		},
-		"targets": ["agent_2:8000"]
-	},
-	{
-		"labels": {
-			"service": "agent_eth",
-			"agent_id": "eth-4h"
-		},
-		"targets": ["agent_eth:8000"]
-	},
-	{
-		"labels": {
 			"service": "agent_sol_sparse",
 			"agent_id": "sol-trend-pullback-sparse"
 		},

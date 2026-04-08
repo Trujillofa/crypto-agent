@@ -164,7 +164,7 @@ def test_avax_4h_ma_config_resolves_simple_ma_spot_only():
     assert settings.trading_execution.enabled is True
     assert settings.strategy.default_trading_mode == "spot"
     assert settings.futures is None
-    assert strategy_classes == [SimpleMACrossoverStrategy]
+    assert strategy_classes == [CCIBreakoutStrategy]
     assert len(strategy_configs) == 1
     assert aggregator_config["buy_threshold"] == 0.5
     assert aggregator_config["btc_regime_filter_enabled"] is False
@@ -181,7 +181,7 @@ def test_eth_4h_config_resolves_simple_ma():
     assert settings.trading_pairs == ["ETHUSDT"]
     assert settings.timeframe == "4h"
     assert settings.ai.enabled is False
-    assert settings.trading_execution.enabled is True
+    assert settings.trading_execution.enabled is False
     assert strategy_classes == [SimpleMACrossoverStrategy]
     assert len(strategy_configs) == 1
     assert aggregator_config["buy_threshold"] == 0.5

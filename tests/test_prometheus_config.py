@@ -36,21 +36,15 @@ def test_file_sd_targets_cover_all_current_agent_services() -> None:
 
     assert set(labels_by_service) == {
         "agent",
-        "agent_2",
-        "agent_eth",
         "agent_avax",
         "agent_sol_sparse",
         "agent_sentiment_macro",
     }
     assert targets_by_service["agent"] == ["agent:8000"]
-    assert targets_by_service["agent_2"] == ["agent_2:8000"]
-    assert targets_by_service["agent_eth"] == ["agent_eth:8000"]
     assert targets_by_service["agent_avax"] == ["agent_avax:8000"]
     assert targets_by_service["agent_sol_sparse"] == ["agent_sol_sparse:8000"]
     assert targets_by_service["agent_sentiment_macro"] == ["agent_sentiment_macro:8000"]
     assert labels_by_service["agent"]["agent_id"] == "default"
-    assert labels_by_service["agent_2"]["agent_id"] == "agent2"
-    assert labels_by_service["agent_eth"]["agent_id"] == "eth-4h"
     assert labels_by_service["agent_avax"]["agent_id"] == "avax-4h-ma"
     assert labels_by_service["agent_sol_sparse"]["agent_id"] == "sol-trend-pullback-sparse"
     assert labels_by_service["agent_sentiment_macro"]["agent_id"] == "sentiment-macro-bot"

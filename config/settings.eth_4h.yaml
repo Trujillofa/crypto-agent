@@ -6,6 +6,9 @@ trading:
     - ETHUSDT
   timeframe: 4h
 
+trading_execution:
+  enabled: false
+
 futures:
   symbols:
     - ETHUSDT

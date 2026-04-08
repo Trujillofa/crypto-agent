@@ -6,6 +6,9 @@ trading:
     - BNBUSDT
   timeframe: 4h
 
+trading_execution:
+  enabled: false
+
 futures:
   symbols:
     - BNBUSDT

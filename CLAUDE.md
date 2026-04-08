@@ -457,12 +457,12 @@ The system supports running multiple isolated trading agents simultaneously. Eac
 | Agent | Config | Description |
 |-------|--------|-------------|
 | `agent` | `config/settings.yaml` | Default agent |
-| `agent_2` | `config/settings.agent2.yaml` | Secondary agent |
-| ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — no edge on BTC 4h simple_ma |
-| `agent_eth` | `config/settings.eth_4h.yaml` | ETH 4h simple_ma |
+| ~~`agent_2`~~ | ~~`config/settings.agent2.yaml`~~ | DISABLED — WFO: no edge on BNBUSDT 4h |
+| ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — WFO: no edge on BTCUSDT 4h |
+| ~~`agent_eth`~~ | ~~`config/settings.eth_4h.yaml`~~ | DISABLED — WFO: 12% win rate on ETHUSDT 4h simple_ma |
 | `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
 | `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Macro sentiment |
-| `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h MA |
+| `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h CCI breakout (WFO-validated) |
 
 Agents are isolated via `AGENT_ID` environment variable. Database tables use `agent_id` columns for state separation (see `migrations/005_add_agent_isolation.sql`).
 

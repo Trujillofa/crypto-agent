@@ -165,19 +165,17 @@ services:
     ports:
       - "127.0.0.1:18000:8000"
 
-  agent_2:
-    <<: *agent-common
-    environment:
-      POSTGRES_HOST: timescaledb
-      POSTGRES_PORT: "5432"
-      PROMETHEUS_PORT: "8000"
-      AGENT_ID: agent2
-      SETTINGS_PATH: config/settings.agent2.yaml
+  # agent_2: DISABLED 2026-04-08 — WFO: no edge on BNBUSDT 4h (all strategies negative OOS)
+  # agent_2:
+  #   <<: *agent-common
+  #   environment:
+  #     POSTGRES_HOST: timescaledb
+  #     POSTGRES_PORT: "5432"
+  #     PROMETHEUS_PORT: "8000"
+  #     AGENT_ID: agent2
+  #     SETTINGS_PATH: config/settings.agent2.yaml
 
-  # agent_btc: DISABLED 2026-04-07 — simple_ma has no edge on BTCUSDT 4h
-  # WFO sweep: all 50+ parameter combos negative OOS. Post-fix P&L: -$25.
-  # See session summary for full analysis. Re-enable only with a validated strategy.
-  #
+  # agent_btc: DISABLED 2026-04-07 — WFO: no edge on BTCUSDT 4h
   # agent_btc:
   #   <<: *agent-common
   #   environment:
@@ -187,14 +185,15 @@ services:
   #     AGENT_ID: btc-4h
   #     SETTINGS_PATH: config/settings.btc-4h.yaml
 
-  agent_eth:
-    <<: *agent-common
-    environment:
-      POSTGRES_HOST: timescaledb
-      POSTGRES_PORT: "5432"
-      PROMETHEUS_PORT: "8000"
-      AGENT_ID: eth-4h
-      SETTINGS_PATH: config/settings.eth_4h.yaml
+  # agent_eth: DISABLED 2026-04-08 — WFO: 12% win rate on ETHUSDT 4h simple_ma
+  # agent_eth:
+  #   <<: *agent-common
+  #   environment:
+  #     POSTGRES_HOST: timescaledb
+  #     POSTGRES_PORT: "5432"
+  #     PROMETHEUS_PORT: "8000"
+  #     AGENT_ID: eth-4h
+  #     SETTINGS_PATH: config/settings.eth_4h.yaml
 
   agent_avax:
     <<: *agent-common
