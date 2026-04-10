@@ -20,3 +20,7 @@ strategy:
       config: {}
   aggregator:
     btc_regime_filter_enabled: false
+
+# Temporary: Use REST for backfill
+ingest:
+  use_websocket: false

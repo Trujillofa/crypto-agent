@@ -37,3 +37,7 @@ strategy:
     buy_threshold: 0.45
     buy_threshold_uptrend: 0.45
     sell_threshold: -1.0
+
+# Temporary: Use REST for backfill
+ingest:
+  use_websocket: false
