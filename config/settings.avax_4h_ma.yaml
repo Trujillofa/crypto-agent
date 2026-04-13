@@ -1,14 +1,19 @@
 agent_id: avax-4h-ma
 display_name: avax-4h-simple-ma
 
+# Live trading: enabled for minimal production validation (2026-04-13).
+# Budget: $12/trade, spot only. Reassess after first live round-trip.
+mode: live
+
 trading:
   pairs:
     - AVAXUSDT
   timeframe: 4h
 
 trading_execution:
+  test_mode: false
   use_atr_sizing: false
-  order_size_usdt: 150.0
+  order_size_usdt: 12.0
 
 futures:
   enabled: false
