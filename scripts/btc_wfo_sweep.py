@@ -1257,7 +1257,9 @@ async def main() -> None:
                         f"fail={m.failure_reasons or 'none'}"
                     )
 
-                # Sort: passing first, then by OOS return
+                # Sort: passing first, then by OOS return. Name tiebreaker keeps
+                # output byte-stable across re-runs (upstream iteration order varies).
+                results.sort(key=lambda m: m.name)
                 results.sort(
                     key=lambda m: (
                         m.passes_gates,
