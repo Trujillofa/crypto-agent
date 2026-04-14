@@ -805,10 +805,8 @@ class TradingExecutor:
         try:
             if self._event_log:
                 await self._event_log.log(
-                    event_type="signal_received",
-                    level="info",
-                    agent_id=self._risk_manager._agent_id,
-                    content={
+                    "signal_received",
+                    {
                         "symbol": signal.symbol,
                         "type": signal.type.value,
                         "price": signal.price,
