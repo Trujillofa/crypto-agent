@@ -45,6 +45,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=crypto:crypto src/ ./src/
 COPY --chown=crypto:crypto config/ ./config/
 COPY --chown=crypto:crypto migrations/ ./migrations/
+COPY --chown=crypto:crypto scripts/ ./scripts/
 
 # Create data directory
 RUN mkdir -p /app/data && chown crypto:crypto /app/data
