@@ -1,6 +1,12 @@
 agent_id: sentiment-macro-bot
 display_name: sentiment-macro-1h-multiasset
 
+# Live trading: enabled for Stage D (2026-04-16).
+# Budget: $6/trade, spot only. Sized to fit 15% max_position_pct on ~$43 balance.
+# Overriding the 100-trade decision gate (currently at 49 post-fix trades, -20% DD)
+# per user directive. Reassess after first live round-trip.
+mode: live
+
 trading:
   pairs:
     - BTCUSDT
@@ -16,16 +22,21 @@ ai:
   polling_interval: 60.0
 
 trading_execution:
+  test_mode: false
+  use_atr_sizing: false
+  order_size_usdt: 6.0
   exit_rules:
     time_stop_minutes: 1440
 
 futures:
+  enabled: false
   symbols:
     - BTCUSDT
     - ETHUSDT
     - SOLUSDT
 
 strategy:
+  default_trading_mode: spot
   evaluation_interval_seconds: 3600
   strategies:
     - name: sentiment_mean_reversion
@@ -40,3 +51,4 @@ strategy:
   aggregator:
     buy_threshold: 0.6
     sell_threshold: -0.6
+    btc_regime_filter_enabled: false
