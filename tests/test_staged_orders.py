@@ -75,13 +75,15 @@ class TestStagedOrderManager:
         with pytest.raises(ValueError, match="not found"):
             await manager.commit("missing")
 
-    async def test_commit_already_committed_order_raises_value_error(self) -> None:
+    async def test_commit_already_committed_order_is_idempotent(self) -> None:
         manager = StagedOrderManager()
         order = await manager.stage(symbol="BTCUSDT", side="BUY", quantity=0.01)
-        await manager.commit(order.order_id)
+        first = await manager.commit(order.order_id)
+        second = await manager.commit(order.order_id)
 
-        with pytest.raises(ValueError, match="not in STAGED state"):
-            await manager.commit(order.order_id)
+        assert first.stage == OrderStage.COMMITTED
+        assert second.stage == OrderStage.COMMITTED
+        assert second.order_id == first.order_id
 
     async def test_get_all_staged_returns_only_staged_orders(self) -> None:
         manager = StagedOrderManager()

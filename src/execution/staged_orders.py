@@ -134,6 +134,11 @@ class StagedOrderManager:
                 raise ValueError(f"Order {order_id} not found")
 
             order = self._staged[order_id]
+            # Idempotent: if already COMMITTED (e.g. via auto_commit=True),
+            # return without error. Required because the live executor calls
+            # commit() explicitly even when the manager auto-committed at stage().
+            if order.stage == OrderStage.COMMITTED:
+                return order
             if order.stage != OrderStage.STAGED:
                 raise ValueError(
                     f"Order {order_id} is not in STAGED state (current: {order.stage.name})"
