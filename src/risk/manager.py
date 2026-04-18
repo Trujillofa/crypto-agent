@@ -196,6 +196,63 @@ class RiskManager:
         except Exception as exc:
             self._logger.error(f"Failed to load risk state: {exc}")
 
+    def _normalize_position_key(self, raw: str) -> str:
+        """Strip legacy agent/market decorations from a position key for DB comparison."""
+        key = raw
+        prefix = f"{self._agent_id}::"
+        if key.startswith(prefix):
+            key = key[len(prefix) :]
+        for suffix in (":futures", ":spot"):
+            if key.endswith(suffix):
+                key = key[: -len(suffix)]
+        return key.upper()
+
+    async def reconcile_positions_with_db(self, pool: Any) -> None:
+        """Drop in-memory positions not backed by an open DB row.
+
+        Guards against risk-state schema drift (e.g. legacy paper/namespaced
+        keys like ``{agent}::SYMBOL:futures`` persisting on disk after a
+        live-trading migration) that would otherwise consume ``max_open_positions``
+        slots and block real signals.
+        """
+        try:
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT symbol FROM positions WHERE agent_id = $1 AND status = 'open'",
+                    self._agent_id,
+                )
+        except Exception as exc:
+            self._logger.warning("Risk-state DB reconciliation skipped: %s", exc)
+            return
+
+        valid = {self._normalize_position_key(row["symbol"]) for row in rows}
+
+        to_drop: list[str] = []
+        to_migrate: list[tuple[str, str]] = []
+        for key in list(self._positions):
+            canonical = self._normalize_position_key(key)
+            if canonical not in valid:
+                to_drop.append(key)
+            elif key != canonical:
+                to_migrate.append((key, canonical))
+
+        if not to_drop and not to_migrate:
+            return
+
+        for key in to_drop:
+            del self._positions[key]
+        for old, canonical in to_migrate:
+            if canonical in self._positions:
+                del self._positions[old]
+            else:
+                self._positions[canonical] = self._positions.pop(old)
+        self._save_state()
+        self._logger.warning(
+            "Risk state reconciled with DB: dropped=%s migrated=%s",
+            to_drop,
+            [f"{old}->{new}" for old, new in to_migrate],
+        )
+
     def _save_state(self) -> None:
         """Save risk state to disk."""
         try:

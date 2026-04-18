@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import tempfile
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
@@ -466,3 +468,96 @@ class TestRiskManager:
             r.message for r in caplog.records if "Possible stale drawdown anchor" in r.message
         ]
         assert len(warnings) == 1
+
+
+def _make_pool_with_rows(rows: list[dict[str, str]]) -> MagicMock:
+    """Build a fake asyncpg pool whose fetch returns ``rows``."""
+    conn = MagicMock()
+    conn.fetch = AsyncMock(return_value=rows)
+
+    @asynccontextmanager
+    async def acquire() -> MagicMock:
+        yield conn
+
+    pool = MagicMock()
+    pool.acquire = acquire
+    return pool
+
+
+class TestReconcilePositionsWithDb:
+    """Guards against risk-state drift vs. live DB positions."""
+
+    def _manager(self, tmp_path: Path, agent_id: str = "sentiment-macro-bot") -> RiskManager:
+        return RiskManager(
+            config_path=Path("/nonexistent/path.yaml"),
+            state_path=tmp_path / f"risk_state_{agent_id}.json",
+            agent_id=agent_id,
+        )
+
+    @pytest.mark.asyncio
+    async def test_drops_legacy_namespaced_key(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "sentiment-macro-bot::ETHUSDT:futures": {
+                "entry_price": 2338.09,
+                "quantity_usdt": 1000.0,
+                "entry_time": 1.0,
+            },
+            "ETHUSDT": {"entry_price": 2380.3, "quantity_usdt": 5.95, "entry_time": 2.0},
+            "BTCUSDT": {"entry_price": 76000.0, "quantity_usdt": 5.3, "entry_time": 3.0},
+        }
+        pool = _make_pool_with_rows(
+            [
+                {"symbol": "sentiment-macro-bot::ETHUSDT"},
+                {"symbol": "sentiment-macro-bot::BTCUSDT"},
+            ]
+        )
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert set(manager._positions.keys()) == {"ETHUSDT", "BTCUSDT"}
+
+    @pytest.mark.asyncio
+    async def test_preserves_keys_matching_db(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "ETHUSDT": {"entry_price": 2380.3, "quantity_usdt": 5.95, "entry_time": 2.0},
+        }
+        pool = _make_pool_with_rows([{"symbol": "sentiment-macro-bot::ETHUSDT"}])
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert list(manager._positions.keys()) == ["ETHUSDT"]
+
+    @pytest.mark.asyncio
+    async def test_empty_db_drops_all_stale(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "SOLUSDT:futures": {"entry_price": 84.0, "quantity_usdt": 1000.0, "entry_time": 1.0},
+        }
+        pool = _make_pool_with_rows([])
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert manager._positions == {}
+
+    @pytest.mark.asyncio
+    async def test_db_failure_leaves_state_untouched(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        before = {
+            "ETHUSDT": {"entry_price": 2380.3, "quantity_usdt": 5.95, "entry_time": 2.0},
+        }
+        manager._positions = dict(before)
+
+        pool = MagicMock()
+
+        @asynccontextmanager
+        async def acquire_raises() -> MagicMock:
+            raise RuntimeError("db down")
+            yield  # pragma: no cover
+
+        pool.acquire = acquire_raises
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert manager._positions == before

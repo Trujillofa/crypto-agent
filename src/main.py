@@ -14,7 +14,7 @@ from typing import cast
 import yaml
 
 from src.core.event_log import EventLog
-from src.db import close_pool, init_pool, is_connected, update_health_status
+from src.db import close_pool, get_pool, init_pool, is_connected, update_health_status
 from src.execution import (
     FuturesTradingConfig,
     FuturesTradingExecutor,
@@ -811,6 +811,7 @@ async def run() -> None:
         paper_mode=settings.mode == "paper",
         event_log=event_log,
     )
+    await risk_manager.reconcile_positions_with_db(get_pool())
 
     # Check if trading is allowed (warn but don't exit in paper mode —
     # the monitor_loop can auto-reset the kill switch after cooldown)
