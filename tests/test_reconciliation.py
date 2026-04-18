@@ -191,6 +191,46 @@ class TestSpotReconciliation:
         result = await recon.reconcile_spot()
         assert result.is_clean
 
+    @pytest.mark.asyncio
+    async def test_quantity_mismatch_below_dust_value_ignored(self) -> None:
+        """Pct diff over tolerance but USDT value below dust -> clean.
+
+        Regression: agent_avax had 0.71 AVAX in DB vs 0.71893 on exchange
+        (1.3% diff = $0.087). Pre-existing dust should not alert forever.
+        """
+        client = AsyncMock()
+        client.get_all_balances = AsyncMock(return_value={"AVAX": 0.71893, "USDT": 500.0})
+
+        pos = _make_position(symbol="AVAXUSDT", quantity=0.71, entry_price=9.73)
+        recon = _make_reconciler(
+            spot_client=client,
+            spot_symbols=["AVAXUSDT"],
+            positions={("AVAXUSDT", "spot"): pos},
+            quantity_tolerance_pct=1.0,
+            dust_threshold_usdt=1.0,
+        )
+        result = await recon.reconcile_spot()
+        assert result.is_clean
+
+    @pytest.mark.asyncio
+    async def test_quantity_mismatch_above_dust_value_alerts(self) -> None:
+        """Pct diff over tolerance AND USDT value meaningful -> still alerts."""
+        client = AsyncMock()
+        # 0.5 BTC in DB vs 0.49 on exchange = 2% diff, $500 at $50k entry.
+        client.get_all_balances = AsyncMock(return_value={"BTC": 0.49, "USDT": 1000.0})
+
+        pos = _make_position(symbol="BTCUSDT", quantity=0.5, entry_price=50000.0)
+        recon = _make_reconciler(
+            spot_client=client,
+            spot_symbols=["BTCUSDT"],
+            positions={("BTCUSDT", "spot"): pos},
+            quantity_tolerance_pct=1.0,
+            dust_threshold_usdt=1.0,
+        )
+        result = await recon.reconcile_spot()
+        assert not result.is_clean
+        assert result.divergences[0].divergence_type == "quantity_mismatch"
+
 
 class TestFuturesReconciliation:
     @pytest.mark.asyncio
@@ -210,9 +250,7 @@ class TestFuturesReconciliation:
         client = AsyncMock()
         client.get_position_risk = AsyncMock(return_value=[])
 
-        pos = _make_position(
-            symbol="BTCUSDT", market="futures", quantity=0.1, position_side="LONG"
-        )
+        pos = _make_position(symbol="BTCUSDT", market="futures", quantity=0.1, position_side="LONG")
         recon = _make_reconciler(
             futures_client=client,
             futures_symbols=["BTCUSDT"],
@@ -252,9 +290,7 @@ class TestFuturesReconciliation:
         client = AsyncMock()
         client.get_position_risk = AsyncMock(return_value=[exchange_pos])
 
-        pos = _make_position(
-            symbol="BTCUSDT", market="futures", quantity=0.1, position_side="LONG"
-        )
+        pos = _make_position(symbol="BTCUSDT", market="futures", quantity=0.1, position_side="LONG")
         recon = _make_reconciler(
             futures_client=client,
             futures_symbols=["BTCUSDT"],
@@ -275,9 +311,7 @@ class TestFuturesReconciliation:
         client = AsyncMock()
         client.get_position_risk = AsyncMock(return_value=[exchange_pos])
 
-        pos = _make_position(
-            symbol="BTCUSDT", market="futures", quantity=0.1, position_side="LONG"
-        )
+        pos = _make_position(symbol="BTCUSDT", market="futures", quantity=0.1, position_side="LONG")
         recon = _make_reconciler(
             futures_client=client,
             futures_symbols=["BTCUSDT"],

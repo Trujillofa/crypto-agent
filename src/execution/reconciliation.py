@@ -117,51 +117,65 @@ class ExchangeReconciler:
             exchange_qty = balances.get(asset, 0.0)
 
             if db_pos and exchange_qty <= 0:
-                result.divergences.append(Divergence(
-                    symbol=symbol,
-                    market="spot",
-                    divergence_type="phantom_db",
-                    db_state={"quantity": db_pos.quantity, "entry_price": db_pos.entry_price},
-                    exchange_state={"quantity": 0.0},
-                    severity="critical",
-                    message=(
-                        f"DB has open position for {symbol} "
-                        f"(qty={db_pos.quantity:.6f}) but exchange balance is zero"
-                    ),
-                ))
+                result.divergences.append(
+                    Divergence(
+                        symbol=symbol,
+                        market="spot",
+                        divergence_type="phantom_db",
+                        db_state={"quantity": db_pos.quantity, "entry_price": db_pos.entry_price},
+                        exchange_state={"quantity": 0.0},
+                        severity="critical",
+                        message=(
+                            f"DB has open position for {symbol} "
+                            f"(qty={db_pos.quantity:.6f}) but exchange balance is zero"
+                        ),
+                    )
+                )
             elif not db_pos and exchange_qty > 0:
                 # Only flag if above dust threshold — estimate USDT value roughly
                 # We don't have price here, so use raw quantity check against a generous threshold
                 if exchange_qty > self._config.dust_threshold_usdt:
-                    result.divergences.append(Divergence(
-                        symbol=symbol,
-                        market="spot",
-                        divergence_type="untracked_exchange",
-                        db_state={"quantity": 0.0},
-                        exchange_state={"quantity": exchange_qty},
-                        severity="warning",
-                        message=(
-                            f"Exchange has {exchange_qty:.6f} {asset} "
-                            f"but no open DB position for {symbol}"
-                        ),
-                    ))
+                    result.divergences.append(
+                        Divergence(
+                            symbol=symbol,
+                            market="spot",
+                            divergence_type="untracked_exchange",
+                            db_state={"quantity": 0.0},
+                            exchange_state={"quantity": exchange_qty},
+                            severity="warning",
+                            message=(
+                                f"Exchange has {exchange_qty:.6f} {asset} "
+                                f"but no open DB position for {symbol}"
+                            ),
+                        )
+                    )
             elif db_pos and exchange_qty > 0:
                 # Both exist — check quantity tolerance
-                pct_diff = abs(db_pos.quantity - exchange_qty) / db_pos.quantity * 100
-                if pct_diff > self._config.quantity_tolerance_pct:
-                    result.divergences.append(Divergence(
-                        symbol=symbol,
-                        market="spot",
-                        divergence_type="quantity_mismatch",
-                        db_state={"quantity": db_pos.quantity},
-                        exchange_state={"quantity": exchange_qty},
-                        severity="warning",
-                        message=(
-                            f"{symbol} quantity mismatch: "
-                            f"DB={db_pos.quantity:.6f} vs exchange={exchange_qty:.6f} "
-                            f"({pct_diff:.1f}% diff)"
-                        ),
-                    ))
+                qty_diff = abs(db_pos.quantity - exchange_qty)
+                pct_diff = qty_diff / db_pos.quantity * 100
+                usdt_diff = qty_diff * db_pos.entry_price
+                # Require BOTH pct over tolerance AND USDT value above dust
+                # so pre-existing small balances (dust on the account from
+                # before the agent started trading) don't alert forever.
+                if (
+                    pct_diff > self._config.quantity_tolerance_pct
+                    and usdt_diff > self._config.dust_threshold_usdt
+                ):
+                    result.divergences.append(
+                        Divergence(
+                            symbol=symbol,
+                            market="spot",
+                            divergence_type="quantity_mismatch",
+                            db_state={"quantity": db_pos.quantity},
+                            exchange_state={"quantity": exchange_qty},
+                            severity="warning",
+                            message=(
+                                f"{symbol} quantity mismatch: "
+                                f"DB={db_pos.quantity:.6f} vs exchange={exchange_qty:.6f} "
+                                f"({pct_diff:.1f}% diff, ~${usdt_diff:.2f})"
+                            ),
+                        )
+                    )
 
         self._logger.info(
             "Spot reconciliation: %d symbols checked, %d divergences",
@@ -181,79 +195,90 @@ class ExchangeReconciler:
             exchange_pos = exchange_positions[0] if has_exchange_pos else None
 
             if db_pos and not has_exchange_pos:
-                result.divergences.append(Divergence(
-                    symbol=symbol,
-                    market="futures",
-                    divergence_type="phantom_db",
-                    db_state={
-                        "quantity": db_pos.quantity,
-                        "side": db_pos.position_side,
-                        "entry_price": db_pos.entry_price,
-                    },
-                    exchange_state={"quantity": 0.0},
-                    severity="critical",
-                    message=(
-                        f"DB has open futures position for {symbol} "
-                        f"({db_pos.position_side} qty={db_pos.quantity:.6f}) "
-                        f"but exchange has no position"
-                    ),
-                ))
-            elif not db_pos and has_exchange_pos:
-                result.divergences.append(Divergence(
-                    symbol=symbol,
-                    market="futures",
-                    divergence_type="untracked_exchange",
-                    db_state={"quantity": 0.0},
-                    exchange_state={
-                        "quantity": abs(exchange_pos.position_amt),
-                        "side": exchange_pos.position_side,
-                        "entry_price": exchange_pos.entry_price,
-                    },
-                    severity="critical",
-                    message=(
-                        f"Exchange has futures position for {symbol} "
-                        f"({exchange_pos.position_side} "
-                        f"qty={abs(exchange_pos.position_amt):.6f}) "
-                        f"but no open DB position"
-                    ),
-                ))
-            elif db_pos and has_exchange_pos:
-                # Check side mismatch
-                exchange_side = (
-                    "LONG" if exchange_pos.position_amt > 0 else "SHORT"
-                )
-                if db_pos.position_side and db_pos.position_side != exchange_side:
-                    result.divergences.append(Divergence(
+                result.divergences.append(
+                    Divergence(
                         symbol=symbol,
                         market="futures",
-                        divergence_type="side_mismatch",
-                        db_state={"side": db_pos.position_side},
-                        exchange_state={"side": exchange_side},
+                        divergence_type="phantom_db",
+                        db_state={
+                            "quantity": db_pos.quantity,
+                            "side": db_pos.position_side,
+                            "entry_price": db_pos.entry_price,
+                        },
+                        exchange_state={"quantity": 0.0},
                         severity="critical",
                         message=(
-                            f"{symbol} futures side mismatch: "
-                            f"DB={db_pos.position_side} vs exchange={exchange_side}"
+                            f"DB has open futures position for {symbol} "
+                            f"({db_pos.position_side} qty={db_pos.quantity:.6f}) "
+                            f"but exchange has no position"
                         ),
-                    ))
+                    )
+                )
+            elif not db_pos and has_exchange_pos:
+                result.divergences.append(
+                    Divergence(
+                        symbol=symbol,
+                        market="futures",
+                        divergence_type="untracked_exchange",
+                        db_state={"quantity": 0.0},
+                        exchange_state={
+                            "quantity": abs(exchange_pos.position_amt),
+                            "side": exchange_pos.position_side,
+                            "entry_price": exchange_pos.entry_price,
+                        },
+                        severity="critical",
+                        message=(
+                            f"Exchange has futures position for {symbol} "
+                            f"({exchange_pos.position_side} "
+                            f"qty={abs(exchange_pos.position_amt):.6f}) "
+                            f"but no open DB position"
+                        ),
+                    )
+                )
+            elif db_pos and has_exchange_pos:
+                # Check side mismatch
+                exchange_side = "LONG" if exchange_pos.position_amt > 0 else "SHORT"
+                if db_pos.position_side and db_pos.position_side != exchange_side:
+                    result.divergences.append(
+                        Divergence(
+                            symbol=symbol,
+                            market="futures",
+                            divergence_type="side_mismatch",
+                            db_state={"side": db_pos.position_side},
+                            exchange_state={"side": exchange_side},
+                            severity="critical",
+                            message=(
+                                f"{symbol} futures side mismatch: "
+                                f"DB={db_pos.position_side} vs exchange={exchange_side}"
+                            ),
+                        )
+                    )
 
                 # Check quantity tolerance
                 exchange_qty = abs(exchange_pos.position_amt)
-                pct_diff = abs(db_pos.quantity - exchange_qty) / db_pos.quantity * 100
-                if pct_diff > self._config.quantity_tolerance_pct:
-                    result.divergences.append(Divergence(
-                        symbol=symbol,
-                        market="futures",
-                        divergence_type="quantity_mismatch",
-                        db_state={"quantity": db_pos.quantity},
-                        exchange_state={"quantity": exchange_qty},
-                        severity="warning",
-                        message=(
-                            f"{symbol} futures quantity mismatch: "
-                            f"DB={db_pos.quantity:.6f} vs "
-                            f"exchange={exchange_qty:.6f} "
-                            f"({pct_diff:.1f}% diff)"
-                        ),
-                    ))
+                qty_diff = abs(db_pos.quantity - exchange_qty)
+                pct_diff = qty_diff / db_pos.quantity * 100
+                usdt_diff = qty_diff * db_pos.entry_price
+                if (
+                    pct_diff > self._config.quantity_tolerance_pct
+                    and usdt_diff > self._config.dust_threshold_usdt
+                ):
+                    result.divergences.append(
+                        Divergence(
+                            symbol=symbol,
+                            market="futures",
+                            divergence_type="quantity_mismatch",
+                            db_state={"quantity": db_pos.quantity},
+                            exchange_state={"quantity": exchange_qty},
+                            severity="warning",
+                            message=(
+                                f"{symbol} futures quantity mismatch: "
+                                f"DB={db_pos.quantity:.6f} vs "
+                                f"exchange={exchange_qty:.6f} "
+                                f"({pct_diff:.1f}% diff, ~${usdt_diff:.2f})"
+                            ),
+                        )
+                    )
 
         self._logger.info(
             "Futures reconciliation: %d symbols checked, %d divergences",
