@@ -2,7 +2,7 @@ agent_id: sentiment-macro-bot
 display_name: sentiment-macro-1h-multiasset
 
 # Live trading: enabled for Stage D (2026-04-16).
-# Budget: $6/trade, spot only. Sized to fit 15% max_position_pct on ~$43 balance.
+# Budget: $6/trade, spot only. 25% max_position_pct to fit 3x $6 positions on ~$43 balance.
 # Overriding the 100-trade decision gate (currently at 49 post-fix trades, -20% DD)
 # per user directive. Reassess after first live round-trip.
 mode: live
