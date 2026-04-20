@@ -1,10 +1,10 @@
 agent_id: sentiment-macro-bot
 display_name: sentiment-macro-1h-multiasset
 
-# Live trading: enabled for Stage D (2026-04-16).
-# Budget: $6/trade, spot only. 25% max_position_pct to fit 3x $6 positions on ~$43 balance.
-# Overriding the 100-trade decision gate (currently at 49 post-fix trades, -20% DD)
-# per user directive. Reassess after first live round-trip.
+# Live trading: rolled back to futures on 2026-04-20 (was spot-only Stage D Apr 16-20).
+# Rationale: futures had 95 live trades, 70% WR, +$727 PnL (Mar 13 - Apr 16) vs
+# spot's 3 entries / 0 round-trips / -$0.51 realized. Futures track record is the edge.
+# Budget: $6/trade notional, default_leverage 3x, isolated margin, one-way mode.
 mode: live
 
 trading:
@@ -29,14 +29,20 @@ trading_execution:
     time_stop_minutes: 1440
 
 futures:
-  enabled: false
+  enabled: true
+  test_mode: false
+  default_leverage: 3
+  max_leverage: 10
+  margin_mode: isolated
+  position_mode: one-way
+  liquidation_buffer_pct: 5.0
   symbols:
     - BTCUSDT
     - ETHUSDT
     - SOLUSDT
 
 strategy:
-  default_trading_mode: spot
+  default_trading_mode: futures
   evaluation_interval_seconds: 3600
   strategies:
     - name: sentiment_mean_reversion
