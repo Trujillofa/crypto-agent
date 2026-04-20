@@ -47,7 +47,9 @@ strategy:
         sentiment_gate_threshold: 35.0
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
-  global_trend_filter_buffer_pct: 0.0
+  # Mean-reversion buys dips by design, so allow entries up to 5% below EMA200.
+  # Strict 0.0 blocked every BUY when BTC/ETH dipped below EMA200 (Apr 18-20 bear).
+  global_trend_filter_buffer_pct: 0.05
   aggregator:
     buy_threshold: 0.6
     sell_threshold: -0.6
