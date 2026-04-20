@@ -5,7 +5,7 @@ position_limits:
 loss_limits:
   max_daily_loss_pct: 0.05
   max_drawdown_pct: 0.20
-  max_single_loss_pct: 0.02
+  max_single_loss_pct: 0.05
 
 circuit_breakers:
   consecutive_losses: 10
