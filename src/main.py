@@ -1094,6 +1094,12 @@ async def run() -> None:
         telegram=telegram_notifier,
     )
 
+    def _has_position(symbol: str, market: str) -> bool:
+        pos = portfolio_manager.get_position(symbol, market=market)
+        return pos is not None and pos.quantity > 0
+
+    strategy_engine.set_position_checker(_has_position)
+
     stop_event = asyncio.Event()
 
     def _handle_signal() -> None:

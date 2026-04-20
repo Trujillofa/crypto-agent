@@ -72,6 +72,7 @@ class FuturesTradingExecutor:
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
         self._sl_tp_orders: dict[str, dict[str, str]] = {}  # symbol → {sl_order_id, tp_order_id}
         self._active_position_mode: str = config.position_mode
+        self._sell_reject_alert_times: dict[str, float] = {}  # symbol → last alert timestamp
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -540,10 +541,16 @@ class FuturesTradingExecutor:
                         "Exchange may have untracked positions from other agents.",
                         signal.symbol,
                     )
-                    await self._notifier.send_alert(
-                        f"<b>Signal rejected</b> [futures]\n"
-                        f"{signal.symbol} SELL — No agent-owned position to close"
-                    )
+                    # Alert at most once per 4 hours per symbol to avoid spam when
+                    # the strategy fires exit signals while the agent is flat.
+                    _now = time.time()
+                    _last = self._sell_reject_alert_times.get(signal.symbol, 0.0)
+                    if _now - _last >= 14400:
+                        self._sell_reject_alert_times[signal.symbol] = _now
+                        await self._notifier.send_alert(
+                            f"<b>Signal rejected</b> [futures]\n"
+                            f"{signal.symbol} SELL — No agent-owned position to close"
+                        )
                     return
 
                 # Step 3: Get exchange position and validate alignment

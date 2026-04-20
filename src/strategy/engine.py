@@ -57,6 +57,7 @@ class StrategyEngine:
         self._primed_symbols: set[str] = set()
         self._aggregator = SignalAggregator(config.aggregator_config, config.default_trading_mode)
         self._mtf_timeframes: dict[str, str] | None = None
+        self._position_checker: Callable[[str, str], bool] | None = None
 
         for symbol in config.symbols:
             self._strategies[symbol] = []
@@ -90,6 +91,15 @@ class StrategyEngine:
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
         self._running = False
         self._logger.info("StrategyEngine stopped")
+
+    def set_position_checker(self, checker: Callable[[str, str], bool]) -> None:
+        """Register a callable that returns True when the agent holds a position.
+
+        Signature: checker(symbol, trading_mode) -> bool
+        When set, SELL signals are suppressed to HOLD for flat positions,
+        preventing strategy exit signals from reaching the executor unnecessarily.
+        """
+        self._position_checker = checker
 
     async def run(
         self,
@@ -208,6 +218,26 @@ class StrategyEngine:
                     symbol_config=symbol_config,
                     market_context=market_context,
                 )
+                if (
+                    final_signal.type == SignalType.SELL
+                    and self._position_checker is not None
+                    and not self._position_checker(symbol, final_signal.trading_mode)
+                ):
+                    self._logger.debug(
+                        "SELL suppressed for %s: no open %s position",
+                        symbol,
+                        final_signal.trading_mode,
+                    )
+                    final_signal = Signal(
+                        type=SignalType.HOLD,
+                        symbol=symbol,
+                        price=final_signal.price,
+                        confidence=0.0,
+                        reason="No open position — SELL suppressed at engine",
+                        indicators=final_signal.indicators,
+                        trading_mode=final_signal.trading_mode,
+                    )
+
                 if final_signal.type == SignalType.BUY and self._config.global_trend_filter_enabled:
                     price = indicators["close_price"]
                     ema_200 = indicators["ema_200"]
