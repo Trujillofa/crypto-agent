@@ -51,7 +51,7 @@ trend_consistency_threshold: 70.0
 
 **Results** (Feb-Oct 2024):
 - 3 trades
-- 66.67% win rate  
+- 66.67% win rate
 - +9.13% return
 - 4.49% max drawdown
 - 1.59 Sharpe ratio

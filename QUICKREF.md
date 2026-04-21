@@ -66,10 +66,10 @@ from src.module import ClassToTest
 async def test_feature_xyz():
     # Arrange
     subject = ClassToTest(param="value")
-    
+
     # Act
     result = await subject.method()
-    
+
     # Assert
     assert result == expected
 ```
@@ -141,7 +141,7 @@ strategy:
 position_limits:
   max_position_pct: 0.10    # 10% max per position
   max_open_positions: 4
-    
+
 loss_limits:
   max_daily_loss_pct: 0.05  # 5% daily loss stop
   max_drawdown_pct: 0.15    # 15% drawdown kill switch
@@ -158,7 +158,7 @@ from src.strategy.signals import Signal, SignalType
 
 class MyStrategy(BaseStrategy):
     name = "my_strategy"
-    
+
     async def evaluate(self, symbol: str, indicators: dict) -> Signal | None:
         # Your logic
         if indicators["rsi"] < 30:

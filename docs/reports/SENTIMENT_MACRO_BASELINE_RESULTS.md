@@ -99,10 +99,10 @@ The baseline strategy is **severely underperforming** in backtest. Before runnin
 ## Raw Results (from TSV)
 
 ```
-timestamp	run_id	commit	score	status	passes_gates	symbol	timeframe	start	end	wfo_return_pct	wfo_mean_sharpe	max_drawdown_pct	bootstrap_p_loss_pct	profit_concentration_pct	total_trades	description
-2026-03-26T01:28:03.855842+00:00	20260326-012801-160193-f941e5	unknown	-319.903437	discard	false	BTCUSDT	1h	2024-01-09T07:00:00+00:00	2026-03-26T00:00:00+00:00	-14.88	-1.03	31.68	77.80	35.20	88	BTCUSDT_baseline
-2026-03-26T01:28:28.531370+00:00	20260326-012826-532643-185898	unknown	-492.996169	discard	false	ETHUSDT	1h	2024-01-09T07:00+00:00	2026-03-26T00:00:00+00:00	-22.69	-1.22	44.33	98.20	68.05	88	ETHUSDT_baseline
-2026-03-26T01:28:54.400351+00:00	20260326-012852-303703-bce538	unknown	-559.753042	discard	false	SOLUSDT	1h	2024-01-09T07:00:00+00:00	2026-03-26T00:00:00+00:00	-23.48	-1.36	49.38	99.60	84.59	81	SOLUSDT_baseline
+timestamp    run_id    commit    score    status    passes_gates    symbol    timeframe    start    end    wfo_return_pct    wfo_mean_sharpe    max_drawdown_pct    bootstrap_p_loss_pct    profit_concentration_pct    total_trades    description
+2026-03-26T01:28:03.855842+00:00    20260326-012801-160193-f941e5    unknown    -319.903437    discard    false    BTCUSDT    1h    2024-01-09T07:00:00+00:00    2026-03-26T00:00:00+00:00    -14.88    -1.03    31.68    77.80    35.20    88    BTCUSDT_baseline
+2026-03-26T01:28:28.531370+00:00    20260326-012826-532643-185898    unknown    -492.996169    discard    false    ETHUSDT    1h    2024-01-09T07:00+00:00    2026-03-26T00:00:00+00:00    -22.69    -1.22    44.33    98.20    68.05    88    ETHUSDT_baseline
+2026-03-26T01:28:54.400351+00:00    20260326-012852-303703-bce538    unknown    -559.753042    discard    false    SOLUSDT    1h    2024-01-09T07:00:00+00:00    2026-03-26T00:00:00+00:00    -23.48    -1.36    49.38    99.60    84.59    81    SOLUSDT_baseline
 ```
 
 ---

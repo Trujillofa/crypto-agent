@@ -1,7 +1,7 @@
 # Deep Research Report v2 - crypto-agent Strategy System
 
-**Version**: 2.0  
-**Date**: 2026-02-16  
+**Version**: 2.0
+**Date**: 2026-02-16
 **Status**: FACT-CHECKED vs HEAD (2026-02-16)
 
 ---

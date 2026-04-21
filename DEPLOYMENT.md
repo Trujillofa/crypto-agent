@@ -48,7 +48,7 @@ Run initial schema setup:
 docker-compose up -d timescaledb
 
 # Wait for DB to be ready, then run migrations
-# (Schema is currently auto-created by the agent, 
+# (Schema is currently auto-created by the agent,
 # but manual migration via psql is recommended for prod)
 docker-compose exec -T timescaledb psql -U trading marketdata < migrations/001_initial_schema.sql
 ```

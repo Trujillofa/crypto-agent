@@ -142,7 +142,7 @@ Create a dedicated research workspace:
 Recommended `results.tsv` columns:
 
 ```text
-timestamp	run_id	commit	score	status	passes_gates	symbol	timeframe	start	end	wfo_return_pct	wfo_mean_sharpe	max_drawdown_pct	bootstrap_p_loss_pct	profit_concentration_pct	total_trades	description
+timestamp    run_id    commit    score    status    passes_gates    symbol    timeframe    start    end    wfo_return_pct    wfo_mean_sharpe    max_drawdown_pct    bootstrap_p_loss_pct    profit_concentration_pct    total_trades    description
 ```
 
 Use statuses:

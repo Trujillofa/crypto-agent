@@ -16,7 +16,7 @@ Determine if relaxing thresholds increases trade count without destroying profit
 
 ### 1. Threshold Relaxation Doesn't Increase Trade Count
 - Conservative: 3 trades
-- Moderate: 2 trades  
+- Moderate: 2 trades
 - Aggressive: 2 trades
 
 **Surprising result**: Relaxing regime thresholds actually gave FEWER trades, not more.

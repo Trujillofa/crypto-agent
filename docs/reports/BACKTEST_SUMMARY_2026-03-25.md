@@ -75,14 +75,14 @@ strategy:
   max_pullback_distance_pct: 0.02
   vwap_pullback_distance_pct: 0.03
   min_atr_pct: 0.008
-  
+
 execution:
   stop_loss_pct: 0.02 (2%)
   take_profit_pct: 0.05 (5%)
   sl_atr_multiplier: 2.0
   tp_atr_multiplier: 4.5
   trailing_activate_atr: 1.5
-  
+
 futures:
   enabled: true
   default_leverage: 3x

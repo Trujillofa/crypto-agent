@@ -38,8 +38,8 @@ We still only get 2-3 trades in 8 months. The entry logic (VWAP/EMA50 pullback z
 
 ## The Problem
 
-**Current rate**: ~4.5 trades/year  
-**Needed for confidence**: 15-20 trades minimum  
+**Current rate**: ~4.5 trades/year
+**Needed for confidence**: 15-20 trades minimum
 **Time to achieve**: 3-4 years at current rate
 
 **Paper trading won't help**: 12 months = ~4 additional trades (total 7). Still insufficient.
@@ -72,8 +72,8 @@ Multiplicative probability = very few signals.
 
 ## Technical Status
 
-✅ All 558 tests passing  
-✅ Code is clean and backward compatible  
+✅ All 558 tests passing
+✅ Code is clean and backward compatible
 ✅ IndicatorReader regression fixed (uses .get() for regime columns)
 
 ## Files

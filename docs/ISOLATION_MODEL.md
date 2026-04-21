@@ -15,9 +15,9 @@
 
 2. **Database Schema**
    ```sql
-   positions: id, symbol, market, position_side, entry_time, entry_price, 
+   positions: id, symbol, market, position_side, entry_time, entry_price,
               quantity, status, exit_time, exit_price, realized_pnl, agent_id
-   trades: id, time, symbol, market, side, quantity, price, order_id, 
+   trades: id, time, symbol, market, side, quantity, price, order_id,
            pnl, position_id, agent_id
    ```
 
@@ -127,7 +127,7 @@ trading_pairs: ["SOLUSDT"]
 strategy:
   timeframe: "4h"
 
-# settings.sol_1h.yaml  
+# settings.sol_1h.yaml
 agent_id: "sol_1h_trend"
 trading_pairs: ["SOLUSDT"]
 strategy:

@@ -1,7 +1,7 @@
 # crypto-agent Trading Report
 
-**Generated**: 2026-02-23  
-**Production Branch**: `feat/tune-strategy-config`  
+**Generated**: 2026-02-23
+**Production Branch**: `feat/tune-strategy-config`
 **Server**: crypto-agent (ssh crypto-agent)
 
 ---
@@ -171,7 +171,7 @@ The `strategy_backtests` table is empty. Scripts exist at:
 strategy:
   evaluation_interval_seconds: 14400  # Match 4h timeframe
   cooldown_candles: 3  # Reduce from 10
-  
+
   aggregator:
     min_agreement: 1  # Lower from 2
     buy_threshold: 0.5  # Lower from 0.8
