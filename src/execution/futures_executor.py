@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.event_log import EventLog
+from src.db.pool import get_pool
 from src.execution.futures_client import (
     BinanceFuturesClient,
     FuturesOrderInfo,
@@ -37,6 +38,7 @@ class FuturesTradingConfig:
     position_mode: str = "one-way"
     order_size_usdt: float = 100.0
     liquidation_buffer_pct: float = 5.0
+    timeframe: str = "1h"
     # SL/TP — ATR-based (primary) with fixed-pct fallback
     sl_atr_multiplier: float = 2.0  # SL = entry - mult * ATR(14)
     tp_atr_multiplier: float = 4.5  # TP = entry + mult * ATR(14)
@@ -872,6 +874,22 @@ class FuturesTradingExecutor:
                         exc,
                     )
 
+    async def _fetch_latest_atr(self, symbol: str, timeframe: str) -> float:
+        """Return the most recent ATR_14 for symbol+timeframe from the DB, or 0.0 on failure."""
+        try:
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT atr_14 FROM indicators WHERE symbol=$1 AND timeframe=$2"
+                    " ORDER BY time DESC LIMIT 1",
+                    symbol,
+                    timeframe,
+                )
+                return float(row["atr_14"]) if row and row["atr_14"] is not None else 0.0
+        except Exception as exc:
+            self._logger.warning("Could not read ATR for %s: %s", symbol, exc)
+            return 0.0
+
     async def _recover_open_positions(self) -> None:
         """On startup, find open positions with no tracked SL/TP and place protective orders."""
         for symbol in self._config.symbols:
@@ -882,13 +900,15 @@ class FuturesTradingExecutor:
                         continue
                     if symbol in self._sl_tp_orders:
                         continue
+                    atr_14 = await self._fetch_latest_atr(symbol, self._config.timeframe)
                     self._logger.warning(
-                        "Recovering unprotected position %s @ %.4f (qty: %.4f) — placing SL/TP",
+                        "Recovering unprotected position %s @ %.4f (qty: %.4f, ATR=%.4f) — placing SL/TP",
                         symbol,
                         pos.entry_price,
                         abs(pos.position_amt),
+                        atr_14,
                     )
-                    await self._place_sl_tp_orders(symbol, pos.entry_price, abs(pos.position_amt), 0.0)
+                    await self._place_sl_tp_orders(symbol, pos.entry_price, abs(pos.position_amt), atr_14)
             except Exception as exc:
                 self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)
 

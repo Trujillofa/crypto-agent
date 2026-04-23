@@ -1009,6 +1009,7 @@ async def run() -> None:
                 tp_atr_multiplier=settings.trading_execution.tp_atr_multiplier,
                 stop_loss_pct=settings.trading_execution.stop_loss_pct,
                 take_profit_pct=settings.trading_execution.take_profit_pct,
+                timeframe=settings.timeframe,
             )
 
             futures_executor = FuturesTradingExecutor(
