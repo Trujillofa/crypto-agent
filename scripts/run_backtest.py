@@ -75,11 +75,11 @@ async def main():
         raise SystemExit(1) from e
 
     db_config = {
-        "host": str(os.getenv("DB_HOST", settings.database.get("host", "localhost"))),
-        "port": int(os.getenv("DB_PORT", int(settings.database.get("port", 5432)))),
-        "name": str(os.getenv("DB_NAME", settings.database.get("name", "marketdata"))),
-        "user": str(os.getenv("DB_USER", settings.database.get("user", "trading"))),
-        "password": str(os.getenv("DB_PASSWORD", settings.database.get("password", ""))),
+        "host": str(os.getenv("POSTGRES_HOST", settings.database.get("host", "localhost"))),
+        "port": int(os.getenv("POSTGRES_PORT", int(settings.database.get("port", 5432)))),
+        "name": str(os.getenv("POSTGRES_DB", settings.database.get("name", "marketdata"))),
+        "user": str(os.getenv("POSTGRES_USER", settings.database.get("user", "trading"))),
+        "password": str(os.getenv("POSTGRES_PASSWORD", settings.database.get("password", ""))),
     }
     stop_loss_pct = settings.trading_execution.stop_loss_pct if args.sl is None else args.sl
     take_profit_pct = settings.trading_execution.take_profit_pct if args.tp is None else args.tp

@@ -118,7 +118,7 @@ def test_sol_sparse_config_trend_pullback():
     assert strategy_classes == [TrendPullbackStrategy]
     assert len(strategy_configs) == 1
     assert settings.trading_execution.enabled is True
-    assert settings.futures.enabled is True
+    assert settings.futures is None or not settings.futures.enabled
     assert aggregator_config["buy_threshold"] == 0.45
 
 

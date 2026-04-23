@@ -421,19 +421,25 @@ class BinanceFuturesClient:
             params["workingType"] = "MARK_PRICE"
             params["priceProtect"] = "TRUE"
 
-        data = await self._request(
-            "POST",
-            "/fapi/v1/order",
-            params=params,
-            signed=True,
-        )
+        _CONDITIONAL_TYPES = ("STOP_MARKET", "TAKE_PROFIT_MARKET")
+        try:
+            data = await self._request("POST", "/fapi/v1/order", params=params, signed=True)
+        except BinanceFuturesApiError as exc:
+            # Some account types (e.g. Portfolio Margin) reject conditional order types on
+            # /fapi/v1/order with -4120 and require the Algo Order API instead.
+            if exc.code != -4120 or order_type not in _CONDITIONAL_TYPES:
+                raise
+            self._logger.info(
+                "Retrying %s %s via Algo Order API (/fapi/v1/order/algo)", order_type, symbol
+            )
+            data = await self._request("POST", "/fapi/v1/order/algo", params=params, signed=True)
 
         avg_price = float(data.get("avgPrice", 0)) if data.get("avgPrice") else None
         price = float(data.get("price", 0)) if data.get("price") else None
         resolved_price = avg_price if avg_price and avg_price > 0 else price
 
         return FuturesOrderInfo(
-            order_id=str(data.get("orderId", 0)),
+            order_id=str(data.get("orderId", data.get("algoId", 0))),
             symbol=data.get("symbol", symbol),
             side=data.get("side", side),
             position_side=data.get("positionSide", position_side),
