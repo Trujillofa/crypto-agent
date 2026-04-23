@@ -11,7 +11,7 @@ Co-Authored-By: Gemini CLI <noreply@google.com>
 
 ## Quick reference
 
-- **Language**: Python 3.11+ (async-first)
+- **Language**: Python 3.11 (async-first)
 - **Tests**: `pytest` (asyncio auto mode via `pyproject.toml`)
 - **Config**: `config/settings.yaml` + env vars for secrets
 - **Safety**: Paper trading is the default. Never bypass risk checks.

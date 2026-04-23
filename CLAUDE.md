@@ -4,7 +4,7 @@ This file is the **single source of truth** for all AI agents and human contribu
 
 ## Project Identity
 
-- **Language**: Python 3.11+
+- **Language**: Python 3.11
 - **Architecture**: Async trading agent with modular pipeline
 - **Stack**: aiohttp, TimescaleDB, Prometheus, Grafana, Docker
 - **Default mode**: Paper trading (safe). Live trading requires explicit config flags.
@@ -177,11 +177,11 @@ Automate only after the process is refined and proven:
 
 ### Linting & Formatting
 
-- **Formatter**: `black` (line-length 100, target Python 3.11+)
-- **Linter**: `ruff` (pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade)
-- **Type checker**: `mypy` (permissive mode, `ignore_missing_imports = true`)
+- **Formatter**: `ruff format` (canonical)
+- **Linter**: `ruff check` (pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade)
+- **Type checker**: `mypy` (optional, not part of CI)
 - **Pre-commit hooks**: ruff (with auto-fix), ruff-format, trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-added-large-files, debug-statements, check-merge-conflict
-- CI runs `black --check` and `ruff check` on every push/PR.
+- CI runs `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pytest -v`.
 
 ## Safety Rules
 
@@ -196,8 +196,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on push to `main`/`develop` and
 
 | Job | What it does |
 |-----|-------------|
-| **test** | `pytest tests/ -v --tb=short` on Python 3.11 + 3.12 matrix |
-| **lint** | `black --check` + `ruff check` on Python 3.12 |
+| **test** | `uv run pytest -v` on Python from `.python-version` (3.11) |
+| **lint** | `uv run ruff check .` + `uv run ruff format --check .` |
 | **docker** | Build image and verify imports |
 
 Smoke test runs on push (not PRs) using Binance API secrets.
@@ -210,11 +210,11 @@ cp .env.example .env    # Fill in secrets
 docker-compose up --build
 
 # Tests
-pytest
+uv run pytest -v
 
 # Linting
-black --check src/ tests/
-ruff check src/ tests/
+uv run ruff check .
+uv run ruff format --check .
 
 # Entrypoint
 python -m src.main
@@ -452,16 +452,16 @@ ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20
 
 ## Multi-Agent Architecture
 
-The system supports running multiple isolated trading agents simultaneously. Each agent has its own config file and runs as a separate Docker service:
+The system supports running multiple isolated trading agents simultaneously. In `docker-compose.prod.yml`, three strategy agents are currently active and four are intentionally disabled based on WFO outcomes.
 
 | Agent | Config | Description |
 |-------|--------|-------------|
-| `agent` | `config/settings.yaml` | Default agent |
+| ~~`agent`~~ | ~~`config/settings.yaml`~~ | DISABLED — WFO: no edge on SOLUSDT 4h simple_ma |
 | ~~`agent_2`~~ | ~~`config/settings.agent2.yaml`~~ | DISABLED — WFO: no edge on BNBUSDT 4h |
 | ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — WFO: no edge on BTCUSDT 4h |
 | ~~`agent_eth`~~ | ~~`config/settings.eth_4h.yaml`~~ | DISABLED — WFO: 12% win rate on ETHUSDT 4h simple_ma |
 | `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
-| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Macro sentiment |
+| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Sentiment mean reversion, live futures routing |
 | `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h CCI breakout (WFO-validated) |
 
 Agents are isolated via `AGENT_ID` environment variable. Database tables use `agent_id` columns for state separation (see `migrations/005_add_agent_isolation.sql`).

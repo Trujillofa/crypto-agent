@@ -21,13 +21,15 @@ python -m src.main              # Local (requires .env)
 
 ### Deploy to Production
 ```bash
-ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"
+ssh crypto-agent "cd /opt/crypto-agent && git pull"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build <service>"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d <service>"
 ```
 
 ### View Logs
 ```bash
 docker-compose logs -f agent --tail=100
-ssh crypto-agent "cd /opt/crypto-agent && docker compose logs agent --tail=50"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs <service> --tail=100 --no-log-prefix"
 ```
 
 ### Check Status

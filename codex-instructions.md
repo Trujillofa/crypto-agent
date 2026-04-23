@@ -11,7 +11,7 @@ Co-Authored-By: OpenCode <noreply@openai.com>
 
 ## Quick reference
 
-- **Language**: Python 3.11+ (async-first)
+- **Language**: Python 3.11 (async-first)
 - **Tests**: `pytest` (asyncio auto mode via `pyproject.toml`)
 - **Config**: `config/settings.yaml` + env vars for secrets
 - **Safety**: Paper trading is the default. Never bypass risk checks.
@@ -20,8 +20,8 @@ Co-Authored-By: OpenCode <noreply@openai.com>
 
 - SSH alias: `ssh crypto-agent` (configured in `~/.ssh/config`)
 - Deploy dir: `/opt/crypto-agent`
-- Deploy: `ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"`
-- Logs: `ssh crypto-agent "cd /opt/crypto-agent && docker compose logs agent --tail=100 --no-log-prefix"`
+- Deploy: `ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose -f docker-compose.prod.yml build <service> && docker compose -f docker-compose.prod.yml up -d <service>"`
+- Logs: `ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs <service> --tail=100 --no-log-prefix"`
 - Branch: `feat/tune-strategy-config`
 
 ## Before editing any file

@@ -34,23 +34,35 @@ Dev uses `docker-compose.yml` (bind-mounts `./:/app`, so live code changes take 
 ```bash
 # Production deploy (correct)
 ssh crypto-agent "cd /opt/crypto-agent && git pull"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build agent"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d agent"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build <service>"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d <service>"
+
+# Active strategy services in prod right now:
+# - agent_avax
+# - agent_sol_sparse
+# - agent_sentiment_macro
 
 # WRONG — this is the dev command, NOT production:
 ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"
 
 # Check logs
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs agent --tail=100 --no-log-prefix"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs <service> --tail=100 --no-log-prefix"
 ```
 
 ## Architecture Surprises
 
 ### Multi-agent runtime
-The docker-compose runs 7+ agent containers simultaneously, each with its own config:
+`docker-compose.prod.yml` currently runs 3 strategy-agent containers simultaneously, each with its own config:
 - Agent identity is set via `AGENT_ID` env var (e.g., `default`, `agent2`, `btc-4h`, `sol-trend-pullback-sparse`)
 - Config is selected via `SETTINGS_PATH` env var (e.g., `config/settings.btc-4h.yaml`)
 - All agents share one TimescaleDB instance, isolated by `agent_id` columns (see `migrations/005_add_agent_isolation.sql`)
+
+Disabled strategy services are kept in `docker-compose.prod.yml` as commented blocks with WFO rationale (`agent`, `agent_2`, `agent_btc`, `agent_eth`).
+
+### Futures execution gotchas
+- **Notional sizing is symbol-step constrained**: quantity is computed as `order_size_usdt / price`, then truncated to exchange LOT_SIZE `stepSize`. Final exposure can be slightly lower than requested because of truncation.
+- **Exchange-side SL/TP placement can fail per symbol/state**: the futures executor logs SL/TP placement failures and continues running. Keep log monitoring enabled so rejected protective orders are visible immediately.
+- **Execution loop cadence**: futures monitoring runs every 30 seconds (`FuturesTradingExecutor.run`), so operational alerts should assume sub-minute but non-instant updates.
 
 ### Strategy registration is not automatic
 Strategies must be: (1) created in `src/strategy/`, (2) exported in `src/strategy/__init__.py`, and (3) listed in `config/settings.yaml` under `strategy.strategies`. Missing any step = silent failure.
