@@ -870,28 +870,27 @@ class FuturesTradingExecutor:
 
         order_position_side = "BOTH" if self._active_position_mode == "one-way" else "LONG"
 
-        if self._exchange_conditional_supported:
-            if sl_price > 0:
-                try:
-                    sl_order_id = await self._place_exchange_conditional(
-                        symbol, "STOP_MARKET", sl_price, quantity, order_position_side
-                    )
-                    self._logger.info("SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14)
-                except Exception as exc:
-                    self._logger.warning(
-                        "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
-                    )
+        if self._exchange_conditional_supported and sl_price > 0:
+            try:
+                sl_order_id = await self._place_exchange_conditional(
+                    symbol, "STOP_MARKET", sl_price, quantity, order_position_side
+                )
+                self._logger.info("SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14)
+            except Exception as exc:
+                self._logger.warning(
+                    "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
+                )
 
-            if tp_price > 0:
-                try:
-                    tp_order_id = await self._place_exchange_conditional(
-                        symbol, "TAKE_PROFIT_MARKET", tp_price, quantity, order_position_side
-                    )
-                    self._logger.info("TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14)
-                except Exception as exc:
-                    self._logger.warning(
-                        "Exchange TP order failed for %s (software fallback active): %s", symbol, exc
-                    )
+        if self._exchange_conditional_supported and tp_price > 0:
+            try:
+                tp_order_id = await self._place_exchange_conditional(
+                    symbol, "TAKE_PROFIT_MARKET", tp_price, quantity, order_position_side
+                )
+                self._logger.info("TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14)
+            except Exception as exc:
+                self._logger.warning(
+                    "Exchange TP order failed for %s (software fallback active): %s", symbol, exc
+                )
 
         self._sl_tp_orders[symbol] = {
             "sl_order_id": sl_order_id,
