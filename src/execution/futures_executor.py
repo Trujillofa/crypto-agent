@@ -110,6 +110,8 @@ class FuturesTradingExecutor:
             )
             self._active_position_mode = self._config.position_mode
 
+        await self._recover_open_positions()
+
         # Set default leverage for all configured symbols
         for symbol in self._config.symbols:
             try:
@@ -305,6 +307,9 @@ class FuturesTradingExecutor:
             raise RuntimeError(f"Margin check failed: {margin_reason}")
 
         request_position_side = "BOTH" if self._active_position_mode == "one-way" else position_side
+        # In hedge mode, closing is conveyed via positionSide=LONG/SHORT + opposite side;
+        # sending reduceOnly alongside positionSide != BOTH triggers Binance error -1106.
+        request_reduce_only = reduce_only and self._active_position_mode == "one-way"
         staged_order_id: str | None = None
 
         if self._staged_manager is not None:
@@ -329,7 +334,7 @@ class FuturesTradingExecutor:
                 side=side,
                 quantity=quantity,
                 order_type="MARKET",
-                reduce_only=reduce_only,
+                reduce_only=request_reduce_only,
                 position_side=request_position_side,
             )
             if order.status != "FILLED":
@@ -736,6 +741,11 @@ class FuturesTradingExecutor:
         sl_order_id = ""
         tp_order_id = ""
 
+        # One-way mode: positionSide=BOTH + reduceOnly=True.
+        # Hedge mode: positionSide=LONG + no reduceOnly (position side already implies close).
+        order_position_side = "BOTH" if self._active_position_mode == "one-way" else "LONG"
+        order_reduce_only = self._active_position_mode == "one-way"
+
         if sl_price > 0:
             try:
                 sl_order = await self._client.place_order(
@@ -743,7 +753,8 @@ class FuturesTradingExecutor:
                     side="SELL",
                     quantity=quantity,
                     order_type="STOP_MARKET",
-                    reduce_only=True,
+                    reduce_only=order_reduce_only,
+                    position_side=order_position_side,
                     stop_price=sl_price,
                 )
                 sl_order_id = sl_order.order_id
@@ -760,7 +771,8 @@ class FuturesTradingExecutor:
                     side="SELL",
                     quantity=quantity,
                     order_type="TAKE_PROFIT_MARKET",
-                    reduce_only=True,
+                    reduce_only=order_reduce_only,
+                    position_side=order_position_side,
                     stop_price=tp_price,
                 )
                 tp_order_id = tp_order.order_id
@@ -798,6 +810,26 @@ class FuturesTradingExecutor:
                         symbol,
                         exc,
                     )
+
+    async def _recover_open_positions(self) -> None:
+        """On startup, find open positions with no tracked SL/TP and place protective orders."""
+        for symbol in self._config.symbols:
+            try:
+                positions = await self._client.get_position_risk(symbol)
+                for pos in positions:
+                    if pos.position_amt <= 0:
+                        continue
+                    if symbol in self._sl_tp_orders:
+                        continue
+                    self._logger.warning(
+                        "Recovering unprotected position %s @ %.4f (qty: %.4f) — placing SL/TP",
+                        symbol,
+                        pos.entry_price,
+                        abs(pos.position_amt),
+                    )
+                    await self._place_sl_tp_orders(symbol, pos.entry_price, abs(pos.position_amt), 0.0)
+            except Exception as exc:
+                self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)
 
     def stop(self) -> None:
         """Stop the futures trading loop."""

@@ -205,11 +205,13 @@ class TestFuturesTradingExecutor:
         assert sl_call.kwargs["order_type"] == "STOP_MARKET"
         assert sl_call.kwargs["stop_price"] == entry_price - 2.0 * atr_14  # 680.0
         assert sl_call.kwargs["reduce_only"] is True
+        assert sl_call.kwargs["position_side"] == "BOTH"  # one-way mode
 
         tp_call = mock_client.place_order.call_args_list[2]
         assert tp_call.kwargs["order_type"] == "TAKE_PROFIT_MARKET"
         assert tp_call.kwargs["stop_price"] == entry_price + 4.5 * atr_14  # 745.0
         assert tp_call.kwargs["reduce_only"] is True
+        assert tp_call.kwargs["position_side"] == "BOTH"  # one-way mode
 
     @pytest.mark.asyncio
     async def test_buy_signal_uses_fixed_pct_fallback_when_no_atr(self, executor):
@@ -566,6 +568,111 @@ class TestFuturesTradingExecutor:
         """_calculate_quantity returns 0.0 when price is zero or negative."""
         assert executor._calculate_quantity("BTCUSDT", 0.0) == 0.0
         assert executor._calculate_quantity("BTCUSDT", -1.0) == 0.0
+
+    @pytest.mark.asyncio
+    async def test_sl_tp_use_long_position_side_in_hedge_mode(self, executor):
+        """In hedge mode, SL/TP orders use positionSide=LONG and no reduceOnly (-1106 fix)."""
+        executor._active_position_mode = "hedge"
+
+        mock_client = MagicMock()
+        mock_client.place_order = AsyncMock(
+            side_effect=[
+                _make_order(order_id="sl_h", reduce_only=False),
+                _make_order(order_id="tp_h", reduce_only=False),
+            ]
+        )
+        executor._client = mock_client
+
+        await executor._place_sl_tp_orders("BTCUSDT", 1000.0, 0.01, 10.0)
+
+        sl_call = mock_client.place_order.call_args_list[0]
+        assert sl_call.kwargs["position_side"] == "LONG"
+        assert sl_call.kwargs["reduce_only"] is False
+
+        tp_call = mock_client.place_order.call_args_list[1]
+        assert tp_call.kwargs["position_side"] == "LONG"
+        assert tp_call.kwargs["reduce_only"] is False
+
+    @pytest.mark.asyncio
+    async def test_recover_open_positions_places_sl_tp(self, executor):
+        """On startup, open positions with no tracked SL/TP get protective orders placed."""
+        btc_position = FuturesPositionInfo(
+            symbol="BTCUSDT",
+            position_side="BOTH",
+            position_amt=0.01,
+            entry_price=50000.0,
+            mark_price=50500.0,
+            liquidation_price=45000.0,
+            leverage=3,
+            isolated_margin=100.0,
+            unrealized_pnl=5.0,
+            notional_value=505.0,
+        )
+
+        async def mock_pos_risk(symbol: str):
+            return [btc_position] if symbol == "BTCUSDT" else []
+
+        mock_client = MagicMock()
+        mock_client.get_position_risk = mock_pos_risk
+        mock_client.place_order = AsyncMock(
+            side_effect=[
+                _make_order(order_id="sl_r", order_type="STOP_MARKET"),
+                _make_order(order_id="tp_r", order_type="TAKE_PROFIT_MARKET"),
+            ]
+        )
+        executor._client = mock_client
+
+        await executor._recover_open_positions()
+
+        # SL + TP placed for the open BTCUSDT position only
+        assert mock_client.place_order.call_count == 2
+        assert "BTCUSDT" in executor._sl_tp_orders
+        assert executor._sl_tp_orders["BTCUSDT"]["sl_order_id"] == "sl_r"
+        assert executor._sl_tp_orders["BTCUSDT"]["tp_order_id"] == "tp_r"
+
+    @pytest.mark.asyncio
+    async def test_recover_skips_symbol_with_no_open_position(self, executor):
+        """Recovery does nothing when there is no open position."""
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.place_order = AsyncMock()
+        executor._client = mock_client
+
+        await executor._recover_open_positions()
+
+        mock_client.place_order.assert_not_called()
+        assert executor._sl_tp_orders == {}
+
+    @pytest.mark.asyncio
+    async def test_recover_skips_symbol_already_tracked(self, executor):
+        """Recovery does not double-place SL/TP when tracking already exists."""
+        btc_position = FuturesPositionInfo(
+            symbol="BTCUSDT",
+            position_side="BOTH",
+            position_amt=0.01,
+            entry_price=50000.0,
+            mark_price=50500.0,
+            liquidation_price=45000.0,
+            leverage=3,
+            isolated_margin=100.0,
+            unrealized_pnl=5.0,
+            notional_value=505.0,
+        )
+
+        async def mock_pos_risk(symbol: str):
+            return [btc_position] if symbol == "BTCUSDT" else []
+
+        mock_client = MagicMock()
+        mock_client.get_position_risk = mock_pos_risk
+        mock_client.place_order = AsyncMock()
+        executor._client = mock_client
+
+        # BTCUSDT already tracked — skip; ETHUSDT has no position — skip
+        executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "existing_sl", "tp_order_id": "existing_tp"}
+
+        await executor._recover_open_positions()
+
+        mock_client.place_order.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_monitor_clears_sl_tp_when_position_closed_by_exchange(self, executor):
