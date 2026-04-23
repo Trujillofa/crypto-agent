@@ -4,7 +4,8 @@ display_name: sentiment-macro-1h-multiasset
 # Live trading: rolled back to futures on 2026-04-20 (was spot-only Stage D Apr 16-20).
 # Rationale: futures had 95 live trades, 70% WR, +$727 PnL (Mar 13 - Apr 16) vs
 # spot's 3 entries / 0 round-trips / -$0.51 realized. Futures track record is the edge.
-# Budget: $6/trade notional, default_leverage 3x, isolated margin, one-way mode.
+# Budget: $22/trade notional, default_leverage 3x, isolated margin, one-way mode.
+# Note: $22 minimum needed — Binance LOT_SIZE truncation can drop $20 order to $18.73.
 mode: live
 
 trading:
@@ -24,7 +25,7 @@ ai:
 trading_execution:
   test_mode: false
   use_atr_sizing: false
-  order_size_usdt: 6.0
+  order_size_usdt: 22.0
   exit_rules:
     time_stop_minutes: 1440
 

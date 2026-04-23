@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -750,14 +751,23 @@ class FuturesTradingExecutor:
             )
 
     def _calculate_quantity(self, symbol: str, price: float) -> float:
-        """Calculate order quantity as order_size_usdt / current price.
+        """Calculate order quantity ensuring notional >= MIN_NOTIONAL after LOT_SIZE truncation.
 
-        The client's format_quantity will round to the correct LOT_SIZE step.
+        Binance applies math.floor truncation to LOT_SIZE step before checking the $20
+        minimum notional, so raw_qty = order_size_usdt / price can slip under $20 after
+        truncation. We add one step if needed.
         """
+        _MIN_NOTIONAL = 20.0
         if price <= 0:
             self._logger.warning("Invalid price %.4f for %s", price, symbol)
             return 0.0
-        return self._config.order_size_usdt / price
+        raw_qty = self._config.order_size_usdt / price
+        step = self._client.get_step_size(symbol)
+        if step > 0:
+            truncated = math.floor(raw_qty / step) * step
+            if truncated * price < _MIN_NOTIONAL:
+                raw_qty = truncated + step
+        return raw_qty
 
     async def _place_sl_tp_orders(
         self,

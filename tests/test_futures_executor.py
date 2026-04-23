@@ -116,6 +116,7 @@ class TestFuturesTradingExecutor:
     async def test_on_signal_buy_opens_long(self, executor):
         """BUY signal opens LONG position and places SL/TP bracket orders."""
         mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.0
         mock_client.get_position_risk = AsyncMock(return_value=[])
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(
@@ -173,6 +174,7 @@ class TestFuturesTradingExecutor:
         atr_14 = 10.0  # SL = 680, TP = 745
 
         mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.0
         mock_client.get_position_risk = AsyncMock(return_value=[])
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
@@ -220,6 +222,7 @@ class TestFuturesTradingExecutor:
         # defaults: stop_loss_pct=0.03 → SL=970, take_profit_pct=0.06 → TP=1060
 
         mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.0
         mock_client.get_position_risk = AsyncMock(return_value=[])
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
@@ -559,13 +562,40 @@ class TestFuturesTradingExecutor:
         mock_client.place_order.assert_not_called()
 
     def test_calculate_quantity_from_price(self, executor):
-        """_calculate_quantity returns order_size_usdt / price."""
-        # config.order_size_usdt = 100.0
+        """_calculate_quantity returns order_size_usdt / price when step size is unknown."""
+        # config.order_size_usdt = 100.0; step=0 means no LOT_SIZE adjustment
+        mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.0
+        executor._client = mock_client
         qty = executor._calculate_quantity("BTCUSDT", 500.0)
         assert abs(qty - 0.2) < 1e-9  # 100 / 500 = 0.2
 
+    def test_calculate_quantity_bumps_when_truncation_drops_below_min_notional(self, executor):
+        """_calculate_quantity adds one step when LOT_SIZE truncation drops notional below $20."""
+        # 100 / 2340 = 0.04273..., floor to 0.001 step = 0.042 → notional $98.28 (well above $20)
+        # Use a price where truncation would cause an issue: order_size=20, step=0.001, price=2340
+        # raw=0.00854..., floor=0.008, notional=$18.72 < $20 → should add one step → 0.009
+        mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.001
+        executor._client = mock_client
+        config_with_small_order = FuturesTradingConfig(
+            api_key="test_key",
+            api_secret="test_secret",
+            test_mode=True,
+            enabled=True,
+            symbols=["ETHUSDT"],
+            order_size_usdt=20.0,
+        )
+        executor._config = config_with_small_order
+        qty = executor._calculate_quantity("ETHUSDT", 2340.0)
+        assert qty == pytest.approx(0.009)  # 0.008 + 0.001 step
+        assert qty * 2340.0 >= 20.0
+
     def test_calculate_quantity_zero_price_returns_zero(self, executor):
         """_calculate_quantity returns 0.0 when price is zero or negative."""
+        mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.0
+        executor._client = mock_client
         assert executor._calculate_quantity("BTCUSDT", 0.0) == 0.0
         assert executor._calculate_quantity("BTCUSDT", -1.0) == 0.0
 

@@ -204,7 +204,7 @@ reconciliation:
 """
 
 _ORIGINAL_SENTIMENT_MACRO = """
-mode: paper
+mode: live
 agent_id: sentiment-macro-bot
 display_name: sentiment-macro-1h-multiasset
 log_level: INFO
@@ -252,15 +252,15 @@ trading_execution:
   enabled: true
   api_key: ""
   api_secret: ""
-  test_mode: true
-  order_size_usdt: 100.0
+  test_mode: false
+  order_size_usdt: 22.0
   stop_loss_pct: 0.02
   take_profit_pct: 0.05
   sl_atr_multiplier: 2.0
   tp_atr_multiplier: 4.5
   trailing_activate_atr: 1.5
   trailing_offset_atr: 1.0
-  use_atr_sizing: true
+  use_atr_sizing: false
   atr_multiplier: 1.0
   risk_per_trade_pct: 0.02
   exit_rules:
@@ -276,7 +276,7 @@ futures:
   max_leverage: 10
   margin_mode: isolated
   position_mode: one-way
-  test_mode: true
+  test_mode: false
   liquidation_buffer_pct: 5.0
 
 strategy:
@@ -293,7 +293,7 @@ strategy:
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
   global_trend_filter_enabled: true
-  global_trend_filter_buffer_pct: 0.0
+  global_trend_filter_buffer_pct: 0.05
   aggregator:
     min_agreement: 1
     buy_threshold: 0.6

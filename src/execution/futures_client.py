@@ -152,6 +152,11 @@ class BinanceFuturesClient:
             len(self._symbol_filters),
         )
 
+    def get_step_size(self, symbol: str) -> float:
+        """Return the LOT_SIZE stepSize for a symbol, or 0.0 if unknown."""
+        filt = self._symbol_filters.get(symbol)
+        return filt["stepSize"] if filt else 0.0
+
     def format_quantity(self, symbol: str, quantity: float) -> str:
         """Round quantity to the symbol's LOT_SIZE stepSize."""
         filt = self._symbol_filters.get(symbol)
