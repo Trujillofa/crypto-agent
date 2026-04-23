@@ -741,19 +741,18 @@ class FuturesTradingExecutor:
         sl_order_id = ""
         tp_order_id = ""
 
-        # One-way mode: positionSide=BOTH + reduceOnly=True.
-        # Hedge mode: positionSide=LONG + no reduceOnly (position side already implies close).
+        # Use closePosition=true — Binance requires this for STOP_MARKET/TAKE_PROFIT_MARKET
+        # bracket orders; sending quantity+reduceOnly returns -4120 on those types.
+        # One-way mode: positionSide=BOTH. Hedge mode: positionSide=LONG.
         order_position_side = "BOTH" if self._active_position_mode == "one-way" else "LONG"
-        order_reduce_only = self._active_position_mode == "one-way"
 
         if sl_price > 0:
             try:
                 sl_order = await self._client.place_order(
                     symbol=symbol,
                     side="SELL",
-                    quantity=quantity,
                     order_type="STOP_MARKET",
-                    reduce_only=order_reduce_only,
+                    close_position=True,
                     position_side=order_position_side,
                     stop_price=sl_price,
                 )
@@ -769,9 +768,8 @@ class FuturesTradingExecutor:
                 tp_order = await self._client.place_order(
                     symbol=symbol,
                     side="SELL",
-                    quantity=quantity,
                     order_type="TAKE_PROFIT_MARKET",
-                    reduce_only=order_reduce_only,
+                    close_position=True,
                     position_side=order_position_side,
                     stop_price=tp_price,
                 )

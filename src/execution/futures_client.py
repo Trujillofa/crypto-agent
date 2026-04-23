@@ -367,11 +367,12 @@ class BinanceFuturesClient:
         self,
         symbol: str,
         side: str,
-        quantity: float,
+        quantity: float = 0.0,
         order_type: str = "MARKET",
         reduce_only: bool = False,
         position_side: str = "LONG",
         stop_price: float | None = None,
+        close_position: bool = False,
     ) -> FuturesOrderInfo:
         """Place a futures order.
 
@@ -380,28 +381,35 @@ class BinanceFuturesClient:
         Args:
             symbol: Trading pair (e.g., "BTCUSDT")
             side: "BUY" or "SELL"
-            quantity: Order quantity
-            order_type: "MARKET" or "LIMIT"
-            reduce_only: If True, order will only reduce position (for closes)
-            position_side: "LONG" or "SHORT" (one-way mode)
+            quantity: Order quantity (ignored when close_position=True)
+            order_type: "MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET", etc.
+            reduce_only: Partial-close flag; mutually exclusive with close_position
+            position_side: "BOTH" (one-way mode) or "LONG"/"SHORT" (hedge mode)
+            stop_price: Trigger price for conditional orders
+            close_position: Use closePosition=true to close the full open position
+                (required by Binance for STOP_MARKET/TAKE_PROFIT_MARKET — sending
+                quantity+reduceOnly returns -4120 on those order types)
 
         Returns:
             FuturesOrderInfo with order details
         """
-        formatted_qty = self.format_quantity(symbol, quantity)
-        if formatted_qty == "0":
-            raise BinanceFuturesApiError(-1, f"Quantity {quantity} below minimum for {symbol}")
-
-        params = {
+        params: dict[str, Any] = {
             "symbol": symbol,
             "side": side,
             "type": order_type,
-            "quantity": formatted_qty,
             "positionSide": position_side,
         }
 
-        if reduce_only:
-            params["reduceOnly"] = "true"
+        if close_position:
+            # closePosition=true closes the entire position; Binance rejects quantity/reduceOnly
+            params["closePosition"] = "true"
+        else:
+            formatted_qty = self.format_quantity(symbol, quantity)
+            if formatted_qty == "0":
+                raise BinanceFuturesApiError(-1, f"Quantity {quantity} below minimum for {symbol}")
+            params["quantity"] = formatted_qty
+            if reduce_only:
+                params["reduceOnly"] = "true"
 
         if stop_price is not None:
             params["stopPrice"] = self.format_price(symbol, stop_price)

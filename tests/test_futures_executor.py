@@ -204,13 +204,13 @@ class TestFuturesTradingExecutor:
         sl_call = mock_client.place_order.call_args_list[1]
         assert sl_call.kwargs["order_type"] == "STOP_MARKET"
         assert sl_call.kwargs["stop_price"] == entry_price - 2.0 * atr_14  # 680.0
-        assert sl_call.kwargs["reduce_only"] is True
+        assert sl_call.kwargs["close_position"] is True
         assert sl_call.kwargs["position_side"] == "BOTH"  # one-way mode
 
         tp_call = mock_client.place_order.call_args_list[2]
         assert tp_call.kwargs["order_type"] == "TAKE_PROFIT_MARKET"
         assert tp_call.kwargs["stop_price"] == entry_price + 4.5 * atr_14  # 745.0
-        assert tp_call.kwargs["reduce_only"] is True
+        assert tp_call.kwargs["close_position"] is True
         assert tp_call.kwargs["position_side"] == "BOTH"  # one-way mode
 
     @pytest.mark.asyncio
@@ -571,14 +571,14 @@ class TestFuturesTradingExecutor:
 
     @pytest.mark.asyncio
     async def test_sl_tp_use_long_position_side_in_hedge_mode(self, executor):
-        """In hedge mode, SL/TP orders use positionSide=LONG and no reduceOnly (-1106 fix)."""
+        """In hedge mode, SL/TP orders use positionSide=LONG with closePosition=True."""
         executor._active_position_mode = "hedge"
 
         mock_client = MagicMock()
         mock_client.place_order = AsyncMock(
             side_effect=[
-                _make_order(order_id="sl_h", reduce_only=False),
-                _make_order(order_id="tp_h", reduce_only=False),
+                _make_order(order_id="sl_h"),
+                _make_order(order_id="tp_h"),
             ]
         )
         executor._client = mock_client
@@ -587,11 +587,11 @@ class TestFuturesTradingExecutor:
 
         sl_call = mock_client.place_order.call_args_list[0]
         assert sl_call.kwargs["position_side"] == "LONG"
-        assert sl_call.kwargs["reduce_only"] is False
+        assert sl_call.kwargs["close_position"] is True
 
         tp_call = mock_client.place_order.call_args_list[1]
         assert tp_call.kwargs["position_side"] == "LONG"
-        assert tp_call.kwargs["reduce_only"] is False
+        assert tp_call.kwargs["close_position"] is True
 
     @pytest.mark.asyncio
     async def test_recover_open_positions_places_sl_tp(self, executor):
