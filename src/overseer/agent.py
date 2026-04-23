@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 from datetime import UTC, datetime
 
 from src.notifications.telegram import AlertLevel, TelegramNotifier, TelegramPollingConflict
@@ -9,6 +10,8 @@ from src.overseer.xai import XAIClient
 from src.portfolio.manager import PortfolioManager
 from src.risk.manager import RiskManager
 from src.utils.logger import get_logger
+
+_KNOWN_COMMANDS = ["/status", "/risk", "/positions", "/reset", "/ask", "/help"]
 
 
 class OverseerAgent:
@@ -132,7 +135,15 @@ class OverseerAgent:
             await self._reply(chat_id, answer, as_html=False)
             return
 
-        await self._reply(chat_id, self._help_text(), as_html=True)
+        matches = difflib.get_close_matches(command.split()[0], _KNOWN_COMMANDS, n=1, cutoff=0.6)
+        if matches:
+            await self._reply(
+                chat_id,
+                f"Unknown command. Did you mean <b>{matches[0]}</b>?",
+                as_html=True,
+            )
+        else:
+            await self._reply(chat_id, self._help_text(), as_html=True)
 
     async def _cmd_status(self) -> str:
         summary = await self._portfolio_manager.get_portfolio_summary()

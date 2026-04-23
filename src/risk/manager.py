@@ -299,6 +299,9 @@ class RiskManager:
                     f"Max open positions ({self._config.position_limits.max_open_positions}) reached",
                 )
 
+        if portfolio_value <= 0:
+            return False, "No available balance for trading"
+
         # Check position size vs portfolio percentage
         max_position_value = portfolio_value * self._config.position_limits.max_position_pct
 

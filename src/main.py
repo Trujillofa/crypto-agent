@@ -121,6 +121,8 @@ class FuturesSettings:
     position_mode: str
     test_mode: bool
     liquidation_buffer_pct: float
+    max_concurrent_longs: int = 0
+    sl_cooldown_minutes: int = 0
 
 
 @dataclass(frozen=True)
@@ -489,6 +491,16 @@ def load_settings(config_path: Path) -> Settings:
                 futures.get("liquidation_buffer_pct"),
                 "futures.liquidation_buffer_pct",
                 default=5.0,
+            ),
+            max_concurrent_longs=_as_int(
+                futures.get("max_concurrent_longs"),
+                "futures.max_concurrent_longs",
+                default=0,
+            ),
+            sl_cooldown_minutes=_as_int(
+                futures.get("sl_cooldown_minutes"),
+                "futures.sl_cooldown_minutes",
+                default=0,
             ),
         )
 
@@ -1005,6 +1017,8 @@ async def run() -> None:
                 position_mode=settings.futures.position_mode,
                 order_size_usdt=settings.trading_execution.order_size_usdt,
                 liquidation_buffer_pct=settings.futures.liquidation_buffer_pct,
+                max_concurrent_longs=settings.futures.max_concurrent_longs,
+                sl_cooldown_minutes=settings.futures.sl_cooldown_minutes,
                 sl_atr_multiplier=settings.trading_execution.sl_atr_multiplier,
                 tp_atr_multiplier=settings.trading_execution.tp_atr_multiplier,
                 stop_loss_pct=settings.trading_execution.stop_loss_pct,

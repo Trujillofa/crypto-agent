@@ -203,6 +203,17 @@ class TestRiskManager:
         assert allowed is False
         assert "Max open positions" in reason
 
+    def test_check_position_limit_no_available_balance(self) -> None:
+        """Test position checks fail clearly when available balance is zero."""
+        manager = self._make_manager()
+        allowed, reason = manager.check_position_limit(
+            symbol="AVAXUSDT",
+            quantity_usdt=7,
+            portfolio_value=0,
+        )
+        assert allowed is False
+        assert reason == "No available balance for trading"
+
     def test_check_position_limit_kill_switch_blocks(self) -> None:
         """Test position checks blocked by kill switch."""
         manager = self._make_manager()

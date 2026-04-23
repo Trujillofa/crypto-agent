@@ -46,6 +46,8 @@ class FuturesTradingConfig:
     tp_atr_multiplier: float = 4.5  # TP = entry + mult * ATR(14)
     stop_loss_pct: float = 0.03  # fallback if ATR unavailable
     take_profit_pct: float = 0.06  # fallback if ATR unavailable
+    max_concurrent_longs: int = 0  # 0 = disabled; cap on simultaneous LONG positions
+    sl_cooldown_minutes: int = 0  # 0 = disabled; re-entry cooldown after a stop-loss
 
 
 class FuturesTradingExecutor:
@@ -81,6 +83,7 @@ class FuturesTradingExecutor:
         # Set to False after first -4120 to skip exchange conditional order attempts.
         # Software SL/TP monitor (30 s) acts as sole protection in that case.
         self._exchange_conditional_supported: bool = True
+        self._sl_cooldown_timestamps: dict[str, float] = {}  # symbol → Unix time of last SL close
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -240,14 +243,53 @@ class FuturesTradingExecutor:
                         "unrealized_pnl": pos.unrealized_pnl,
                     }
 
-                # Position closed — clean up tracking
+                # Position closed by exchange-side SL/TP — clean up tracking
                 if not positions and symbol in self._sl_tp_orders:
                     self._logger.info(
-                        "Position %s closed — clearing SL/TP tracking",
+                        "Position %s closed by exchange SL/TP — clearing order tracking",
                         symbol,
                     )
+                    pos_state = self._positions.get(symbol, {})
+                    entry_px = float(pos_state.get("entry_price", 0.0))
+                    last_mark = float(pos_state.get("mark_price", 0.0))
+                    qty = float(pos_state.get("amount", 0.0))
+                    sw_prices = self._sl_tp_prices.get(symbol, {})
+                    sl_px = sw_prices.get("sl_price", 0.0)
+                    tp_px = sw_prices.get("tp_price", 0.0)
+
+                    close_reason: str | None = None
+                    if sl_px > 0 and last_mark > 0:
+                        dist_sl = abs(last_mark - sl_px)
+                        dist_tp = abs(last_mark - tp_px) if tp_px > 0 else float("inf")
+                        if dist_sl <= dist_tp:
+                            close_reason = "stop_loss"
+                            if self._config.sl_cooldown_minutes > 0:
+                                self._sl_cooldown_timestamps[symbol] = time.time()
+                                self._logger.info(
+                                    "SL cooldown started for %s (mark=%.4f sl=%.4f)",
+                                    symbol,
+                                    last_mark,
+                                    sl_px,
+                                )
+                        else:
+                            close_reason = "take_profit"
+
+                    if entry_px > 0 and qty > 0 and last_mark > 0:
+                        pnl = (last_mark - entry_px) * qty
+                        await self._notifier.send_trade_alert(
+                            symbol=symbol,
+                            side="SELL",
+                            quantity=qty,
+                            price=last_mark,
+                            pnl=pnl,
+                            market="futures",
+                            entry_price=entry_px,
+                            close_reason=close_reason,
+                        )
+
                     self._sl_tp_orders.pop(symbol, None)
                     self._sl_tp_prices.pop(symbol, None)
+                    self._positions.pop(symbol, None)
 
                 # Software SL/TP: trigger MARKET close when mark_price crosses stored levels
                 sw = self._sl_tp_prices.get(symbol)
@@ -530,8 +572,48 @@ class FuturesTradingExecutor:
                         signal.symbol,
                     )
                 else:
-                    # No position — open new LONG
+                    # No position — check guards before opening new LONG
+                    if self._config.max_concurrent_longs > 0:
+                        current_longs = sum(
+                            1 for p in self._positions.values() if p.get("amount", 0) > 0
+                        )
+                        if current_longs >= self._config.max_concurrent_longs:
+                            self._logger.info(
+                                "BUY skipped: max_concurrent_longs=%d already at limit for %s",
+                                self._config.max_concurrent_longs,
+                                signal.symbol,
+                            )
+                            return
+                    if self._config.sl_cooldown_minutes > 0:
+                        last_sl = self._sl_cooldown_timestamps.get(signal.symbol)
+                        if last_sl is not None:
+                            elapsed_min = (time.time() - last_sl) / 60
+                            if elapsed_min < self._config.sl_cooldown_minutes:
+                                remaining = int(self._config.sl_cooldown_minutes - elapsed_min)
+                                self._logger.info(
+                                    "BUY skipped: SL cooldown active for %s (%d min remaining)",
+                                    signal.symbol,
+                                    remaining,
+                                )
+                                return
                     order_size = self._calculate_quantity(signal.symbol, signal.price)
+                    if self._client is not None:
+                        min_qty = self._client.get_min_qty(signal.symbol)
+                        if min_qty is not None and order_size < min_qty:
+                            self._logger.warning(
+                                "BUY skipped: qty %.6f < min_qty %.6f for %s (order_size_usdt=%.2f)",
+                                order_size,
+                                min_qty,
+                                signal.symbol,
+                                self._config.order_size_usdt,
+                            )
+                            await self._notifier.send_alert(
+                                f"⚠️ BUY skipped: {signal.symbol} order too small "
+                                f"(qty {order_size:.6f} < min {min_qty:.6f}; "
+                                f"need ~${min_qty * signal.price:.0f}, "
+                                f"have ${self._config.order_size_usdt:.0f})"
+                            )
+                            return
                     if self._guard_pipeline is not None:
                         account_info = await self._client.get_account_info()
                         portfolio_value = account_info.available_balance
@@ -810,7 +892,11 @@ class FuturesTradingExecutor:
         limit_price = trigger_price * (0.995 if limit_type == "STOP" else 1.0)
         self._logger.info(
             "%s rejected (-4120) — retrying as %s limit for %s: trigger=%.4f limit=%.4f",
-            order_type, limit_type, symbol, trigger_price, limit_price,
+            order_type,
+            limit_type,
+            symbol,
+            trigger_price,
+            limit_price,
         )
         try:
             order = await self._client.place_order(
@@ -875,7 +961,9 @@ class FuturesTradingExecutor:
                 sl_order_id = await self._place_exchange_conditional(
                     symbol, "STOP_MARKET", sl_price, quantity, order_position_side
                 )
-                self._logger.info("SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14)
+                self._logger.info(
+                    "SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14
+                )
             except Exception as exc:
                 self._logger.warning(
                     "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
@@ -886,7 +974,9 @@ class FuturesTradingExecutor:
                 tp_order_id = await self._place_exchange_conditional(
                     symbol, "TAKE_PROFIT_MARKET", tp_price, quantity, order_position_side
                 )
-                self._logger.info("TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14)
+                self._logger.info(
+                    "TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14
+                )
             except Exception as exc:
                 self._logger.warning(
                     "Exchange TP order failed for %s (software fallback active): %s", symbol, exc
@@ -964,7 +1054,9 @@ class FuturesTradingExecutor:
                         abs(pos.position_amt),
                         atr_14,
                     )
-                    await self._place_sl_tp_orders(symbol, pos.entry_price, abs(pos.position_amt), atr_14)
+                    await self._place_sl_tp_orders(
+                        symbol, pos.entry_price, abs(pos.position_amt), atr_14
+                    )
             except Exception as exc:
                 self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)
 

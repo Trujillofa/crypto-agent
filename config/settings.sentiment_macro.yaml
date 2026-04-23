@@ -37,6 +37,8 @@ futures:
   margin_mode: isolated
   position_mode: one-way
   liquidation_buffer_pct: 5.0
+  max_concurrent_longs: 2
+  sl_cooldown_minutes: 120
   symbols:
     - BTCUSDT
     - ETHUSDT

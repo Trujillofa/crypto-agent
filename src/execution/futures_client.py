@@ -174,6 +174,11 @@ class BinanceFuturesClient:
             return str(int(truncated))
         return f"{truncated:.{precision}f}"
 
+    def get_min_qty(self, symbol: str) -> float | None:
+        """Return the minimum order quantity for a symbol, or None if unknown."""
+        filt = self._symbol_filters.get(symbol)
+        return float(filt["minQty"]) if filt else None
+
     def _generate_signature(self, query_string: str) -> str:
         """Generate HMAC SHA256 signature for Binance API."""
         return hmac.new(

@@ -250,6 +250,14 @@ class TradingExecutor:
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
 
+        if side == "BUY" and quantity > account_info.available_balance:
+            reason = (
+                f"Insufficient available balance: need {quantity:.2f} USDT, "
+                f"have {account_info.available_balance:.2f} USDT"
+            )
+            self._metrics.record_risk_block(symbol, reason)
+            raise RuntimeError(reason)
+
         try:
             self._run_guards(symbol, side, quantity, portfolio_value)
         except RuntimeError:
@@ -489,6 +497,14 @@ class TradingExecutor:
         # Calculate quantity if not provided
         if quantity is None:
             quantity = self._calculate_quantity(symbol, portfolio_value)
+
+        if side == "BUY" and quantity > account_info.available_balance:
+            reason = (
+                f"Insufficient available balance: need {quantity:.2f} USDT, "
+                f"have {account_info.available_balance:.2f} USDT"
+            )
+            self._metrics.record_risk_block(symbol, reason)
+            raise RuntimeError(reason)
 
         try:
             self._run_guards(symbol, side, quantity, portfolio_value)

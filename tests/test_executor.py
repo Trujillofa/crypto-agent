@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -208,6 +208,33 @@ async def test_duplicate_order_prevention():
 
 
 @pytest.mark.asyncio
+async def test_place_market_order_rejects_insufficient_available_balance():
+    """BUY orders should fail with a direct balance error before position-limit math."""
+
+    config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["AVAXUSDT"])
+    risk_manager = MagicMock(spec=RiskManager)
+    risk_manager.is_trading_allowed.return_value = (True, "")
+    metrics = MagicMock(spec=ExecutionMetrics)
+
+    executor = TradingExecutor(config, risk_manager, metrics)
+    mock_client = MockBinanceClient()
+    executor._client = mock_client
+
+    mock_account = MagicMock()
+    mock_account.available_balance = 0.0
+    mock_client.get_account_info.return_value = mock_account
+
+    with pytest.raises(
+        RuntimeError, match="Insufficient available balance: need 7.00 USDT, have 0.00 USDT"
+    ):
+        await executor.place_market_order("AVAXUSDT", "BUY", quantity=7.0)
+
+    risk_manager.check_position_limit.assert_not_called()
+    mock_client.place_market_order.assert_not_called()
+    metrics.record_risk_block.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_on_signal_sell_uses_removesuffix():
     """SELL signal uses removesuffix for base asset parsing."""
     config = TradingConfig(api_key="key", api_secret="secret", enabled=True, symbols=["BUSDUSDT"])
@@ -374,3 +401,198 @@ async def test_place_twap_order_rejects_non_positive_quantity():
 
     with pytest.raises(ValueError, match="total_quantity must be positive"):
         await executor.place_twap_order("BTCUSDT", "BUY", total_quantity=0.0)
+
+
+# ---------------------------------------------------------------------------
+# FuturesTradingExecutor guard tests
+# ---------------------------------------------------------------------------
+
+
+def _make_futures_executor(
+    order_size_usdt: float = 6.0,
+    max_concurrent_longs: int = 0,
+    sl_cooldown_minutes: int = 0,
+) -> object:
+    from src.execution.futures_executor import FuturesTradingConfig, FuturesTradingExecutor
+
+    config = FuturesTradingConfig(
+        api_key="key",
+        api_secret="secret",
+        enabled=True,
+        symbols=["BTCUSDT", "ETHUSDT"],
+        order_size_usdt=order_size_usdt,
+        max_concurrent_longs=max_concurrent_longs,
+        sl_cooldown_minutes=sl_cooldown_minutes,
+    )
+    risk_manager = MagicMock(spec=RiskManager)
+    risk_manager.is_trading_allowed.return_value = (True, "")
+    risk_manager.check_max_leverage.return_value = (True, "")
+    risk_manager.check_margin_usage.return_value = (True, "")
+    metrics = MagicMock(spec=ExecutionMetrics)
+    executor = FuturesTradingExecutor(config, risk_manager, metrics)
+    return executor
+
+
+@pytest.mark.asyncio
+async def test_buy_skipped_below_min_qty():
+    """BUY signal should be blocked when calculated qty is below the symbol's min lot size."""
+    from src.execution.futures_executor import FuturesTradingExecutor
+    from src.strategy.signals import Signal, SignalType
+
+    executor = _make_futures_executor(order_size_usdt=6.0)
+    assert isinstance(executor, FuturesTradingExecutor)
+
+    mock_client = MagicMock()
+    mock_client.get_position_risk = AsyncMock(return_value=[])
+    mock_client.get_account_info = AsyncMock()
+    mock_client.get_step_size = MagicMock(return_value=0.0)
+    mock_client.get_min_qty = MagicMock(return_value=0.001)  # BTC minimum
+    executor._client = mock_client
+
+    mock_notifier = MagicMock()
+    mock_notifier.send_alert = AsyncMock()
+    executor._notifier = mock_notifier
+
+    signal = Signal(
+        type=SignalType.BUY,
+        symbol="BTCUSDT",
+        price=78000.0,
+        confidence=0.8,
+        reason="test",
+        indicators={},
+        trading_mode="futures",
+    )
+
+    await executor.on_signal(signal)
+
+    mock_notifier.send_alert.assert_awaited_once()
+    alert_text = mock_notifier.send_alert.call_args[0][0]
+    assert "too small" in alert_text
+    assert "BTCUSDT" in alert_text
+    mock_client.get_account_info.assert_not_awaited()  # Order was never attempted
+
+
+@pytest.mark.asyncio
+async def test_buy_skipped_max_concurrent_longs():
+    """BUY signal should be blocked when max_concurrent_longs is already reached."""
+    from src.execution.futures_executor import FuturesTradingExecutor
+    from src.strategy.signals import Signal, SignalType
+
+    executor = _make_futures_executor(order_size_usdt=100.0, max_concurrent_longs=2)
+    assert isinstance(executor, FuturesTradingExecutor)
+
+    executor._positions = {
+        "ETHUSDT": {"amount": 0.01, "mark_price": 2300.0},
+        "SOLUSDT": {"amount": 0.1, "mark_price": 85.0},
+    }
+
+    mock_client = MagicMock()
+    mock_client.get_position_risk = AsyncMock(return_value=[])
+    mock_client.get_account_info = AsyncMock()
+    mock_client.get_min_qty = MagicMock(return_value=None)
+    executor._client = mock_client
+
+    signal = Signal(
+        type=SignalType.BUY,
+        symbol="BTCUSDT",
+        price=78000.0,
+        confidence=0.8,
+        reason="test",
+        indicators={},
+        trading_mode="futures",
+    )
+
+    await executor.on_signal(signal)
+
+    mock_client.get_account_info.assert_not_awaited()  # Blocked before order attempt
+
+
+@pytest.mark.asyncio
+async def test_buy_skipped_sl_cooldown():
+    """BUY signal should be blocked when an SL cooldown is active for the symbol."""
+    from src.execution.futures_executor import FuturesTradingExecutor
+    from src.strategy.signals import Signal, SignalType
+
+    executor = _make_futures_executor(order_size_usdt=100.0, sl_cooldown_minutes=120)
+    assert isinstance(executor, FuturesTradingExecutor)
+
+    executor._sl_cooldown_timestamps["BTCUSDT"] = time.time() - 30 * 60  # 30 min ago
+
+    mock_client = MagicMock()
+    mock_client.get_position_risk = AsyncMock(return_value=[])
+    mock_client.get_account_info = AsyncMock()
+    mock_client.get_min_qty = MagicMock(return_value=None)
+    executor._client = mock_client
+
+    signal = Signal(
+        type=SignalType.BUY,
+        symbol="BTCUSDT",
+        price=78000.0,
+        confidence=0.8,
+        reason="test",
+        indicators={},
+        trading_mode="futures",
+    )
+
+    await executor.on_signal(signal)
+
+    mock_client.get_account_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_buy_allowed_after_cooldown_expires():
+    """BUY signal should proceed once the SL cooldown window has passed."""
+    from src.execution.futures_client import FuturesOrderInfo
+    from src.execution.futures_executor import FuturesTradingExecutor
+    from src.strategy.signals import Signal, SignalType
+
+    executor = _make_futures_executor(order_size_usdt=100.0, sl_cooldown_minutes=120)
+    assert isinstance(executor, FuturesTradingExecutor)
+
+    executor._sl_cooldown_timestamps["BTCUSDT"] = time.time() - 3 * 3600  # 3 hours ago
+
+    filled_order = FuturesOrderInfo(
+        order_id="1",
+        symbol="BTCUSDT",
+        side="BUY",
+        position_side="LONG",
+        order_type="MARKET",
+        quantity=0.001,
+        price=78000.0,
+        status="FILLED",
+        executed_quantity=0.001,
+        create_time=0,
+        reduce_only=False,
+    )
+
+    mock_client = MagicMock()
+    mock_client.get_position_risk = AsyncMock(return_value=[])
+    mock_client.get_account_info = AsyncMock(
+        return_value=MagicMock(available_balance=500.0, total_margin_balance=500.0)
+    )
+    mock_client.get_step_size = MagicMock(return_value=0.0)
+    mock_client.get_min_qty = MagicMock(return_value=None)
+    mock_client.place_order = AsyncMock(return_value=filled_order)
+    mock_client.set_leverage = AsyncMock()
+    mock_client.format_quantity = MagicMock(return_value="0.001")
+    mock_client.format_price = MagicMock(return_value="78000.00")
+    executor._client = mock_client
+
+    mock_notifier = MagicMock()
+    mock_notifier.send_trade_alert = AsyncMock()
+    mock_notifier.send_alert = AsyncMock()
+    executor._notifier = mock_notifier
+
+    with patch.object(executor, "_place_sl_tp_orders", AsyncMock(return_value=(76000.0, 82000.0))):
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=78000.0,
+            confidence=0.8,
+            reason="test",
+            indicators={},
+            trading_mode="futures",
+        )
+        await executor.on_signal(signal)
+
+    mock_client.get_account_info.assert_awaited()
