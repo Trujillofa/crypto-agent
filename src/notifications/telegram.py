@@ -87,9 +87,10 @@ class TelegramNotifier:
         )
 
     async def __aenter__(self) -> TelegramNotifier:
-        """Initialize aiohttp session."""
-        timeout = aiohttp.ClientTimeout(total=30)
-        self._session = aiohttp.ClientSession(timeout=timeout)
+        """Initialize aiohttp session (idempotent — safe when shared across executors)."""
+        if self._session is None:
+            timeout = aiohttp.ClientTimeout(total=30)
+            self._session = aiohttp.ClientSession(timeout=timeout)
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
