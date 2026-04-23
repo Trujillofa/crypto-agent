@@ -11,6 +11,7 @@ from typing import Any
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
 from src.execution.futures_client import (
+    BinanceFuturesApiError,
     BinanceFuturesClient,
     FuturesOrderInfo,
 )
@@ -769,6 +770,55 @@ class FuturesTradingExecutor:
                 raw_qty = truncated + step
         return raw_qty
 
+    async def _place_exchange_conditional(
+        self,
+        symbol: str,
+        order_type: str,
+        trigger_price: float,
+        quantity: float,
+        position_side: str,
+    ) -> str:
+        """Try to place a STOP_MARKET or TAKE_PROFIT_MARKET order.
+
+        On -4120 (order type not supported on this endpoint), falls back to the
+        limit-based equivalent (STOP / TAKE_PROFIT with GTC + reduceOnly).
+        Returns the order ID, or raises if both attempts fail.
+        """
+        try:
+            order = await self._client.place_order(
+                symbol=symbol,
+                side="SELL",
+                order_type=order_type,
+                close_position=True,
+                position_side=position_side,
+                stop_price=trigger_price,
+            )
+            return order.order_id
+        except BinanceFuturesApiError as exc:
+            if exc.code != -4120:
+                raise
+
+        # STOP_MARKET/TAKE_PROFIT_MARKET rejected — try limit-based equivalent.
+        # STOP: limit 0.5% below trigger for fill probability on fast drops.
+        # TAKE_PROFIT: limit at trigger (price is already favourable when triggered).
+        limit_type = "STOP" if order_type == "STOP_MARKET" else "TAKE_PROFIT"
+        limit_price = trigger_price * (0.995 if limit_type == "STOP" else 1.0)
+        self._logger.info(
+            "%s rejected (-4120) — retrying as %s limit for %s: trigger=%.4f limit=%.4f",
+            order_type, limit_type, symbol, trigger_price, limit_price,
+        )
+        order = await self._client.place_order(
+            symbol=symbol,
+            side="SELL",
+            quantity=quantity,
+            order_type=limit_type,
+            reduce_only=True,
+            position_side=position_side,
+            stop_price=trigger_price,
+            limit_price=limit_price,
+        )
+        return order.order_id
+
     async def _place_sl_tp_orders(
         self,
         symbol: str,
@@ -776,10 +826,11 @@ class FuturesTradingExecutor:
         quantity: float,
         atr_14: float,
     ) -> tuple[float, float]:
-        """Place exchange-side STOP_MARKET (SL) and TAKE_PROFIT_MARKET (TP) orders.
+        """Place exchange-side SL and TP orders, with software-monitor fallback.
 
-        Uses ATR-based levels when atr_14 > 0, falls back to fixed percentage otherwise.
-        Both orders are reduceOnly so they can only close the existing LONG.
+        Tries STOP_MARKET/TAKE_PROFIT_MARKET first; if the account rejects them
+        (-4120), retries with limit-based STOP/TAKE_PROFIT. Software monitoring
+        (every 30 s) acts as the final safety net if exchange orders fail entirely.
         """
         if atr_14 > 0:
             sl_price = entry_price - self._config.sl_atr_multiplier * atr_14
@@ -799,29 +850,17 @@ class FuturesTradingExecutor:
         sl_order_id = ""
         tp_order_id = ""
 
-        # Always store SL/TP prices for software-side monitoring (fallback when exchange
-        # conditional orders are not supported — e.g. Portfolio Margin accounts, -4120).
+        # Software monitor always active as final fallback.
         self._sl_tp_prices[symbol] = {"sl_price": sl_price, "tp_price": tp_price}
 
-        # Use closePosition=true — Binance requires this for STOP_MARKET/TAKE_PROFIT_MARKET
-        # bracket orders; sending quantity+reduceOnly returns -4120 on those types.
-        # One-way mode: positionSide=BOTH. Hedge mode: positionSide=LONG.
         order_position_side = "BOTH" if self._active_position_mode == "one-way" else "LONG"
 
         if sl_price > 0:
             try:
-                sl_order = await self._client.place_order(
-                    symbol=symbol,
-                    side="SELL",
-                    order_type="STOP_MARKET",
-                    close_position=True,
-                    position_side=order_position_side,
-                    stop_price=sl_price,
+                sl_order_id = await self._place_exchange_conditional(
+                    symbol, "STOP_MARKET", sl_price, quantity, order_position_side
                 )
-                sl_order_id = sl_order.order_id
-                self._logger.info(
-                    "SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14
-                )
+                self._logger.info("SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14)
             except Exception as exc:
                 self._logger.warning(
                     "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
@@ -829,18 +868,10 @@ class FuturesTradingExecutor:
 
         if tp_price > 0:
             try:
-                tp_order = await self._client.place_order(
-                    symbol=symbol,
-                    side="SELL",
-                    order_type="TAKE_PROFIT_MARKET",
-                    close_position=True,
-                    position_side=order_position_side,
-                    stop_price=tp_price,
+                tp_order_id = await self._place_exchange_conditional(
+                    symbol, "TAKE_PROFIT_MARKET", tp_price, quantity, order_position_side
                 )
-                tp_order_id = tp_order.order_id
-                self._logger.info(
-                    "TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14
-                )
+                self._logger.info("TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14)
             except Exception as exc:
                 self._logger.warning(
                     "Exchange TP order failed for %s (software fallback active): %s", symbol, exc

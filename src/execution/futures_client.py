@@ -378,6 +378,7 @@ class BinanceFuturesClient:
         position_side: str = "LONG",
         stop_price: float | None = None,
         close_position: bool = False,
+        limit_price: float | None = None,
     ) -> FuturesOrderInfo:
         """Place a futures order.
 
@@ -387,13 +388,14 @@ class BinanceFuturesClient:
             symbol: Trading pair (e.g., "BTCUSDT")
             side: "BUY" or "SELL"
             quantity: Order quantity (ignored when close_position=True)
-            order_type: "MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET", etc.
+            order_type: "MARKET", "STOP_MARKET", "TAKE_PROFIT_MARKET", "STOP", "TAKE_PROFIT", etc.
             reduce_only: Partial-close flag; mutually exclusive with close_position
             position_side: "BOTH" (one-way mode) or "LONG"/"SHORT" (hedge mode)
             stop_price: Trigger price for conditional orders
             close_position: Use closePosition=true to close the full open position
                 (required by Binance for STOP_MARKET/TAKE_PROFIT_MARKET — sending
                 quantity+reduceOnly returns -4120 on those order types)
+            limit_price: Limit price for STOP and TAKE_PROFIT order types (GTC)
 
         Returns:
             FuturesOrderInfo with order details
@@ -421,25 +423,18 @@ class BinanceFuturesClient:
             params["workingType"] = "MARK_PRICE"
             params["priceProtect"] = "TRUE"
 
-        _CONDITIONAL_TYPES = ("STOP_MARKET", "TAKE_PROFIT_MARKET")
-        try:
-            data = await self._request("POST", "/fapi/v1/order", params=params, signed=True)
-        except BinanceFuturesApiError as exc:
-            # Some account types (e.g. Portfolio Margin) reject conditional order types on
-            # /fapi/v1/order with -4120 and require the Algo Order API instead.
-            if exc.code != -4120 or order_type not in _CONDITIONAL_TYPES:
-                raise
-            self._logger.info(
-                "Retrying %s %s via Algo Order API (/fapi/v1/order/algo)", order_type, symbol
-            )
-            data = await self._request("POST", "/fapi/v1/order/algo", params=params, signed=True)
+        if limit_price is not None:
+            params["price"] = self.format_price(symbol, limit_price)
+            params["timeInForce"] = "GTC"
+
+        data = await self._request("POST", "/fapi/v1/order", params=params, signed=True)
 
         avg_price = float(data.get("avgPrice", 0)) if data.get("avgPrice") else None
         price = float(data.get("price", 0)) if data.get("price") else None
         resolved_price = avg_price if avg_price and avg_price > 0 else price
 
         return FuturesOrderInfo(
-            order_id=str(data.get("orderId", data.get("algoId", 0))),
+            order_id=str(data.get("orderId", 0)),
             symbol=data.get("symbol", symbol),
             side=data.get("side", side),
             position_side=data.get("positionSide", position_side),
