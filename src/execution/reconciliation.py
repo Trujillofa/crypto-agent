@@ -346,6 +346,51 @@ class ExchangeReconciler:
             self._risk_manager.set_reconciliation_block(
                 f"Reconciliation found {len(critical)} critical divergences"
             )
+        elif policy == DivergencePolicy.AUTO_FIX:
+            await self._auto_fix(all_divs)
+
+    async def _auto_fix(self, divergences: list[Divergence]) -> None:
+        """Auto-fix phantom DB positions by force-closing them at last known price."""
+        fixed: list[str] = []
+        failed: list[str] = []
+
+        for div in divergences:
+            if div.divergence_type != "phantom_db":
+                continue
+            symbol = div.symbol
+            market = div.market
+            entry_px = float(div.db_state.get("entry_price", 0.0))
+            close_px = entry_px  # best estimate when mark price unavailable
+            try:
+                await self._portfolio.close_position(
+                    symbol=symbol,
+                    price=close_px,
+                    market=market,
+                    closing_side="SELL",
+                )
+                self._logger.warning(
+                    "AUTO_FIX: force-closed phantom DB position %s %s @ %.4f",
+                    market,
+                    symbol,
+                    close_px,
+                )
+                fixed.append(symbol)
+            except ValueError:
+                self._logger.warning(
+                    "AUTO_FIX: %s %s not found in DB (already cleaned)", market, symbol
+                )
+                fixed.append(symbol)
+            except Exception as exc:
+                self._logger.error("AUTO_FIX: failed to close %s %s: %s", market, symbol, exc)
+                failed.append(symbol)
+
+        if fixed or failed:
+            lines = ["<b>Reconciliation AUTO_FIX</b>"]
+            if fixed:
+                lines.append(f"✅ Force-closed: {', '.join(fixed)}")
+            if failed:
+                lines.append(f"❌ Failed: {', '.join(failed)} — manual intervention required")
+            await self._notifier.send_alert("\n".join(lines), level=AlertLevel.WARNING)
 
     async def run_periodic(self) -> None:
         """Periodic reconciliation loop. Cancel via task cancellation."""

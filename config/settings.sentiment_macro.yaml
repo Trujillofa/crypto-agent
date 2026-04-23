@@ -1,4 +1,8 @@
 agent_id: sentiment-macro-bot
+
+reconciliation:
+  on_divergence: auto_fix
+  periodic_interval_seconds: 300  # re-check every 5 min while running
 display_name: sentiment-macro-1h-multiasset
 
 # Live trading: rolled back to futures on 2026-04-20 (was spot-only Stage D Apr 16-20).

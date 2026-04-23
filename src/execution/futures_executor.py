@@ -274,6 +274,17 @@ class FuturesTradingExecutor:
                         else:
                             close_reason = "take_profit"
 
+                    if self._portfolio_manager is not None and last_mark > 0:
+                        try:
+                            await self._portfolio_manager.close_position(
+                                symbol=symbol,
+                                price=last_mark,
+                                market="futures",
+                                closing_side="SELL",
+                            )
+                        except ValueError:
+                            pass  # position not in DB (recovered or pre-tracking)
+
                     if entry_px > 0 and qty > 0 and last_mark > 0:
                         pnl = (last_mark - entry_px) * qty
                         await self._notifier.send_trade_alert(
@@ -299,16 +310,18 @@ class FuturesTradingExecutor:
                     tp = sw.get("tp_price", 0.0)
                     triggered = (sl > 0 and mark <= sl) or (tp > 0 and mark >= tp)
                     if triggered:
-                        reason_str = f"SL {sl:.4f}" if (sl > 0 and mark <= sl) else f"TP {tp:.4f}"
+                        sw_close_reason = "stop_loss" if (sl > 0 and mark <= sl) else "take_profit"
+                        reason_str = (
+                            f"SL {sl:.4f}" if sw_close_reason == "stop_loss" else f"TP {tp:.4f}"
+                        )
                         self._logger.warning(
                             "Software %s triggered for %s: mark=%.4f — closing position",
                             reason_str,
                             symbol,
                             mark,
                         )
-                        await self._notifier.send_alert(
-                            f"<b>Software {reason_str} triggered</b>\n{symbol} mark={mark:.4f}"
-                        )
+                        sw_pos_state = self._positions.get(symbol, {})
+                        sw_entry_px = float(sw_pos_state.get("entry_price", 0.0))
                         self._sl_tp_prices.pop(symbol, None)
                         try:
                             qty = abs(positions[0].position_amt)
@@ -326,6 +339,34 @@ class FuturesTradingExecutor:
                             )
                             self._logger.info(
                                 "Software %s close order placed for %s", reason_str, symbol
+                            )
+                            # Record close in portfolio DB
+                            if self._portfolio_manager is not None:
+                                try:
+                                    await self._portfolio_manager.close_position(
+                                        symbol=symbol,
+                                        price=mark,
+                                        market="futures",
+                                        closing_side="SELL",
+                                    )
+                                except ValueError:
+                                    pass
+                            self._positions.pop(symbol, None)
+                            if (
+                                sw_close_reason == "stop_loss"
+                                and self._config.sl_cooldown_minutes > 0
+                            ):
+                                self._sl_cooldown_timestamps[symbol] = time.time()
+                            pnl = (mark - sw_entry_px) * qty if sw_entry_px > 0 else None
+                            await self._notifier.send_trade_alert(
+                                symbol=symbol,
+                                side="SELL",
+                                quantity=qty,
+                                price=mark,
+                                pnl=pnl,
+                                market="futures",
+                                entry_price=sw_entry_px if sw_entry_px > 0 else None,
+                                close_reason=sw_close_reason,
                             )
                         except Exception as close_exc:
                             self._logger.error(
