@@ -71,6 +71,7 @@ class FuturesTradingExecutor:
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
         self._sl_tp_orders: dict[str, dict[str, str]] = {}  # symbol → {sl_order_id, tp_order_id}
+        self._sl_tp_prices: dict[str, dict[str, float]] = {}  # software SL/TP fallback
         self._active_position_mode: str = config.position_mode
         self._sell_reject_alert_times: dict[str, float] = {}  # symbol → last alert timestamp
 
@@ -232,13 +233,58 @@ class FuturesTradingExecutor:
                         "unrealized_pnl": pos.unrealized_pnl,
                     }
 
-                # Position closed by exchange-side SL/TP — clean up tracking
+                # Position closed — clean up tracking
                 if not positions and symbol in self._sl_tp_orders:
                     self._logger.info(
-                        "Position %s closed by exchange SL/TP — clearing order tracking",
+                        "Position %s closed — clearing SL/TP tracking",
                         symbol,
                     )
                     self._sl_tp_orders.pop(symbol, None)
+                    self._sl_tp_prices.pop(symbol, None)
+
+                # Software SL/TP: trigger MARKET close when mark_price crosses stored levels
+                sw = self._sl_tp_prices.get(symbol)
+                if sw and positions:
+                    mark = positions[0].mark_price
+                    sl = sw.get("sl_price", 0.0)
+                    tp = sw.get("tp_price", 0.0)
+                    triggered = (sl > 0 and mark <= sl) or (tp > 0 and mark >= tp)
+                    if triggered:
+                        reason_str = f"SL {sl:.4f}" if (sl > 0 and mark <= sl) else f"TP {tp:.4f}"
+                        self._logger.warning(
+                            "Software %s triggered for %s: mark=%.4f — closing position",
+                            reason_str,
+                            symbol,
+                            mark,
+                        )
+                        await self._notifier.send_alert(
+                            f"<b>Software {reason_str} triggered</b>\n{symbol} mark={mark:.4f}"
+                        )
+                        self._sl_tp_prices.pop(symbol, None)
+                        try:
+                            qty = abs(positions[0].position_amt)
+                            request_position_side = (
+                                "BOTH" if self._active_position_mode == "one-way" else "LONG"
+                            )
+                            request_reduce_only = self._active_position_mode == "one-way"
+                            await self._client.place_order(
+                                symbol=symbol,
+                                side="SELL",
+                                quantity=qty,
+                                order_type="MARKET",
+                                reduce_only=request_reduce_only,
+                                position_side=request_position_side,
+                            )
+                            self._logger.info(
+                                "Software %s close order placed for %s", reason_str, symbol
+                            )
+                        except Exception as close_exc:
+                            self._logger.error(
+                                "Failed to close %s after software %s: %s",
+                                symbol,
+                                reason_str,
+                                close_exc,
+                            )
 
             except Exception as exc:
                 self._logger.error("Failed to get position risk for %s: %s", symbol, exc)
@@ -741,6 +787,10 @@ class FuturesTradingExecutor:
         sl_order_id = ""
         tp_order_id = ""
 
+        # Always store SL/TP prices for software-side monitoring (fallback when exchange
+        # conditional orders are not supported — e.g. Portfolio Margin accounts, -4120).
+        self._sl_tp_prices[symbol] = {"sl_price": sl_price, "tp_price": tp_price}
+
         # Use closePosition=true — Binance requires this for STOP_MARKET/TAKE_PROFIT_MARKET
         # bracket orders; sending quantity+reduceOnly returns -4120 on those types.
         # One-way mode: positionSide=BOTH. Hedge mode: positionSide=LONG.
@@ -761,7 +811,9 @@ class FuturesTradingExecutor:
                     "SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14
                 )
             except Exception as exc:
-                self._logger.error("Failed to place SL order for %s: %s", symbol, exc)
+                self._logger.warning(
+                    "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
+                )
 
         if tp_price > 0:
             try:
@@ -778,16 +830,27 @@ class FuturesTradingExecutor:
                     "TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14
                 )
             except Exception as exc:
-                self._logger.error("Failed to place TP order for %s: %s", symbol, exc)
+                self._logger.warning(
+                    "Exchange TP order failed for %s (software fallback active): %s", symbol, exc
+                )
 
         self._sl_tp_orders[symbol] = {
             "sl_order_id": sl_order_id,
             "tp_order_id": tp_order_id,
         }
+        self._logger.info(
+            "SL/TP tracking active for %s: SL=%.4f TP=%.4f (exchange_sl=%s exchange_tp=%s)",
+            symbol,
+            sl_price,
+            tp_price,
+            "yes" if sl_order_id else "software-only",
+            "yes" if tp_order_id else "software-only",
+        )
         return sl_price, tp_price
 
     async def _cancel_sl_tp_orders(self, symbol: str) -> None:
-        """Cancel tracked SL/TP orders for a symbol before a manual close."""
+        """Cancel tracked SL/TP orders and clear software SL/TP prices before a manual close."""
+        self._sl_tp_prices.pop(symbol, None)
         tracked = self._sl_tp_orders.pop(symbol, None)
         if not tracked:
             return
