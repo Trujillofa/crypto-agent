@@ -78,6 +78,9 @@ class FuturesTradingExecutor:
         self._sl_tp_prices: dict[str, dict[str, float]] = {}  # software SL/TP fallback
         self._active_position_mode: str = config.position_mode
         self._sell_reject_alert_times: dict[str, float] = {}  # symbol → last alert timestamp
+        # Set to False after first -4120 to skip exchange conditional order attempts.
+        # Software SL/TP monitor (30 s) acts as sole protection in that case.
+        self._exchange_conditional_supported: bool = True
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -781,7 +784,9 @@ class FuturesTradingExecutor:
         """Try to place a STOP_MARKET or TAKE_PROFIT_MARKET order.
 
         On -4120 (order type not supported on this endpoint), falls back to the
-        limit-based equivalent (STOP / TAKE_PROFIT with GTC + reduceOnly).
+        limit-based equivalent (STOP / TAKE_PROFIT with GTC + reduceOnly). If that
+        also fails with -4120, marks _exchange_conditional_supported=False so
+        future calls skip the exchange entirely and rely on software monitoring.
         Returns the order ID, or raises if both attempts fail.
         """
         try:
@@ -807,17 +812,27 @@ class FuturesTradingExecutor:
             "%s rejected (-4120) — retrying as %s limit for %s: trigger=%.4f limit=%.4f",
             order_type, limit_type, symbol, trigger_price, limit_price,
         )
-        order = await self._client.place_order(
-            symbol=symbol,
-            side="SELL",
-            quantity=quantity,
-            order_type=limit_type,
-            reduce_only=True,
-            position_side=position_side,
-            stop_price=trigger_price,
-            limit_price=limit_price,
-        )
-        return order.order_id
+        try:
+            order = await self._client.place_order(
+                symbol=symbol,
+                side="SELL",
+                quantity=quantity,
+                order_type=limit_type,
+                reduce_only=True,
+                position_side=position_side,
+                stop_price=trigger_price,
+                limit_price=limit_price,
+            )
+            return order.order_id
+        except BinanceFuturesApiError as exc:
+            if exc.code == -4120:
+                # Both conditional order types rejected — disable exchange attempts permanently.
+                self._exchange_conditional_supported = False
+                self._logger.warning(
+                    "All conditional order types rejected (-4120) on this account. "
+                    "Software SL/TP monitor (30 s) will be sole protection."
+                )
+            raise
 
     async def _place_sl_tp_orders(
         self,
@@ -855,27 +870,28 @@ class FuturesTradingExecutor:
 
         order_position_side = "BOTH" if self._active_position_mode == "one-way" else "LONG"
 
-        if sl_price > 0:
-            try:
-                sl_order_id = await self._place_exchange_conditional(
-                    symbol, "STOP_MARKET", sl_price, quantity, order_position_side
-                )
-                self._logger.info("SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14)
-            except Exception as exc:
-                self._logger.warning(
-                    "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
-                )
+        if self._exchange_conditional_supported:
+            if sl_price > 0:
+                try:
+                    sl_order_id = await self._place_exchange_conditional(
+                        symbol, "STOP_MARKET", sl_price, quantity, order_position_side
+                    )
+                    self._logger.info("SL order placed for %s: %.4f (ATR: %.4f)", symbol, sl_price, atr_14)
+                except Exception as exc:
+                    self._logger.warning(
+                        "Exchange SL order failed for %s (software fallback active): %s", symbol, exc
+                    )
 
-        if tp_price > 0:
-            try:
-                tp_order_id = await self._place_exchange_conditional(
-                    symbol, "TAKE_PROFIT_MARKET", tp_price, quantity, order_position_side
-                )
-                self._logger.info("TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14)
-            except Exception as exc:
-                self._logger.warning(
-                    "Exchange TP order failed for %s (software fallback active): %s", symbol, exc
-                )
+            if tp_price > 0:
+                try:
+                    tp_order_id = await self._place_exchange_conditional(
+                        symbol, "TAKE_PROFIT_MARKET", tp_price, quantity, order_position_side
+                    )
+                    self._logger.info("TP order placed for %s: %.4f (ATR: %.4f)", symbol, tp_price, atr_14)
+                except Exception as exc:
+                    self._logger.warning(
+                        "Exchange TP order failed for %s (software fallback active): %s", symbol, exc
+                    )
 
         self._sl_tp_orders[symbol] = {
             "sl_order_id": sl_order_id,
