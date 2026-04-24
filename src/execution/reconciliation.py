@@ -350,44 +350,57 @@ class ExchangeReconciler:
             await self._auto_fix(all_divs)
 
     async def _auto_fix(self, divergences: list[Divergence]) -> None:
-        """Auto-fix phantom DB positions by force-closing them at last known price."""
+        """Auto-fix divergences: close phantom DB positions and correct quantity mismatches."""
         fixed: list[str] = []
         failed: list[str] = []
 
         for div in divergences:
-            if div.divergence_type != "phantom_db":
-                continue
             symbol = div.symbol
             market = div.market
-            entry_px = float(div.db_state.get("entry_price", 0.0))
-            close_px = entry_px  # best estimate when mark price unavailable
-            try:
-                await self._portfolio.close_position(
-                    symbol=symbol,
-                    price=close_px,
-                    market=market,
-                    closing_side="SELL",
-                )
-                self._logger.warning(
-                    "AUTO_FIX: force-closed phantom DB position %s %s @ %.4f",
-                    market,
-                    symbol,
-                    close_px,
-                )
-                fixed.append(symbol)
-            except ValueError:
-                self._logger.warning(
-                    "AUTO_FIX: %s %s not found in DB (already cleaned)", market, symbol
-                )
-                fixed.append(symbol)
-            except Exception as exc:
-                self._logger.error("AUTO_FIX: failed to close %s %s: %s", market, symbol, exc)
-                failed.append(symbol)
+
+            if div.divergence_type == "phantom_db":
+                entry_px = float(div.db_state.get("entry_price", 0.0))
+                try:
+                    await self._portfolio.close_position(
+                        symbol=symbol,
+                        price=entry_px,
+                        market=market,
+                        closing_side="SELL",
+                    )
+                    self._logger.warning(
+                        "AUTO_FIX: force-closed phantom DB position %s %s @ %.4f",
+                        market,
+                        symbol,
+                        entry_px,
+                    )
+                    fixed.append(symbol)
+                except ValueError:
+                    self._logger.warning(
+                        "AUTO_FIX: %s %s not found in DB (already cleaned)", market, symbol
+                    )
+                    fixed.append(symbol)
+                except Exception as exc:
+                    self._logger.error("AUTO_FIX: failed to close %s %s: %s", market, symbol, exc)
+                    failed.append(symbol)
+
+            elif div.divergence_type == "quantity_mismatch":
+                exchange_qty = div.exchange_state["quantity"]
+                try:
+                    await self._portfolio.update_quantity(symbol, exchange_qty, market)
+                    self._logger.info(
+                        "AUTO_FIX: updated %s %s quantity to %s", market, symbol, exchange_qty
+                    )
+                    fixed.append(symbol)
+                except Exception as exc:
+                    self._logger.error(
+                        "AUTO_FIX: failed to update quantity for %s %s: %s", market, symbol, exc
+                    )
+                    failed.append(symbol)
 
         if fixed or failed:
             lines = ["<b>Reconciliation AUTO_FIX</b>"]
             if fixed:
-                lines.append(f"✅ Force-closed: {', '.join(fixed)}")
+                lines.append(f"✅ Fixed: {', '.join(fixed)}")
             if failed:
                 lines.append(f"❌ Failed: {', '.join(failed)} — manual intervention required")
             await self._notifier.send_alert("\n".join(lines), level=AlertLevel.WARNING)

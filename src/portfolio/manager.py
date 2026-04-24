@@ -352,6 +352,26 @@ class PortfolioManager:
         """Get all open positions."""
         return list(self._positions.values())
 
+    async def update_quantity(self, symbol: str, quantity: float, market: str = "spot") -> None:
+        """Sync position quantity in DB and memory (used by reconciler auto_fix)."""
+        async with self._db_lock:
+            key = self._position_key(symbol, market)
+            position = self._positions.get(key)
+            if position is None:
+                raise ValueError(f"No open position for {symbol} ({market})")
+            scoped_symbol = self._scope_symbol(symbol)
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE positions SET quantity = $1 WHERE symbol = $2 AND market = $3 AND status = 'open' AND agent_id = $4",
+                    quantity,
+                    scoped_symbol,
+                    market,
+                    self._agent_id,
+                )
+            position.quantity = quantity
+            self._logger.info("Updated %s %s quantity to %s", market, symbol, quantity)
+
     def calculate_unrealized_pnl(
         self, symbol: str, current_price: float, market: str = "spot"
     ) -> float:
