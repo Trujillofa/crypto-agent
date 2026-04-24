@@ -348,6 +348,8 @@ class ExchangeReconciler:
             )
         elif policy == DivergencePolicy.AUTO_FIX:
             await self._auto_fix(all_divs)
+        elif policy != DivergencePolicy.ALERT:
+            self._logger.error("Unhandled DivergencePolicy %r — no action taken", policy)
 
     async def _auto_fix(self, divergences: list[Divergence]) -> None:
         """Auto-fix divergences: close phantom DB positions and correct quantity mismatches."""
@@ -396,6 +398,14 @@ class ExchangeReconciler:
                         "AUTO_FIX: failed to update quantity for %s %s: %s", market, symbol, exc
                     )
                     failed.append(symbol)
+            else:
+                # divergence_type has no auto-fix handler — alert so it doesn't go silent
+                self._logger.error(
+                    "AUTO_FIX: no handler for divergence_type=%r on %s %s — manual review required",
+                    div.divergence_type,
+                    market,
+                    symbol,
+                )
 
         if fixed or failed:
             lines = ["<b>Reconciliation AUTO_FIX</b>"]
