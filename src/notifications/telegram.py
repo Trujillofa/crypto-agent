@@ -211,9 +211,11 @@ class TelegramNotifier:
         take_profit: float | None = None,
         entry_price: float | None = None,
         close_reason: str | None = None,
+        bars_held: int | None = None,
+        ticket_id: str | None = None,
+        pnl_pct: float | None = None,
         balance: float | None = None,
         order_id: str | None = None,
-        bars_held: int | None = None,
         risk_amount: float | None = None,
         live_pnl: float | None = None,
         live_pnl_note: str | None = None,
@@ -239,11 +241,12 @@ class TelegramNotifier:
 
             price_decimals = self._price_decimals(entry_price if entry_price is not None else price)
 
-            lines = [f"🔴 <b>CLOSED {symbol}</b> — {market_label}", ""]
+            lines = [f"{side_emoji} <b>CLOSED {symbol}</b> — {market_label}", ""]
             lines.append(f"✅ Reason: {reason_text}")
             if entry_price is not None:
                 move_abs = price - entry_price
-                move_pct = (move_abs / entry_price * 100.0) if entry_price else 0.0
+                computed_pct = (move_abs / entry_price * 100.0) if entry_price else 0.0
+                move_pct = pnl_pct if pnl_pct is not None else computed_pct
                 move_sign = "+" if move_abs >= 0 else ""
                 lines.append(f"🎯 Entry: {entry_price:.{price_decimals}f}")
                 lines.append(
@@ -270,8 +273,9 @@ class TelegramNotifier:
                 lines.append(f"⏱ Bars: {bars_held}")
             else:
                 lines.append("⏱ Bars: n/a")
-            if order_id:
-                lines.append(f"🎫 Ticket: {escape(order_id)}")
+            ticket = order_id or ticket_id
+            if ticket:
+                lines.append(f"🎫 Ticket: {escape(ticket)}")
             else:
                 lines.append("🎫 Ticket: n/a")
             if balance is not None:

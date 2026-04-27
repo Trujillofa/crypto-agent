@@ -1,14 +1,14 @@
 position_limits:
   max_position_pct: 0.25
-  max_open_positions: 3
+  max_open_positions: 2
 
 loss_limits:
   max_daily_loss_pct: 0.05
-  max_drawdown_pct: 0.20
+  max_drawdown_pct: 0.15
   max_single_loss_pct: 0.02
 
 circuit_breakers:
-  consecutive_losses: 10
+  consecutive_losses: 6
   api_errors: 3
   latency_spike_ms: 5000
 

@@ -256,8 +256,8 @@ trading_execution:
   order_size_usdt: 22.0
   stop_loss_pct: 0.02
   take_profit_pct: 0.05
-  sl_atr_multiplier: 2.0
-  tp_atr_multiplier: 4.5
+  sl_atr_multiplier: 1.5
+  tp_atr_multiplier: 3.5
   trailing_activate_atr: 1.5
   trailing_offset_atr: 1.0
   use_atr_sizing: false

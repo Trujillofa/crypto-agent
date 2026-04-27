@@ -30,6 +30,9 @@ trading_execution:
   test_mode: false
   use_atr_sizing: false
   order_size_usdt: 22.0
+  # Tighten ATR exits to reduce left-tail losses during drawdown clusters.
+  sl_atr_multiplier: 1.5
+  tp_atr_multiplier: 3.5
   exit_rules:
     time_stop_minutes: 1440
 
@@ -41,8 +44,10 @@ futures:
   margin_mode: isolated
   position_mode: one-way
   liquidation_buffer_pct: 5.0
-  max_concurrent_longs: 2
-  sl_cooldown_minutes: 120
+  # Reduce correlated loss clusters across symbols while in drawdown recovery.
+  max_concurrent_longs: 1
+  # Wait longer after SL before re-entry on the same symbol.
+  sl_cooldown_minutes: 240
   symbols:
     - BTCUSDT
     - ETHUSDT

@@ -6,6 +6,7 @@ import asyncio
 import math
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from src.core.event_log import EventLog
@@ -164,6 +165,69 @@ class FuturesTradingExecutor:
             raise RuntimeError(f"Guard blocked: {result.reason}")
         self._logger.debug("Guard passed for %s %s: %s", side, symbol, result.reason)
 
+    def _timeframe_seconds(self) -> int:
+        tf = (self._config.timeframe or "").strip().lower()
+        if tf.endswith("m"):
+            return int(tf[:-1]) * 60
+        if tf.endswith("h"):
+            return int(tf[:-1]) * 3600
+        if tf.endswith("d"):
+            return int(tf[:-1]) * 86400
+        return 0
+
+    def _estimate_bars_held(self, entry_time: datetime | None) -> int | None:
+        if entry_time is None:
+            return None
+        tf_seconds = self._timeframe_seconds()
+        if tf_seconds <= 0:
+            return None
+        now = datetime.now(UTC)
+        elapsed = (now - entry_time).total_seconds()
+        if elapsed < 0:
+            return 0
+        return int(elapsed // tf_seconds)
+
+    async def _resolve_close_reason_and_ticket(
+        self,
+        symbol: str,
+        tracked_orders: dict[str, str],
+        last_mark: float,
+        sl_price: float,
+        tp_price: float,
+    ) -> tuple[str | None, str | None]:
+        sl_order_id = tracked_orders.get("sl_order_id")
+        tp_order_id = tracked_orders.get("tp_order_id")
+
+        async def _is_filled(order_id: str | None) -> bool:
+            if not order_id:
+                return False
+            try:
+                status = await self._client.get_order_status(symbol, order_id)
+            except Exception as exc:  # noqa: BLE001
+                self._logger.debug(
+                    "Could not read order status for %s/%s while resolving close reason: %s",
+                    symbol,
+                    order_id,
+                    exc,
+                )
+                return False
+            return status.status == "FILLED"
+
+        if await _is_filled(sl_order_id):
+            return "stop_loss", sl_order_id
+        if await _is_filled(tp_order_id):
+            return "take_profit", tp_order_id
+
+        # Fallback inference when exchange status is unavailable.
+        if sl_price > 0 and last_mark > 0:
+            dist_sl = abs(last_mark - sl_price)
+            dist_tp = abs(last_mark - tp_price) if tp_price > 0 else float("inf")
+            if dist_sl <= dist_tp:
+                return "stop_loss", sl_order_id
+            return "take_profit", tp_order_id
+
+        return None, sl_order_id or tp_order_id
+
     async def run(self) -> None:
         """Main futures trading loop."""
         if not self._config.enabled:
@@ -253,26 +317,33 @@ class FuturesTradingExecutor:
                     entry_px = float(pos_state.get("entry_price", 0.0))
                     last_mark = float(pos_state.get("mark_price", 0.0))
                     qty = float(pos_state.get("amount", 0.0))
+                    tracked_orders = self._sl_tp_orders.get(symbol, {})
                     sw_prices = self._sl_tp_prices.get(symbol, {})
                     sl_px = sw_prices.get("sl_price", 0.0)
                     tp_px = sw_prices.get("tp_price", 0.0)
+                    close_reason, close_ticket = await self._resolve_close_reason_and_ticket(
+                        symbol=symbol,
+                        tracked_orders=tracked_orders,
+                        last_mark=last_mark,
+                        sl_price=sl_px,
+                        tp_price=tp_px,
+                    )
+                    if close_reason == "stop_loss" and self._config.sl_cooldown_minutes > 0:
+                        self._sl_cooldown_timestamps[symbol] = time.time()
+                        self._logger.info(
+                            "SL cooldown started for %s (mark=%.4f sl=%.4f)",
+                            symbol,
+                            last_mark,
+                            sl_px,
+                        )
 
-                    close_reason: str | None = None
-                    if sl_px > 0 and last_mark > 0:
-                        dist_sl = abs(last_mark - sl_px)
-                        dist_tp = abs(last_mark - tp_px) if tp_px > 0 else float("inf")
-                        if dist_sl <= dist_tp:
-                            close_reason = "stop_loss"
-                            if self._config.sl_cooldown_minutes > 0:
-                                self._sl_cooldown_timestamps[symbol] = time.time()
-                                self._logger.info(
-                                    "SL cooldown started for %s (mark=%.4f sl=%.4f)",
-                                    symbol,
-                                    last_mark,
-                                    sl_px,
-                                )
-                        else:
-                            close_reason = "take_profit"
+                    bars_held: int | None = None
+                    if self._portfolio_manager is not None:
+                        tracked_position = self._portfolio_manager.get_position(
+                            symbol, market="futures"
+                        )
+                        if tracked_position is not None:
+                            bars_held = self._estimate_bars_held(tracked_position.entry_time)
 
                     if self._portfolio_manager is not None and last_mark > 0:
                         try:
@@ -296,6 +367,8 @@ class FuturesTradingExecutor:
                             market="futures",
                             entry_price=entry_px,
                             close_reason=close_reason,
+                            bars_held=bars_held,
+                            ticket_id=close_ticket,
                         )
 
                     self._sl_tp_orders.pop(symbol, None)
@@ -322,6 +395,13 @@ class FuturesTradingExecutor:
                         )
                         sw_pos_state = self._positions.get(symbol, {})
                         sw_entry_px = float(sw_pos_state.get("entry_price", 0.0))
+                        bars_held: int | None = None
+                        if self._portfolio_manager is not None:
+                            tracked_position = self._portfolio_manager.get_position(
+                                symbol, market="futures"
+                            )
+                            if tracked_position is not None:
+                                bars_held = self._estimate_bars_held(tracked_position.entry_time)
                         self._sl_tp_prices.pop(symbol, None)
                         try:
                             qty = abs(positions[0].position_amt)
@@ -329,7 +409,7 @@ class FuturesTradingExecutor:
                                 "BOTH" if self._active_position_mode == "one-way" else "LONG"
                             )
                             request_reduce_only = self._active_position_mode == "one-way"
-                            await self._client.place_order(
+                            close_order = await self._client.place_order(
                                 symbol=symbol,
                                 side="SELL",
                                 quantity=qty,
@@ -367,6 +447,8 @@ class FuturesTradingExecutor:
                                 market="futures",
                                 entry_price=sw_entry_px if sw_entry_px > 0 else None,
                                 close_reason=sw_close_reason,
+                                bars_held=bars_held,
+                                ticket_id=close_order.order_id,
                             )
                         except Exception as close_exc:
                             self._logger.error(
@@ -842,6 +924,9 @@ class FuturesTradingExecutor:
                     )
                     filled_price = float(order.price) if order.price else signal.price
                     pnl = (filled_price - exchange_entry_price) * filled_quantity
+                    bars_held = (
+                        self._estimate_bars_held(agent_pos.entry_time) if agent_pos else None
+                    )
 
                     self._logger.info(
                         "Futures position closed: %s SELL (qty: %.4f, pnl: %.2f)",
@@ -858,6 +943,8 @@ class FuturesTradingExecutor:
                         pnl=pnl,
                         market="futures",
                         entry_price=exchange_entry_price if exchange_entry_price > 0 else None,
+                        bars_held=bars_held,
+                        ticket_id=order.order_id,
                     )
                 else:
                     self._logger.warning(

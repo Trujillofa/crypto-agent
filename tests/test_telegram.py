@@ -334,10 +334,16 @@ class TestSpecializedAlerts:
             mock_send.assert_called_once()
             message = mock_send.call_args[0][0]
             assert "CLOSED BTCUSDT" in message
+            assert "✅ Reason:" in message
             assert "Take Profit" in message
             assert "45000.00" in message
             assert "46000.00" in message
+            assert "+1000.00" in message
+            assert "+2.22%" in message
+            assert "Lots:" in message
             assert "+100.00" in message
+            assert "Bars: n/a" in message
+            assert "Ticket: n/a" in message
             assert "$10,100.00" in message
 
     @pytest.mark.asyncio
