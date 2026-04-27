@@ -1435,7 +1435,9 @@ async def run() -> None:
 
                     # Compute sentiment health stats for daily summary
                     sentiment_health: dict[str, object] | None = None
-                    cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
+                    cutoff = datetime.combine(
+                        summary_date, datetime.min.time(), tzinfo=UTC
+                    ).isoformat()
                     recent_sentiment = [
                         e
                         for e in event_log.get_recent_by_type("sentiment_score", limit=500)

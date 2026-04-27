@@ -61,39 +61,56 @@ async def main() -> None:
             balance = await client.get_asset_balance(base_asset)
             logger.info(
                 "Position %s: db_qty=%s exchange_balance=%s entry=%s",
-                symbol, db_qty, balance, entry_price,
+                symbol,
+                db_qty,
+                balance,
+                entry_price,
             )
             if balance <= 0:
-                logger.warning("Zero balance for %s — marking position closed without trade", symbol)
+                logger.warning(
+                    "Zero balance for %s — marking position closed without trade", symbol
+                )
                 await db.execute(
                     """
                     UPDATE positions SET status='closed', exit_time=$1, exit_price=$2, realized_pnl=0
                     WHERE id=$3
                     """,
-                    datetime.now(UTC), entry_price, row["id"],
+                    datetime.now(UTC),
+                    entry_price,
+                    row["id"],
                 )
                 continue
 
             normalized = await client.normalize_sell_quantity(symbol, balance)
             if normalized is None:
-                logger.warning("Balance %s for %s below min LOT_SIZE — closing DB record only", balance, symbol)
+                logger.warning(
+                    "Balance %s for %s below min LOT_SIZE — closing DB record only", balance, symbol
+                )
                 await db.execute(
                     """
                     UPDATE positions SET status='closed', exit_time=$1, exit_price=$2, realized_pnl=0
                     WHERE id=$3
                     """,
-                    datetime.now(UTC), entry_price, row["id"],
+                    datetime.now(UTC),
+                    entry_price,
+                    row["id"],
                 )
                 continue
 
             order = await client.place_market_order(symbol, "SELL", balance)
-            filled_qty = order.executed_quantity if order.executed_quantity > 0 else float(normalized)
+            filled_qty = (
+                order.executed_quantity if order.executed_quantity > 0 else float(normalized)
+            )
             filled_price = order.executed_price or entry_price
             pnl = (filled_price - entry_price) * filled_qty
 
             logger.info(
                 "SOLD %s qty=%s price=%s pnl=%.4f status=%s",
-                symbol, filled_qty, filled_price, pnl, order.status,
+                symbol,
+                filled_qty,
+                filled_price,
+                pnl,
+                order.status,
             )
 
             await db.execute(
@@ -115,7 +132,10 @@ async def main() -> None:
                 UPDATE positions SET status='closed', exit_time=$1, exit_price=$2, realized_pnl=$3
                 WHERE id=$4
                 """,
-                datetime.now(UTC), filled_price, pnl, row["id"],
+                datetime.now(UTC),
+                filled_price,
+                pnl,
+                row["id"],
             )
             time.sleep(0.2)
 

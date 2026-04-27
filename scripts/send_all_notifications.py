@@ -70,6 +70,7 @@ async def send_all_notifications():
         # 6. Daily summary
         print("6️⃣  Sending daily summary...")
         from datetime import UTC, datetime
+
         await notifier.send_daily_summary(
             total_pnl=245.75,
             trades_count=12,

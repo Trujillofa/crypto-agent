@@ -5,11 +5,11 @@ All tests verify that the safety layer is additive and transparent when disabled
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.execution.executor import TradingExecutor, TradingConfig
+from src.execution.executor import TradingConfig, TradingExecutor
 from src.execution.staged_orders import OrderStage, StagedOrderManager
 from src.risk.guards import (
     Guard,
