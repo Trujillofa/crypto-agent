@@ -335,8 +335,8 @@ class TestSpecializedAlerts:
             message = mock_send.call_args[0][0]
             assert "CLOSED BTCUSDT" in message
             assert "Take Profit" in message
-            assert "45000.0000" in message
-            assert "46000.0000" in message
+            assert "45000.00" in message
+            assert "46000.00" in message
             assert "+100.00" in message
             assert "$10,100.00" in message
 

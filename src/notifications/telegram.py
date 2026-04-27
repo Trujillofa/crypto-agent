@@ -212,6 +212,11 @@ class TelegramNotifier:
         entry_price: float | None = None,
         close_reason: str | None = None,
         balance: float | None = None,
+        order_id: str | None = None,
+        bars_held: int | None = None,
+        risk_amount: float | None = None,
+        live_pnl: float | None = None,
+        live_pnl_note: str | None = None,
     ) -> bool:
         """Send trade execution alert (entry or close).
 
@@ -228,14 +233,47 @@ class TelegramNotifier:
             reason_text = self._humanize_close_reason(close_reason) if close_reason else "Signal"
             pnl_sign = "+" if pnl >= 0 else ""
             pnl_emoji = "📈" if pnl >= 0 else "📉"
+            r_multiple: float | None = None
+            if risk_amount is not None and risk_amount > 0:
+                r_multiple = pnl / risk_amount
 
-            lines = [f"{side_emoji} <b>CLOSED {symbol}</b> — {market_label}\n"]
-            lines.append(f"🔒 Reason: {reason_text}")
+            price_decimals = self._price_decimals(entry_price if entry_price is not None else price)
+
+            lines = [f"🔴 <b>CLOSED {symbol}</b> — {market_label}", ""]
+            lines.append(f"✅ Reason: {reason_text}")
             if entry_price is not None:
-                lines.append(f"🎯 Entry:  {entry_price:.4f}")
-            lines.append(f"📤 Exit:   {price:.4f}")
-            lines.append(f"📦 Size:   {quantity:.6f} (${notional:.2f})")
-            lines.append(f"{pnl_emoji} P&L:    {pnl_sign}{pnl:.2f} USDT")
+                move_abs = price - entry_price
+                move_pct = (move_abs / entry_price * 100.0) if entry_price else 0.0
+                move_sign = "+" if move_abs >= 0 else ""
+                lines.append(f"🎯 Entry: {entry_price:.{price_decimals}f}")
+                lines.append(
+                    f"📤 Exit: {price:.{price_decimals}f} ({move_sign}{move_abs:.{price_decimals}f}, {move_pct:+.2f}%)"
+                )
+            else:
+                lines.append(f"📤 Exit: {price:.{price_decimals}f}")
+            lines.append(f"📦 Lots: {quantity:.6f}")
+
+            if r_multiple is not None:
+                r_sign = "+" if r_multiple >= 0 else ""
+                lines.append(
+                    f"{pnl_emoji} P&L: {r_sign}{r_multiple:.2f}R ({pnl_sign}{pnl:.2f} USDT)"
+                )
+            else:
+                lines.append(f"{pnl_emoji} P&L: {pnl_sign}{pnl:.2f} USDT")
+
+            if live_pnl is not None:
+                live_sign = "+" if live_pnl >= 0 else ""
+                note = f" ({live_pnl_note})" if live_pnl_note else ""
+                lines.append(f"💹 Live P&L: {live_sign}{live_pnl:.2f} USDT{note}")
+
+            if bars_held is not None and bars_held >= 0:
+                lines.append(f"⏱ Bars: {bars_held}")
+            else:
+                lines.append("⏱ Bars: n/a")
+            if order_id:
+                lines.append(f"🎫 Ticket: {escape(order_id)}")
+            else:
+                lines.append("🎫 Ticket: n/a")
             if balance is not None:
                 lines.append(f"💼 Balance: ${balance:,.2f}")
             lines.append(f"🕐 {ts}")
@@ -249,12 +287,26 @@ class TelegramNotifier:
             if take_profit is not None:
                 lines.append(f"✅ TP:    {take_profit:.4f}")
             lines.append(f"📦 Size:  {quantity:.6f} (${notional:.2f})")
+            if live_pnl is not None:
+                live_sign = "+" if live_pnl >= 0 else ""
+                note = f" ({live_pnl_note})" if live_pnl_note else ""
+                lines.append(f"💹 Live P&L: {live_sign}{live_pnl:.2f} USDT{note}")
             if balance is not None:
                 lines.append(f"💼 Balance: ${balance:,.2f}")
             lines.append(f"🕐 {ts}")
 
         message = "\n".join(lines)
         return await self.send_alert(message, AlertLevel.INFO)
+
+    @staticmethod
+    def _price_decimals(price: float | None) -> int:
+        if price is None or price <= 0:
+            return 4
+        if price >= 1000:
+            return 2
+        if price >= 10:
+            return 4
+        return 5
 
     async def send_daily_summary(
         self,
