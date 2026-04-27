@@ -604,10 +604,13 @@ class FuturesTradingExecutor:
                     )
                 else:
                     # New position or added to existing
+                    recorded_qty = (
+                        order.executed_quantity if order.executed_quantity > 0 else quantity
+                    )
                     if self._portfolio_manager is not None:
                         await self._portfolio_manager.open_position(
                             symbol=symbol,
-                            quantity=quantity,
+                            quantity=recorded_qty,
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
                             market="futures",
@@ -618,7 +621,7 @@ class FuturesTradingExecutor:
                         side,
                         symbol,
                         request_position_side,
-                        quantity,
+                        recorded_qty,
                         self._config.default_leverage,
                     )
 

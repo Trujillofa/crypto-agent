@@ -113,6 +113,43 @@ class TestFuturesTradingExecutor:
         assert "blocked" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
+    async def test_place_futures_order_records_executed_quantity_in_portfolio(self, executor):
+        """DB position quantity should match exchange filled quantity, not requested quantity."""
+        mock_client = MagicMock()
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.place_order = AsyncMock(
+            return_value=FuturesOrderInfo(
+                order_id="eth_fill_1",
+                symbol="ETHUSDT",
+                side="BUY",
+                position_side="LONG",
+                order_type="MARKET",
+                quantity=0.009670032130879488,
+                price=2276.25,
+                status="FILLED",
+                executed_quantity=0.009,
+                create_time=1234567890,
+                reduce_only=False,
+            )
+        )
+        executor._client = mock_client
+        executor._portfolio_manager = AsyncMock()
+
+        await executor.place_futures_order(
+            symbol="ETHUSDT",
+            side="BUY",
+            quantity=0.009670032130879488,
+            position_side="LONG",
+            reduce_only=False,
+        )
+
+        executor._portfolio_manager.open_position.assert_awaited_once()
+        open_kwargs = executor._portfolio_manager.open_position.await_args.kwargs
+        assert open_kwargs["quantity"] == pytest.approx(0.009)
+
+    @pytest.mark.asyncio
     async def test_on_signal_buy_opens_long(self, executor):
         """BUY signal opens LONG position and places SL/TP bracket orders."""
         mock_client = MagicMock()
