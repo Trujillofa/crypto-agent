@@ -12,7 +12,6 @@ from typing import Any
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
 from src.execution.futures_client import (
-    BinanceFuturesApiError,
     BinanceFuturesClient,
     FuturesOrderInfo,
 )
@@ -994,62 +993,22 @@ class FuturesTradingExecutor:
         quantity: float,
         position_side: str,
     ) -> str:
-        """Try to place a STOP_MARKET or TAKE_PROFIT_MARKET order.
+        """Place a STOP_MARKET or TAKE_PROFIT_MARKET order via Algo Order API.
 
-        On -4120 (order type not supported on this endpoint), falls back to the
-        limit-based equivalent (STOP / TAKE_PROFIT with GTC + reduceOnly). If that
-        also fails with -4120, marks _exchange_conditional_supported=False so
-        future calls skip the exchange entirely and rely on software monitoring.
-        Returns the order ID, or raises if both attempts fail.
+        Uses POST /fapi/v1/algoOrder (algoType=CONDitional) which replaces
+        the deprecated conditional orders on /fapi/v1/order (error -4120).
+
+        Returns the algo order ID, or raises on failure.
         """
-        try:
-            order = await self._client.place_order(
-                symbol=symbol,
-                side="SELL",
-                order_type=order_type,
-                close_position=True,
-                position_side=position_side,
-                stop_price=trigger_price,
-            )
-            return order.order_id
-        except BinanceFuturesApiError as exc:
-            if exc.code != -4120:
-                raise
-
-        # STOP_MARKET/TAKE_PROFIT_MARKET rejected — try limit-based equivalent.
-        # STOP: limit 0.5% below trigger for fill probability on fast drops.
-        # TAKE_PROFIT: limit at trigger (price is already favourable when triggered).
-        limit_type = "STOP" if order_type == "STOP_MARKET" else "TAKE_PROFIT"
-        limit_price = trigger_price * (0.995 if limit_type == "STOP" else 1.0)
-        self._logger.info(
-            "%s rejected (-4120) — retrying as %s limit for %s: trigger=%.4f limit=%.4f",
-            order_type,
-            limit_type,
-            symbol,
-            trigger_price,
-            limit_price,
+        order = await self._client.place_algo_order(
+            symbol=symbol,
+            side="SELL",
+            order_type=order_type,
+            trigger_price=trigger_price,
+            position_side=position_side,
+            close_position=True,
         )
-        try:
-            order = await self._client.place_order(
-                symbol=symbol,
-                side="SELL",
-                quantity=quantity,
-                order_type=limit_type,
-                reduce_only=True,
-                position_side=position_side,
-                stop_price=trigger_price,
-                limit_price=limit_price,
-            )
-            return order.order_id
-        except BinanceFuturesApiError as exc:
-            if exc.code == -4120:
-                # Both conditional order types rejected — disable exchange attempts permanently.
-                self._exchange_conditional_supported = False
-                self._logger.warning(
-                    "All conditional order types rejected (-4120) on this account. "
-                    "Software SL/TP monitor (30 s) will be sole protection."
-                )
-            raise
+        return order.algo_id
 
     async def _place_sl_tp_orders(
         self,
@@ -1116,6 +1075,8 @@ class FuturesTradingExecutor:
         self._sl_tp_orders[symbol] = {
             "sl_order_id": sl_order_id,
             "tp_order_id": tp_order_id,
+            "sl_is_algo": bool(sl_order_id),
+            "tp_is_algo": bool(tp_order_id),
         }
         self._logger.info(
             "SL/TP tracking active for %s: SL=%.4f TP=%.4f (exchange_sl=%s exchange_tp=%s)",
@@ -1133,23 +1094,27 @@ class FuturesTradingExecutor:
         tracked = self._sl_tp_orders.pop(symbol, None)
         if not tracked:
             return
-        for label, order_id in [
-            ("SL", tracked.get("sl_order_id")),
-            ("TP", tracked.get("tp_order_id")),
+        for label, order_id, is_algo in [
+            ("SL", tracked.get("sl_order_id"), tracked.get("sl_is_algo", False)),
+            ("TP", tracked.get("tp_order_id"), tracked.get("tp_is_algo", False)),
         ]:
-            if order_id:
-                try:
+            if not order_id:
+                continue
+            try:
+                if is_algo:
+                    await self._client.cancel_algo_order(order_id, symbol)
+                else:
                     await self._client.cancel_order(symbol, order_id)
-                    self._logger.info("Cancelled %s order %s for %s", label, order_id, symbol)
-                except Exception as exc:
-                    # Order may already be filled or cancelled by the exchange — fine
-                    self._logger.debug(
-                        "Cancel %s order %s for %s (may already be closed): %s",
-                        label,
-                        order_id,
-                        symbol,
-                        exc,
-                    )
+                self._logger.info("Cancelled %s algo order %s for %s", label, order_id, symbol)
+            except Exception as exc:
+                # Order may already be filled or cancelled by the exchange — fine
+                self._logger.debug(
+                    "Cancel %s order %s for %s (may already be closed): %s",
+                    label,
+                    order_id,
+                    symbol,
+                    exc,
+                )
 
     async def _fetch_latest_atr(self, symbol: str, timeframe: str) -> float:
         """Return the most recent ATR_14 for symbol+timeframe from the DB, or 0.0 on failure."""

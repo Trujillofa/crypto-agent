@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.execution.futures_client import (
+    AlgoOrderInfo,
     BinanceFuturesApiError,
     FuturesOrderInfo,
     FuturesPositionInfo,
@@ -39,6 +40,23 @@ def _make_order(
         executed_quantity=quantity,
         create_time=1234567890,
         reduce_only=reduce_only,
+    )
+
+
+def _make_algo_order(
+    algo_id: str = "algo_111",
+    symbol: str = "BTCUSDT",
+    side: str = "SELL",
+    order_type: str = "STOP_MARKET",
+    trigger_price: float = 49000.0,
+) -> AlgoOrderInfo:
+    return AlgoOrderInfo(
+        algo_id=algo_id,
+        symbol=symbol,
+        side=side,
+        order_type=order_type,
+        status="PENDING",
+        trigger_price=trigger_price,
     )
 
 
@@ -162,19 +180,15 @@ class TestFuturesTradingExecutor:
             )
         )
         mock_client.get_min_qty = MagicMock(return_value=None)
-        # Called 3 times: market entry + STOP_MARKET (SL) + TAKE_PROFIT_MARKET (TP)
         mock_client.place_order = AsyncMock(
             side_effect=[
                 _make_order(order_id="entry", side="BUY", status="FILLED"),
-                _make_order(
-                    order_id="sl_order", side="SELL", reduce_only=True, order_type="STOP_MARKET"
-                ),
-                _make_order(
-                    order_id="tp_order",
-                    side="SELL",
-                    reduce_only=True,
-                    order_type="TAKE_PROFIT_MARKET",
-                ),
+            ]
+        )
+        mock_client.place_algo_order = AsyncMock(
+            side_effect=[
+                _make_algo_order(algo_id="sl_order", order_type="STOP_MARKET"),
+                _make_algo_order(algo_id="tp_order", order_type="TAKE_PROFIT_MARKET"),
             ]
         )
         executor._client = mock_client
@@ -192,8 +206,9 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        # Three place_order calls: market entry + SL + TP
-        assert mock_client.place_order.call_count == 3
+        # Entry uses place_order, SL/TP use place_algo_order
+        assert mock_client.place_order.call_count == 1
+        assert mock_client.place_algo_order.call_count == 2
 
         # First call must be the market BUY entry
         entry_call = mock_client.place_order.call_args_list[0]
@@ -221,8 +236,12 @@ class TestFuturesTradingExecutor:
         mock_client.place_order = AsyncMock(
             side_effect=[
                 _make_order(order_id="entry", price=entry_price, status="FILLED"),
-                _make_order(order_id="sl_111", reduce_only=True),
-                _make_order(order_id="tp_222", reduce_only=True),
+            ]
+        )
+        mock_client.place_algo_order = AsyncMock(
+            side_effect=[
+                _make_algo_order(algo_id="sl_111", order_type="STOP_MARKET"),
+                _make_algo_order(algo_id="tp_222", order_type="TAKE_PROFIT_MARKET"),
             ]
         )
         executor._client = mock_client
@@ -240,17 +259,18 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        assert mock_client.place_order.call_count == 3
+        assert mock_client.place_order.call_count == 1
+        assert mock_client.place_algo_order.call_count == 2
 
-        sl_call = mock_client.place_order.call_args_list[1]
+        sl_call = mock_client.place_algo_order.call_args_list[0]
         assert sl_call.kwargs["order_type"] == "STOP_MARKET"
-        assert sl_call.kwargs["stop_price"] == entry_price - 2.0 * atr_14  # 680.0
+        assert sl_call.kwargs["trigger_price"] == entry_price - 2.0 * atr_14  # 680.0
         assert sl_call.kwargs["close_position"] is True
         assert sl_call.kwargs["position_side"] == "BOTH"  # one-way mode
 
-        tp_call = mock_client.place_order.call_args_list[2]
+        tp_call = mock_client.place_algo_order.call_args_list[1]
         assert tp_call.kwargs["order_type"] == "TAKE_PROFIT_MARKET"
-        assert tp_call.kwargs["stop_price"] == entry_price + 4.5 * atr_14  # 745.0
+        assert tp_call.kwargs["trigger_price"] == entry_price + 4.5 * atr_14  # 745.0
         assert tp_call.kwargs["close_position"] is True
         assert tp_call.kwargs["position_side"] == "BOTH"  # one-way mode
 
@@ -270,8 +290,12 @@ class TestFuturesTradingExecutor:
         mock_client.place_order = AsyncMock(
             side_effect=[
                 _make_order(order_id="entry", price=entry_price, status="FILLED"),
-                _make_order(order_id="sl_x", reduce_only=True),
-                _make_order(order_id="tp_x", reduce_only=True),
+            ]
+        )
+        mock_client.place_algo_order = AsyncMock(
+            side_effect=[
+                _make_algo_order(algo_id="sl_x", order_type="STOP_MARKET"),
+                _make_algo_order(algo_id="tp_x", order_type="TAKE_PROFIT_MARKET"),
             ]
         )
         executor._client = mock_client
@@ -289,13 +313,13 @@ class TestFuturesTradingExecutor:
 
         await executor.on_signal(signal)
 
-        sl_call = mock_client.place_order.call_args_list[1]
+        sl_call = mock_client.place_algo_order.call_args_list[0]
         assert sl_call.kwargs["order_type"] == "STOP_MARKET"
-        assert abs(sl_call.kwargs["stop_price"] - 970.0) < 0.01  # 1000 * (1 - 0.03)
+        assert abs(sl_call.kwargs["trigger_price"] - 970.0) < 0.01  # 1000 * (1 - 0.03)
 
-        tp_call = mock_client.place_order.call_args_list[2]
+        tp_call = mock_client.place_algo_order.call_args_list[1]
         assert tp_call.kwargs["order_type"] == "TAKE_PROFIT_MARKET"
-        assert abs(tp_call.kwargs["stop_price"] - 1060.0) < 0.01  # 1000 * (1 + 0.06)
+        assert abs(tp_call.kwargs["trigger_price"] - 1060.0) < 0.01  # 1000 * (1 + 0.06)
 
     @pytest.mark.asyncio
     async def test_buy_ignored_when_position_already_open(self, executor):
@@ -645,21 +669,21 @@ class TestFuturesTradingExecutor:
         executor._active_position_mode = "hedge"
 
         mock_client = MagicMock()
-        mock_client.place_order = AsyncMock(
+        mock_client.place_algo_order = AsyncMock(
             side_effect=[
-                _make_order(order_id="sl_h"),
-                _make_order(order_id="tp_h"),
+                _make_algo_order(algo_id="sl_h", order_type="STOP_MARKET"),
+                _make_algo_order(algo_id="tp_h", order_type="TAKE_PROFIT_MARKET"),
             ]
         )
         executor._client = mock_client
 
         await executor._place_sl_tp_orders("BTCUSDT", 1000.0, 0.01, 10.0)
 
-        sl_call = mock_client.place_order.call_args_list[0]
+        sl_call = mock_client.place_algo_order.call_args_list[0]
         assert sl_call.kwargs["position_side"] == "LONG"
         assert sl_call.kwargs["close_position"] is True
 
-        tp_call = mock_client.place_order.call_args_list[1]
+        tp_call = mock_client.place_algo_order.call_args_list[1]
         assert tp_call.kwargs["position_side"] == "LONG"
         assert tp_call.kwargs["close_position"] is True
 
@@ -684,10 +708,10 @@ class TestFuturesTradingExecutor:
 
         mock_client = MagicMock()
         mock_client.get_position_risk = mock_pos_risk
-        mock_client.place_order = AsyncMock(
+        mock_client.place_algo_order = AsyncMock(
             side_effect=[
-                _make_order(order_id="sl_r", order_type="STOP_MARKET"),
-                _make_order(order_id="tp_r", order_type="TAKE_PROFIT_MARKET"),
+                _make_algo_order(algo_id="sl_r", order_type="STOP_MARKET"),
+                _make_algo_order(algo_id="tp_r", order_type="TAKE_PROFIT_MARKET"),
             ]
         )
         executor._client = mock_client
@@ -695,7 +719,7 @@ class TestFuturesTradingExecutor:
         await executor._recover_open_positions()
 
         # SL + TP placed for the open BTCUSDT position only
-        assert mock_client.place_order.call_count == 2
+        assert mock_client.place_algo_order.call_count == 2
         assert "BTCUSDT" in executor._sl_tp_orders
         assert executor._sl_tp_orders["BTCUSDT"]["sl_order_id"] == "sl_r"
         assert executor._sl_tp_orders["BTCUSDT"]["tp_order_id"] == "tp_r"

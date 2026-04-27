@@ -33,6 +33,19 @@ class FuturesOrderInfo:
 
 
 @dataclass(frozen=True)
+class AlgoOrderInfo:
+    """Information about a Binance futures algo order (SL/TP via Algo API)."""
+
+    algo_id: str
+    symbol: str
+    side: str
+    order_type: str  # "STOP_MARKET", "TAKE_PROFIT_MARKET", etc.
+    status: str  # "PENDING", "TRIGGERED", "CANCELLED", etc.
+    trigger_price: float
+    client_algo_id: str = ""
+
+
+@dataclass(frozen=True)
 class FuturesPositionInfo:
     """Information about a futures position."""
 
@@ -567,3 +580,150 @@ class BinanceFuturesClient:
             },
             signed=True,
         )
+
+    # ── Algo Order API (SL/TP via CONDitional orders) ──────────────────
+
+    async def place_algo_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        trigger_price: float,
+        position_side: str = "BOTH",
+        close_position: bool = True,
+        quantity: float = 0.0,
+        reduce_only: bool = False,
+        client_algo_id: str = "",
+    ) -> AlgoOrderInfo:
+        """Place a conditional algo order (STOP_MARKET / TAKE_PROFIT_MARKET).
+
+        Uses the Binance Algo Order API endpoint POST /fapi/v1/algoOrder
+        which replaces the deprecated conditional orders on /fapi/v1/order
+        (error -4120).
+
+        Args:
+            symbol: Trading pair (e.g., "BTCUSDT")
+            side: "BUY" or "SELL"
+            order_type: "STOP_MARKET" or "TAKE_PROFIT_MARKET"
+            trigger_price: Price at which the algo order triggers
+            position_side: "BOTH" (one-way) or "LONG"/"SHORT" (hedge mode)
+            close_position: Close entire position on trigger (default True)
+            quantity: Order quantity (ignored when close_position=True)
+            reduce_only: Partial-close flag (ignored when close_position=True)
+            client_algo_id: Optional user-supplied algo order ID
+
+        Returns:
+            AlgoOrderInfo with algo_id and status.
+        """
+        params: dict[str, Any] = {
+            "algoType": "CONDitional",
+            "symbol": symbol,
+            "side": side,
+            "type": order_type,
+            "triggerPrice": self.format_price(symbol, trigger_price),
+            "positionSide": position_side,
+            "workingType": "MARK_PRICE",
+            "priceProtect": "TRUE",
+        }
+
+        if close_position:
+            params["closePosition"] = "true"
+        else:
+            formatted_qty = self.format_quantity(symbol, quantity)
+            if formatted_qty == "0":
+                raise BinanceFuturesApiError(-1, f"Quantity {quantity} below minimum for {symbol}")
+            params["quantity"] = formatted_qty
+            if reduce_only:
+                params["reduceOnly"] = "true"
+
+        if client_algo_id:
+            params["clientAlgoId"] = client_algo_id
+
+        data = await self._request("POST", "/fapi/v1/algoOrder", params=params, signed=True)
+
+        return AlgoOrderInfo(
+            algo_id=str(data.get("algoId", "")),
+            symbol=data.get("symbol", symbol),
+            side=data.get("side", side),
+            order_type=data.get("type", order_type),
+            status=data.get("status", "PENDING"),
+            trigger_price=trigger_price,
+            client_algo_id=data.get("clientAlgoId", client_algo_id),
+        )
+
+    async def cancel_algo_order(self, algo_id: str, symbol: str) -> dict[str, Any]:
+        """Cancel an active algo order.
+
+        Endpoint: DELETE /fapi/v1/algoOrder
+
+        Args:
+            algo_id: The algo order ID returned by place_algo_order.
+            symbol: Trading pair (e.g., "BTCUSDT")
+
+        Returns:
+            API response with cancellation details.
+        """
+        return await self._request(
+            "DELETE",
+            "/fapi/v1/algoOrder",
+            params={"algoId": algo_id, "symbol": symbol},
+            signed=True,
+        )
+
+    async def get_algo_order_status(self, algo_id: str, symbol: str) -> AlgoOrderInfo:
+        """Query a single algo order's status.
+
+        Endpoint: GET /fapi/v1/algoOrder
+
+        Args:
+            algo_id: The algo order ID to query.
+            symbol: Trading pair.
+
+        Returns:
+            AlgoOrderInfo with current status.
+        """
+        data = await self._request(
+            "GET",
+            "/fapi/v1/algoOrder",
+            params={"algoId": algo_id, "symbol": symbol},
+            signed=True,
+        )
+        # Response may be a list or a single object depending on Binance version
+        entry = data[0] if isinstance(data, list) and data else data
+        return AlgoOrderInfo(
+            algo_id=str(entry.get("algoId", algo_id)),
+            symbol=entry.get("symbol", symbol),
+            side=entry.get("side", ""),
+            order_type=entry.get("type", ""),
+            status=entry.get("status", "UNKNOWN"),
+            trigger_price=float(entry.get("triggerPrice", 0)),
+            client_algo_id=entry.get("clientAlgoId", ""),
+        )
+
+    async def get_open_algo_orders(self) -> list[AlgoOrderInfo]:
+        """List all currently open algo orders.
+
+        Endpoint: GET /fapi/v1/openAlgoOrders
+
+        Returns:
+            List of AlgoOrderInfo for all open algo orders.
+        """
+        data = await self._request(
+            "GET",
+            "/fapi/v1/openAlgoOrders",
+            params={},
+            signed=True,
+        )
+        orders = data if isinstance(data, list) else data.get("orders", [])
+        return [
+            AlgoOrderInfo(
+                algo_id=str(o.get("algoId", "")),
+                symbol=o.get("symbol", ""),
+                side=o.get("side", ""),
+                order_type=o.get("type", ""),
+                status=o.get("status", "PENDING"),
+                trigger_price=float(o.get("triggerPrice", 0)),
+                client_algo_id=o.get("clientAlgoId", ""),
+            )
+            for o in orders
+        ]
