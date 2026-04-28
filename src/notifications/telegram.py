@@ -384,7 +384,7 @@ class TelegramNotifier:
                     f"• <b>{escape(symbol)}</b>: {symbol_trades} trades, {symbol_wins} wins, {symbol_sign}{symbol_pnl:.2f} USDT"
                 )
 
-        if largest_win and trades_count > 0:
+        if largest_win and trades_count > 0 and float(largest_win.get("pnl", 0.0)) > 0:
             lines.append("")
             lines.append(
                 f"🏆 Best Trade: <b>{escape(str(largest_win.get('symbol', '?')))}</b> {float(largest_win.get('pnl', 0.0)):+.2f} USDT"

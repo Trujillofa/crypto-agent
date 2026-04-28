@@ -28,15 +28,22 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+
+          # Verify Tailscale can reach the host before attempting SSH
+          echo "Pinging $SSH_HOST via Tailscale..."
+          tailscale ping --c 3 "$SSH_HOST" || { echo "Tailscale cannot reach $SSH_HOST — check HETZNER_TAILSCALE_HOST secret and server Tailscale status"; exit 1; }
+
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@$SSH_HOST << 'DEPLOY'
           cd /opt/crypto-agent
           git fetch origin main
           git pull --ff-only origin main
-          docker compose -f docker-compose.prod.yml up -d --build
-          sleep 30
-          # Check for any unhealthy containers. Fail the deploy if found.
-          if docker compose -f docker-compose.prod.yml ps | grep "unhealthy"; then
-            echo "Error: One or more containers are unhealthy."
+          # Rebuild only agent containers; leave DB/monitoring untouched
+          docker compose -f docker-compose.prod.yml up -d --build agent_sol_sparse agent_sentiment_macro agent_avax
+          sleep 120
+          # Check for any unhealthy agent containers. Fail the deploy if found.
+          if docker compose -f docker-compose.prod.yml ps agent_sol_sparse agent_sentiment_macro agent_avax | grep "unhealthy"; then
+            echo "Error: One or more agent containers are unhealthy."
+            docker compose -f docker-compose.prod.yml ps
             exit 1
           fi
           docker image prune -f
@@ -51,7 +58,7 @@ jobs:
           message: |
             ✅ Deployment Successful!
             Repo: ${{ github.repository }}
-            7 agents are running and healthy.
+            3 agents are running and healthy: agent_sol_sparse, agent_sentiment_macro, agent_avax
 
       - name: Send Telegram Notification on Failure
         if: failure()
