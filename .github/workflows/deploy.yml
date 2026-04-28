@@ -31,7 +31,7 @@ jobs:
 
           # Verify Tailscale can reach the host before attempting SSH
           echo "Pinging $SSH_HOST via Tailscale..."
-          tailscale ping --c 3 "$SSH_HOST" || { echo "Tailscale cannot reach $SSH_HOST — check HETZNER_TAILSCALE_HOST secret and server Tailscale status"; exit 1; }
+          tailscale ping --timeout 10s "$SSH_HOST" || { echo "Tailscale cannot reach $SSH_HOST — check HETZNER_TAILSCALE_HOST secret and server Tailscale status"; exit 1; }
 
           ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@$SSH_HOST << 'DEPLOY'
           cd /opt/crypto-agent
