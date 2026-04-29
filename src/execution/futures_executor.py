@@ -623,6 +623,10 @@ class FuturesTradingExecutor:
                         recorded_qty,
                         self._config.default_leverage,
                     )
+                    # Immediately reflect filled qty so max_concurrent_longs guard
+                    # works within the same evaluation cycle (before next monitoring tick).
+                    self._positions[symbol]["amount"] = recorded_qty
+                    self._positions[symbol]["side"] = "LONG"
 
             return order
 
@@ -982,7 +986,8 @@ class FuturesTradingExecutor:
         if step > 0:
             truncated = math.floor(raw_qty / step) * step
             if truncated * price < _MIN_NOTIONAL:
-                raw_qty = truncated + step
+                return truncated + step
+            return truncated
         return raw_qty
 
     async def _place_exchange_conditional(

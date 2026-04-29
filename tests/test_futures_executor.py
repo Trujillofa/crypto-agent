@@ -655,6 +655,24 @@ class TestFuturesTradingExecutor:
         assert qty == pytest.approx(0.009)  # 0.008 + 0.001 step
         assert qty * 2340.0 >= 20.0
 
+    def test_calculate_quantity_truncates_to_step_when_notional_is_sufficient(self, executor):
+        """_calculate_quantity returns LOT_SIZE-truncated value, not the raw float."""
+        # raw = 22 / 2350 = 0.009361..., truncated to 0.001 step = 0.009 → $21.15 >= $20
+        # Must return 0.009, not the raw 0.009361
+        mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.001
+        executor._client = mock_client
+        executor._config = FuturesTradingConfig(
+            api_key="test_key",
+            api_secret="test_secret",
+            test_mode=True,
+            enabled=True,
+            symbols=["ETHUSDT"],
+            order_size_usdt=22.0,
+        )
+        qty = executor._calculate_quantity("ETHUSDT", 2350.0)
+        assert qty == pytest.approx(0.009)  # truncated, not 0.009361
+
     def test_calculate_quantity_zero_price_returns_zero(self, executor):
         """_calculate_quantity returns 0.0 when price is zero or negative."""
         mock_client = MagicMock()
@@ -982,3 +1000,64 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["position_side"] == "BOTH"  # one-way mode
         assert call_kwargs["reduce_only"] is True
         assert call_kwargs["quantity"] == 0.01  # Agent-owned quantity
+
+    @pytest.mark.asyncio
+    async def test_max_concurrent_longs_blocks_second_buy_in_same_cycle(self, executor):
+        """max_concurrent_longs=1 must block a second BUY within the same evaluation cycle.
+
+        Regression test: positions[symbol] was initialized to {} after a fill, so
+        .get("amount", 0) returned 0 and all symbols bypassed the guard in one cycle.
+        """
+        executor._config = FuturesTradingConfig(
+            api_key="test_key",
+            api_secret="test_secret",
+            test_mode=True,
+            enabled=True,
+            symbols=["BTCUSDT", "ETHUSDT"],
+            order_size_usdt=22.0,
+            max_concurrent_longs=1,
+        )
+
+        mock_client = MagicMock()
+        mock_client.get_step_size.return_value = 0.001
+        mock_client.get_min_qty.return_value = None
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=10000.0, available_balance=5000.0)
+        )
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.get_open_algo_orders = AsyncMock(return_value=[])
+        mock_client.get_positions = AsyncMock(return_value=[])
+        mock_client.set_leverage = AsyncMock(return_value=None)
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(symbol="BTCUSDT", quantity=0.001)
+        )
+        mock_client.place_algo_order = AsyncMock(return_value=_make_algo_order())
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+        executor._portfolio_manager = None
+
+        btc_buy = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=76000.0,
+            confidence=0.8,
+            reason="oversold",
+            indicators={"atr_14": 500.0},
+            trading_mode="futures",
+        )
+        eth_buy = Signal(
+            type=SignalType.BUY,
+            symbol="ETHUSDT",
+            price=2300.0,
+            confidence=0.8,
+            reason="oversold",
+            indicators={"atr_14": 50.0},
+            trading_mode="futures",
+        )
+
+        await executor.on_signal(btc_buy)
+        await executor.on_signal(eth_buy)
+
+        # Only one BUY order should have been placed
+        assert mock_client.place_order.call_count == 1
+        assert mock_client.place_order.call_args.kwargs["symbol"] == "BTCUSDT"
