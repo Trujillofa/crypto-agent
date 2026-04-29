@@ -206,10 +206,10 @@ class OverseerAgent:
                 tp = float(pos["tp_price"])
                 upnl_sign = "+" if upnl >= 0 else ""
                 lines.append(
-                    f"<b>{sym}</b>  {qty:.4g} @ {entry:.4g} → {mark:.4g}  ({upnl_sign}{upnl:.2f})"
+                    f"<b>{sym}</b>  {qty:.4g} @ {entry:.6g} → {mark:.6g}  ({upnl_sign}{upnl:.2f})"
                 )
                 if sl > 0 or tp > 0:
-                    lines.append(f"  SL: {sl:.4g}  TP: {tp:.4g}")
+                    lines.append(f"  SL: {sl:.6g}  TP: {tp:.6g}")
 
         lines += [
             "",
