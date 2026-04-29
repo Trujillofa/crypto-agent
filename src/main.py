@@ -1139,6 +1139,8 @@ async def run() -> None:
         context_managers.append(trading_executor)
     if futures_executor:
         context_managers.extend([futures_executor, futures_ingestor])
+        if overseer_agent is not None:
+            overseer_agent.set_futures_executor(futures_executor)
 
     # Nested async context managers
     async with contextlib.AsyncExitStack() as stack:

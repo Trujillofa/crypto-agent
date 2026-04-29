@@ -84,6 +84,7 @@ class FuturesTradingExecutor:
         # Software SL/TP monitor (30 s) acts as sole protection in that case.
         self._exchange_conditional_supported: bool = True
         self._sl_cooldown_timestamps: dict[str, float] = {}  # symbol → Unix time of last SL close
+        self._account_balance: float = 0.0
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -254,6 +255,7 @@ class FuturesTradingExecutor:
         # Get account info
         try:
             account_info = await self._client.get_account_info()
+            self._account_balance = account_info.total_margin_balance
             self._metrics.update_account_balance(
                 total_wallet=account_info.total_margin_balance,
                 available=account_info.available_balance,
@@ -1160,6 +1162,35 @@ class FuturesTradingExecutor:
                     )
             except Exception as exc:
                 self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)
+
+    def get_live_status(self) -> dict[str, object]:
+        """Return cached live futures data for the overseer status command.
+
+        Uses in-memory state refreshed every 30 s by the monitor loop — no
+        extra API call on each /status request.
+        """
+        positions = []
+        for symbol, pos in self._positions.items():
+            amount = float(pos.get("amount", 0))
+            if amount <= 0:
+                continue
+            sl_tp = self._sl_tp_prices.get(symbol, {})
+            positions.append(
+                {
+                    "symbol": symbol,
+                    "qty": amount,
+                    "entry_price": float(pos.get("entry_price", 0)),
+                    "mark_price": float(pos.get("mark_price", 0)),
+                    "unrealized_pnl": float(pos.get("unrealized_pnl", 0)),
+                    "leverage": int(pos.get("leverage", self._config.default_leverage)),
+                    "sl_price": float(sl_tp.get("sl_price", 0.0)),
+                    "tp_price": float(sl_tp.get("tp_price", 0.0)),
+                }
+            )
+        return {
+            "account_balance": self._account_balance,
+            "positions": positions,
+        }
 
     def stop(self) -> None:
         """Stop the futures trading loop."""

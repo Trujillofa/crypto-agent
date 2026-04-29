@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from src.notifications.telegram import AlertLevel, TelegramNotifier, TelegramPollingConflict
 from src.overseer.prompts import build_system_prompt
@@ -10,6 +11,9 @@ from src.overseer.xai import XAIClient
 from src.portfolio.manager import PortfolioManager
 from src.risk.manager import RiskManager
 from src.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from src.execution.futures_executor import FuturesTradingExecutor
 
 _KNOWN_COMMANDS = ["/status", "/risk", "/positions", "/reset", "/ask", "/help"]
 
@@ -42,6 +46,7 @@ class OverseerAgent:
         self._running = False
         self._offset: int | None = None
         self._chat_history: dict[str, list[dict[str, str]]] = {}
+        self._futures_executor: FuturesTradingExecutor | None = None
 
     async def run(self) -> None:
         self._running = True
@@ -76,6 +81,9 @@ class OverseerAgent:
 
     def stop(self) -> None:
         self._running = False
+
+    def set_futures_executor(self, executor: FuturesTradingExecutor) -> None:
+        self._futures_executor = executor
 
     async def _handle_update(self, update: dict[str, object]) -> None:
         message = update.get("message")
@@ -161,18 +169,58 @@ class OverseerAgent:
         pnl_sign = "+" if summary.total_realized_pnl >= 0 else ""
         ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
-        return (
-            f"{kill_emoji} <b>{self._agent_id}</b> — {mode_label}\n"
-            f"\n"
-            f"💼 Realized P&L: {pnl_sign}{summary.total_realized_pnl:.2f} USDT\n"
-            f"📂 Positions: {summary.open_positions} open\n"
-            f"🛡 Kill Switch: {kill_switch}\n"
-            f"⚡ Breakers: {breakers}\n"
-            f"\n"
-            f"📈 Last Trade: {last_trade_text}\n"
-            f"🔢 Lifetime:  {summary.total_trades} trades\n"
-            f"🕐 {ts}"
+        # Live futures data (cached from 30 s monitor loop — no extra API call)
+        live = self._futures_executor.get_live_status() if self._futures_executor else None
+        live_positions: list[dict[str, object]] = (
+            live["positions"] if live else []  # type: ignore[index]
         )
+        account_balance: float = float(live["account_balance"]) if live else 0.0
+
+        # Unrealized P&L across all open positions
+        total_unrealized = sum(float(p["unrealized_pnl"]) for p in live_positions)
+        open_count = len(live_positions) if live_positions else summary.open_positions
+
+        lines = [
+            f"{kill_emoji} <b>{self._agent_id}</b> — {mode_label}",
+            "",
+            f"💼 Realized P&L: {pnl_sign}{summary.total_realized_pnl:.2f} USDT",
+        ]
+
+        if live is not None:
+            unreal_sign = "+" if total_unrealized >= 0 else ""
+            lines.append(f"📊 Unrealized: {unreal_sign}{total_unrealized:.2f} USDT")
+            if account_balance > 0:
+                lines.append(f"💰 Wallet: {account_balance:.2f} USDT")
+
+        lines.append(f"📂 Positions: {open_count} open")
+
+        if live_positions:
+            lines.append("")
+            for pos in live_positions:
+                sym = str(pos["symbol"]).replace("USDT", "")
+                qty = float(pos["qty"])
+                entry = float(pos["entry_price"])
+                mark = float(pos["mark_price"])
+                upnl = float(pos["unrealized_pnl"])
+                sl = float(pos["sl_price"])
+                tp = float(pos["tp_price"])
+                upnl_sign = "+" if upnl >= 0 else ""
+                lines.append(
+                    f"<b>{sym}</b>  {qty:.4g} @ {entry:.4g} → {mark:.4g}  ({upnl_sign}{upnl:.2f})"
+                )
+                if sl > 0 or tp > 0:
+                    lines.append(f"  SL: {sl:.4g}  TP: {tp:.4g}")
+
+        lines += [
+            "",
+            f"🛡 Kill Switch: {kill_switch}",
+            f"⚡ Breakers: {breakers}",
+            "",
+            f"📈 Last Trade: {last_trade_text}",
+            f"🔢 Lifetime:  {summary.total_trades} trades",
+            f"🕐 {ts}",
+        ]
+        return "\n".join(lines)
 
     def _cmd_risk(self) -> str:
         risk = self._risk_manager.get_risk_summary()
