@@ -488,6 +488,17 @@ class RiskManager:
 
         return True, "Trading allowed"
 
+    def is_close_allowed(self) -> tuple[bool, str]:
+        """Check if closing an existing position is allowed.
+
+        Kill switch and circuit breakers protect against new risk — closing reduces it.
+        Only a reconciliation block is respected because mismatched position data makes
+        any close unsafe (we may not be closing what we think we are).
+        """
+        if self._reconciliation_block:
+            return False, f"Reconciliation block: {self._reconciliation_block}"
+        return True, "Close allowed"
+
     def set_reconciliation_block(self, reason: str) -> None:
         """Block trading due to reconciliation divergence."""
         self._reconciliation_block = reason

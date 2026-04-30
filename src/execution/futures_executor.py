@@ -488,8 +488,15 @@ class FuturesTradingExecutor:
         if not self._config.enabled:
             raise RuntimeError("Futures trading executor is disabled")
 
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        if reduce_only and side != "SELL":
+            raise ValueError(f"reduce_only=True is only valid for SELL orders, got side={side!r}")
+
+        # Close orders only block on reconciliation; kill switch / circuit breakers protect against
+        # new risk and must not trap the account in an open losing position.
+        if reduce_only:
+            is_allowed, reason = self._risk_manager.is_close_allowed()
+        else:
+            is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             self._metrics.record_risk_block(symbol, reason)
             raise RuntimeError(f"Futures trading blocked: {reason}")
@@ -509,21 +516,22 @@ class FuturesTradingExecutor:
             self._metrics.record_risk_block(symbol, leverage_reason)
             raise RuntimeError(f"Leverage check failed: {leverage_reason}")
 
-        # Check margin usage
-        current_positions = self._positions.get(symbol, {})
-        used_margin = (
-            abs(current_positions.get("amount", 0))
-            * current_positions.get("entry_price", 0)
-            / current_positions.get("leverage", 1)
-        )
+        # Check margin usage — skip for reduce-only orders (closing frees margin, never consumes it)
+        if not reduce_only:
+            current_positions = self._positions.get(symbol, {})
+            used_margin = (
+                abs(current_positions.get("amount", 0))
+                * current_positions.get("entry_price", 0)
+                / current_positions.get("leverage", 1)
+            )
 
-        margin_allowed, margin_reason = self._risk_manager.check_margin_usage(
-            used_margin=used_margin,
-            available_balance=account_info.available_balance,
-        )
-        if not margin_allowed:
-            self._metrics.record_risk_block(symbol, margin_reason)
-            raise RuntimeError(f"Margin check failed: {margin_reason}")
+            margin_allowed, margin_reason = self._risk_manager.check_margin_usage(
+                used_margin=used_margin,
+                available_balance=account_info.available_balance,
+            )
+            if not margin_allowed:
+                self._metrics.record_risk_block(symbol, margin_reason)
+                raise RuntimeError(f"Margin check failed: {margin_reason}")
 
         request_position_side = "BOTH" if self._active_position_mode == "one-way" else position_side
         # In hedge mode, closing is conveyed via positionSide=LONG/SHORT + opposite side;

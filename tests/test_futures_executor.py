@@ -82,6 +82,7 @@ class TestFuturesTradingExecutor:
         """Create executor with mocked dependencies."""
         risk_manager = MagicMock(spec=RiskManager)
         risk_manager.is_trading_allowed.return_value = (True, "OK")
+        risk_manager.is_close_allowed.return_value = (True, "OK")
         risk_manager.check_max_leverage.return_value = (True, "OK")
         risk_manager.check_margin_usage.return_value = (True, "OK")
         risk_manager.check_liquidation_buffer.return_value = (True, "OK")
