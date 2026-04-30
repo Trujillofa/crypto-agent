@@ -61,6 +61,7 @@ docs/reports/config-search-*.csv
 docs/reports/config-search-*.json
 docs/reports/production-drift-sentinel-*.md
 docs/reports/production-drift-sentinel-*.json
+docs/reports/*-wfo-*.json
 
 # Docker volumes / local state
 *.log
