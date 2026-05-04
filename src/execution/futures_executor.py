@@ -85,6 +85,7 @@ class FuturesTradingExecutor:
         self._exchange_conditional_supported: bool = True
         self._sl_cooldown_timestamps: dict[str, float] = {}  # symbol → Unix time of last SL close
         self._account_balance: float = 0.0
+        self._recent_close_pnl: dict[str, float] = {}  # symbol → net realized PnL of last close
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -346,9 +347,10 @@ class FuturesTradingExecutor:
                         if tracked_position is not None:
                             bars_held = self._estimate_bars_held(tracked_position.entry_time)
 
+                    realized_pnl: float | None = None
                     if self._portfolio_manager is not None and last_mark > 0:
                         try:
-                            await self._portfolio_manager.close_position(
+                            _, realized_pnl = await self._portfolio_manager.close_position(
                                 symbol=symbol,
                                 price=last_mark,
                                 market="futures",
@@ -358,7 +360,11 @@ class FuturesTradingExecutor:
                             pass  # position not in DB (recovered or pre-tracking)
 
                     if entry_px > 0 and qty > 0 and last_mark > 0:
-                        pnl = (last_mark - entry_px) * qty
+                        pnl = (
+                            realized_pnl
+                            if realized_pnl is not None
+                            else (last_mark - entry_px) * qty
+                        )
                         await self._notifier.send_trade_alert(
                             symbol=symbol,
                             side="SELL",
@@ -422,9 +428,13 @@ class FuturesTradingExecutor:
                                 "Software %s close order placed for %s", reason_str, symbol
                             )
                             # Record close in portfolio DB
+                            sw_realized_pnl: float | None = None
                             if self._portfolio_manager is not None:
                                 try:
-                                    await self._portfolio_manager.close_position(
+                                    (
+                                        _,
+                                        sw_realized_pnl,
+                                    ) = await self._portfolio_manager.close_position(
                                         symbol=symbol,
                                         price=mark,
                                         market="futures",
@@ -438,7 +448,10 @@ class FuturesTradingExecutor:
                                 and self._config.sl_cooldown_minutes > 0
                             ):
                                 self._sl_cooldown_timestamps[symbol] = time.time()
-                            pnl = (mark - sw_entry_px) * qty if sw_entry_px > 0 else None
+                            if sw_realized_pnl is not None:
+                                pnl = sw_realized_pnl
+                            else:
+                                pnl = (mark - sw_entry_px) * qty if sw_entry_px > 0 else None
                             await self._notifier.send_trade_alert(
                                 symbol=symbol,
                                 side="SELL",
@@ -598,13 +611,14 @@ class FuturesTradingExecutor:
                 if reduce_only:
                     # Position was reduced/closed
                     if self._portfolio_manager is not None:
-                        await self._portfolio_manager.close_position(
+                        _, _close_pnl = await self._portfolio_manager.close_position(
                             symbol=symbol,
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
                             market="futures",
                             closing_side=side,
                         )
+                        self._recent_close_pnl[symbol] = _close_pnl
                     self._logger.info(
                         "Futures position closed: %s %s (qty: %.4f)",
                         side,
@@ -939,7 +953,12 @@ class FuturesTradingExecutor:
                         else agent_position_qty
                     )
                     filled_price = float(order.price) if order.price else signal.price
-                    pnl = (filled_price - exchange_entry_price) * filled_quantity
+                    stashed_pnl = self._recent_close_pnl.pop(signal.symbol, None)
+                    pnl = (
+                        stashed_pnl
+                        if stashed_pnl is not None
+                        else (filled_price - exchange_entry_price) * filled_quantity
+                    )
                     bars_held = (
                         self._estimate_bars_held(agent_pos.entry_time) if agent_pos else None
                     )

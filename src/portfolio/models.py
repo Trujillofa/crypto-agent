@@ -61,7 +61,7 @@ class Position:
     liquidation_price: float | None = None  # Calculated, None for spot
     mark_price: float | None = None  # Last mark price update, None for spot
     funding_fees: float = 0.0  # Accumulated funding, 0 for spot
-    fee_rate: float = 0.001
+    fee_rate: float = 0.0004
 
     @property
     def is_open(self) -> bool:
