@@ -342,8 +342,8 @@ class TestSpecializedAlerts:
             assert "+2.22%" in message
             assert "Lots:" in message
             assert "+100.00" in message
-            assert "Bars: n/a" in message
-            assert "Ticket: n/a" in message
+            assert "Bars:" not in message
+            assert "Ticket:" not in message
             assert "$10,100.00" in message
 
     @pytest.mark.asyncio

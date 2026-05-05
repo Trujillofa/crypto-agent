@@ -974,6 +974,7 @@ async def run() -> None:
                 "trading_execution.exit_rules.time_stop_minutes",
                 default=240.0,
             ),
+            timeframe=settings.timeframe,
         )
         paper_executor = PaperExecutor(
             config=paper_config,

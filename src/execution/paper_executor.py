@@ -76,6 +76,7 @@ class PaperTradingConfig:
     risk_per_trade_pct: float = 0.02  # fraction of equity risked per trade
     # Paper/live parity
     allow_short_entry: bool = False  # match LONG-only MVP behavior of live futures
+    timeframe: str = ""  # e.g. "1h", "4h" — used to compute bars_held for close alerts
 
 
 class PaperExecutor:
@@ -1294,6 +1295,7 @@ class PaperExecutor:
         )
         self._metrics.record_order_filled(signal.symbol, "SELL")
 
+        bars_held = self._estimate_bars_held(position.open_time)
         await self._notifier.send_trade_alert(
             symbol=signal.symbol,
             side=close_side,
@@ -1304,8 +1306,29 @@ class PaperExecutor:
             entry_price=position.entry_price,
             close_reason=signal.reason,
             balance=self._balance,
+            bars_held=bars_held,
+            ticket_id=f"PAPER-{self._trade_count}",
         )
         return True
+
+    def _timeframe_seconds(self) -> int:
+        tf = (self._config.timeframe or "").strip().lower()
+        if tf.endswith("m"):
+            return int(tf[:-1]) * 60
+        if tf.endswith("h"):
+            return int(tf[:-1]) * 3600
+        if tf.endswith("d"):
+            return int(tf[:-1]) * 86400
+        return 0
+
+    def _estimate_bars_held(self, open_time_ts: float) -> int | None:
+        tf_seconds = self._timeframe_seconds()
+        if tf_seconds <= 0:
+            return None
+        elapsed = time.time() - open_time_ts
+        if elapsed < 0:
+            return 0
+        return int(elapsed // tf_seconds)
 
     def get_positions(self) -> dict[str, Any]:
         """Return current positions for status reporting."""

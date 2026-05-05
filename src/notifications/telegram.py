@@ -271,13 +271,9 @@ class TelegramNotifier:
 
             if bars_held is not None and bars_held >= 0:
                 lines.append(f"⏱ Bars: {bars_held}")
-            else:
-                lines.append("⏱ Bars: n/a")
             ticket = order_id or ticket_id
             if ticket:
                 lines.append(f"🎫 Ticket: {escape(ticket)}")
-            else:
-                lines.append("🎫 Ticket: n/a")
             if balance is not None:
                 lines.append(f"💼 Balance: ${balance:,.2f}")
             lines.append(f"🕐 {ts}")
