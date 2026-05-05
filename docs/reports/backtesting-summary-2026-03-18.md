@@ -1,6 +1,8 @@
 # Backtesting Summary
 
 **Date:** 2026-03-18
+**Latest follow-up:** [backtesting-follow-up-2026-05-05.md](backtesting-follow-up-2026-05-05.md)
+
 **Primary sources:**
 - [research/results.tsv](/home/yderf/TRADING/crypto-agent/research/results.tsv)
 - [experiment-autopilot-20260311-213200-679389-427c4d-20260311-163201.json](/home/yderf/TRADING/crypto-agent/research/archive/experiment-autopilot-20260311-213200-679389-427c4d-20260311-163201.json)
@@ -124,13 +126,14 @@ That result was encouraging, but the report itself correctly marked it as too sp
 
 ## Current Recommendation
 
-The research-backed preset remains [settings.sol_trend_pullback_sparse.yaml](/home/yderf/TRADING/crypto-agent/config/settings.sol_trend_pullback_sparse.yaml). It should be treated as:
+The research-backed preset remains [settings.sol_trend_pullback_sparse.yaml](/home/yderf/TRADING/crypto-agent/config/settings.sol_trend_pullback_sparse.yaml), but the May 2026 refresh documented in [backtesting-follow-up-2026-05-05.md](backtesting-follow-up-2026-05-05.md) failed the sparse gate narrowly. It should be treated as:
 
 - valid for paper trading on `SOLUSDT 4h`
 - evaluated under `3/2` walk-forward windows
 - judged with the `sparse_trend_3_2` gate profile
+- not ready for promotion without fresh validation
 
-It should not be generalized to BTC or BNB without fresh evidence.
+It should not be generalized to BTC or BNB without fresh evidence. The next recommended research step is a narrow `SOLUSDT 4h` long-only MA neighborhood and exit-model sweep, not cross-symbol promotion.
 
 ## Caveats
 
