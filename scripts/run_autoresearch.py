@@ -122,6 +122,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Pass through to experiment_autopilot",
     )
+    parser.add_argument(
+        "--replay-sentiment-log",
+        help="Path to event_log JSONL with sentiment_score events for replay",
+    )
+    parser.add_argument(
+        "--replay-sentiment-max-age-hours",
+        type=float,
+        help="Max age in hours for replayed sentiment lookup before neutral fallback",
+    )
     return parser.parse_args()
 
 
@@ -225,6 +234,10 @@ def _build_autopilot_command(args: argparse.Namespace, artifacts: RunArtifacts) 
         cmd.extend(["--end", args.end])
     if args.disable_trend_filter:
         cmd.append("--disable-trend-filter")
+    if args.replay_sentiment_log:
+        cmd.extend(["--replay-sentiment-log", args.replay_sentiment_log])
+    if args.replay_sentiment_max_age_hours is not None:
+        cmd.extend(["--replay-sentiment-max-age-hours", str(args.replay_sentiment_max_age_hours)])
     return cmd
 
 

@@ -71,6 +71,15 @@ def parse_args() -> argparse.Namespace:
         default="docs/reports/experiment-autopilot",
         help="Output prefix for markdown/json artifacts",
     )
+    parser.add_argument(
+        "--replay-sentiment-log",
+        help="Path to event_log JSONL with sentiment_score events for replay",
+    )
+    parser.add_argument(
+        "--replay-sentiment-max-age-hours",
+        type=float,
+        help="Max age in hours for replayed sentiment lookup before neutral fallback",
+    )
     parser.add_argument("--disable-trend-filter", action="store_true")
     return parser.parse_args()
 
@@ -114,6 +123,8 @@ def _build_backtest_config(
     aggregator_config: dict[str, object],
     initial_capital: float,
     disable_trend_filter: bool,
+    replay_sentiment_path: str | None,
+    replay_sentiment_max_age_hours: float | None,
 ) -> BacktestConfig:
     trading_exec = raw_config.get("trading_execution", {})
     if not isinstance(trading_exec, dict):
@@ -141,9 +152,19 @@ def _build_backtest_config(
         atr_multiplier=settings.trading_execution.atr_multiplier,
         risk_per_trade=settings.trading_execution.risk_per_trade_pct,
         apply_global_trend_filter=not disable_trend_filter,
+        global_trend_filter_buffer_pct=float(
+            raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.0)
+        ),
         allow_short=False,
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
+        time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
+        replay_sentiment_path=replay_sentiment_path,
+        replay_sentiment_max_age_seconds=(
+            replay_sentiment_max_age_hours * 3600
+            if replay_sentiment_max_age_hours is not None
+            else None
+        ),
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
@@ -273,6 +294,8 @@ async def main() -> None:
             aggregator_config=aggregator_config,
             initial_capital=args.initial_capital,
             disable_trend_filter=args.disable_trend_filter,
+            replay_sentiment_path=args.replay_sentiment_log,
+            replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
         )
 
         reader = IndicatorReader(db_config)
@@ -300,6 +323,8 @@ async def main() -> None:
                     aggregator_config=aggregator_config,
                     initial_capital=args.initial_capital,
                     disable_trend_filter=args.disable_trend_filter,
+                    replay_sentiment_path=args.replay_sentiment_log,
+                    replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
                 )
                 window_backtest = await _run_backtest(reader, window_config)
                 window_results.append(

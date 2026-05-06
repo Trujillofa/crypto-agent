@@ -6,7 +6,9 @@ from pathlib import Path
 from scripts.run_autoresearch import (
     GATE_PROFILES,
     RESULTS_FIELDNAMES,
+    RunArtifacts,
     _append_results_row,
+    _build_autopilot_command,
     _deep_merge,
     _extract_output_path,
     _generate_run_id,
@@ -178,3 +180,47 @@ def test_explicit_gate_flags_override_profile_defaults() -> None:
         "min_oos_return_pct": 2.0,
         "max_profit_concentration_pct": 55.0,
     }
+
+
+def test_build_autopilot_command_forwards_replay_sentiment_flags(tmp_path: Path) -> None:
+    args = argparse.Namespace(
+        gate_profile="standard",
+        train_months=3,
+        test_months=2,
+        bootstrap=500,
+        seed=42,
+        initial_capital=10000.0,
+        min_trades=None,
+        min_wfo_trades=None,
+        min_wfo_sharpe=None,
+        max_drawdown_pct=None,
+        max_bootstrap_p_loss_pct=None,
+        min_oos_return_pct=None,
+        max_profit_concentration_pct=None,
+        symbol="BTCUSDT",
+        timeframe="1h",
+        start=None,
+        end=None,
+        disable_trend_filter=False,
+        replay_sentiment_log="data/event_log_sentiment-macro-bot.jsonl",
+        replay_sentiment_max_age_hours=24.0,
+    )
+    artifacts = RunArtifacts(
+        output_dir=tmp_path,
+        archive_dir=tmp_path / "archive",
+        resolved_dir=tmp_path / "resolved",
+        run_log_path=tmp_path / "run.log",
+        last_result_path=tmp_path / "last_result.json",
+        results_path=tmp_path / "results.tsv",
+        autopilot_prefix=tmp_path / "archive" / "experiment-autopilot-run",
+        resolved_config_path=tmp_path / "resolved" / "settings-run.yaml",
+    )
+
+    command = _build_autopilot_command(args, artifacts)
+
+    assert "--replay-sentiment-log" in command
+    replay_index = command.index("--replay-sentiment-log")
+    assert command[replay_index + 1] == "data/event_log_sentiment-macro-bot.jsonl"
+    assert "--replay-sentiment-max-age-hours" in command
+    max_age_index = command.index("--replay-sentiment-max-age-hours")
+    assert command[max_age_index + 1] == "24.0"

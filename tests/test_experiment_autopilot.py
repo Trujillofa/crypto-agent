@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from types import SimpleNamespace
 
+from scripts.experiment_autopilot import _build_backtest_config
 from src.backtest.experiment_autopilot import (
     ExperimentSummary,
     GateConfig,
@@ -132,3 +134,56 @@ def test_evaluate_gates_can_disable_full_period_trade_gate() -> None:
 
     assert not any("min_trades failed" in failure for failure in failures)
     assert not any("min_wfo_trades failed" in failure for failure in failures)
+
+
+def test_build_backtest_config_preserves_replay_and_executor_exit_fields() -> None:
+    settings = SimpleNamespace(
+        trading_execution=SimpleNamespace(
+            stop_loss_pct=0.01,
+            take_profit_pct=0.03,
+            use_atr_sizing=False,
+            atr_multiplier=1.0,
+            risk_per_trade_pct=0.02,
+        )
+    )
+    raw_config = {
+        "trading_execution": {
+            "sl_atr_multiplier": 1.5,
+            "tp_atr_multiplier": 3.5,
+            "trailing_activate_atr": 1.5,
+            "trailing_offset_atr": 1.0,
+            "exit_rules": {
+                "backtest_use_executor_exit_model": True,
+                "backtest_ignore_signal_sells": False,
+                "time_stop_minutes": 1440,
+            },
+        },
+        "strategy": {"global_trend_filter_buffer_pct": 0.05},
+    }
+
+    config = _build_backtest_config(
+        settings=settings,
+        raw_config=raw_config,
+        symbol="BTCUSDT",
+        timeframe="1h",
+        start="2026-03-27T12:00:00+00:00",
+        end="2026-04-27T01:00:00+00:00",
+        strategy_classes=[],
+        strategy_configs=[],
+        aggregator_config={"buy_threshold": 0.6, "sell_threshold": -0.6},
+        initial_capital=10000.0,
+        disable_trend_filter=False,
+        replay_sentiment_path="data/event_log_sentiment-macro-bot.jsonl",
+        replay_sentiment_max_age_hours=24.0,
+    )
+
+    assert config.use_executor_exit_model is True
+    assert config.ignore_signal_sells is False
+    assert config.sl_atr_multiplier == 1.5
+    assert config.tp_atr_multiplier == 3.5
+    assert config.trailing_activate_atr == 1.5
+    assert config.trailing_offset_atr == 1.0
+    assert config.time_stop_minutes == 1440
+    assert config.global_trend_filter_buffer_pct == 0.05
+    assert config.replay_sentiment_path == "data/event_log_sentiment-macro-bot.jsonl"
+    assert config.replay_sentiment_max_age_seconds == 24 * 3600
