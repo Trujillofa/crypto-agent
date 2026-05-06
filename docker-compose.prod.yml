@@ -214,6 +214,15 @@ services:
       AGENT_ID: sol-trend-pullback-sparse
       SETTINGS_PATH: config/settings.sol_trend_pullback_sparse.yaml
 
+  agent_sol_panic_block_paper:
+    <<: *agent-common
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: "5432"
+      PROMETHEUS_PORT: "8000"
+      AGENT_ID: sol-4h-panic-block-paper
+      SETTINGS_PATH: config/settings.sol_4h_panic_block_paper.yaml
+
   agent_sentiment_macro:
     <<: *agent-common
     environment:
