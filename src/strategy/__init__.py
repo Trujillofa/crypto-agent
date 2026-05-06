@@ -11,6 +11,7 @@ from src.strategy.macro_volatility import MacroVolatilityStrategy
 from src.strategy.mean_reversion import MeanReversionStrategy
 from src.strategy.momentum_strategy import MomentumStrategy
 from src.strategy.multi_timeframe_regime import MultiTimeframeRegimeRouter
+from src.strategy.panic_block_ma import PanicBlockMACrossoverStrategy
 from src.strategy.regime_router import RegimeRouterStrategy
 from src.strategy.rsi_reversal import RSIReversalStrategy
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
@@ -32,6 +33,7 @@ __all__ = [
     "MACDHistogramStrategy",
     "BollingerBounceStrategy",
     "MomentumStrategy",
+    "PanicBlockMACrossoverStrategy",
     "CCIBreakoutStrategy",
     "FundingRateStrategy",
     "VWAPReversionStrategy",

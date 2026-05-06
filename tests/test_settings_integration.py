@@ -19,6 +19,7 @@ from src.strategy import (
     CCIBreakoutStrategy,
     EngineConfig,
     MacroVolatilityStrategy,
+    PanicBlockMACrossoverStrategy,
     SentimentMeanReversionStrategy,
     Signal,
     SignalType,
@@ -147,6 +148,35 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert settings.display_name == "sentiment-macro-1h-multiasset"
     assert settings.ai.enabled is True
     assert aggregator_config["buy_threshold"] == 0.6
+
+
+def test_sol_panic_block_paper_config_resolves_paper_safe_strategy():
+    settings = load_settings(Path("config/settings.sol_4h_panic_block_paper.yaml"))
+    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
+        settings.strategy
+    )
+
+    assert settings.agent_id == "sol-4h-panic-block-paper"
+    assert settings.display_name == "sol-4h-panic-block-paper"
+    assert settings.trading_pairs == ["SOLUSDT"]
+    assert settings.timeframe == "4h"
+    assert settings.trading_execution.enabled is False
+    assert settings.strategy.default_trading_mode == "spot"
+    assert settings.futures is None or settings.futures.enabled is False
+    assert strategy_classes == [PanicBlockMACrossoverStrategy]
+    assert strategy_configs == [
+        {
+            "ema_short_period": 12,
+            "ema_long_period": 26,
+            "confidence_threshold": 0.6,
+            "panic_rsi_threshold": 35.0,
+            "panic_atr_pct_threshold": 0.08,
+            "panic_require_below_ema200": True,
+        }
+    ]
+    assert aggregator_config["min_agreement"] == 1
+    assert aggregator_config["buy_threshold"] == 0.45
+    assert aggregator_config["sell_threshold"] == -0.45
 
 
 def test_avax_4h_ma_config_resolves_simple_ma_spot_only():
