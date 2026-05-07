@@ -24,8 +24,14 @@ class TechnicalIndicators:
     atr_pct: float
 
     # EMA (Exponential Moving Average) - multiple periods
+    ema_8: float | None
+    ema_10: float | None
     ema_12: float | None
+    ema_14: float | None
+    ema_21: float | None
+    ema_24: float | None
     ema_26: float | None
+    ema_30: float | None
     ema_50: float | None
     ema_200: float | None
 
@@ -78,8 +84,14 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
     atr_pct = float(atr_14 / close[-1]) if close[-1] != 0 else 0.0
 
     # EMA (multiple periods)
+    ema_8 = float(_ema(close, 8)[-1]) if len(close) >= 8 else None
+    ema_10 = float(_ema(close, 10)[-1]) if len(close) >= 10 else None
     ema_12 = float(_ema(close, 12)[-1]) if len(close) >= 12 else None
+    ema_14 = float(_ema(close, 14)[-1]) if len(close) >= 14 else None
+    ema_21 = float(_ema(close, 21)[-1]) if len(close) >= 21 else None
+    ema_24 = float(_ema(close, 24)[-1]) if len(close) >= 24 else None
     ema_26 = float(_ema(close, 26)[-1]) if len(close) >= 26 else None
+    ema_30 = float(_ema(close, 30)[-1]) if len(close) >= 30 else None
     ema_50 = float(_ema(close, 50)[-1]) if len(close) >= 50 else None
     ema_200 = float(_ema(close, 200)[-1]) if len(close) >= 200 else None
 
@@ -121,8 +133,14 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
         bb_lower_dist=float(bb_lower_dist),
         atr_14=float(atr_14),
         atr_pct=float(atr_pct),
+        ema_8=ema_8,
+        ema_10=ema_10,
         ema_12=ema_12,
+        ema_14=ema_14,
+        ema_21=ema_21,
+        ema_24=ema_24,
         ema_26=ema_26,
+        ema_30=ema_30,
         ema_50=ema_50,
         ema_200=ema_200,
         sma_20=sma_20,

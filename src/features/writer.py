@@ -23,8 +23,14 @@ class StoredIndicator:
     bb_lower_dist: float | None
     atr_14: float | None
     atr_pct: float | None
+    ema_8: float | None
+    ema_10: float | None
     ema_12: float | None
+    ema_14: float | None
+    ema_21: float | None
+    ema_24: float | None
     ema_26: float | None
+    ema_30: float | None
     ema_50: float | None
     ema_200: float | None
     sma_20: float | None
@@ -100,8 +106,14 @@ class IndicatorWriter:
                     bb_lower_dist DOUBLE PRECISION,
                     atr_14 DOUBLE PRECISION,
                     atr_pct DOUBLE PRECISION,
+                    ema_8 DOUBLE PRECISION,
+                    ema_10 DOUBLE PRECISION,
                     ema_12 DOUBLE PRECISION,
+                    ema_14 DOUBLE PRECISION,
+                    ema_21 DOUBLE PRECISION,
+                    ema_24 DOUBLE PRECISION,
                     ema_26 DOUBLE PRECISION,
+                    ema_30 DOUBLE PRECISION,
                     ema_50 DOUBLE PRECISION,
                     ema_200 DOUBLE PRECISION,
                     sma_20 DOUBLE PRECISION,
@@ -143,8 +155,14 @@ class IndicatorWriter:
             indicator.bb_lower_dist,
             indicator.atr_14,
             indicator.atr_pct,
+            indicator.ema_8,
+            indicator.ema_10,
             indicator.ema_12,
+            indicator.ema_14,
+            indicator.ema_21,
+            indicator.ema_24,
             indicator.ema_26,
+            indicator.ema_30,
             indicator.ema_50,
             indicator.ema_200,
             indicator.sma_20,
@@ -173,7 +191,8 @@ class IndicatorWriter:
                     time, symbol, timeframe,
                     rsi_14, rsi_7, macd, macd_signal, macd_hist,
                     bb_upper_dist, bb_lower_dist, atr_14, atr_pct,
-                    ema_12, ema_26, ema_50, ema_200,
+                    ema_8, ema_10, ema_12, ema_14, ema_21, ema_24,
+                    ema_26, ema_30, ema_50, ema_200,
                     sma_20, sma_50, sma_200,
                     vwap, stoch_k, stoch_d, cci,
                     -- Regime Features (NEW)
@@ -181,9 +200,10 @@ class IndicatorWriter:
                     volume_regime, price_vs_weekly, price_vs_monthly,
                     rsi_slope, trend_consistency
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
-                    $24, $25, $26, $27, $28, $29, $30, $31
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                    $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+                    $23, $24, $25, $26, $27, $28, $29,
+                    $30, $31, $32, $33, $34, $35, $36, $37
                 )
                 ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                     rsi_14 = EXCLUDED.rsi_14,
@@ -195,8 +215,14 @@ class IndicatorWriter:
                     bb_lower_dist = EXCLUDED.bb_lower_dist,
                     atr_14 = EXCLUDED.atr_14,
                     atr_pct = EXCLUDED.atr_pct,
+                    ema_8 = EXCLUDED.ema_8,
+                    ema_10 = EXCLUDED.ema_10,
                     ema_12 = EXCLUDED.ema_12,
+                    ema_14 = EXCLUDED.ema_14,
+                    ema_21 = EXCLUDED.ema_21,
+                    ema_24 = EXCLUDED.ema_24,
                     ema_26 = EXCLUDED.ema_26,
+                    ema_30 = EXCLUDED.ema_30,
                     ema_50 = EXCLUDED.ema_50,
                     ema_200 = EXCLUDED.ema_200,
                     sma_20 = EXCLUDED.sma_20,

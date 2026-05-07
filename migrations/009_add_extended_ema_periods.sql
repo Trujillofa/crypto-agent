@@ -1,0 +1,9 @@
+-- Add extended EMA period columns for strategy parameter sweeps.
+-- These support EMA crossover experiments beyond the original 12/26 pair.
+
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS ema_8 DOUBLE PRECISION;
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS ema_10 DOUBLE PRECISION;
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS ema_14 DOUBLE PRECISION;
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS ema_21 DOUBLE PRECISION;
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS ema_24 DOUBLE PRECISION;
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS ema_30 DOUBLE PRECISION;
