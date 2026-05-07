@@ -726,6 +726,7 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
         ),
         "mtf_continuation": ("src.strategy.mtf_continuation", "MTFContinuationTemplate"),
         "mtf_breakout": ("src.strategy.mtf_breakout", "MTFBreakoutExpansionTemplate"),
+        "volatility_squeeze": ("src.strategy.volatility_squeeze", "VolatilitySqueezeStrategy"),
     }
     for strategy_name, (module_name, class_name) in optional_strategies.items():
         try:
