@@ -18,6 +18,7 @@ from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
 from src.strategy.signals import Signal, SignalType
 from src.strategy.simple_ma import SimpleMACrossoverStrategy
 from src.strategy.trend_pullback import TrendPullbackStrategy
+from src.strategy.volatility_squeeze import VolatilitySqueezeStrategy
 from src.strategy.vwap_strategy import VWAPReversionStrategy
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "SimpleMACrossoverStrategy",
     "BreakoutRetestStrategy",
     "TrendPullbackStrategy",
+    "VolatilitySqueezeStrategy",
     "RSIReversalStrategy",
     "MACDHistogramStrategy",
     "BollingerBounceStrategy",
