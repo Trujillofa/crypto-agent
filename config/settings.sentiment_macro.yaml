@@ -30,8 +30,8 @@ trading_execution:
   test_mode: false
   use_atr_sizing: false
   order_size_usdt: 22.0
-  # Tighten ATR exits to reduce left-tail losses during drawdown clusters.
-  sl_atr_multiplier: 1.5
+  # Widened SL from 1.5 to 2.0 ATR — old 1.5x was getting clipped by 1h noise.
+  sl_atr_multiplier: 2.0
   tp_atr_multiplier: 3.5
   exit_rules:
     time_stop_minutes: 1440
@@ -65,6 +65,8 @@ strategy:
         sentiment_gate_threshold: 35.0
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
+        volatility_regime_filter: true
+        atr_pct_threshold: 0.006
   # Mean-reversion buys dips by design, so allow entries up to 5% below EMA200.
   # Strict 0.0 blocked every BUY when BTC/ETH dipped below EMA200 (Apr 18-20 bear).
   global_trend_filter_buffer_pct: 0.05

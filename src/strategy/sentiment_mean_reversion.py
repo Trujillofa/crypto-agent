@@ -210,6 +210,10 @@ class SentimentMeanReversionStrategy(BaseStrategy):
         self._panic_threshold = float(self._config.get("sentiment_panic_threshold", 20.0))
         self._boost_threshold = float(self._config.get("sentiment_boost_threshold", 65.0))
 
+        # Volatility regime filter
+        self._volatility_regime_filter = bool(self._config.get("volatility_regime_filter", True))
+        self._atr_pct_threshold = float(self._config.get("atr_pct_threshold", 0.006))
+
         # Sentiment scorer (injected or created)
         self._scorer: SentimentScorer | None = None
 
@@ -256,18 +260,30 @@ class SentimentMeanReversionStrategy(BaseStrategy):
         self._previous_rsi[symbol] = rsi
 
         sentiment = await self._get_sentiment(symbol, indicators)
+        atr_pct = indicators.get("atr_pct")
+
+        # Volatility regime filter: suppress BUYs in high-volatility regimes
+        high_volatility = (
+            self._volatility_regime_filter
+            and atr_pct is not None
+            and atr_pct > self._atr_pct_threshold
+        )
 
         # Default: HOLD
+        hold_reason = f"RSI={rsi:.1f} Sentiment={sentiment:.0f}"
+        if high_volatility:
+            hold_reason += f" | HighVol (ATR%={atr_pct:.4f}>{self._atr_pct_threshold:.4f})"
+
         signal = Signal(
             type=SignalType.HOLD,
             symbol=symbol,
             price=close,
             confidence=0.0,
-            reason=f"RSI={rsi:.1f} Sentiment={sentiment:.0f}",
+            reason=hold_reason,
             indicators={"rsi_14": rsi, "sentiment_score": sentiment, "close_price": close},
         )
 
-        # Emergency SELL: sentiment in panic zone
+        # Emergency SELL: sentiment in panic zone (always fires regardless of volatility)
         if sentiment < self._panic_threshold:
             signal = Signal(
                 type=SignalType.SELL,
@@ -278,11 +294,12 @@ class SentimentMeanReversionStrategy(BaseStrategy):
                 indicators={"rsi_14": rsi, "sentiment_score": sentiment, "close_price": close},
             )
 
-        # BUY: Oversold + near lower band + sentiment not in FUD
+        # BUY: Oversold + near lower band + sentiment not in FUD + low volatility
         elif (
             rsi < self._rsi_oversold
             and bb_lower_dist <= self._bb_distance_threshold
             and sentiment >= self._gate_threshold
+            and not high_volatility
         ):
             # Base confidence from RSI depth
             rsi_depth = self._rsi_oversold - rsi
@@ -307,7 +324,12 @@ class SentimentMeanReversionStrategy(BaseStrategy):
                     f"Oversold RSI={rsi:.1f} near lower BB (dist={bb_lower_dist:.4f}), "
                     f"sentiment={sentiment:.0f} (safe to buy dip)"
                 ),
-                indicators={"rsi_14": rsi, "sentiment_score": sentiment, "close_price": close},
+                indicators={
+                    "rsi_14": rsi,
+                    "sentiment_score": sentiment,
+                    "close_price": close,
+                    "atr_pct": atr_pct,
+                },
             )
 
         # SELL: Overbought + near upper band
