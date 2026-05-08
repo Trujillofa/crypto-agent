@@ -66,7 +66,9 @@ strategy:
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
         volatility_regime_filter: true
-        atr_pct_threshold: 0.006
+        # Threshold based on actual ATR% data: BTC avg ~0.004-0.005, ETH avg ~0.005-0.007
+        # 0.005 catches elevated-vol regimes where MR gets chopped
+        atr_pct_threshold: 0.005
   # Mean-reversion buys dips by design, so allow entries up to 5% below EMA200.
   # Strict 0.0 blocked every BUY when BTC/ETH dipped below EMA200 (Apr 18-20 bear).
   global_trend_filter_buffer_pct: 0.05
