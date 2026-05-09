@@ -407,7 +407,7 @@ ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20
 | Trading settings | `config/settings.yaml` |
 | Risk parameters | `config/risk.yaml` |
 | Base config (shared) | `config/base.yaml` |
-| Per-agent settings | `config/settings.agent2.yaml`, `config/settings.btc-4h.yaml`, `config/settings.sol_trend_pullback_sparse.yaml`, `config/settings.sentiment_macro.yaml`, `config/settings.avax_4h_ma.yaml`, etc. |
+| Per-agent settings | `config/settings.btc-4h.yaml`, `config/settings.sol_trend_pullback_sparse.yaml`, `config/settings.sentiment_macro.yaml`, `config/settings.avax_4h_ma.yaml`, etc. |
 | Per-agent risk params | `config/risk.avax-4h-ma.yaml`, `config/risk.sentiment-macro-bot.yaml`, `config/risk.sol-trend-pullback-sparse.yaml` |
 | Environment template | `.env.example` |
 | **Core Modules** | |
@@ -547,7 +547,6 @@ loss_limits:
 | `scripts/paper_validation_report.py` | Paper trading validation report |
 | `scripts/production_drift_sentinel.py` | Monitor production agent |
 | `scripts/autoresearch.py` | Automated strategy research (phase 1) |
-| `scripts/autoresearch_phase2.py` | Automated research phase 2 |
 | `scripts/autoresearch_universal.py` | Universal auto-research runner |
 | `scripts/backup_db.sh` | Database backup |
 | `scripts/import_funding_rates.py` | Import historical funding rates from Binance |
