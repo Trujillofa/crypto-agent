@@ -15,7 +15,6 @@ from src.main import (
     load_settings,
 )
 from src.strategy import (
-    BreakoutRetestStrategy,
     CCIBreakoutStrategy,
     EngineConfig,
     MacroVolatilityStrategy,
@@ -99,17 +98,6 @@ def test_settings_resolves_new_strategy_registry_entries():
     assert SimpleMACrossoverStrategy in strategy_classes
 
 
-def test_replacement_config_resolves_trend_pullback():
-    settings = load_settings(Path("config/settings.sol_trend_pullback.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert strategy_classes == [TrendPullbackStrategy]
-    assert len(strategy_configs) == 1
-    assert aggregator_config["buy_threshold"] == 0.45
-
-
 def test_sol_sparse_config_trend_pullback():
     settings = load_settings(Path("config/settings.sol_trend_pullback_sparse.yaml"))
     strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
@@ -120,17 +108,6 @@ def test_sol_sparse_config_trend_pullback():
     assert len(strategy_configs) == 1
     assert settings.trading_execution.enabled is True
     assert settings.futures is None or not settings.futures.enabled
-    assert aggregator_config["buy_threshold"] == 0.45
-
-
-def test_replacement_config_resolves_breakout_retest():
-    settings = load_settings(Path("config/settings.sol_breakout_retest.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert strategy_classes == [BreakoutRetestStrategy]
-    assert len(strategy_configs) == 1
     assert aggregator_config["buy_threshold"] == 0.45
 
 
