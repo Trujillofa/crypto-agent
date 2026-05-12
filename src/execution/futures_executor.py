@@ -604,10 +604,6 @@ class FuturesTradingExecutor:
                     await self._staged_manager.mark_completed(staged_order_id, order)
                 self._metrics.record_order_filled(symbol, side)
 
-                # Update position tracking
-                if symbol not in self._positions:
-                    self._positions[symbol] = {}
-
                 if reduce_only:
                     # Position was reduced/closed
                     if self._portfolio_manager is not None:
@@ -619,6 +615,10 @@ class FuturesTradingExecutor:
                             closing_side=side,
                         )
                         self._recent_close_pnl[symbol] = _close_pnl
+                    # Clear in-memory tracker so max_concurrent_longs frees the slot.
+                    # The monitor-loop cleanup at line ~313 only fires when _sl_tp_orders
+                    # still has the symbol, but signal-driven closes pop it beforehand.
+                    self._positions.pop(symbol, None)
                     self._logger.info(
                         "Futures position closed: %s %s (qty: %.4f)",
                         side,
@@ -626,6 +626,9 @@ class FuturesTradingExecutor:
                         quantity,
                     )
                 else:
+                    # Update position tracking
+                    if symbol not in self._positions:
+                        self._positions[symbol] = {}
                     # New position or added to existing
                     recorded_qty = (
                         order.executed_quantity if order.executed_quantity > 0 else quantity
