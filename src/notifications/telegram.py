@@ -38,6 +38,10 @@ class TelegramPollingConflict(RuntimeError):
     """Raised when another consumer is already polling getUpdates for this bot."""
 
 
+class TelegramTransientError(RuntimeError):
+    """Raised for transient Telegram API failures where retry/backoff is appropriate."""
+
+
 @dataclass(frozen=True)
 class TelegramConfig:
     """Telegram bot configuration."""
@@ -62,6 +66,8 @@ class TelegramNotifier:
         self._config = config or self._load_config_from_env()
         self._last_message_time: float = 0
         self._session: aiohttp.ClientSession | None = None
+        self._updates_error_streak = 0
+        self._next_updates_retry_time = 0.0
 
         if not self._config.enabled:
             self._logger.info("Telegram notifications disabled")
@@ -133,7 +139,7 @@ class TelegramNotifier:
             time_since_last = now - self._last_message_time
             if time_since_last < self._config.rate_limit_seconds:
                 wait_time = self._config.rate_limit_seconds - time_since_last
-                await asyncio.sleep(wait_time)
+                await asyncio.sleep(wait_time + 0.01)
             # Claim the send slot before yielding to the event loop so that
             # concurrent callers don't both pass the rate-limit check.
             self._last_message_time = asyncio.get_running_loop().time()
@@ -159,15 +165,39 @@ class TelegramNotifier:
         if not self._config.enabled or not self._config.bot_token:
             return []
 
+        loop = asyncio.get_running_loop()
+        if loop.time() < self._next_updates_retry_time:
+            return []
+
         allowed_updates = list(self._config.allowed_updates)
         try:
             updates = await self._fetch_updates(offset, timeout, allowed_updates)
+            if not isinstance(updates, list):
+                self._register_get_updates_backoff("getUpdates returned non-list payload")
+                return []
+            self._updates_error_streak = 0
+            self._next_updates_retry_time = 0.0
             return updates
-        except (RuntimeError, TelegramPollingConflict):
-            raise  # Auth errors must propagate for caller backoff
-        except Exception as exc:
-            self._logger.error("Failed to fetch Telegram updates: %s", exc)
+        except TelegramTransientError as exc:
+            self._register_get_updates_backoff(str(exc))
             return []
+        except (RuntimeError, TelegramPollingConflict):
+            raise  # Auth errors/conflicts must propagate for caller backoff
+        except Exception as exc:
+            self._register_get_updates_backoff(str(exc))
+            return []
+
+    def _register_get_updates_backoff(self, detail: str) -> None:
+        self._updates_error_streak += 1
+        backoff_seconds = min(300, 2 ** min(self._updates_error_streak - 1, 8))
+        loop = asyncio.get_running_loop()
+        self._next_updates_retry_time = loop.time() + backoff_seconds
+        self._logger.error(
+            "Failed to fetch Telegram updates (streak=%d, backoff=%ds): %s",
+            self._updates_error_streak,
+            backoff_seconds,
+            detail,
+        )
 
     async def send_kill_switch_alert(
         self,
@@ -537,21 +567,17 @@ class TelegramNotifier:
                     raise TelegramPollingConflict(
                         "Telegram getUpdates conflict: another consumer is polling this bot"
                     )
-                self._logger.error(
-                    "Telegram API getUpdates error: %s - %s",
-                    response.status,
-                    error_text,
-                )
                 if response.status in (401, 403):
                     raise RuntimeError(
                         f"Telegram auth failed ({response.status}). Check TELEGRAM_BOT_TOKEN."
                     )
-                return []
+                raise TelegramTransientError(
+                    f"Telegram API getUpdates error: {response.status} - {error_text[:500]}"
+                )
 
             body = await response.json()
             if not body.get("ok"):
-                self._logger.error("Telegram API getUpdates returned ok=false: %s", body)
-                return []
+                raise TelegramTransientError(f"Telegram API getUpdates returned ok=false: {body}")
 
             result = body.get("result", [])
             if not isinstance(result, list):

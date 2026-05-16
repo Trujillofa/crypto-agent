@@ -11,7 +11,7 @@ from src.utils.logger import get_logger
 
 
 class SentimentScorer:
-    """Scores market sentiment using an LLM (xAI/Grok) or returns neutral when unavailable.
+    """Scores market sentiment using an LLM (xAI/Grok) with conservative fallback on errors.
 
     Provides a Context Score (0-100):
     - 0-30: Bearish (FUD, crashes, regulatory crackdowns)
@@ -33,6 +33,7 @@ class SentimentScorer:
         degradation_error_pct: float = 0.5,
         degradation_stuck_pct: float = 0.8,
         degradation_cooldown: float = 3600.0,
+        error_fallback_score: float = 30.0,
     ) -> None:
         self._xai_client = xai_client
         self._cache_ttl = cache_ttl_seconds
@@ -49,11 +50,19 @@ class SentimentScorer:
         self._recent_sources: deque[str] = deque(maxlen=degradation_window)
         self._recent_scores: deque[float] = deque(maxlen=degradation_window)
         self._last_alert_time: float = -degradation_cooldown
+        self._degraded = False
+        self._error_fallback_score = max(0.0, min(100.0, error_fallback_score))
+
+    @property
+    def degraded(self) -> bool:
+        """Whether recent sentiment observations indicate provider degradation."""
+        return self._degraded
 
     async def get_score(self, symbol: str) -> float:
         """Get sentiment score for a symbol.
 
-        Returns score 0-100. Returns 50.0 (neutral) if LLM is unavailable.
+        Returns score 0-100. Returns 50.0 when no provider is configured and
+        ``error_fallback_score`` when a provider call fails.
         """
         now = time.monotonic()
 
@@ -78,11 +87,11 @@ class SentimentScorer:
             self._logger.warning("Sentiment query failed for %s: %s", symbol, exc)
             await self._record_observation(
                 symbol,
-                50.0,
+                self._error_fallback_score,
                 source="xai_error_fallback",
                 error=str(exc),
             )
-            return 50.0
+            return self._error_fallback_score
 
     async def _record_observation(
         self,
@@ -113,13 +122,8 @@ class SentimentScorer:
 
     async def _check_degradation(self) -> None:
         """Check recent observations for degradation patterns and alert once per cooldown."""
-        if self._degradation_alert is None:
-            return
         if len(self._recent_sources) < self._degradation_window:
-            return
-
-        now = time.monotonic()
-        if now - self._last_alert_time < self._degradation_cooldown:
+            self._degraded = False
             return
 
         n = len(self._recent_sources)
@@ -138,7 +142,12 @@ class SentimentScorer:
         if stuck_pct >= self._degradation_stuck_pct:
             issues.append(f"{stuck_pct * 100:.0f}% of scores are 50.0 (likely fallback)")
 
-        if not issues:
+        self._degraded = bool(issues)
+        if not issues or self._degradation_alert is None:
+            return
+
+        now = time.monotonic()
+        if now - self._last_alert_time < self._degradation_cooldown:
             return
 
         self._last_alert_time = now
@@ -260,6 +269,7 @@ class SentimentMeanReversionStrategy(BaseStrategy):
         self._previous_rsi[symbol] = rsi
 
         sentiment = await self._get_sentiment(symbol, indicators)
+        sentiment_degraded = bool(getattr(self._scorer, "degraded", False))
         atr_pct = indicators.get("atr_pct")
 
         # Volatility regime filter: suppress BUYs in high-volatility regimes
@@ -273,6 +283,8 @@ class SentimentMeanReversionStrategy(BaseStrategy):
         hold_reason = f"RSI={rsi:.1f} Sentiment={sentiment:.0f}"
         if high_volatility:
             hold_reason += f" | HighVol (ATR%={atr_pct:.4f}>{self._atr_pct_threshold:.4f})"
+        if sentiment_degraded:
+            hold_reason += " | SentimentDegraded"
 
         signal = Signal(
             type=SignalType.HOLD,
@@ -300,6 +312,7 @@ class SentimentMeanReversionStrategy(BaseStrategy):
             and bb_lower_dist <= self._bb_distance_threshold
             and sentiment >= self._gate_threshold
             and not high_volatility
+            and not sentiment_degraded
         ):
             # Base confidence from RSI depth
             rsi_depth = self._rsi_oversold - rsi

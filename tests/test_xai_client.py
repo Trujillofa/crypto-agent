@@ -89,6 +89,41 @@ async def test_chat_raises_after_max_retries_exhausted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_uses_fallback_provider_after_xai_retries_exhausted() -> None:
+    primary_create = AsyncMock(
+        side_effect=[_make_connection_error(), _make_connection_error(), _make_connection_error()]
+    )
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+
+    fallback_create = AsyncMock(return_value=_make_completion("fallback-ok"))
+    fallback_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create))
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, fallback_client],
+    ) as mock_openai:
+        with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            client = XAIClient(
+                api_key="xai-key",
+                model="grok-3",
+                fallback_api_key="deepseek-key",
+                fallback_model="deepseek-chat",
+            )
+            response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == "fallback-ok"
+    assert primary_create.await_count == 3
+    fallback_create.assert_awaited_once()
+    assert mock_openai.call_count == 2
+    mock_sleep.assert_any_await(1)
+    mock_sleep.assert_any_await(2)
+
+
+@pytest.mark.asyncio
 async def test_chat_does_not_retry_on_auth_error() -> None:
     """Authentication errors are not retryable and should propagate immediately."""
     mock_response = MagicMock()

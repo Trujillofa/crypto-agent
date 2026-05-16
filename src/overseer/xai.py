@@ -23,6 +23,9 @@ class XAIClient:
         api_key: str,
         model: str,
         timeout_seconds: float = 30.0,
+        fallback_api_key: str = "",
+        fallback_model: str = "deepseek-chat",
+        fallback_base_url: str = "https://api.deepseek.com/v1",
     ) -> None:
         self._client = AsyncOpenAI(
             api_key=api_key,
@@ -31,14 +34,49 @@ class XAIClient:
             max_retries=0,  # we manage retries ourselves
         )
         self._model = model
+        self._fallback_client = None
+        self._fallback_model = fallback_model
+        if fallback_api_key:
+            self._fallback_client = AsyncOpenAI(
+                api_key=fallback_api_key,
+                base_url=fallback_base_url,
+                timeout=timeout_seconds,
+                max_retries=0,
+            )
         self._logger = get_logger(self.__class__.__name__)
 
     async def chat(self, messages: Sequence[dict[str, str]]) -> str:
+        try:
+            return await self._chat_with_client(
+                self._client,
+                self._model,
+                messages,
+                provider_name="xAI",
+            )
+        except Exception:
+            if self._fallback_client is None:
+                raise
+            self._logger.warning("xAI unavailable after retries; trying DeepSeek fallback")
+            return await self._chat_with_client(
+                self._fallback_client,
+                self._fallback_model,
+                messages,
+                provider_name="DeepSeek",
+            )
+
+    async def _chat_with_client(
+        self,
+        client: AsyncOpenAI,
+        model: str,
+        messages: Sequence[dict[str, str]],
+        *,
+        provider_name: str,
+    ) -> str:
         last_exc: Exception | None = None
         for attempt in range(_MAX_ATTEMPTS):
             try:
-                completion = await self._client.chat.completions.create(
-                    model=self._model,
+                completion = await client.chat.completions.create(
+                    model=model,
                     messages=list(messages),
                     temperature=0.2,
                 )
@@ -48,13 +86,14 @@ class XAIClient:
                     content = getattr(message, "content", None)
                     if isinstance(content, str) and content.strip():
                         return content.strip()
-                return "No response content returned by xAI API."
+                return f"No response content returned by {provider_name} API."
             except _RETRYABLE_ERRORS as exc:
                 last_exc = exc
                 if attempt < _MAX_ATTEMPTS - 1:
                     delay = 2**attempt  # 1s, 2s
                     self._logger.warning(
-                        "xAI request failed (attempt %d/%d), retrying in %ds: %s",
+                        "%s request failed (attempt %d/%d), retrying in %ds: %s",
+                        provider_name,
                         attempt + 1,
                         _MAX_ATTEMPTS,
                         delay,

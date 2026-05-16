@@ -84,6 +84,24 @@ class TestSentimentMeanReversion:
         assert signal.type == SignalType.HOLD
 
     @pytest.mark.asyncio
+    async def test_buy_blocked_when_sentiment_degraded(self):
+        """Even with valid sentiment score, degraded provider state blocks new BUY entries."""
+
+        class DegradedScorer(FakeScorer):
+            @property
+            def degraded(self) -> bool:
+                return True
+
+        strategy = _make_strategy()
+        strategy.set_scorer(DegradedScorer(score=70.0))
+        signal = await strategy.evaluate(
+            "BTCUSDT",
+            _indicators(rsi=25.0, bb_lower_dist=0.001),
+        )
+        assert signal.type == SignalType.HOLD
+        assert "SentimentDegraded" in signal.reason
+
+    @pytest.mark.asyncio
     async def test_panic_sell_on_extreme_fud(self):
         """Sentiment below panic threshold → emergency SELL."""
         strategy = _make_strategy()
@@ -272,11 +290,11 @@ class TestSentimentScorer:
 
         score = await scorer.get_score("BTCUSDT")
 
-        assert score == 50.0
+        assert score == 30.0
         assert observations == [
             {
                 "symbol": "BTCUSDT",
-                "score": 50.0,
+                "score": 30.0,
                 "source": "xai_error_fallback",
                 "error": "API timeout",
             }
@@ -304,10 +322,11 @@ class TestDegradationAlert:
 
         assert len(alerts) == 1
         assert "live" in alerts[0].lower() or "degraded" in alerts[0].lower()
+        assert scorer.degraded is True
 
     @pytest.mark.asyncio
-    async def test_alert_fires_when_scores_stuck_at_50(self):
-        """Degradation alert fires when >=80% of scores are exactly 50.0."""
+    async def test_alert_fires_when_error_rate_is_high(self):
+        """Degradation alert fires when live-response ratio is too low."""
         alerts: list[str] = []
 
         async def on_alert(msg: str) -> None:
@@ -332,7 +351,7 @@ class TestDegradationAlert:
             await scorer.get_score(f"SYM{i}")
 
         assert len(alerts) == 1
-        assert "50.0" in alerts[0]
+        assert "live responses" in alerts[0]
 
     @pytest.mark.asyncio
     async def test_no_alert_when_healthy(self):
@@ -359,6 +378,7 @@ class TestDegradationAlert:
             await scorer.get_score(f"SYM{i}")
 
         assert alerts == []
+        assert scorer.degraded is False
 
     @pytest.mark.asyncio
     async def test_cooldown_prevents_repeated_alerts(self):

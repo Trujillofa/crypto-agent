@@ -135,6 +135,9 @@ class AISettings:
     max_history: int
     allowed_chat_ids: list[str]
     api_key: str
+    fallback_api_key: str = ""
+    fallback_model: str = "deepseek-chat"
+    fallback_base_url: str = "https://api.deepseek.com/v1"
 
 
 @dataclass(frozen=True)
@@ -404,6 +407,21 @@ def load_settings(config_path: Path) -> Settings:
         ),
         allowed_chat_ids=ai_allowed_chat_ids,
         api_key=ai_api_key,
+        fallback_api_key=_as_str(
+            ai.get("fallback_api_key"),
+            "ai.fallback_api_key",
+            default=os.getenv("DEEPSEEK_API_KEY", "").strip(),
+        ),
+        fallback_model=_as_str(
+            ai.get("fallback_model"),
+            "ai.fallback_model",
+            default="deepseek-chat",
+        ),
+        fallback_base_url=_as_str(
+            ai.get("fallback_base_url"),
+            "ai.fallback_base_url",
+            default="https://api.deepseek.com/v1",
+        ),
     )
 
     # Parse and validate futures configuration
@@ -745,6 +763,8 @@ def _wire_optional_strategy_dependencies(
     event_log: EventLog | None = None,
     ai_model: str = "",
     telegram: TelegramNotifier | None = None,
+    sentiment_cache_ttl_seconds: float = 1800.0,
+    sentiment_error_fallback_score: float = 30.0,
 ) -> None:
     """Attach optional external dependencies to configured strategies.
 
@@ -774,8 +794,10 @@ def _wire_optional_strategy_dependencies(
 
     sentiment_scorer = SentimentScorer(
         xai_client=xai_client,
+        cache_ttl_seconds=sentiment_cache_ttl_seconds,
         observation_recorder=_record_sentiment_observation if event_log is not None else None,
         degradation_alert=_send_degradation_alert if telegram is not None else None,
+        error_fallback_score=sentiment_error_fallback_score,
     )
     has_sentiment_strategy = False
     has_macro_strategy = False
@@ -792,7 +814,7 @@ def _wire_optional_strategy_dependencies(
     if has_sentiment_strategy and xai_client is None:
         logger.warning(
             "SentimentMeanReversionStrategy configured without XAI_API_KEY; "
-            "using neutral sentiment fallback"
+            "using conservative fallback sentiment"
         )
 
     if has_macro_strategy:
@@ -901,6 +923,9 @@ async def run() -> None:
             xai_client = XAIClient(
                 api_key=settings.ai.api_key,
                 model=settings.ai.model,
+                fallback_api_key=settings.ai.fallback_api_key,
+                fallback_model=settings.ai.fallback_model,
+                fallback_base_url=settings.ai.fallback_base_url,
             )
         else:
             logger.warning(
