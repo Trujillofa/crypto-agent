@@ -25,6 +25,8 @@ telegram:
 ai:
   enabled: true
   polling_interval: 60.0
+  # DeepSeek V4 Pro fallback if xAI is unavailable.
+  fallback_model: deepseek-v4-pro
 
 trading_execution:
   test_mode: false
