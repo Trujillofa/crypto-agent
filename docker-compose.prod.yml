@@ -196,14 +196,17 @@ services:
   #     AGENT_ID: eth-4h
   #     SETTINGS_PATH: config/settings.eth_4h.yaml
 
-  agent_avax:
-    <<: *agent-common
-    environment:
-      POSTGRES_HOST: timescaledb
-      POSTGRES_PORT: "5432"
-      PROMETHEUS_PORT: "8000"
-      AGENT_ID: avax-4h-ma
-      SETTINGS_PATH: config/settings.avax_4h_ma.yaml
+  # agent_avax: DISABLED 2026-05-20 — live performance: 2W/11L (15% win rate), -$9.58 net.
+  # CCI breakout has no edge on AVAX at current $9-10 price range. WFO (Sharpe 2.04)
+  # was overfit to a prior trending regime. Re-evaluate if AVAX resumes strong trending.
+  # agent_avax:
+  #   <<: *agent-common
+  #   environment:
+  #     POSTGRES_HOST: timescaledb
+  #     POSTGRES_PORT: "5432"
+  #     PROMETHEUS_PORT: "8000"
+  #     AGENT_ID: avax-4h-ma
+  #     SETTINGS_PATH: config/settings.avax_4h_ma.yaml
 
   agent_sol_sparse:
     <<: *agent-common
