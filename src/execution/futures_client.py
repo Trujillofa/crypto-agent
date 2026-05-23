@@ -72,6 +72,34 @@ class FuturesAccountInfo:
 
 
 @dataclass(frozen=True)
+class FuturesUserTrade:
+    """Executed futures trade returned by Binance account trade history."""
+
+    trade_id: str
+    order_id: str
+    symbol: str
+    side: str
+    price: float
+    quantity: float
+    realized_pnl: float
+    commission: float
+    commission_asset: str
+    time: int
+
+
+@dataclass(frozen=True)
+class FuturesIncomeRecord:
+    """Futures income ledger record."""
+
+    symbol: str
+    income_type: str
+    income: float
+    asset: str
+    time: int
+    info: str
+
+
+@dataclass(frozen=True)
 class FundingRateInfo:
     """Current funding rate information."""
 
@@ -488,6 +516,66 @@ class BinanceFuturesClient:
             create_time=int(data.get("time", 0)),
             reduce_only=str(data.get("reduceOnly", "false")).lower() == "true",
         )
+
+    async def get_open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
+        """List open regular futures orders."""
+        params = {"symbol": symbol} if symbol else {}
+        data = await self._request("GET", "/fapi/v1/openOrders", params=params, signed=True)
+        return data if isinstance(data, list) else []
+
+    async def get_user_trades(
+        self,
+        symbol: str,
+        order_id: str | None = None,
+        limit: int = 50,
+    ) -> list[FuturesUserTrade]:
+        """Return recent user trades for a symbol, optionally filtered by order ID."""
+        params: dict[str, Any] = {"symbol": symbol, "limit": limit}
+        if order_id:
+            params["orderId"] = order_id
+        data = await self._request("GET", "/fapi/v1/userTrades", params=params, signed=True)
+        rows = data if isinstance(data, list) else []
+        return [
+            FuturesUserTrade(
+                trade_id=str(row.get("id", "")),
+                order_id=str(row.get("orderId", "")),
+                symbol=row.get("symbol", symbol),
+                side=row.get("side", ""),
+                price=float(row.get("price", 0)),
+                quantity=float(row.get("qty", 0)),
+                realized_pnl=float(row.get("realizedPnl", 0)),
+                commission=float(row.get("commission", 0)),
+                commission_asset=row.get("commissionAsset", ""),
+                time=int(row.get("time", 0)),
+            )
+            for row in rows
+        ]
+
+    async def get_income_history(
+        self,
+        income_type: str | None = None,
+        symbol: str | None = None,
+        limit: int = 100,
+    ) -> list[FuturesIncomeRecord]:
+        """Return futures income ledger history."""
+        params: dict[str, Any] = {"limit": limit}
+        if income_type:
+            params["incomeType"] = income_type
+        if symbol:
+            params["symbol"] = symbol
+        data = await self._request("GET", "/fapi/v1/income", params=params, signed=True)
+        rows = data if isinstance(data, list) else []
+        return [
+            FuturesIncomeRecord(
+                symbol=row.get("symbol", ""),
+                income_type=row.get("incomeType", income_type or ""),
+                income=float(row.get("income", 0)),
+                asset=row.get("asset", ""),
+                time=int(row.get("time", 0)),
+                info=row.get("info", ""),
+            )
+            for row in rows
+        ]
 
     async def get_funding_rate(self, symbol: str) -> FundingRateInfo:
         """Get current funding rate for a symbol.

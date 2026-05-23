@@ -14,6 +14,7 @@ from src.db.pool import get_pool
 from src.execution.futures_client import (
     BinanceFuturesClient,
     FuturesOrderInfo,
+    FuturesUserTrade,
 )
 from src.execution.metrics import ExecutionMetrics
 from src.execution.staged_orders import StagedOrderManager
@@ -48,6 +49,16 @@ class FuturesTradingConfig:
     take_profit_pct: float = 0.06  # fallback if ATR unavailable
     max_concurrent_longs: int = 0  # 0 = disabled; cap on simultaneous LONG positions
     sl_cooldown_minutes: int = 0  # 0 = disabled; re-entry cooldown after a stop-loss
+
+
+@dataclass(frozen=True)
+class CloseExecutionDetails:
+    """Exchange close details resolved from Binance after an SL/TP trigger."""
+
+    reason: str | None
+    ticket_id: str | None
+    fill_price: float | None = None
+    realized_pnl: float | None = None
 
 
 class FuturesTradingExecutor:
@@ -188,19 +199,68 @@ class FuturesTradingExecutor:
             return 0
         return int(elapsed // tf_seconds)
 
-    async def _resolve_close_reason_and_ticket(
+    @staticmethod
+    def _summarize_user_trades(trades: list[FuturesUserTrade]) -> tuple[float | None, float | None]:
+        total_qty = sum(trade.quantity for trade in trades)
+        if total_qty <= 0:
+            return None, None
+        fill_price = sum(trade.price * trade.quantity for trade in trades) / total_qty
+        realized_pnl = sum(trade.realized_pnl for trade in trades)
+        return fill_price, realized_pnl
+
+    async def _fetch_close_execution_details(
+        self,
+        symbol: str,
+        ticket_id: str | None,
+        closing_side: str = "SELL",
+    ) -> tuple[float | None, float | None]:
+        if self._client is None:
+            return None, None
+
+        if ticket_id:
+            try:
+                order_trades = await self._client.get_user_trades(symbol, order_id=ticket_id)
+                if order_trades:
+                    return self._summarize_user_trades(order_trades)
+            except Exception as exc:  # noqa: BLE001
+                self._logger.warning(
+                    "Failed to fetch Binance close fills for %s order %s: %s",
+                    symbol,
+                    ticket_id,
+                    exc,
+                )
+
+        try:
+            recent_trades = await self._client.get_user_trades(symbol, limit=20)
+        except Exception as exc:  # noqa: BLE001
+            self._logger.warning("Failed to fetch recent Binance fills for %s: %s", symbol, exc)
+            return None, None
+
+        close_trades = [
+            trade
+            for trade in recent_trades
+            if trade.side == closing_side and abs(trade.realized_pnl) > 0
+        ]
+        if not close_trades:
+            return None, None
+
+        latest_order_id = max(close_trades, key=lambda trade: trade.time).order_id
+        latest_order_trades = [trade for trade in close_trades if trade.order_id == latest_order_id]
+        return self._summarize_user_trades(latest_order_trades)
+
+    async def _resolve_close_execution_details(
         self,
         symbol: str,
         tracked_orders: dict[str, str],
         last_mark: float,
         sl_price: float,
         tp_price: float,
-    ) -> tuple[str | None, str | None]:
+    ) -> CloseExecutionDetails:
         sl_order_id = tracked_orders.get("sl_order_id")
         tp_order_id = tracked_orders.get("tp_order_id")
 
         async def _is_filled(order_id: str | None) -> bool:
-            if not order_id:
+            if not order_id or self._client is None:
                 return False
             try:
                 status = await self._client.get_order_status(symbol, order_id)
@@ -214,20 +274,39 @@ class FuturesTradingExecutor:
                 return False
             return status.status == "FILLED"
 
+        close_reason: str | None = None
+        close_ticket: str | None = None
         if await _is_filled(sl_order_id):
-            return "stop_loss", sl_order_id
-        if await _is_filled(tp_order_id):
-            return "take_profit", tp_order_id
-
-        # Fallback inference when exchange status is unavailable.
-        if sl_price > 0 and last_mark > 0:
+            close_reason = "stop_loss"
+            close_ticket = sl_order_id
+        elif await _is_filled(tp_order_id):
+            close_reason = "take_profit"
+            close_ticket = tp_order_id
+        elif sl_price > 0 and last_mark > 0:
             dist_sl = abs(last_mark - sl_price)
             dist_tp = abs(last_mark - tp_price) if tp_price > 0 else float("inf")
             if dist_sl <= dist_tp:
-                return "stop_loss", sl_order_id
-            return "take_profit", tp_order_id
+                close_reason = "stop_loss"
+                close_ticket = sl_order_id
+            else:
+                close_reason = "take_profit"
+                close_ticket = tp_order_id
+        else:
+            close_ticket = sl_order_id or tp_order_id
 
-        return None, sl_order_id or tp_order_id
+        fill_price, realized_pnl = await self._fetch_close_execution_details(symbol, close_ticket)
+        if fill_price is None or realized_pnl is None:
+            self._logger.warning(
+                "Using estimated %s close for %s because Binance fill/PnL lookup was unavailable",
+                close_reason or "exchange",
+                symbol,
+            )
+        return CloseExecutionDetails(
+            reason=close_reason,
+            ticket_id=close_ticket,
+            fill_price=fill_price,
+            realized_pnl=realized_pnl,
+        )
 
     async def run(self) -> None:
         """Main futures trading loop."""
@@ -323,19 +402,22 @@ class FuturesTradingExecutor:
                     sw_prices = self._sl_tp_prices.get(symbol, {})
                     sl_px = sw_prices.get("sl_price", 0.0)
                     tp_px = sw_prices.get("tp_price", 0.0)
-                    close_reason, close_ticket = await self._resolve_close_reason_and_ticket(
+                    close_details = await self._resolve_close_execution_details(
                         symbol=symbol,
                         tracked_orders=tracked_orders,
                         last_mark=last_mark,
                         sl_price=sl_px,
                         tp_price=tp_px,
                     )
-                    if close_reason == "stop_loss" and self._config.sl_cooldown_minutes > 0:
+                    close_price = (
+                        close_details.fill_price if close_details.fill_price else last_mark
+                    )
+                    if close_details.reason == "stop_loss" and self._config.sl_cooldown_minutes > 0:
                         self._sl_cooldown_timestamps[symbol] = time.time()
                         self._logger.info(
-                            "SL cooldown started for %s (mark=%.4f sl=%.4f)",
+                            "SL cooldown started for %s (close=%.4f sl=%.4f)",
                             symbol,
-                            last_mark,
+                            close_price,
                             sl_px,
                         )
 
@@ -348,34 +430,36 @@ class FuturesTradingExecutor:
                             bars_held = self._estimate_bars_held(tracked_position.entry_time)
 
                     realized_pnl: float | None = None
-                    if self._portfolio_manager is not None and last_mark > 0:
+                    if self._portfolio_manager is not None and close_price > 0:
                         try:
                             _, realized_pnl = await self._portfolio_manager.close_position(
                                 symbol=symbol,
-                                price=last_mark,
+                                price=close_price,
+                                order_id=close_details.ticket_id,
                                 market="futures",
                                 closing_side="SELL",
+                                realized_pnl_override=close_details.realized_pnl,
                             )
                         except ValueError:
                             pass  # position not in DB (recovered or pre-tracking)
 
-                    if entry_px > 0 and qty > 0 and last_mark > 0:
+                    if entry_px > 0 and qty > 0 and close_price > 0:
                         pnl = (
                             realized_pnl
                             if realized_pnl is not None
-                            else (last_mark - entry_px) * qty
+                            else (close_price - entry_px) * qty
                         )
                         await self._notifier.send_trade_alert(
                             symbol=symbol,
                             side="SELL",
                             quantity=qty,
-                            price=last_mark,
+                            price=close_price,
                             pnl=pnl,
                             market="futures",
                             entry_price=entry_px,
-                            close_reason=close_reason,
+                            close_reason=close_details.reason,
                             bars_held=bars_held,
-                            ticket_id=close_ticket,
+                            ticket_id=close_details.ticket_id,
                         )
 
                     self._sl_tp_orders.pop(symbol, None)
