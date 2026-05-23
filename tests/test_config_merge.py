@@ -256,7 +256,7 @@ trading_execution:
   order_size_usdt: 22.0
   stop_loss_pct: 0.02
   take_profit_pct: 0.05
-  sl_atr_multiplier: 1.5
+  sl_atr_multiplier: 2.0
   tp_atr_multiplier: 3.5
   trailing_activate_atr: 1.5
   trailing_offset_atr: 1.0
@@ -292,6 +292,8 @@ strategy:
         sentiment_gate_threshold: 35.0
         sentiment_panic_threshold: 20.0
         sentiment_boost_threshold: 65.0
+        volatility_regime_filter: true
+        atr_pct_threshold: 0.005
   global_trend_filter_enabled: true
   global_trend_filter_buffer_pct: 0.05
   aggregator:

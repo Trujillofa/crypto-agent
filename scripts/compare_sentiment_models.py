@@ -217,11 +217,7 @@ def summarize(observations: list[Observation]) -> Summary:
 
     scores = [o.score for o in json_ok if o.score is not None]
     mean_score = statistics.mean(scores) if scores else None
-    mean_reason_len = (
-        statistics.mean([o.reason_length for o in json_ok])
-        if json_ok
-        else 0.0
-    )
+    mean_reason_len = statistics.mean([o.reason_length for o in json_ok]) if json_ok else 0.0
 
     per_symbol: dict[str, list[float]] = {}
     for obs in json_ok:
@@ -277,7 +273,7 @@ async def _main() -> int:
     args = parse_args()
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s %(levelname)s %(name)s %(message)s',
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     logger = logging.getLogger("compare_sentiment_models")
 
