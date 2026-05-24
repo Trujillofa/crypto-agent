@@ -262,8 +262,17 @@ class FuturesTradingExecutor:
         async def _is_filled(order_id: str | None) -> bool:
             if not order_id or self._client is None:
                 return False
+            is_algo = (
+                order_id == tracked_orders.get("sl_order_id") and tracked_orders.get("sl_is_algo")
+            ) or (
+                order_id == tracked_orders.get("tp_order_id") and tracked_orders.get("tp_is_algo")
+            )
             try:
+                if is_algo:
+                    status = await self._client.get_algo_order_status(order_id, symbol)
+                    return status.status == "TRIGGERED"
                 status = await self._client.get_order_status(symbol, order_id)
+                return status.status == "FILLED"
             except Exception as exc:  # noqa: BLE001
                 self._logger.debug(
                     "Could not read order status for %s/%s while resolving close reason: %s",
@@ -272,7 +281,6 @@ class FuturesTradingExecutor:
                     exc,
                 )
                 return False
-            return status.status == "FILLED"
 
         close_reason: str | None = None
         close_ticket: str | None = None
@@ -511,18 +519,28 @@ class FuturesTradingExecutor:
                             self._logger.info(
                                 "Software %s close order placed for %s", reason_str, symbol
                             )
-                            # Record close in portfolio DB
-                            sw_realized_pnl: float | None = None
-                            if self._portfolio_manager is not None:
+                            # Resolve actual fill price/PnL from the MARKET close order
+                            (
+                                close_fill_price,
+                                close_realized_pnl,
+                            ) = await self._fetch_close_execution_details(
+                                symbol, close_order.order_id, "SELL"
+                            )
+                            if close_fill_price is None:
+                                close_fill_price = mark
+
+                            # Record close in portfolio DB with real fill
+                            if self._portfolio_manager is not None and close_fill_price > 0:
                                 try:
                                     (
                                         _,
-                                        sw_realized_pnl,
+                                        close_realized_pnl,
                                     ) = await self._portfolio_manager.close_position(
                                         symbol=symbol,
-                                        price=mark,
+                                        price=close_fill_price,
                                         market="futures",
                                         closing_side="SELL",
+                                        realized_pnl_override=close_realized_pnl,
                                     )
                                 except ValueError:
                                     pass
@@ -532,15 +550,19 @@ class FuturesTradingExecutor:
                                 and self._config.sl_cooldown_minutes > 0
                             ):
                                 self._sl_cooldown_timestamps[symbol] = time.time()
-                            if sw_realized_pnl is not None:
-                                pnl = sw_realized_pnl
+                            if close_realized_pnl is not None:
+                                pnl = close_realized_pnl
                             else:
-                                pnl = (mark - sw_entry_px) * qty if sw_entry_px > 0 else None
+                                pnl = (
+                                    (close_fill_price - sw_entry_px) * qty
+                                    if sw_entry_px > 0
+                                    else None
+                                )
                             await self._notifier.send_trade_alert(
                                 symbol=symbol,
                                 side="SELL",
                                 quantity=qty,
-                                price=mark,
+                                price=close_fill_price,
                                 pnl=pnl,
                                 market="futures",
                                 entry_price=sw_entry_px if sw_entry_px > 0 else None,

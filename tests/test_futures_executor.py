@@ -841,21 +841,82 @@ class TestFuturesTradingExecutor:
         assert "BTCUSDT" not in executor._sl_tp_orders
 
     @pytest.mark.asyncio
-    async def test_monitor_uses_binance_fill_for_exchange_sl_close(self, executor):
-        """Exchange SL close uses actual Binance fill price and realized PnL when available."""
+    async def test_monitor_algo_is_filled_routes_to_get_algo_order_status(self, executor):
+        """_is_filled routes algo order IDs to get_algo_order_status, not get_order_status."""
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(return_value=[])
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
         )
-        mock_client.get_order_status = AsyncMock(
-            side_effect=RuntimeError("algo id not regular order")
+        from dataclasses import replace as dataclass_replace
+
+        triggered_algo = dataclass_replace(_make_algo_order(algo_id="sl_algo"), status="TRIGGERED")
+        mock_client.get_algo_order_status = AsyncMock(return_value=triggered_algo)
+        mock_client.get_user_trades = AsyncMock(side_effect=RuntimeError("unavailable"))
+        executor._client = mock_client
+        notifier = AsyncMock()
+        executor._notifier = notifier
+        portfolio_manager = MagicMock()
+        portfolio_manager.get_position.return_value = MagicMock(entry_time=None)
+        portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), -0.7689))
+        executor._portfolio_manager = portfolio_manager
+
+        executor._sl_tp_orders["BTCUSDT"] = {
+            "sl_order_id": "sl_algo",
+            "tp_order_id": "tp_algo",
+            "sl_is_algo": True,
+            "tp_is_algo": True,
+        }
+        executor._positions["BTCUSDT"] = {
+            "entry_price": 75_718.0,
+            "mark_price": 75_208.78343328,
+            "amount": 0.001,
+            "unrealized_pnl": -0.57,
+        }
+        executor._sl_tp_prices["BTCUSDT"] = {"sl_price": 74_967.6314, "tp_price": 77_031.145}
+
+        await executor._monitor_and_update()
+
+        mock_client.get_algo_order_status.assert_awaited_once_with("sl_algo", "BTCUSDT")
+        mock_client.get_order_status.assert_not_called()
+
+        assert "BTCUSDT" not in executor._sl_tp_orders
+        notifier.send_trade_alert.assert_awaited_once()
+        assert notifier.send_trade_alert.call_args.kwargs["close_reason"] == "stop_loss"
+
+    @pytest.mark.asyncio
+    async def test_monitor_software_sl_uses_binance_fill(self, executor):
+        """Software SL/TP path uses actual MARKET order fill price, not monitoring-cycle mark."""
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(
+            return_value=[
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=0.001,
+                    entry_price=75_718.0,
+                    mark_price=74_960.0,  # Breached SL (74_967.63)
+                    liquidation_price=45_000.0,
+                    leverage=3,
+                    isolated_margin=25.0,
+                    unrealized_pnl=-0.76,
+                    notional_value=74.96,
+                )
+            ]
         )
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        # MARKET close order
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(order_id="market_close_1", side="SELL", reduce_only=True)
+        )
+        # get_user_trades returns the actual fill for the MARKET close order
         mock_client.get_user_trades = AsyncMock(
             return_value=[
                 FuturesUserTrade(
-                    trade_id="trade_1",
-                    order_id="close_1",
+                    trade_id="trade_99",
+                    order_id="market_close_1",
                     symbol="BTCUSDT",
                     side="SELL",
                     price=74_949.1,
@@ -863,7 +924,7 @@ class TestFuturesTradingExecutor:
                     realized_pnl=-0.7689,
                     commission=0.03747455,
                     commission_asset="USDT",
-                    time=1_800_000_000_000,
+                    time=1_800_000_500_000,
                 )
             ]
         )
@@ -875,27 +936,32 @@ class TestFuturesTradingExecutor:
         portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), -0.7689))
         executor._portfolio_manager = portfolio_manager
 
-        executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "sl_algo", "tp_order_id": "tp_algo"}
+        executor._sl_tp_prices["BTCUSDT"] = {"sl_price": 74_967.6314, "tp_price": 77_031.145}
         executor._positions["BTCUSDT"] = {
             "entry_price": 75_718.0,
-            "mark_price": 75_208.78343328,
+            "mark_price": 74_960.0,
             "amount": 0.001,
-            "unrealized_pnl": -0.57,
+            "unrealized_pnl": -0.76,
         }
-        executor._sl_tp_prices["BTCUSDT"] = {"sl_price": 74_967.6314, "tp_price": 77_031.145}
 
         await executor._monitor_and_update()
 
+        # Verify _fetch_close_execution_details was called with the MARKET order ID
+        mock_client.get_user_trades.assert_awaited_with("BTCUSDT", order_id="market_close_1")
+
+        # close_position receives actual fill price, not mark
         portfolio_manager.close_position.assert_awaited_once_with(
             symbol="BTCUSDT",
             price=74_949.1,
-            order_id="sl_algo",
             market="futures",
             closing_side="SELL",
             realized_pnl_override=-0.7689,
         )
+
+        # Notification uses actual fill price and PnL
         notifier.send_trade_alert.assert_awaited_once()
         call_kwargs = notifier.send_trade_alert.call_args.kwargs
+        assert call_kwargs["symbol"] == "BTCUSDT"
         assert call_kwargs["price"] == pytest.approx(74_949.1)
         assert call_kwargs["pnl"] == pytest.approx(-0.7689)
         assert call_kwargs["close_reason"] == "stop_loss"
