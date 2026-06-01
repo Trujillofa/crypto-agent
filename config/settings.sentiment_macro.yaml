@@ -14,7 +14,6 @@ mode: live
 
 trading:
   pairs:
-    - ETHUSDT
     - SOLUSDT
   timeframe: 1h
 
@@ -52,7 +51,6 @@ futures:
   # Wait longer after SL before re-entry on the same symbol.
   sl_cooldown_minutes: 240
   symbols:
-    - ETHUSDT
     - SOLUSDT
 
 strategy:
