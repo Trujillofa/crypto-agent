@@ -17,6 +17,7 @@ class PaperAgentSpec:
     config_path: str
     symbols: tuple[str, ...]
     timeframe: str
+    validation_started_at: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,9 @@ class PaperAgentReport:
     daily_realized_pnl: float
     daily_closed_trades: int
     daily_win_rate: float
+    campaign_realized_pnl: float
+    campaign_closed_trades: int
+    campaign_win_rate: float
     risk_state_matches_report_day: bool
     portfolio: PortfolioSummary
 
@@ -68,6 +72,7 @@ DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
         config_path="config/settings.sol_trend_pullback_sparse.yaml",
         symbols=("SOLUSDT",),
         timeframe="4h",
+        validation_started_at="2026-06-01T21:45:00Z",
     ),
     PaperAgentSpec(
         agent_id="sol-4h-panic-block-paper",
@@ -75,6 +80,7 @@ DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
         config_path="config/settings.sol_4h_panic_block_paper.yaml",
         symbols=("SOLUSDT",),
         timeframe="4h",
+        validation_started_at="2026-06-01T21:45:00Z",
     ),
 )
 
@@ -213,6 +219,14 @@ async def collect_agent_report(
     manager = PortfolioManager(db_config, agent_id=spec.agent_id)
     async with manager:
         daily_realized_pnl, daily_closed_trades, daily_win_rate = await manager.get_daily_stats(day)
+        validation_started_at = parse_iso_timestamp(spec.validation_started_at)
+        if validation_started_at is None:
+            raise ValueError(f"Invalid validation_started_at for {spec.agent_id}")
+        (
+            campaign_realized_pnl,
+            campaign_closed_trades,
+            campaign_win_rate,
+        ) = await manager.get_closed_stats_since(validation_started_at)
         portfolio = await manager.get_portfolio_summary()
 
     risk_state_matches_report_day = risk.updated_day == day.isoformat()
@@ -225,6 +239,9 @@ async def collect_agent_report(
         daily_realized_pnl=daily_realized_pnl,
         daily_closed_trades=daily_closed_trades,
         daily_win_rate=daily_win_rate,
+        campaign_realized_pnl=campaign_realized_pnl,
+        campaign_closed_trades=campaign_closed_trades,
+        campaign_win_rate=campaign_win_rate,
         risk_state_matches_report_day=risk_state_matches_report_day,
         portfolio=portfolio,
     )
@@ -300,14 +317,22 @@ def render_markdown(report: PaperValidationReport) -> str:
         lines.append(f"- Daily realized PnL: `{agent.daily_realized_pnl:.2f} USDT`")
         lines.append(f"- Daily closed trades: `{agent.daily_closed_trades}`")
         lines.append(f"- Daily win rate: `{agent.daily_win_rate:.2f}%`")
+        lines.append(f"- Validation campaign started: `{agent.agent.validation_started_at}`")
+        lines.append(f"- Campaign realized PnL: `{agent.campaign_realized_pnl:.2f} USDT`")
+        lines.append(f"- Campaign closed trades: `{agent.campaign_closed_trades}`")
+        lines.append(f"- Campaign win rate: `{agent.campaign_win_rate:.2f}%`")
         lines.append(f"- Daily signals: `{agent.events.signal_count}`")
         lines.append(f"- Daily order fills: `{agent.events.order_filled_count}`")
         lines.append(f"- Daily risk check failures: `{agent.events.risk_check_failed_count}`")
         lines.append(f"- Last signal: `{agent.events.last_signal_at or 'none'}`")
         lines.append(f"- Last order fill: `{agent.events.last_order_at or 'none'}`")
         lines.append(f"- Open positions: `{agent.portfolio.open_positions}`")
-        lines.append(f"- Total realized PnL: `{agent.portfolio.total_realized_pnl:.2f} USDT`")
-        lines.append(f"- Total win rate: `{agent.portfolio.win_rate:.2f}%`")
+        lines.append(
+            f"- Lifetime DB realized PnL (includes legacy runs): `{agent.portfolio.total_realized_pnl:.2f} USDT`"
+        )
+        lines.append(
+            f"- Lifetime DB win rate (includes legacy runs): `{agent.portfolio.win_rate:.2f}%`"
+        )
         lines.append(f"- Kill switch: `{agent.risk.kill_switch_triggered}`")
         lines.append(
             f"- Active breakers: `{', '.join(agent.risk.active_breakers) if agent.risk.active_breakers else 'none'}`"

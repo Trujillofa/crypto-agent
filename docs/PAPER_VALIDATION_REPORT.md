@@ -8,6 +8,10 @@ It combines:
 - daily closed-trade stats from the database
 - cumulative portfolio stats
 - risk-state flags
+- campaign metrics scoped to each validator's explicit rollout timestamp
+
+Promotion decisions must use campaign metrics. Lifetime database metrics are retained only for
+audit context because they can include rows from older strategy settings.
 
 Current monitored paper agents:
 

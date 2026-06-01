@@ -283,3 +283,29 @@ async def test_get_daily_stats_uses_full_utc_day_window():
     assert fetch_call.args[1] == manager._agent_id
     assert fetch_call.args[2] == expected_start
     assert fetch_call.args[3] == expected_end
+
+
+@pytest.mark.asyncio
+async def test_get_closed_stats_since_uses_campaign_start() -> None:
+    manager = PortfolioManager({}, agent_id="sol-trend-pullback-sparse")
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.fetchrow.return_value = {
+        "total_pnl": 2.5,
+        "trades_count": 4,
+        "wins": 3,
+    }
+    started_at = datetime(2026, 6, 1, 21, 45, tzinfo=UTC)
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        total_pnl, trades_count, win_rate = await manager.get_closed_stats_since(started_at)
+
+    assert total_pnl == pytest.approx(2.5)
+    assert trades_count == 4
+    assert win_rate == pytest.approx(75.0)
+    fetchrow_call = mock_conn.fetchrow.call_args
+    assert fetchrow_call is not None
+    assert fetchrow_call.args[1] == "sol-trend-pullback-sparse"
+    assert fetchrow_call.args[2] == started_at

@@ -188,6 +188,10 @@ async def test_collect_agent_report_aggregates_db_and_files(tmp_path: Path) -> N
             AsyncMock(return_value=(12.5, 3, 66.67)),
         ),
         patch(
+            "src.utils.paper_validation_report.PortfolioManager.get_closed_stats_since",
+            AsyncMock(return_value=(8.5, 2, 50.0)),
+        ),
+        patch(
             "src.utils.paper_validation_report.PortfolioManager.get_portfolio_summary",
             AsyncMock(
                 return_value=PortfolioSummary(
@@ -213,6 +217,8 @@ async def test_collect_agent_report_aggregates_db_and_files(tmp_path: Path) -> N
     assert report.events.signal_count == 1
     assert report.risk.snapshot_daily_pnl == 7.25
     assert report.daily_closed_trades == 3
+    assert report.campaign_realized_pnl == 8.5
+    assert report.campaign_closed_trades == 2
     assert report.risk_state_matches_report_day is True
     assert report.portfolio.total_realized_pnl == 25.0
 
@@ -248,6 +254,10 @@ async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path
         patch("src.utils.paper_validation_report.PortfolioManager.__aexit__", _exit),
         patch(
             "src.utils.paper_validation_report.PortfolioManager.get_daily_stats",
+            AsyncMock(return_value=(0.0, 0, 0.0)),
+        ),
+        patch(
+            "src.utils.paper_validation_report.PortfolioManager.get_closed_stats_since",
             AsyncMock(return_value=(0.0, 0, 0.0)),
         ),
         patch(
@@ -292,6 +302,9 @@ def test_render_markdown_contains_key_sections() -> None:
         daily_realized_pnl=4.5,
         daily_closed_trades=1,
         daily_win_rate=100.0,
+        campaign_realized_pnl=4.5,
+        campaign_closed_trades=1,
+        campaign_win_rate=100.0,
         risk_state_matches_report_day=True,
         portfolio=PortfolioSummary(
             total_positions=1,
@@ -316,6 +329,8 @@ def test_render_markdown_contains_key_sections() -> None:
     assert "agent_sol_panic_block_paper" in markdown
     assert "SOLUSDT" in markdown
     assert "Daily realized PnL" in markdown
+    assert "Campaign realized PnL" in markdown
+    assert "Lifetime DB realized PnL (includes legacy runs)" in markdown
     assert "Current risk-state PnL snapshot" in markdown
     assert "Risk-state matches report day" in markdown
 
@@ -343,6 +358,9 @@ def test_report_to_json_serializes_datetime_fields() -> None:
         daily_realized_pnl=0.0,
         daily_closed_trades=0,
         daily_win_rate=0.0,
+        campaign_realized_pnl=1.25,
+        campaign_closed_trades=1,
+        campaign_win_rate=100.0,
         risk_state_matches_report_day=True,
         portfolio=PortfolioSummary(
             total_positions=1,
