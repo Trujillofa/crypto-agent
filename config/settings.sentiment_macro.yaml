@@ -14,7 +14,6 @@ mode: live
 
 trading:
   pairs:
-    - BTCUSDT
     - ETHUSDT
     - SOLUSDT
   timeframe: 1h
@@ -53,7 +52,6 @@ futures:
   # Wait longer after SL before re-entry on the same symbol.
   sl_cooldown_minutes: 240
   symbols:
-    - BTCUSDT
     - ETHUSDT
     - SOLUSDT
 
