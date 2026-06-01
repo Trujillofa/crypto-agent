@@ -5,10 +5,13 @@ from src.utils.production_drift_sentinel import (
     RepoSnapshot,
     ServiceSnapshot,
     SignalSnapshot,
+    TimerSnapshot,
+    TimerState,
     WatchedServiceSnapshot,
     analyze_drift,
     collect_local_config_hashes,
     collect_remote_service_snapshot,
+    collect_remote_timer_snapshot,
     parse_iso_timestamp,
     parse_sha256_lines,
     run_remote_command,
@@ -82,6 +85,31 @@ def test_run_remote_command_passes_explicit_ssh_config(monkeypatch) -> None:
     assert commands == [["ssh", "-F", "~/.ssh/config", "host", "cd /srv/app && git status"]]
 
 
+def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str, remote_dir: str, command: str, ssh_config: str | None = None
+    ) -> str:
+        commands.append(command)
+        return "enabled" if "is-enabled" in command else "active"
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    snapshot = collect_remote_timer_snapshot("host", "/srv/app", timers=("report.timer",))
+
+    assert snapshot == TimerSnapshot(
+        timers=[TimerState(timer="report.timer", enabled="enabled", active="active")]
+    )
+    assert commands == [
+        "systemctl is-enabled report.timer 2>/dev/null || true",
+        "systemctl is-active report.timer 2>/dev/null || true",
+    ]
+
+
 def test_analyze_drift_detects_remote_branch_mismatch_and_dirty() -> None:
     findings = analyze_drift(
         expected_branch="main",
@@ -129,6 +157,35 @@ def test_analyze_drift_detects_config_and_service_drift() -> None:
     assert "REMOTE_CONFIG_MISSING" in codes
     assert "SERVICES_NOT_RUNNING" in codes
     assert "SIGNAL_DROUGHT" in codes
+
+
+def test_analyze_drift_detects_unhealthy_required_timer() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={"settings.yaml": "111"},
+        remote_config_hashes={"settings.yaml": "111"},
+        service_snapshot=ServiceSnapshot(all_services=["agent"], running_services=["agent"]),
+        timer_snapshot=TimerSnapshot(
+            timers=[
+                TimerState(
+                    timer="crypto-agent-paper-validation-report.timer",
+                    enabled="disabled",
+                    active="inactive",
+                )
+            ]
+        ),
+        signal_snapshot=SignalSnapshot(
+            signal_count=1, last_signal_at=None, saw_strategy_cycle=True
+        ),
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "REQUIRED_TIMER_NOT_HEALTHY" in codes
 
 
 def test_remote_error_short_circuits_remote_analysis() -> None:

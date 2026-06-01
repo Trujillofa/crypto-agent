@@ -13,6 +13,7 @@ from typing import Any
 
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
 PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
+REQUIRED_SYSTEMD_TIMERS = ("crypto-agent-paper-validation-report.timer",)
 
 
 class Severity(StrEnum):
@@ -43,6 +44,18 @@ class ServiceSnapshot:
 
 
 @dataclass(frozen=True)
+class TimerState:
+    timer: str
+    enabled: str
+    active: str
+
+
+@dataclass(frozen=True)
+class TimerSnapshot:
+    timers: list[TimerState]
+
+
+@dataclass(frozen=True)
 class SignalSnapshot:
     signal_count: int
     last_signal_at: str | None
@@ -68,6 +81,7 @@ class DriftReport:
     local_config_hashes: dict[str, str]
     remote_config_hashes: dict[str, str]
     service_snapshot: ServiceSnapshot | None
+    timer_snapshot: TimerSnapshot | None
     signal_snapshot: SignalSnapshot | None
     watched_service_snapshot: WatchedServiceSnapshot | None
     findings: list[Finding]
@@ -187,6 +201,33 @@ def collect_remote_service_snapshot(
     ]
 
     return ServiceSnapshot(all_services=all_services, running_services=running_services)
+
+
+def collect_remote_timer_snapshot(
+    host: str,
+    remote_dir: str,
+    timers: tuple[str, ...] = REQUIRED_SYSTEMD_TIMERS,
+    ssh_config: str | None = None,
+) -> TimerSnapshot:
+    states: list[TimerState] = []
+    for timer in timers:
+        rendered_timer = shlex.quote(timer)
+        enabled = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl is-enabled {rendered_timer} 2>/dev/null || true",
+            ssh_config=ssh_config,
+        )
+        active = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl is-active {rendered_timer} 2>/dev/null || true",
+            ssh_config=ssh_config,
+        )
+        states.append(
+            TimerState(timer=timer, enabled=enabled or "unknown", active=active or "unknown")
+        )
+    return TimerSnapshot(timers=states)
 
 
 def collect_remote_signal_snapshot(
@@ -314,6 +355,7 @@ def analyze_drift(
     local_config_hashes: dict[str, str],
     remote_config_hashes: dict[str, str],
     service_snapshot: ServiceSnapshot | None,
+    timer_snapshot: TimerSnapshot | None = None,
     signal_snapshot: SignalSnapshot | None,
     watched_service_snapshot: WatchedServiceSnapshot | None,
     remote_error: str | None,
@@ -456,6 +498,21 @@ def analyze_drift(
                 )
             )
 
+    if timer_snapshot is not None:
+        for timer in timer_snapshot.timers:
+            if timer.enabled != "enabled" or timer.active != "active":
+                findings.append(
+                    Finding(
+                        severity=Severity.ERROR,
+                        code="REQUIRED_TIMER_NOT_HEALTHY",
+                        message=(
+                            f"Required timer '{timer.timer}' is not healthy "
+                            f"(enabled={timer.enabled}, active={timer.active})"
+                        ),
+                        recommendation="Enable and start the required production timer.",
+                    )
+                )
+
     if signal_snapshot is not None:
         if signal_snapshot.saw_strategy_cycle and signal_snapshot.signal_count == 0:
             findings.append(
@@ -573,6 +630,7 @@ def report_to_json(report: DriftReport) -> str:
         "local_config_hashes": report.local_config_hashes,
         "remote_config_hashes": report.remote_config_hashes,
         "service_snapshot": asdict(report.service_snapshot) if report.service_snapshot else None,
+        "timer_snapshot": asdict(report.timer_snapshot) if report.timer_snapshot else None,
         "signal_snapshot": asdict(report.signal_snapshot) if report.signal_snapshot else None,
         "watched_service_snapshot": (
             asdict(report.watched_service_snapshot) if report.watched_service_snapshot else None

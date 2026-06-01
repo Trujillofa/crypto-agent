@@ -8,6 +8,7 @@ It detects drift in:
 - Dirty worktree state
 - deploy-relevant `config/settings*.yaml` file hashes
 - Docker Compose service runtime status
+- Required systemd timer status
 - Recent signal activity (consensus signal drought/staleness)
 
 Service discovery is dynamic. The sentinel reads

@@ -21,6 +21,7 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
     collect_remote_repo_snapshot,
     collect_remote_service_snapshot,
     collect_remote_signal_snapshot,
+    collect_remote_timer_snapshot,
     collect_remote_watched_service_snapshot,
     collect_repo_snapshot,
     report_to_json,
@@ -111,6 +112,15 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
         lines.append("- Service snapshot unavailable")
 
     lines.append("")
+    lines.append("## Required Timers")
+    lines.append("")
+    if report.timer_snapshot is not None:
+        for timer in report.timer_snapshot.timers:
+            lines.append(f"- {timer.timer}: enabled={timer.enabled}, active={timer.active}")
+    else:
+        lines.append("- Timer snapshot unavailable")
+
+    lines.append("")
     lines.append("## Signal Activity")
     lines.append("")
     if report.signal_snapshot is not None:
@@ -175,6 +185,7 @@ def main() -> int:
     remote_repo = None
     remote_config_hashes: dict[str, str] = {}
     service_snapshot = None
+    timer_snapshot = None
     signal_snapshot = None
     watched_service_snapshot = None
     remote_error = None
@@ -188,6 +199,9 @@ def main() -> int:
                 args.remote_host, args.remote_dir, ssh_config=args.ssh_config
             )
             service_snapshot = collect_remote_service_snapshot(
+                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+            )
+            timer_snapshot = collect_remote_timer_snapshot(
                 args.remote_host, args.remote_dir, ssh_config=args.ssh_config
             )
             signal_snapshot = collect_remote_signal_snapshot(
@@ -216,6 +230,7 @@ def main() -> int:
         local_config_hashes=local_config_hashes,
         remote_config_hashes=remote_config_hashes,
         service_snapshot=service_snapshot,
+        timer_snapshot=timer_snapshot,
         signal_snapshot=signal_snapshot,
         watched_service_snapshot=watched_service_snapshot,
         remote_error=remote_error,
@@ -242,6 +257,7 @@ def main() -> int:
         local_config_hashes=local_config_hashes,
         remote_config_hashes=remote_config_hashes,
         service_snapshot=service_snapshot,
+        timer_snapshot=timer_snapshot,
         signal_snapshot=signal_snapshot,
         watched_service_snapshot=watched_service_snapshot,
         findings=findings,
