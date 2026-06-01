@@ -15,9 +15,9 @@
 	},
 	{
 		"labels": {
-			"service": "agent_avax",
-			"agent_id": "avax-4h-ma"
+			"service": "agent_sol_panic_block_paper",
+			"agent_id": "sol-4h-panic-block-paper"
 		},
-		"targets": ["agent_avax:8000"]
+		"targets": ["agent_sol_panic_block_paper:8000"]
 	}
 ]

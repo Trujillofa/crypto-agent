@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
+PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
 
 
 class Severity(StrEnum):
@@ -150,12 +151,12 @@ def collect_remote_service_snapshot(host: str, remote_dir: str) -> ServiceSnapsh
     all_services_output = run_remote_command(
         host,
         remote_dir,
-        "docker compose config --services",
+        f"{PRODUCTION_COMPOSE} config --services",
     )
     running_services_output = run_remote_command(
         host,
         remote_dir,
-        "docker compose ps --status running --services",
+        f"{PRODUCTION_COMPOSE} ps --status running --services",
     )
 
     all_services = [line.strip() for line in all_services_output.splitlines() if line.strip()]
@@ -180,7 +181,8 @@ def collect_remote_signal_snapshot(
     logs = run_remote_command(
         host,
         remote_dir,
-        f"docker compose logs --tail {tail_lines} --timestamps --no-log-prefix {rendered_services}",
+        f"{PRODUCTION_COMPOSE} logs --tail {tail_lines} --timestamps --no-log-prefix "
+        f"{rendered_services}",
         timeout=30,
     )
 
@@ -222,7 +224,8 @@ def collect_remote_watched_service_snapshot(
     logs = run_remote_command(
         host,
         remote_dir,
-        f"docker compose logs --tail {tail_lines} --timestamps --no-log-prefix {shlex.quote(service)}",
+        f"{PRODUCTION_COMPOSE} logs --tail {tail_lines} --timestamps --no-log-prefix "
+        f"{shlex.quote(service)}",
         timeout=30,
     )
     lines = logs.splitlines()

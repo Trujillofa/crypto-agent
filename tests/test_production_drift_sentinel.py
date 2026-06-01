@@ -8,6 +8,7 @@ from src.utils.production_drift_sentinel import (
     WatchedServiceSnapshot,
     analyze_drift,
     collect_local_config_hashes,
+    collect_remote_service_snapshot,
     parse_iso_timestamp,
     parse_sha256_lines,
 )
@@ -40,6 +41,27 @@ def test_collect_local_config_hashes_ignores_research_only_configs(tmp_path) -> 
 
     assert "settings.yaml" in hashes
     assert ignored_name not in hashes
+
+
+def test_collect_remote_service_snapshot_uses_production_compose(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(host: str, remote_dir: str, command: str) -> str:
+        commands.append(command)
+        return "agent_sentiment_macro\n" if "config --services" in command else ""
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    snapshot = collect_remote_service_snapshot("host", "/srv/app")
+
+    assert snapshot.all_services == ["agent_sentiment_macro"]
+    assert commands == [
+        "docker compose -f docker-compose.prod.yml config --services",
+        "docker compose -f docker-compose.prod.yml ps --status running --services",
+    ]
 
 
 def test_analyze_drift_detects_remote_branch_mismatch_and_dirty() -> None:
