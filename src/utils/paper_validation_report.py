@@ -70,17 +70,10 @@ DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
         timeframe="4h",
     ),
     PaperAgentSpec(
-        agent_id="sentiment-macro-bot",
-        service="agent_sentiment_macro",
-        config_path="config/settings.sentiment_macro.yaml",
-        symbols=("BTCUSDT", "ETHUSDT", "SOLUSDT"),
-        timeframe="1h",
-    ),
-    PaperAgentSpec(
-        agent_id="avax-4h-ma",
-        service="agent_avax",
-        config_path="config/settings.avax_4h_ma.yaml",
-        symbols=("AVAXUSDT",),
+        agent_id="sol-4h-panic-block-paper",
+        service="agent_sol_panic_block_paper",
+        config_path="config/settings.sol_4h_panic_block_paper.yaml",
+        symbols=("SOLUSDT",),
         timeframe="4h",
     ),
 )

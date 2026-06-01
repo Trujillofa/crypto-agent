@@ -34,6 +34,14 @@ def test_default_paths_handle_default_and_named_agents() -> None:
     assert default_event_log_path("agent-x") == Path("data/event_log_agent-x.jsonl")
 
 
+def test_default_paper_agents_match_active_paper_services() -> None:
+    assert [spec.service for spec in DEFAULT_PAPER_AGENTS] == [
+        "agent_sol_sparse",
+        "agent_sol_panic_block_paper",
+    ]
+    assert all(spec.symbols == ("SOLUSDT",) for spec in DEFAULT_PAPER_AGENTS)
+
+
 def test_parse_iso_timestamp_handles_z_suffix() -> None:
     parsed = parse_iso_timestamp("2026-03-19T21:00:00Z")
 
@@ -261,7 +269,7 @@ async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path
 
 def test_render_markdown_contains_key_sections() -> None:
     report = PaperAgentReport(
-        agent=DEFAULT_PAPER_AGENTS[2],
+        agent=DEFAULT_PAPER_AGENTS[1],
         day="2026-03-19",
         events=EventSummary(
             signal_count=2,
@@ -269,8 +277,8 @@ def test_render_markdown_contains_key_sections() -> None:
             risk_check_failed_count=0,
             last_signal_at="2026-03-19T12:00:00+00:00",
             last_order_at="2026-03-19T13:00:00+00:00",
-            signals_by_symbol={"AVAXUSDT": 2},
-            orders_by_symbol={"AVAXUSDT": 1},
+            signals_by_symbol={"SOLUSDT": 2},
+            orders_by_symbol={"SOLUSDT": 1},
         ),
         risk=RiskStateSummary(
             kill_switch_triggered=False,
@@ -305,8 +313,8 @@ def test_render_markdown_contains_key_sections() -> None:
     )
 
     assert "Daily Paper Validation Report" in markdown
-    assert "agent_avax" in markdown
-    assert "AVAXUSDT" in markdown
+    assert "agent_sol_panic_block_paper" in markdown
+    assert "SOLUSDT" in markdown
     assert "Daily realized PnL" in markdown
     assert "Current risk-state PnL snapshot" in markdown
     assert "Risk-state matches report day" in markdown

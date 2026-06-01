@@ -10,7 +10,9 @@ It detects drift in:
 - Docker Compose service runtime status
 - Recent signal activity (consensus signal drought/staleness)
 
-Service discovery is dynamic. The sentinel reads `docker compose config --services` on the remote host, so newly added services such as `agent_sol_sparse` are included automatically without code changes.
+Service discovery is dynamic. The sentinel reads
+`docker compose -f docker-compose.prod.yml config --services` on the remote host, so newly
+added services such as `agent_sol_sparse` are included automatically without code changes.
 Research-only configs such as `config/settings.autoresearch.yaml` are excluded from deploy parity checks.
 
 ## One Command
@@ -38,6 +40,7 @@ For the SOL sparse paper rollout, use watched-service mode so the report include
 
 ```bash
 python scripts/production_drift_sentinel.py \
+  --ssh-config ~/.ssh/config \
   --expected-branch main \
   --remote-host crypto-agent \
   --remote-dir /opt/crypto-agent \

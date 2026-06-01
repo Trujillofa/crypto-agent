@@ -3,15 +3,19 @@
 `paper_validation_report` summarizes the paper trading agents for one UTC day.
 
 It combines:
+
 - event-log activity
 - daily closed-trade stats from the database
 - cumulative portfolio stats
 - risk-state flags
 
 Current monitored paper agents:
+
 - `agent_sol_sparse`
-- `agent_sentiment_macro`
-- `agent_avax`
+- `agent_sol_panic_block_paper`
+
+`agent_sentiment_macro` is intentionally excluded because it routes live SOL futures orders.
+`agent_avax` is disabled because its prior walk-forward edge did not persist in live trading.
 
 ## Manual Run
 

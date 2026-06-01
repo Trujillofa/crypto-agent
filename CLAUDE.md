@@ -460,9 +460,10 @@ The system supports running multiple isolated trading agents simultaneously. In 
 | ~~`agent_2`~~ | ~~`config/settings.agent2.yaml`~~ | DISABLED — WFO: no edge on BNBUSDT 4h |
 | ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — WFO: no edge on BTCUSDT 4h |
 | ~~`agent_eth`~~ | ~~`config/settings.eth_4h.yaml`~~ | DISABLED — WFO: 12% win rate on ETHUSDT 4h simple_ma |
+| ~~`agent_avax`~~ | ~~`config/settings.avax_4h_ma.yaml`~~ | DISABLED — live performance: 2W/11L, no current edge |
 | `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
-| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | Sentiment mean reversion, live futures routing |
-| `agent_avax` | `config/settings.avax_4h_ma.yaml` | AVAX 4h CCI breakout (WFO-validated) |
+| `agent_sol_panic_block_paper` | `config/settings.sol_4h_panic_block_paper.yaml` | SOL panic-block paper validation |
+| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | SOL-only sentiment mean reversion, live futures routing |
 
 **Disabled agent rationale:**
 
@@ -472,6 +473,7 @@ The system supports running multiple isolated trading agents simultaneously. In 
 | `agent_2` (BNBUSDT 4h) | All 5 strategies negative OOS, best -7.7%. | commit `5be9a0d` |
 | `agent_btc` (BTCUSDT 4h) | 50+ param combos (simple_ma, CCI, MTF regime) all deeply negative OOS. Post-fix P&L: -$25 across 4 trades. | commit `21419d3` |
 | `agent_eth` (ETHUSDT 4h) | 12% win rate on simple_ma, no edge across any strategy. WFO sweep: all candidates failed quality gates. | commit `5be9a0d`, `docs/reports/mtf-ethusdt-sweep-analysis.md` |
+| `agent_avax` (AVAXUSDT 4h) | Live performance degraded to 2W/11L and `-$9.58`; prior WFO edge did not persist. | `docker-compose.prod.yml` |
 
 Agents are isolated via `AGENT_ID` environment variable. Database tables use `agent_id` columns for state separation (see `migrations/005_add_agent_isolation.sql`).
 
