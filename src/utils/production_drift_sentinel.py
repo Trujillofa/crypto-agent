@@ -85,9 +85,18 @@ def run_command(command: list[str], cwd: Path | None = None, timeout: int = 15) 
     return result.stdout.strip()
 
 
-def run_remote_command(host: str, remote_dir: str, command: str, timeout: int = 20) -> str:
+def run_remote_command(
+    host: str,
+    remote_dir: str,
+    command: str,
+    timeout: int = 20,
+    ssh_config: str | None = None,
+) -> str:
     remote_script = f"cd {shlex.quote(remote_dir)} && {command}"
-    return run_command(["ssh", host, remote_script], timeout=timeout)
+    ssh_command = ["ssh"]
+    if ssh_config:
+        ssh_command.extend(["-F", ssh_config])
+    return run_command([*ssh_command, host, remote_script], timeout=timeout)
 
 
 def collect_repo_snapshot(cwd: Path | None = None) -> RepoSnapshot:
@@ -97,10 +106,16 @@ def collect_repo_snapshot(cwd: Path | None = None) -> RepoSnapshot:
     return RepoSnapshot(branch=branch, commit=commit, dirty=dirty)
 
 
-def collect_remote_repo_snapshot(host: str, remote_dir: str) -> RepoSnapshot:
-    branch = run_remote_command(host, remote_dir, "git rev-parse --abbrev-ref HEAD")
-    commit = run_remote_command(host, remote_dir, "git rev-parse HEAD")
-    dirty = bool(run_remote_command(host, remote_dir, "git status --porcelain"))
+def collect_remote_repo_snapshot(
+    host: str, remote_dir: str, ssh_config: str | None = None
+) -> RepoSnapshot:
+    branch = run_remote_command(
+        host, remote_dir, "git rev-parse --abbrev-ref HEAD", ssh_config=ssh_config
+    )
+    commit = run_remote_command(host, remote_dir, "git rev-parse HEAD", ssh_config=ssh_config)
+    dirty = bool(
+        run_remote_command(host, remote_dir, "git status --porcelain", ssh_config=ssh_config)
+    )
     return RepoSnapshot(branch=branch, commit=commit, dirty=dirty)
 
 
@@ -121,11 +136,14 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def collect_remote_config_hashes(host: str, remote_dir: str) -> dict[str, str]:
+def collect_remote_config_hashes(
+    host: str, remote_dir: str, ssh_config: str | None = None
+) -> dict[str, str]:
     output = run_remote_command(
         host,
         remote_dir,
         'for f in config/settings*.yaml; do [ -f "$f" ] && sha256sum "$f"; done',
+        ssh_config=ssh_config,
     )
     return parse_sha256_lines(output)
 
@@ -147,16 +165,20 @@ def parse_sha256_lines(text: str) -> dict[str, str]:
     return hashes
 
 
-def collect_remote_service_snapshot(host: str, remote_dir: str) -> ServiceSnapshot:
+def collect_remote_service_snapshot(
+    host: str, remote_dir: str, ssh_config: str | None = None
+) -> ServiceSnapshot:
     all_services_output = run_remote_command(
         host,
         remote_dir,
         f"{PRODUCTION_COMPOSE} config --services",
+        ssh_config=ssh_config,
     )
     running_services_output = run_remote_command(
         host,
         remote_dir,
         f"{PRODUCTION_COMPOSE} ps --status running --services",
+        ssh_config=ssh_config,
     )
 
     all_services = [line.strip() for line in all_services_output.splitlines() if line.strip()]
@@ -172,6 +194,7 @@ def collect_remote_signal_snapshot(
     remote_dir: str,
     service_snapshot: ServiceSnapshot,
     tail_lines: int = 500,
+    ssh_config: str | None = None,
 ) -> SignalSnapshot:
     agent_services = [name for name in service_snapshot.all_services if name.startswith("agent")]
     if not agent_services:
@@ -184,6 +207,7 @@ def collect_remote_signal_snapshot(
         f"{PRODUCTION_COMPOSE} logs --tail {tail_lines} --timestamps --no-log-prefix "
         f"{rendered_services}",
         timeout=30,
+        ssh_config=ssh_config,
     )
 
     signal_lines = [line for line in logs.splitlines() if "Consensus Signal" in line]
@@ -206,6 +230,7 @@ def collect_remote_watched_service_snapshot(
     service_snapshot: ServiceSnapshot,
     service: str,
     tail_lines: int = 500,
+    ssh_config: str | None = None,
 ) -> WatchedServiceSnapshot:
     exists = service in service_snapshot.all_services
     running = service in service_snapshot.running_services
@@ -227,6 +252,7 @@ def collect_remote_watched_service_snapshot(
         f"{PRODUCTION_COMPOSE} logs --tail {tail_lines} --timestamps --no-log-prefix "
         f"{shlex.quote(service)}",
         timeout=30,
+        ssh_config=ssh_config,
     )
     lines = logs.splitlines()
     signal_lines = [line for line in lines if "Consensus Signal" in line]

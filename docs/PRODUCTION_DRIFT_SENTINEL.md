@@ -23,6 +23,7 @@ Research-only configs such as `config/settings.autoresearch.yaml` are excluded f
 
 ```bash
 python scripts/production_drift_sentinel.py \
+  --ssh-config ~/.ssh/config \
   --expected-branch main \
   --remote-host crypto-agent \
   --remote-dir /opt/crypto-agent \

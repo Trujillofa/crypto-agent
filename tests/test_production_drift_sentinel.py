@@ -11,6 +11,7 @@ from src.utils.production_drift_sentinel import (
     collect_remote_service_snapshot,
     parse_iso_timestamp,
     parse_sha256_lines,
+    run_remote_command,
 )
 
 
@@ -46,7 +47,10 @@ def test_collect_local_config_hashes_ignores_research_only_configs(tmp_path) -> 
 def test_collect_remote_service_snapshot_uses_production_compose(monkeypatch) -> None:
     commands = []
 
-    def fake_run_remote_command(host: str, remote_dir: str, command: str) -> str:
+    def fake_run_remote_command(
+        host: str, remote_dir: str, command: str, ssh_config: str | None = None
+    ) -> str:
+        assert ssh_config is None
         commands.append(command)
         return "agent_sentiment_macro\n" if "config --services" in command else ""
 
@@ -62,6 +66,20 @@ def test_collect_remote_service_snapshot_uses_production_compose(monkeypatch) ->
         "docker compose -f docker-compose.prod.yml config --services",
         "docker compose -f docker-compose.prod.yml ps --status running --services",
     ]
+
+
+def test_run_remote_command_passes_explicit_ssh_config(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_command(command: list[str], cwd=None, timeout: int = 15) -> str:
+        commands.append(command)
+        return ""
+
+    monkeypatch.setattr("src.utils.production_drift_sentinel.run_command", fake_run_command)
+
+    run_remote_command("host", "/srv/app", "git status", ssh_config="~/.ssh/config")
+
+    assert commands == [["ssh", "-F", "~/.ssh/config", "host", "cd /srv/app && git status"]]
 
 
 def test_analyze_drift_detects_remote_branch_mismatch_and_dirty() -> None:

@@ -32,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-branch", default="main", help="Expected deploy branch")
     parser.add_argument("--remote-host", default="crypto-agent", help="SSH host alias")
     parser.add_argument("--remote-dir", default="/opt/crypto-agent", help="Remote repo path")
+    parser.add_argument("--ssh-config", help="Optional OpenSSH config file passed with ssh -F")
     parser.add_argument("--signal-stale-hours", type=int, default=24)
     parser.add_argument("--log-tail", type=int, default=500)
     parser.add_argument(
@@ -180,14 +181,21 @@ def main() -> int:
 
     if not args.local_only:
         try:
-            remote_repo = collect_remote_repo_snapshot(args.remote_host, args.remote_dir)
-            remote_config_hashes = collect_remote_config_hashes(args.remote_host, args.remote_dir)
-            service_snapshot = collect_remote_service_snapshot(args.remote_host, args.remote_dir)
+            remote_repo = collect_remote_repo_snapshot(
+                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+            )
+            remote_config_hashes = collect_remote_config_hashes(
+                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+            )
+            service_snapshot = collect_remote_service_snapshot(
+                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+            )
             signal_snapshot = collect_remote_signal_snapshot(
                 args.remote_host,
                 args.remote_dir,
                 service_snapshot,
                 tail_lines=args.log_tail,
+                ssh_config=args.ssh_config,
             )
             if args.watch_service:
                 watched_service_snapshot = collect_remote_watched_service_snapshot(
@@ -196,6 +204,7 @@ def main() -> int:
                     service_snapshot,
                     args.watch_service,
                     tail_lines=args.log_tail,
+                    ssh_config=args.ssh_config,
                 )
         except Exception as exc:  # noqa: BLE001
             remote_error = str(exc)
