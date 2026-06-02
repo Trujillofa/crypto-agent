@@ -105,13 +105,16 @@ def run_command(command: list[str], cwd: Path | None = None, timeout: int = 15) 
 
 
 def run_remote_command(
-    host: str,
+    host: str | None,
     remote_dir: str,
     command: str,
     timeout: int = 20,
     ssh_config: str | None = None,
 ) -> str:
     remote_script = f"cd {shlex.quote(remote_dir)} && {command}"
+    if host is None:
+        return run_command(["bash", "-lc", remote_script], timeout=timeout)
+
     ssh_command = ["ssh"]
     if ssh_config:
         ssh_command.extend(["-F", ssh_config])
@@ -126,7 +129,7 @@ def collect_repo_snapshot(cwd: Path | None = None) -> RepoSnapshot:
 
 
 def collect_remote_repo_snapshot(
-    host: str, remote_dir: str, ssh_config: str | None = None
+    host: str | None, remote_dir: str, ssh_config: str | None = None
 ) -> RepoSnapshot:
     branch = run_remote_command(
         host, remote_dir, "git rev-parse --abbrev-ref HEAD", ssh_config=ssh_config
@@ -156,7 +159,7 @@ def sha256_file(path: Path) -> str:
 
 
 def collect_remote_config_hashes(
-    host: str, remote_dir: str, ssh_config: str | None = None
+    host: str | None, remote_dir: str, ssh_config: str | None = None
 ) -> dict[str, str]:
     output = run_remote_command(
         host,
@@ -185,7 +188,7 @@ def parse_sha256_lines(text: str) -> dict[str, str]:
 
 
 def collect_remote_service_snapshot(
-    host: str, remote_dir: str, ssh_config: str | None = None
+    host: str | None, remote_dir: str, ssh_config: str | None = None
 ) -> ServiceSnapshot:
     all_services_output = run_remote_command(
         host,
@@ -209,7 +212,7 @@ def collect_remote_service_snapshot(
 
 
 def collect_remote_timer_snapshot(
-    host: str,
+    host: str | None,
     remote_dir: str,
     timers: tuple[str, ...] = REQUIRED_SYSTEMD_TIMERS,
     ssh_config: str | None = None,
@@ -276,7 +279,7 @@ def epoch_to_iso_timestamp(value: str) -> str | None:
 
 
 def collect_remote_signal_snapshot(
-    host: str,
+    host: str | None,
     remote_dir: str,
     service_snapshot: ServiceSnapshot,
     tail_lines: int = 500,
@@ -311,7 +314,7 @@ def collect_remote_signal_snapshot(
 
 
 def collect_remote_watched_service_snapshot(
-    host: str,
+    host: str | None,
     remote_dir: str,
     service_snapshot: ServiceSnapshot,
     service: str,

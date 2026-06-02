@@ -88,6 +88,20 @@ def test_run_remote_command_passes_explicit_ssh_config(monkeypatch) -> None:
     assert commands == [["ssh", "-F", "~/.ssh/config", "host", "cd /srv/app && git status"]]
 
 
+def test_run_remote_command_can_inspect_production_locally(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_command(command: list[str], cwd=None, timeout: int = 15) -> str:
+        commands.append(command)
+        return ""
+
+    monkeypatch.setattr("src.utils.production_drift_sentinel.run_command", fake_run_command)
+
+    run_remote_command(None, "/srv/app", "git status")
+
+    assert commands == [["bash", "-lc", "cd /srv/app && git status"]]
+
+
 def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> None:
     commands = []
 

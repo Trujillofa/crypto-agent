@@ -1,0 +1,10 @@
+[Unit]
+Description=Audit crypto-agent production drift hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=crypto-agent-production-drift-sentinel.service
+
+[Install]
+WantedBy=timers.target

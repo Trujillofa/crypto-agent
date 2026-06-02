@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +31,11 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Production drift sentinel")
-    parser.add_argument("--expected-branch", default="main", help="Expected deploy branch")
+    parser.add_argument(
+        "--expected-branch",
+        default=os.getenv("EXPECTED_DEPLOY_BRANCH", "main"),
+        help="Expected deploy branch (default: EXPECTED_DEPLOY_BRANCH or main)",
+    )
     parser.add_argument("--remote-host", default="crypto-agent", help="SSH host alias")
     parser.add_argument("--remote-dir", default="/opt/crypto-agent", help="Remote repo path")
     parser.add_argument("--ssh-config", help="Optional OpenSSH config file passed with ssh -F")
@@ -41,6 +46,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional docker compose service to inspect separately (for example: agent_sol_sparse)",
     )
     parser.add_argument("--local-only", action="store_true", help="Skip remote checks")
+    parser.add_argument(
+        "--production-local",
+        action="store_true",
+        help="Inspect the production host directly without SSH (for server-side scheduling)",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON output")
     parser.add_argument(
         "--fail-on",
@@ -174,6 +184,8 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
 
 def main() -> int:
     args = parse_args()
+    if args.local_only and args.production_local:
+        raise SystemExit("--local-only and --production-local cannot be used together")
 
     local_repo = None
     local_config_hashes: dict[str, str] = {}
@@ -196,21 +208,22 @@ def main() -> int:
     remote_error = None
 
     if not args.local_only:
+        inspection_host = None if args.production_local else args.remote_host
         try:
             remote_repo = collect_remote_repo_snapshot(
-                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
             )
             remote_config_hashes = collect_remote_config_hashes(
-                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
             )
             service_snapshot = collect_remote_service_snapshot(
-                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
             )
             timer_snapshot = collect_remote_timer_snapshot(
-                args.remote_host, args.remote_dir, ssh_config=args.ssh_config
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
             )
             signal_snapshot = collect_remote_signal_snapshot(
-                args.remote_host,
+                inspection_host,
                 args.remote_dir,
                 service_snapshot,
                 tail_lines=args.log_tail,
@@ -218,7 +231,7 @@ def main() -> int:
             )
             if args.watch_service:
                 watched_service_snapshot = collect_remote_watched_service_snapshot(
-                    args.remote_host,
+                    inspection_host,
                     args.remote_dir,
                     service_snapshot,
                     args.watch_service,
