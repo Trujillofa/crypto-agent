@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -48,6 +49,8 @@ class BacktestConfig:
     futures_leverage: int = 5
     futures_funding_rate: float = 0.0001
     fixed_notional_usdt: float = 0.0  # 0 = size from available capital
+    quantity_step_size: float = 0.0  # 0 = ideal fractional quantity
+    min_notional_usdt: float = 0.0  # 0 = disabled
 
 
 @dataclass
@@ -368,8 +371,19 @@ class BacktestEngine:
 
     def _cap_fixed_notional(self, quantity: float, entry_price: float) -> float:
         if self._config.fixed_notional_usdt <= 0:
+            capped_quantity = quantity
+        else:
+            capped_quantity = min(quantity, self._config.fixed_notional_usdt / entry_price)
+        return self._apply_quantity_step(capped_quantity, entry_price)
+
+    def _apply_quantity_step(self, quantity: float, entry_price: float) -> float:
+        step = self._config.quantity_step_size
+        if step <= 0:
             return quantity
-        return min(quantity, self._config.fixed_notional_usdt / entry_price)
+        truncated = math.floor(quantity / step) * step
+        if truncated * entry_price < self._config.min_notional_usdt:
+            return truncated + step
+        return truncated
 
     def _open_long(self, timestamp: str, price: float, atr: float) -> None:
         entry_price = price * (1 + self._config.slippage_pct)

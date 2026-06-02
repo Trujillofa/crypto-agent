@@ -33,6 +33,18 @@ async def main():
         help="Trading fee rate override (defaults to 0.0004 futures / 0.001 spot)",
     )
     parser.add_argument(
+        "--quantity-step-size",
+        type=float,
+        default=0.0,
+        help="LOT_SIZE step override for exchange-parity sizing (e.g. 0.01 for SOLUSDT)",
+    )
+    parser.add_argument(
+        "--min-notional",
+        type=float,
+        default=None,
+        help="Minimum order notional override (defaults to $20 for configured futures symbols)",
+    )
+    parser.add_argument(
         "--sl", type=float, default=None, help="Stop loss percentage (e.g. 0.01 for 1%%)"
     )
     parser.add_argument(
@@ -96,6 +108,9 @@ async def main():
         settings.futures and settings.futures.enabled and args.symbol in settings.futures.symbols
     )
     fee_rate = args.fee if args.fee is not None else (0.0004 if futures_mode else 0.001)
+    min_notional_usdt = (
+        args.min_notional if args.min_notional is not None else (20.0 if futures_mode else 0.0)
+    )
 
     config = BacktestConfig(
         symbol=args.symbol,
@@ -133,6 +148,8 @@ async def main():
         futures_mode=futures_mode,
         futures_leverage=settings.futures.default_leverage if futures_mode else 1,
         fixed_notional_usdt=settings.trading_execution.order_size_usdt,
+        quantity_step_size=args.quantity_step_size,
+        min_notional_usdt=min_notional_usdt,
     )
 
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
@@ -156,7 +173,9 @@ async def main():
     print(f"Trend Filter: {not args.disable_trend_filter}")
     print(
         f"Execution: futures={config.futures_mode}, leverage={config.futures_leverage}x, "
-        f"fixed_notional=${config.fixed_notional_usdt:.2f}, fee={config.fee_rate:.4f}"
+        f"fixed_notional=${config.fixed_notional_usdt:.2f}, fee={config.fee_rate:.4f}, "
+        f"quantity_step={config.quantity_step_size:g}, "
+        f"min_notional=${config.min_notional_usdt:.2f}"
     )
     print(f"Allow Short: {args.allow_short}")
     print(f"Replay Sentiment Log: {args.replay_sentiment_log or 'disabled'}")
