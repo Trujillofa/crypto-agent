@@ -430,9 +430,14 @@ def load_settings(config_path: Path) -> Settings:
         futures_enabled = _as_bool(futures.get("enabled"), "futures.enabled", default=False)
         if futures_enabled:
             # Validate leverage limits (hard cap at 20x)
-            leverage = _as_int(futures.get("max_leverage"), "futures.max_leverage", default=10)
-            if leverage > 20:
-                raise ValueError(f"futures.max_leverage={leverage} exceeds hard safety cap of 20x")
+            max_leverage = _as_int(futures.get("max_leverage"), "futures.max_leverage", default=10)
+            if max_leverage > 20:
+                raise ValueError(
+                    f"futures.max_leverage={max_leverage} exceeds hard safety cap of 20x"
+                )
+            default_leverage = _as_int(
+                futures.get("default_leverage"), "futures.default_leverage", default=5
+            )
 
             # Validate margin mode (isolated only for MVP)
             margin_mode = _as_str(
@@ -456,7 +461,8 @@ def load_settings(config_path: Path) -> Settings:
             _logger = get_logger("load_settings")
             _logger.info(
                 f"Futures trading enabled: symbols={_as_str_list(futures.get('symbols'), 'futures.symbols')}, "
-                f"leverage={leverage}x, margin={margin_mode}, mode={position_mode}"
+                f"leverage={default_leverage}x, max_leverage={max_leverage}x, "
+                f"margin={margin_mode}, mode={position_mode}"
             )
 
     # BLOCKER R-1 FIX: Enforce mode: paper safety
