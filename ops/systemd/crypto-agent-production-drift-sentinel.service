@@ -5,6 +5,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
+User=emilio
 WorkingDirectory=/opt/crypto-agent
 Environment=EXPECTED_DEPLOY_BRANCH=main
 EnvironmentFile=-/etc/default/crypto-agent-production-drift-sentinel
