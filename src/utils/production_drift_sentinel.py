@@ -14,6 +14,8 @@ from typing import Any
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
 PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
 REQUIRED_SYSTEMD_TIMERS = ("crypto-agent-paper-validation-report.timer",)
+PAPER_VALIDATION_REPORT_GLOB = "data/reports/paper-validation-report-*.json"
+MAX_REPORT_ARTIFACT_AGE_HOURS = 36
 
 
 class Severity(StrEnum):
@@ -48,6 +50,9 @@ class TimerState:
     timer: str
     enabled: str
     active: str
+    service_result: str
+    exec_main_status: str
+    latest_report_at: str | None
 
 
 @dataclass(frozen=True)
@@ -224,10 +229,50 @@ def collect_remote_timer_snapshot(
             f"systemctl is-active {rendered_timer} 2>/dev/null || true",
             ssh_config=ssh_config,
         )
+        service = timer.removesuffix(".timer") + ".service"
+        rendered_service = shlex.quote(service)
+        service_result = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl show {rendered_service} --property=Result --value",
+            ssh_config=ssh_config,
+        )
+        exec_main_status = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl show {rendered_service} --property=ExecMainStatus --value",
+            ssh_config=ssh_config,
+        )
+        latest_report_epoch = run_remote_command(
+            host,
+            remote_dir,
+            (
+                f"find {shlex.quote(str(Path(PAPER_VALIDATION_REPORT_GLOB).parent))} "
+                f"-maxdepth 1 -type f -name {shlex.quote(Path(PAPER_VALIDATION_REPORT_GLOB).name)} "
+                "-printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1"
+            ),
+            ssh_config=ssh_config,
+        )
+        latest_report_at = epoch_to_iso_timestamp(latest_report_epoch)
         states.append(
-            TimerState(timer=timer, enabled=enabled or "unknown", active=active or "unknown")
+            TimerState(
+                timer=timer,
+                enabled=enabled or "unknown",
+                active=active or "unknown",
+                service_result=service_result or "unknown",
+                exec_main_status=exec_main_status or "unknown",
+                latest_report_at=latest_report_at,
+            )
         )
     return TimerSnapshot(timers=states)
+
+
+def epoch_to_iso_timestamp(value: str) -> str | None:
+    try:
+        epoch = float(value.strip())
+    except ValueError:
+        return None
+    return datetime.fromtimestamp(epoch, tz=UTC).isoformat()
 
 
 def collect_remote_signal_snapshot(
@@ -512,6 +557,43 @@ def analyze_drift(
                         recommendation="Enable and start the required production timer.",
                     )
                 )
+            if timer.service_result != "success" or timer.exec_main_status != "0":
+                findings.append(
+                    Finding(
+                        severity=Severity.ERROR,
+                        code="REQUIRED_TIMER_SERVICE_FAILED",
+                        message=(
+                            f"Required timer service for '{timer.timer}' failed "
+                            f"(result={timer.service_result}, exec_status={timer.exec_main_status})"
+                        ),
+                        recommendation="Inspect the timer service journal and rerun the report.",
+                    )
+                )
+            if timer.latest_report_at is None:
+                findings.append(
+                    Finding(
+                        severity=Severity.ERROR,
+                        code="PAPER_VALIDATION_REPORT_MISSING",
+                        message="No generated paper-validation JSON report artifact was found",
+                        recommendation="Run the report wrapper and verify host artifact persistence.",
+                    )
+                )
+            else:
+                parsed = parse_iso_timestamp(timer.latest_report_at)
+                if parsed is not None:
+                    age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
+                    if age_hours > MAX_REPORT_ARTIFACT_AGE_HOURS:
+                        findings.append(
+                            Finding(
+                                severity=Severity.ERROR,
+                                code="PAPER_VALIDATION_REPORT_STALE",
+                                message=(
+                                    "Latest paper-validation report artifact is stale "
+                                    f"({age_hours:.1f}h old at {timer.latest_report_at})"
+                                ),
+                                recommendation="Inspect the timer service and regenerate the report.",
+                            )
+                        )
 
     if signal_snapshot is not None:
         if signal_snapshot.saw_strategy_cycle and signal_snapshot.signal_count == 0:

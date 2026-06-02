@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from src.utils.production_drift_sentinel import (
     IGNORED_CONFIG_FILES,
     RepoSnapshot,
@@ -12,6 +14,7 @@ from src.utils.production_drift_sentinel import (
     collect_local_config_hashes,
     collect_remote_service_snapshot,
     collect_remote_timer_snapshot,
+    epoch_to_iso_timestamp,
     parse_iso_timestamp,
     parse_sha256_lines,
     run_remote_command,
@@ -92,7 +95,15 @@ def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> 
         host: str, remote_dir: str, command: str, ssh_config: str | None = None
     ) -> str:
         commands.append(command)
-        return "enabled" if "is-enabled" in command else "active"
+        if "is-enabled" in command:
+            return "enabled"
+        if "is-active" in command:
+            return "active"
+        if "--property=Result" in command:
+            return "success"
+        if "--property=ExecMainStatus" in command:
+            return "0"
+        return "1780359302.0"
 
     monkeypatch.setattr(
         "src.utils.production_drift_sentinel.run_remote_command",
@@ -102,12 +113,28 @@ def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> 
     snapshot = collect_remote_timer_snapshot("host", "/srv/app", timers=("report.timer",))
 
     assert snapshot == TimerSnapshot(
-        timers=[TimerState(timer="report.timer", enabled="enabled", active="active")]
+        timers=[
+            TimerState(
+                timer="report.timer",
+                enabled="enabled",
+                active="active",
+                service_result="success",
+                exec_main_status="0",
+                latest_report_at="2026-06-02T00:15:02+00:00",
+            )
+        ]
     )
     assert commands == [
         "systemctl is-enabled report.timer 2>/dev/null || true",
         "systemctl is-active report.timer 2>/dev/null || true",
+        "systemctl show report.service --property=Result --value",
+        "systemctl show report.service --property=ExecMainStatus --value",
+        "find data/reports -maxdepth 1 -type f -name 'paper-validation-report-*.json' -printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1",
     ]
+
+
+def test_epoch_to_iso_timestamp_returns_none_for_missing_artifact() -> None:
+    assert epoch_to_iso_timestamp("") is None
 
 
 def test_analyze_drift_detects_remote_branch_mismatch_and_dirty() -> None:
@@ -173,6 +200,9 @@ def test_analyze_drift_detects_unhealthy_required_timer() -> None:
                     timer="crypto-agent-paper-validation-report.timer",
                     enabled="disabled",
                     active="inactive",
+                    service_result="success",
+                    exec_main_status="0",
+                    latest_report_at=datetime.now(UTC).isoformat(),
                 )
             ]
         ),
@@ -186,6 +216,68 @@ def test_analyze_drift_detects_unhealthy_required_timer() -> None:
 
     codes = {finding.code for finding in findings}
     assert "REQUIRED_TIMER_NOT_HEALTHY" in codes
+
+
+def test_analyze_drift_detects_failed_timer_service_and_missing_report() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        timer_snapshot=TimerSnapshot(
+            timers=[
+                TimerState(
+                    timer="report.timer",
+                    enabled="enabled",
+                    active="active",
+                    service_result="failed",
+                    exec_main_status="1",
+                    latest_report_at=None,
+                )
+            ]
+        ),
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "REQUIRED_TIMER_SERVICE_FAILED" in codes
+    assert "PAPER_VALIDATION_REPORT_MISSING" in codes
+
+
+def test_analyze_drift_detects_stale_paper_validation_report() -> None:
+    stale_report = (datetime.now(UTC) - timedelta(hours=37)).isoformat()
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        timer_snapshot=TimerSnapshot(
+            timers=[
+                TimerState(
+                    timer="report.timer",
+                    enabled="enabled",
+                    active="active",
+                    service_result="success",
+                    exec_main_status="0",
+                    latest_report_at=stale_report,
+                )
+            ]
+        ),
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "PAPER_VALIDATION_REPORT_STALE" in codes
 
 
 def test_remote_error_short_circuits_remote_analysis() -> None:

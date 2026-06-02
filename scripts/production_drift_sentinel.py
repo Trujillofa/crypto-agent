@@ -116,7 +116,12 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
     lines.append("")
     if report.timer_snapshot is not None:
         for timer in report.timer_snapshot.timers:
-            lines.append(f"- {timer.timer}: enabled={timer.enabled}, active={timer.active}")
+            lines.append(
+                f"- {timer.timer}: enabled={timer.enabled}, active={timer.active}, "
+                f"service_result={timer.service_result}, "
+                f"exec_status={timer.exec_main_status}, "
+                f"latest_report={timer.latest_report_at or 'none'}"
+            )
     else:
         lines.append("- Timer snapshot unavailable")
 
