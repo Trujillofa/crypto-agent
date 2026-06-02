@@ -26,7 +26,12 @@ async def main():
     parser.add_argument("--start", type=str, required=True, help="Start date (ISO 8601)")
     parser.add_argument("--end", type=str, required=True, help="End date (ISO 8601)")
     parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital")
-    parser.add_argument("--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)")
+    parser.add_argument(
+        "--fee",
+        type=float,
+        default=None,
+        help="Trading fee rate override (defaults to 0.0004 futures / 0.001 spot)",
+    )
     parser.add_argument(
         "--sl", type=float, default=None, help="Stop loss percentage (e.g. 0.01 for 1%%)"
     )
@@ -87,6 +92,10 @@ async def main():
         raw_config = yaml.safe_load(file_handle) or {}
     trading_exec = raw_config.get("trading_execution", {})
     exit_rules = trading_exec.get("exit_rules", {}) or {}
+    futures_mode = bool(
+        settings.futures and settings.futures.enabled and args.symbol in settings.futures.symbols
+    )
+    fee_rate = args.fee if args.fee is not None else (0.0004 if futures_mode else 0.001)
 
     config = BacktestConfig(
         symbol=args.symbol,
@@ -94,7 +103,7 @@ async def main():
         start_date=datetime.fromisoformat(args.start),
         end_date=datetime.fromisoformat(args.end),
         initial_capital=args.capital,
-        fee_rate=args.fee,
+        fee_rate=fee_rate,
         stop_loss_pct=stop_loss_pct,
         take_profit_pct=take_profit_pct,
         sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
@@ -121,6 +130,9 @@ async def main():
             if args.replay_sentiment_max_age_hours is not None
             else None
         ),
+        futures_mode=futures_mode,
+        futures_leverage=settings.futures.default_leverage if futures_mode else 1,
+        fixed_notional_usdt=settings.trading_execution.order_size_usdt,
     )
 
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
@@ -142,6 +154,10 @@ async def main():
         f"trail_offset={config.trailing_offset_atr:.2f}"
     )
     print(f"Trend Filter: {not args.disable_trend_filter}")
+    print(
+        f"Execution: futures={config.futures_mode}, leverage={config.futures_leverage}x, "
+        f"fixed_notional=${config.fixed_notional_usdt:.2f}, fee={config.fee_rate:.4f}"
+    )
     print(f"Allow Short: {args.allow_short}")
     print(f"Replay Sentiment Log: {args.replay_sentiment_log or 'disabled'}")
     print(

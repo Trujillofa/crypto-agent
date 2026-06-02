@@ -234,3 +234,44 @@ def test_higher_leverage_allows_larger_position_sizes_with_same_cash():
     assert low_qty == pytest.approx(20.0)
     assert high_qty == pytest.approx(100.0)
     assert high_qty > low_qty
+
+
+def test_fixed_notional_caps_futures_position_size():
+    engine = BacktestEngine(
+        BacktestConfig(
+            symbol="SOLUSDT",
+            timeframe="1h",
+            start_date="2023-01-01",
+            end_date="2023-01-02",
+            initial_capital=1000.0,
+            fee_rate=0.0,
+            futures_mode=True,
+            futures_leverage=3,
+            fixed_notional_usdt=22.0,
+        ),
+        IndicatorReader({}),
+    )
+
+    quantity = engine._calculate_entry_qty(80.0, atr=0.0)
+
+    assert quantity == pytest.approx(22.0 / 80.0)
+
+
+def test_fixed_notional_default_preserves_all_capital_futures_sizing():
+    engine = BacktestEngine(
+        BacktestConfig(
+            symbol="SOLUSDT",
+            timeframe="1h",
+            start_date="2023-01-01",
+            end_date="2023-01-02",
+            initial_capital=1000.0,
+            fee_rate=0.0,
+            futures_mode=True,
+            futures_leverage=3,
+        ),
+        IndicatorReader({}),
+    )
+
+    quantity = engine._calculate_entry_qty(80.0, atr=0.0)
+
+    assert quantity == pytest.approx(37.5)
