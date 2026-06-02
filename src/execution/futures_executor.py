@@ -45,6 +45,9 @@ class FuturesTradingConfig:
     # SL/TP — ATR-based (primary) with fixed-pct fallback
     sl_atr_multiplier: float = 2.0  # SL = entry - mult * ATR(14)
     tp_atr_multiplier: float = 4.5  # TP = entry + mult * ATR(14)
+    trailing_activate_atr: float = 1.5
+    trailing_offset_atr: float = 1.0
+    time_stop_minutes: float = 0.0  # 0 = disabled
     stop_loss_pct: float = 0.03  # fallback if ATR unavailable
     take_profit_pct: float = 0.06  # fallback if ATR unavailable
     max_concurrent_longs: int = 0  # 0 = disabled; cap on simultaneous LONG positions
@@ -468,17 +471,47 @@ class FuturesTradingExecutor:
                     self._positions.pop(symbol, None)
                     self._record_risk_close(symbol, pnl, self._account_balance)
 
-                # Software SL/TP: trigger MARKET close when mark_price crosses stored levels
+                # Software exits: enforce SL/TP, ATR trailing, and time stops.
                 sw = self._sl_tp_prices.get(symbol)
                 if sw and positions:
                     mark = positions[0].mark_price
                     sl = sw.get("sl_price", 0.0)
                     tp = sw.get("tp_price", 0.0)
-                    triggered = (sl > 0 and mark <= sl) or (tp > 0 and mark >= tp)
-                    if triggered:
-                        sw_close_reason = "stop_loss" if (sl > 0 and mark <= sl) else "take_profit"
+                    entry_price = sw.get("entry_price", 0.0)
+                    atr_14 = sw.get("atr_14", 0.0)
+                    high_water_mark = max(sw.get("high_water_mark", entry_price), mark)
+                    sw["high_water_mark"] = high_water_mark
+                    if atr_14 > 0 and high_water_mark >= (
+                        entry_price + self._config.trailing_activate_atr * atr_14
+                    ):
+                        trailing_sl = high_water_mark - self._config.trailing_offset_atr * atr_14
+                        if trailing_sl > sl:
+                            sl = trailing_sl
+                            sw["sl_price"] = trailing_sl
+
+                    opened_at = sw.get("opened_at", 0.0)
+                    time_stop = (
+                        self._config.time_stop_minutes > 0
+                        and opened_at > 0
+                        and (time.time() - opened_at) / 60 >= self._config.time_stop_minutes
+                    )
+                    sw_close_reason: str | None = None
+                    if sl > 0 and mark <= sl:
+                        sw_close_reason = "stop_loss"
+                    elif tp > 0 and mark >= tp:
+                        sw_close_reason = "take_profit"
+                    elif time_stop:
+                        sw_close_reason = "time_stop"
+
+                    if sw_close_reason is not None:
                         reason_str = (
-                            f"SL {sl:.4f}" if sw_close_reason == "stop_loss" else f"TP {tp:.4f}"
+                            f"SL {sl:.4f}"
+                            if sw_close_reason == "stop_loss"
+                            else (
+                                f"TP {tp:.4f}"
+                                if sw_close_reason == "take_profit"
+                                else f"time stop {self._config.time_stop_minutes:.0f}m"
+                            )
                         )
                         self._logger.warning(
                             "Software %s triggered for %s: mark=%.4f — closing position",
@@ -498,6 +531,7 @@ class FuturesTradingExecutor:
                         self._sl_tp_prices.pop(symbol, None)
                         try:
                             qty = abs(positions[0].position_amt)
+                            await self._cancel_sl_tp_orders(symbol)
                             request_position_side = (
                                 "BOTH" if self._active_position_mode == "one-way" else "LONG"
                             )
@@ -1180,6 +1214,7 @@ class FuturesTradingExecutor:
         entry_price: float,
         quantity: float,
         atr_14: float,
+        opened_at: float | None = None,
     ) -> tuple[float, float]:
         """Place exchange-side SL and TP orders, with software-monitor fallback.
 
@@ -1206,7 +1241,14 @@ class FuturesTradingExecutor:
         tp_order_id = ""
 
         # Software monitor always active as final fallback.
-        self._sl_tp_prices[symbol] = {"sl_price": sl_price, "tp_price": tp_price}
+        self._sl_tp_prices[symbol] = {
+            "sl_price": sl_price,
+            "tp_price": tp_price,
+            "entry_price": entry_price,
+            "atr_14": atr_14,
+            "high_water_mark": entry_price,
+            "opened_at": opened_at if opened_at is not None else time.time(),
+        }
 
         order_position_side = "BOTH" if self._active_position_mode == "one-way" else "LONG"
 
@@ -1314,8 +1356,19 @@ class FuturesTradingExecutor:
                         abs(pos.position_amt),
                         atr_14,
                     )
+                    opened_at: float | None = None
+                    if self._portfolio_manager is not None:
+                        tracked_position = self._portfolio_manager.get_position(
+                            symbol, market="futures"
+                        )
+                        if tracked_position is not None and tracked_position.entry_time is not None:
+                            opened_at = tracked_position.entry_time.timestamp()
                     await self._place_sl_tp_orders(
-                        symbol, pos.entry_price, abs(pos.position_amt), atr_14
+                        symbol,
+                        pos.entry_price,
+                        abs(pos.position_amt),
+                        atr_14,
+                        opened_at=opened_at,
                     )
                     self._risk_manager.register_open_position(
                         symbol,

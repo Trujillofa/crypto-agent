@@ -1050,6 +1050,13 @@ async def run() -> None:
                 sl_cooldown_minutes=settings.futures.sl_cooldown_minutes,
                 sl_atr_multiplier=settings.trading_execution.sl_atr_multiplier,
                 tp_atr_multiplier=settings.trading_execution.tp_atr_multiplier,
+                trailing_activate_atr=settings.trading_execution.trailing_activate_atr,
+                trailing_offset_atr=settings.trading_execution.trailing_offset_atr,
+                time_stop_minutes=_as_float(
+                    settings.exit_rules.get("time_stop_minutes"),
+                    "trading_execution.exit_rules.time_stop_minutes",
+                    default=0.0,
+                ),
                 stop_loss_pct=settings.trading_execution.stop_loss_pct,
                 take_profit_pct=settings.trading_execution.take_profit_pct,
                 timeframe=settings.timeframe,

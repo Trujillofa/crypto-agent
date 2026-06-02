@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1053,6 +1055,113 @@ class TestFuturesTradingExecutor:
 
         executor._risk_manager.record_trade.assert_called_once_with("BTCUSDT", -20.0, 5000.0)
         executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
+
+    @pytest.mark.asyncio
+    async def test_monitor_software_time_stop_closes_and_cancels_exchange_orders(self, executor):
+        executor._config = replace(executor._config, time_stop_minutes=60)
+        position = FuturesPositionInfo(
+            symbol="BTCUSDT",
+            position_side="LONG",
+            position_amt=0.01,
+            entry_price=80000.0,
+            mark_price=80100.0,
+            liquidation_price=70000.0,
+            leverage=5,
+            isolated_margin=100.0,
+            unrealized_pnl=1.0,
+            notional_value=801.0,
+        )
+        mock_client = MagicMock()
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.get_position_risk = AsyncMock(
+            side_effect=lambda symbol: [position] if symbol == "BTCUSDT" else []
+        )
+        mock_client.cancel_algo_order = AsyncMock()
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(order_id="time_stop_close", side="SELL", reduce_only=True)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+        executor._sl_tp_prices["BTCUSDT"] = {
+            "sl_price": 78000.0,
+            "tp_price": 84000.0,
+            "entry_price": 80000.0,
+            "atr_14": 1000.0,
+            "high_water_mark": 80000.0,
+            "opened_at": time.time() - 61 * 60,
+        }
+        executor._sl_tp_orders["BTCUSDT"] = {
+            "sl_order_id": "sl_algo",
+            "tp_order_id": "tp_algo",
+            "sl_is_algo": True,
+            "tp_is_algo": True,
+        }
+
+        await executor._monitor_and_update()
+
+        assert mock_client.cancel_algo_order.await_count == 2
+        executor._notifier.send_trade_alert.assert_awaited_once()
+        assert executor._notifier.send_trade_alert.await_args.kwargs["close_reason"] == "time_stop"
+        assert "BTCUSDT" not in executor._sl_tp_orders
+
+    @pytest.mark.asyncio
+    async def test_monitor_software_trailing_stop_closes_after_activation(self, executor):
+        executor._config = replace(
+            executor._config,
+            trailing_activate_atr=1.0,
+            trailing_offset_atr=0.5,
+        )
+        marks = iter([81500.0, 80900.0])
+
+        async def position_risk(symbol: str):
+            if symbol != "BTCUSDT":
+                return []
+            mark = next(marks)
+            return [
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=0.01,
+                    entry_price=80000.0,
+                    mark_price=mark,
+                    liquidation_price=70000.0,
+                    leverage=5,
+                    isolated_margin=100.0,
+                    unrealized_pnl=(mark - 80000.0) * 0.01,
+                    notional_value=mark * 0.01,
+                )
+            ]
+
+        mock_client = MagicMock()
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.get_position_risk = AsyncMock(side_effect=position_risk)
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(order_id="trailing_close", side="SELL", reduce_only=True)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+        executor._sl_tp_prices["BTCUSDT"] = {
+            "sl_price": 78000.0,
+            "tp_price": 84000.0,
+            "entry_price": 80000.0,
+            "atr_14": 1000.0,
+            "high_water_mark": 80000.0,
+            "opened_at": time.time(),
+        }
+
+        await executor._monitor_and_update()
+        assert executor._sl_tp_prices["BTCUSDT"]["sl_price"] == pytest.approx(81000.0)
+        mock_client.place_order.assert_not_awaited()
+
+        await executor._monitor_and_update()
+
+        mock_client.place_order.assert_awaited_once()
+        executor._notifier.send_trade_alert.assert_awaited_once()
+        assert executor._notifier.send_trade_alert.await_args.kwargs["close_reason"] == "stop_loss"
 
     @pytest.mark.asyncio
     async def test_liquidation_buffer_check(self, executor):
