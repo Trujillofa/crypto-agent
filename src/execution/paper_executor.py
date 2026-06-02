@@ -696,11 +696,6 @@ class PaperExecutor:
                     "risk_check_failed",
                     {"symbol": signal.symbol, "reason": reason, "stage": "paper_buy"},
                 )
-            if self._event_log:
-                await self._event_log.log(
-                    "risk_check_failed",
-                    {"symbol": signal.symbol, "reason": reason, "stage": "paper_buy"},
-                )
             await self._notifier.send_alert(
                 f"🛑 <b>Signal Blocked</b> [{market_tag}]\n{signal.symbol} BUY — {reason}"
             )
