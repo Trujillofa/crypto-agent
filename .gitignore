@@ -36,6 +36,7 @@ ENV/
 .copilot/
 .cleo/
 .sisyphus/
+.grok/
 claudedocs/
 
 # OS
