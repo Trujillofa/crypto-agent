@@ -109,7 +109,6 @@ class PaperExecutor:
         self._guard_pipeline = guard_pipeline
         self._staged_manager = staged_manager
         self._agent_id = self._normalize_agent_id(agent_id)
-        self._agent_id = self._normalize_agent_id(agent_id)
         self._position_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
         self._logger = get_logger("PaperExecutor")
 
