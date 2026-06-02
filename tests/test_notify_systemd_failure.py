@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from argparse import Namespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.notify_systemd_failure import build_message, send_failure_alert, telegram_enabled
+from scripts.notify_systemd_failure import build_message, main, send_failure_alert, telegram_enabled
 
 
 def test_telegram_enabled_accepts_common_true_values() -> None:
@@ -62,3 +63,17 @@ def test_send_failure_alert_posts_encoded_payload(monkeypatch) -> None:
     assert request.full_url.endswith("/botsecret-token/sendMessage")
     assert b"chat_id=12345" in request.data
     assert b"crypto-agent-test.service" in request.data
+
+
+def test_main_does_not_log_exception_details(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "scripts.notify_systemd_failure.parse_args",
+        lambda: Namespace(unit="crypto-agent-test.service"),
+    )
+    monkeypatch.setattr(
+        "scripts.notify_systemd_failure.send_failure_alert",
+        MagicMock(side_effect=RuntimeError("secret-token")),
+    )
+
+    assert main() == 1
+    assert capsys.readouterr().err == "Failed to send Telegram failure alert\n"

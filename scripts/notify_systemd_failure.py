@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import socket
+import sys
 import urllib.parse
 import urllib.request
 
@@ -60,13 +61,17 @@ def send_failure_alert(
 
 def main() -> int:
     args = parse_args()
-    send_failure_alert(
-        unit=args.unit,
-        hostname=socket.gethostname(),
-        bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
-        chat_id=os.getenv("TELEGRAM_CHAT_ID"),
-        enabled=os.getenv("TELEGRAM_ENABLED"),
-    )
+    try:
+        send_failure_alert(
+            unit=args.unit,
+            hostname=socket.gethostname(),
+            bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+            chat_id=os.getenv("TELEGRAM_CHAT_ID"),
+            enabled=os.getenv("TELEGRAM_ENABLED"),
+        )
+    except Exception:  # noqa: BLE001
+        print("Failed to send Telegram failure alert", file=sys.stderr)
+        return 1
     print(f"Sent Telegram failure alert for {args.unit}")
     return 0
 
