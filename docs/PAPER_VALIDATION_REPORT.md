@@ -9,9 +9,14 @@ It combines:
 - cumulative portfolio stats
 - risk-state flags
 - campaign metrics scoped to each validator's explicit rollout timestamp
+- conservative paper-to-live review readiness based on campaign age and closed-trade count
 
 Promotion decisions must use campaign metrics. Lifetime database metrics are retained only for
 audit context because they can include rows from older strategy settings.
+
+`ready_for_review` is not automatic promotion. A validator reaches that state only after at
+least `28` days and `10` campaign closed trades. Promotion still requires human review of
+PnL, win rate, drawdown, trade quality, and operational logs.
 
 Current monitored paper agents:
 

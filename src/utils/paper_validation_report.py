@@ -18,6 +18,17 @@ class PaperAgentSpec:
     symbols: tuple[str, ...]
     timeframe: str
     validation_started_at: str
+    min_review_days: int
+    min_review_trades: int
+
+
+@dataclass(frozen=True)
+class PromotionReadiness:
+    status: str
+    campaign_age_days: float
+    min_review_days: int
+    min_review_trades: int
+    reasons: list[str]
 
 
 @dataclass(frozen=True)
@@ -54,6 +65,7 @@ class PaperAgentReport:
     campaign_realized_pnl: float
     campaign_closed_trades: int
     campaign_win_rate: float
+    promotion_readiness: PromotionReadiness
     risk_state_matches_report_day: bool
     portfolio: PortfolioSummary
 
@@ -73,6 +85,8 @@ DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
         symbols=("SOLUSDT",),
         timeframe="4h",
         validation_started_at="2026-06-01T21:45:00Z",
+        min_review_days=28,
+        min_review_trades=10,
     ),
     PaperAgentSpec(
         agent_id="sol-4h-panic-block-paper",
@@ -81,6 +95,8 @@ DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
         symbols=("SOLUSDT",),
         timeframe="4h",
         validation_started_at="2026-06-01T21:45:00Z",
+        min_review_days=28,
+        min_review_trades=10,
     ),
 )
 
@@ -205,6 +221,32 @@ def load_risk_state(path: Path) -> RiskStateSummary:
     )
 
 
+def assess_promotion_readiness(
+    spec: PaperAgentSpec,
+    *,
+    campaign_closed_trades: int,
+    as_of: datetime,
+) -> PromotionReadiness:
+    validation_started_at = parse_iso_timestamp(spec.validation_started_at)
+    if validation_started_at is None:
+        raise ValueError(f"Invalid validation_started_at for {spec.agent_id}")
+
+    campaign_age_days = max((as_of - validation_started_at).total_seconds() / 86400, 0.0)
+    reasons: list[str] = []
+    if campaign_age_days < spec.min_review_days:
+        reasons.append(f"campaign age {campaign_age_days:.1f}d < {spec.min_review_days}d")
+    if campaign_closed_trades < spec.min_review_trades:
+        reasons.append(f"closed trades {campaign_closed_trades} < {spec.min_review_trades}")
+
+    return PromotionReadiness(
+        status="collecting_evidence" if reasons else "ready_for_review",
+        campaign_age_days=campaign_age_days,
+        min_review_days=spec.min_review_days,
+        min_review_trades=spec.min_review_trades,
+        reasons=reasons,
+    )
+
+
 async def collect_agent_report(
     spec: PaperAgentSpec,
     day: date,
@@ -228,6 +270,11 @@ async def collect_agent_report(
             campaign_win_rate,
         ) = await manager.get_closed_stats_since(validation_started_at)
         portfolio = await manager.get_portfolio_summary()
+    promotion_readiness = assess_promotion_readiness(
+        spec,
+        campaign_closed_trades=campaign_closed_trades,
+        as_of=datetime.now(UTC),
+    )
 
     risk_state_matches_report_day = risk.updated_day == day.isoformat()
 
@@ -242,6 +289,7 @@ async def collect_agent_report(
         campaign_realized_pnl=campaign_realized_pnl,
         campaign_closed_trades=campaign_closed_trades,
         campaign_win_rate=campaign_win_rate,
+        promotion_readiness=promotion_readiness,
         risk_state_matches_report_day=risk_state_matches_report_day,
         portfolio=portfolio,
     )
@@ -321,6 +369,17 @@ def render_markdown(report: PaperValidationReport) -> str:
         lines.append(f"- Campaign realized PnL: `{agent.campaign_realized_pnl:.2f} USDT`")
         lines.append(f"- Campaign closed trades: `{agent.campaign_closed_trades}`")
         lines.append(f"- Campaign win rate: `{agent.campaign_win_rate:.2f}%`")
+        lines.append(f"- Promotion readiness: `{agent.promotion_readiness.status}`")
+        lines.append(f"- Campaign age: `{agent.promotion_readiness.campaign_age_days:.1f} days`")
+        lines.append(
+            "- Minimum review evidence: "
+            f"`{agent.promotion_readiness.min_review_days} days + "
+            f"{agent.promotion_readiness.min_review_trades} closed trades`"
+        )
+        if agent.promotion_readiness.reasons:
+            lines.append(
+                f"- Evidence still needed: `{'; '.join(agent.promotion_readiness.reasons)}`"
+            )
         lines.append(f"- Daily signals: `{agent.events.signal_count}`")
         lines.append(f"- Daily order fills: `{agent.events.order_filled_count}`")
         lines.append(f"- Daily risk check failures: `{agent.events.risk_check_failed_count}`")
