@@ -412,6 +412,7 @@ class FuturesTradingExecutor:
                     close_price = (
                         close_details.fill_price if close_details.fill_price else last_mark
                     )
+                    pnl: float | None = None
                     if close_details.reason == "stop_loss" and self._config.sl_cooldown_minutes > 0:
                         self._sl_cooldown_timestamps[symbol] = time.time()
                         self._logger.info(
@@ -465,6 +466,7 @@ class FuturesTradingExecutor:
                     self._sl_tp_orders.pop(symbol, None)
                     self._sl_tp_prices.pop(symbol, None)
                     self._positions.pop(symbol, None)
+                    self._record_risk_close(symbol, pnl, self._account_balance)
 
                 # Software SL/TP: trigger MARKET close when mark_price crosses stored levels
                 sw = self._sl_tp_prices.get(symbol)
@@ -536,6 +538,7 @@ class FuturesTradingExecutor:
                                 pnl = sw_realized_pnl
                             else:
                                 pnl = (mark - sw_entry_px) * qty if sw_entry_px > 0 else None
+                            self._record_risk_close(symbol, pnl, self._account_balance)
                             await self._notifier.send_trade_alert(
                                 symbol=symbol,
                                 side="SELL",
@@ -559,6 +562,18 @@ class FuturesTradingExecutor:
             except Exception as exc:
                 self._logger.error("Failed to get position risk for %s: %s", symbol, exc)
 
+    def _record_risk_close(
+        self,
+        symbol: str,
+        pnl: float | None,
+        portfolio_value: float,
+    ) -> None:
+        """Release futures risk state and feed realized P&L into circuit breakers."""
+        if pnl is not None and portfolio_value > 0:
+            self._risk_manager.record_trade(symbol, pnl, portfolio_value)
+            self._metrics.record_realized_pnl(symbol, pnl)
+        self._risk_manager.register_close_position(symbol)
+
     async def place_futures_order(
         self,
         symbol: str,
@@ -566,6 +581,7 @@ class FuturesTradingExecutor:
         quantity: float,
         position_side: str = "LONG",
         reduce_only: bool = False,
+        reference_price: float | None = None,
     ) -> FuturesOrderInfo:
         """Place a futures order with risk checks.
 
@@ -575,6 +591,7 @@ class FuturesTradingExecutor:
             quantity: Order quantity (in base asset units)
             position_side: "LONG" or "SHORT"
             reduce_only: If True, order will only reduce position
+            reference_price: Current market price used to enforce opening notional limits
 
         Returns:
             FuturesOrderInfo: Information about placed order
@@ -615,6 +632,19 @@ class FuturesTradingExecutor:
 
         # Check margin usage — skip for reduce-only orders (closing frees margin, never consumes it)
         if not reduce_only:
+            if reference_price is None or reference_price <= 0:
+                raise ValueError("reference_price must be positive for opening futures orders")
+
+            notional_value = quantity * reference_price
+            position_allowed, position_reason = self._risk_manager.check_position_limit(
+                symbol,
+                notional_value,
+                account_info.total_margin_balance,
+            )
+            if not position_allowed:
+                self._metrics.record_risk_block(symbol, position_reason)
+                raise RuntimeError(f"Position limit check failed: {position_reason}")
+
             current_positions = self._positions.get(symbol, {})
             used_margin = (
                 abs(current_positions.get("amount", 0))
@@ -690,15 +720,21 @@ class FuturesTradingExecutor:
 
                 if reduce_only:
                     # Position was reduced/closed
+                    close_pnl: float | None = None
                     if self._portfolio_manager is not None:
-                        _, _close_pnl = await self._portfolio_manager.close_position(
+                        _, close_pnl = await self._portfolio_manager.close_position(
                             symbol=symbol,
                             price=float(order.price) if order.price else 0.0,
                             order_id=str(order.order_id),
                             market="futures",
                             closing_side=side,
                         )
-                        self._recent_close_pnl[symbol] = _close_pnl
+                        self._recent_close_pnl[symbol] = close_pnl
+                    self._record_risk_close(
+                        symbol,
+                        close_pnl,
+                        account_info.total_margin_balance,
+                    )
                     # Clear in-memory tracker so max_concurrent_longs frees the slot.
                     # The monitor-loop cleanup at line ~313 only fires when _sl_tp_orders
                     # still has the symbol, but signal-driven closes pop it beforehand.
@@ -738,6 +774,12 @@ class FuturesTradingExecutor:
                     # works within the same evaluation cycle (before next monitoring tick).
                     self._positions[symbol]["amount"] = recorded_qty
                     self._positions[symbol]["side"] = "LONG"
+                    executed_price = float(order.price) if order.price else reference_price
+                    self._risk_manager.register_open_position(
+                        symbol,
+                        recorded_qty * executed_price,
+                        executed_price,
+                    )
 
             return order
 
@@ -876,6 +918,7 @@ class FuturesTradingExecutor:
                         quantity=order_size,
                         position_side="LONG",
                         reduce_only=False,
+                        reference_price=signal.price,
                     )
                     if order.status == "FILLED":
                         entry_price = (
@@ -1273,6 +1316,11 @@ class FuturesTradingExecutor:
                     )
                     await self._place_sl_tp_orders(
                         symbol, pos.entry_price, abs(pos.position_amt), atr_14
+                    )
+                    self._risk_manager.register_open_position(
+                        symbol,
+                        abs(pos.position_amt) * pos.entry_price,
+                        pos.entry_price,
                     )
             except Exception as exc:
                 self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)

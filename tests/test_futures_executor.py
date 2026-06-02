@@ -87,6 +87,7 @@ class TestFuturesTradingExecutor:
         risk_manager.check_max_leverage.return_value = (True, "OK")
         risk_manager.check_margin_usage.return_value = (True, "OK")
         risk_manager.check_liquidation_buffer.return_value = (True, "OK")
+        risk_manager.check_position_limit.return_value = (True, "OK")
 
         metrics = MagicMock(spec=ExecutionMetrics)
 
@@ -113,7 +114,7 @@ class TestFuturesTradingExecutor:
         )
 
         with pytest.raises(RuntimeError) as exc_info:
-            await executor.place_futures_order("BTCUSDT", "BUY", 0.01)
+            await executor.place_futures_order("BTCUSDT", "BUY", 0.01, reference_price=50000.0)
 
         assert "disabled" in str(exc_info.value).lower()
 
@@ -163,11 +164,52 @@ class TestFuturesTradingExecutor:
             quantity=0.009670032130879488,
             position_side="LONG",
             reduce_only=False,
+            reference_price=2276.25,
         )
 
         executor._portfolio_manager.open_position.assert_awaited_once()
         open_kwargs = executor._portfolio_manager.open_position.await_args.kwargs
         assert open_kwargs["quantity"] == pytest.approx(0.009)
+        executor._risk_manager.register_open_position.assert_called_once_with(
+            "ETHUSDT",
+            pytest.approx(0.009 * 2276.25),
+            pytest.approx(2276.25),
+        )
+
+    @pytest.mark.asyncio
+    async def test_place_futures_order_blocks_position_limit_before_exchange_order(self, executor):
+        mock_client = MagicMock()
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        executor._client = mock_client
+        executor._risk_manager.check_position_limit.return_value = (
+            False,
+            "Position size exceeds configured max",
+        )
+
+        with pytest.raises(RuntimeError, match="Position limit check failed"):
+            await executor.place_futures_order(
+                "BTCUSDT",
+                "BUY",
+                0.01,
+                reference_price=50000.0,
+            )
+
+        mock_client.place_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_place_futures_order_requires_reference_price_for_open(self, executor):
+        mock_client = MagicMock()
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        executor._client = mock_client
+
+        with pytest.raises(ValueError, match="reference_price"):
+            await executor.place_futures_order("BTCUSDT", "BUY", 0.01)
+
+        mock_client.place_order.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_on_signal_buy_opens_long(self, executor):
@@ -743,6 +785,11 @@ class TestFuturesTradingExecutor:
         assert "BTCUSDT" in executor._sl_tp_orders
         assert executor._sl_tp_orders["BTCUSDT"]["sl_order_id"] == "sl_r"
         assert executor._sl_tp_orders["BTCUSDT"]["tp_order_id"] == "tp_r"
+        executor._risk_manager.register_open_position.assert_called_once_with(
+            "BTCUSDT",
+            pytest.approx(500.0),
+            pytest.approx(50000.0),
+        )
 
     @pytest.mark.asyncio
     async def test_recover_skips_symbol_with_no_open_position(self, executor):
@@ -809,6 +856,7 @@ class TestFuturesTradingExecutor:
 
         # Tracking should be cleaned up
         assert "BTCUSDT" not in executor._sl_tp_orders
+        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
 
     @pytest.mark.asyncio
     async def test_monitor_sends_close_notification_on_sl_close(self, executor):
@@ -899,6 +947,8 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["price"] == pytest.approx(74_949.1)
         assert call_kwargs["pnl"] == pytest.approx(-0.7689)
         assert call_kwargs["close_reason"] == "stop_loss"
+        executor._risk_manager.record_trade.assert_called_once_with("BTCUSDT", -0.7689, 5000.0)
+        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
 
     @pytest.mark.asyncio
     async def test_monitor_falls_back_to_mark_when_binance_fill_lookup_fails(self, executor):
@@ -970,6 +1020,39 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["close_reason"] == "take_profit"
         assert call_kwargs["pnl"] == pytest.approx((84100.0 - 80000.0) * 0.01)
         assert "BTCUSDT" not in executor._sl_tp_orders
+
+    @pytest.mark.asyncio
+    async def test_monitor_software_sl_records_risk_close_after_estimating_pnl(self, executor):
+        position = FuturesPositionInfo(
+            symbol="BTCUSDT",
+            position_side="LONG",
+            position_amt=0.01,
+            entry_price=80000.0,
+            mark_price=78000.0,
+            liquidation_price=70000.0,
+            leverage=5,
+            isolated_margin=100.0,
+            unrealized_pnl=-20.0,
+            notional_value=780.0,
+        )
+        mock_client = MagicMock()
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.get_position_risk = AsyncMock(
+            side_effect=lambda symbol: [position] if symbol == "BTCUSDT" else []
+        )
+        mock_client.place_order = AsyncMock(
+            return_value=_make_order(order_id="software_close", side="SELL", reduce_only=True)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+        executor._sl_tp_prices["BTCUSDT"] = {"sl_price": 78100.0, "tp_price": 84000.0}
+
+        await executor._monitor_and_update()
+
+        executor._risk_manager.record_trade.assert_called_once_with("BTCUSDT", -20.0, 5000.0)
+        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
 
     @pytest.mark.asyncio
     async def test_liquidation_buffer_check(self, executor):
