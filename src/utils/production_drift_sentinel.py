@@ -13,9 +13,16 @@ from typing import Any
 
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
 PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
-REQUIRED_SYSTEMD_TIMERS = ("crypto-agent-paper-validation-report.timer",)
 PAPER_VALIDATION_REPORT_GLOB = "data/reports/paper-validation-report-*.json"
-MAX_REPORT_ARTIFACT_AGE_HOURS = 36
+PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB = "data/reports/production-drift-sentinel-*.json"
+REQUIRED_SYSTEMD_TIMERS = (
+    "crypto-agent-paper-validation-report.timer",
+    "crypto-agent-production-drift-sentinel.timer",
+)
+TIMER_ARTIFACT_POLICIES = {
+    "crypto-agent-paper-validation-report.timer": (PAPER_VALIDATION_REPORT_GLOB, 36),
+    "crypto-agent-production-drift-sentinel.timer": (PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB, 2),
+}
 
 
 class Severity(StrEnum):
@@ -53,6 +60,7 @@ class TimerState:
     service_result: str
     exec_main_status: str
     latest_report_at: str | None
+    max_report_age_hours: int
 
 
 @dataclass(frozen=True)
@@ -219,6 +227,9 @@ def collect_remote_timer_snapshot(
 ) -> TimerSnapshot:
     states: list[TimerState] = []
     for timer in timers:
+        report_glob, max_report_age_hours = TIMER_ARTIFACT_POLICIES.get(
+            timer, (PAPER_VALIDATION_REPORT_GLOB, 36)
+        )
         rendered_timer = shlex.quote(timer)
         enabled = run_remote_command(
             host,
@@ -250,8 +261,8 @@ def collect_remote_timer_snapshot(
             host,
             remote_dir,
             (
-                f"find {shlex.quote(str(Path(PAPER_VALIDATION_REPORT_GLOB).parent))} "
-                f"-maxdepth 1 -type f -name {shlex.quote(Path(PAPER_VALIDATION_REPORT_GLOB).name)} "
+                f"find {shlex.quote(str(Path(report_glob).parent))} "
+                f"-maxdepth 1 -type f -name {shlex.quote(Path(report_glob).name)} "
                 "-printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1"
             ),
             ssh_config=ssh_config,
@@ -265,6 +276,7 @@ def collect_remote_timer_snapshot(
                 service_result=service_result or "unknown",
                 exec_main_status=exec_main_status or "unknown",
                 latest_report_at=latest_report_at,
+                max_report_age_hours=max_report_age_hours,
             )
         )
     return TimerSnapshot(timers=states)
@@ -576,8 +588,8 @@ def analyze_drift(
                 findings.append(
                     Finding(
                         severity=Severity.ERROR,
-                        code="PAPER_VALIDATION_REPORT_MISSING",
-                        message="No generated paper-validation JSON report artifact was found",
+                        code="TIMER_REPORT_MISSING",
+                        message=f"No generated JSON report artifact was found for '{timer.timer}'",
                         recommendation="Run the report wrapper and verify host artifact persistence.",
                     )
                 )
@@ -585,13 +597,13 @@ def analyze_drift(
                 parsed = parse_iso_timestamp(timer.latest_report_at)
                 if parsed is not None:
                     age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
-                    if age_hours > MAX_REPORT_ARTIFACT_AGE_HOURS:
+                    if age_hours > timer.max_report_age_hours:
                         findings.append(
                             Finding(
                                 severity=Severity.ERROR,
-                                code="PAPER_VALIDATION_REPORT_STALE",
+                                code="TIMER_REPORT_STALE",
                                 message=(
-                                    "Latest paper-validation report artifact is stale "
+                                    f"Latest report artifact for '{timer.timer}' is stale "
                                     f"({age_hours:.1f}h old at {timer.latest_report_at})"
                                 ),
                                 recommendation="Inspect the timer service and regenerate the report.",

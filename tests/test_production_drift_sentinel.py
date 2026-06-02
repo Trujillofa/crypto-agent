@@ -135,6 +135,7 @@ def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> 
                 service_result="success",
                 exec_main_status="0",
                 latest_report_at="2026-06-02T00:15:02+00:00",
+                max_report_age_hours=36,
             )
         ]
     )
@@ -145,6 +146,42 @@ def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> 
         "systemctl show report.service --property=ExecMainStatus --value",
         "find data/reports -maxdepth 1 -type f -name 'paper-validation-report-*.json' -printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1",
     ]
+
+
+def test_collect_remote_timer_snapshot_uses_hourly_sentinel_artifact_policy(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str, remote_dir: str, command: str, ssh_config: str | None = None
+    ) -> str:
+        commands.append(command)
+        if "is-enabled" in command:
+            return "enabled"
+        if "is-active" in command:
+            return "active"
+        if "--property=Result" in command:
+            return "success"
+        if "--property=ExecMainStatus" in command:
+            return "0"
+        return "1780359302.0"
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    snapshot = collect_remote_timer_snapshot(
+        "host",
+        "/srv/app",
+        timers=("crypto-agent-production-drift-sentinel.timer",),
+    )
+
+    assert snapshot.timers[0].max_report_age_hours == 2
+    assert (
+        "find data/reports -maxdepth 1 -type f "
+        "-name 'production-drift-sentinel-*.json' -printf '%T@\\n' "
+        "2>/dev/null | sort -nr | head -n 1"
+    ) in commands
 
 
 def test_epoch_to_iso_timestamp_returns_none_for_missing_artifact() -> None:
@@ -217,6 +254,7 @@ def test_analyze_drift_detects_unhealthy_required_timer() -> None:
                     service_result="success",
                     exec_main_status="0",
                     latest_report_at=datetime.now(UTC).isoformat(),
+                    max_report_age_hours=36,
                 )
             ]
         ),
@@ -249,6 +287,7 @@ def test_analyze_drift_detects_failed_timer_service_and_missing_report() -> None
                     service_result="failed",
                     exec_main_status="1",
                     latest_report_at=None,
+                    max_report_age_hours=36,
                 )
             ]
         ),
@@ -260,7 +299,7 @@ def test_analyze_drift_detects_failed_timer_service_and_missing_report() -> None
 
     codes = {finding.code for finding in findings}
     assert "REQUIRED_TIMER_SERVICE_FAILED" in codes
-    assert "PAPER_VALIDATION_REPORT_MISSING" in codes
+    assert "TIMER_REPORT_MISSING" in codes
 
 
 def test_analyze_drift_detects_stale_paper_validation_report() -> None:
@@ -281,6 +320,7 @@ def test_analyze_drift_detects_stale_paper_validation_report() -> None:
                     service_result="success",
                     exec_main_status="0",
                     latest_report_at=stale_report,
+                    max_report_age_hours=36,
                 )
             ]
         ),
@@ -291,7 +331,7 @@ def test_analyze_drift_detects_stale_paper_validation_report() -> None:
     )
 
     codes = {finding.code for finding in findings}
-    assert "PAPER_VALIDATION_REPORT_STALE" in codes
+    assert "TIMER_REPORT_STALE" in codes
 
 
 def test_remote_error_short_circuits_remote_analysis() -> None:

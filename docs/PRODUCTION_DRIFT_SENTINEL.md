@@ -8,7 +8,7 @@ It detects drift in:
 - Dirty worktree state
 - deploy-relevant `config/settings*.yaml` file hashes
 - Docker Compose service runtime status
-- Required systemd timer status, oneshot result, and report artifact freshness
+- Required systemd timer status, oneshot result, and per-timer report artifact freshness
 - Recent signal activity (consensus signal drought/staleness)
 
 Service discovery is dynamic. The sentinel reads
@@ -110,3 +110,7 @@ systemctl status crypto-agent-production-drift-sentinel.timer
 journalctl -u crypto-agent-production-drift-sentinel.service --no-pager -n 100
 ls -1t data/reports/production-drift-sentinel-*.json | head
 ```
+
+Each hourly audit also verifies its own timer and latest artifact. A missing artifact or an
+artifact older than two hours fails the audit. Daily paper-validation artifacts retain a
+36-hour freshness window.
