@@ -2,6 +2,7 @@
 Description=Audit crypto-agent production drift
 After=docker.service
 Requires=docker.service
+OnFailure=crypto-agent-telegram-failure@%n.service
 
 [Service]
 Type=oneshot

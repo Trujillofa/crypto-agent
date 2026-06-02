@@ -91,6 +91,7 @@ Install and enable the systemd timer on the production host:
 ```bash
 sudo install -m 0644 ops/systemd/crypto-agent-production-drift-sentinel.service /etc/systemd/system/
 sudo install -m 0644 ops/systemd/crypto-agent-production-drift-sentinel.timer /etc/systemd/system/
+sudo install -m 0644 ops/systemd/crypto-agent-telegram-failure@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now crypto-agent-production-drift-sentinel.timer
 ```
@@ -113,4 +114,5 @@ ls -1t data/reports/production-drift-sentinel-*.json | head
 
 Each hourly audit also verifies its own timer and latest artifact. A missing artifact or an
 artifact older than two hours fails the audit. Daily paper-validation artifacts retain a
-36-hour freshness window.
+36-hour freshness window. A failed audit starts `crypto-agent-telegram-failure@.service`,
+which sends a critical Telegram notification using the existing `.env` credentials.

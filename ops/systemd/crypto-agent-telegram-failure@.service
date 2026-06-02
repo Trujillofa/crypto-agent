@@ -1,0 +1,9 @@
+[Unit]
+Description=Send Telegram alert for failed crypto-agent unit %i
+
+[Service]
+Type=oneshot
+User=emilio
+WorkingDirectory=/opt/crypto-agent
+EnvironmentFile=/opt/crypto-agent/.env
+ExecStart=/usr/bin/python3 scripts/notify_systemd_failure.py --unit %i
