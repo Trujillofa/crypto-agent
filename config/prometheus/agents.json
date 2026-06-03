@@ -19,5 +19,12 @@
 			"agent_id": "sol-4h-panic-block-paper"
 		},
 		"targets": ["agent_sol_panic_block_paper:8000"]
+	},
+	{
+		"labels": {
+			"service": "agent_sol_1h_trend_pullback_overlay_live",
+			"agent_id": "sol-1h-trend-pullback-overlay-live"
+		},
+		"targets": ["agent_sol_1h_trend_pullback_overlay_live:8000"]
 	}
 ]

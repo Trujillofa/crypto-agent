@@ -23,6 +23,12 @@ Current monitored paper agents:
 - `agent_sol_sparse`
 - `agent_sol_panic_block_paper`
 
+Optional probe agents are not included until their compose services are explicitly
+enabled and added to `config/prometheus/agents.json`. As of 2026-06-03,
+`agent_sol_1h_probe_paper` is tracked as a disabled SOLUSDT 1h autoresearch
+probe because it passed the `probe_1h` gate but missed the standard WFO trade
+count gate.
+
 `agent_sentiment_macro` is intentionally excluded because it routes live SOL futures orders.
 `agent_avax` is disabled because its prior walk-forward edge did not persist in live trading.
 

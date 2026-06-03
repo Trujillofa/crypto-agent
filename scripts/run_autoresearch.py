@@ -36,6 +36,15 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 65.0,
     },
+    "probe_1h": {
+        "min_trades": 0,
+        "min_wfo_trades": 15,
+        "min_wfo_sharpe": 0.5,
+        "max_drawdown_pct": 10.0,
+        "max_bootstrap_p_loss_pct": 25.0,
+        "min_oos_return_pct": 0.0,
+        "max_profit_concentration_pct": 50.0,
+    },
 }
 
 RESULTS_FIELDNAMES = [
@@ -299,6 +308,15 @@ def _write_run_log(
         handle.write("\n".join(lines))
 
 
+def _normalize_subprocess_output(value: str | bytes | None) -> str:
+    """Return subprocess output as text for both completed and timed-out runs."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
 def _run_autopilot(
     cmd: list[str],
     *,
@@ -332,8 +350,8 @@ def _run_autopilot(
     except subprocess.TimeoutExpired as exc:
         duration = time.monotonic() - start_time
         finished = datetime.now(UTC)
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or ""
+        stdout = _normalize_subprocess_output(exc.stdout)
+        stderr = _normalize_subprocess_output(exc.stderr)
         _write_run_log(
             run_log_path,
             cmd=cmd,
