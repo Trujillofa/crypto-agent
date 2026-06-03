@@ -26,6 +26,10 @@ DEFAULT_FAMILIES = (
     "standard_gate_bridge",
     "near_miss_trade_lift",
     "trend_pullback_overlay",
+    "breakout_retest_overlay",
+    "volatility_squeeze_overlay",
+    "funding_extreme_overlay",
+    "regime_gated_pullback_overlay",
 )
 
 BASE_STRATEGY_CONFIGS: tuple[dict[str, Any], ...] = (
@@ -148,6 +152,41 @@ def _strategy_configs_with_overrides(
     return strategies
 
 
+def _per_symbol_aggregator_config(
+    symbol: str,
+    *,
+    buy: float,
+    sell: float,
+    buy_uptrend: float | None = None,
+    min_agreement: int = 1,
+    sell_min_agreement: int | None = None,
+) -> dict[str, dict[str, float | int]]:
+    uptrend = buy if buy_uptrend is None else buy_uptrend
+    sell_min = sell_min_agreement if sell_min_agreement is not None else 2
+    return {
+        symbol: {
+            "min_agreement": min_agreement,
+            "buy_threshold": buy,
+            "buy_threshold_uptrend": uptrend,
+            "sell_threshold": sell,
+            "sell_min_agreement": sell_min,
+        }
+    }
+
+
+def _sol_winner_stack_params(rng: random.Random) -> dict[str, float | int]:
+    """Parameter band around the SOL 1h trend_pullback_overlay winner."""
+    return {
+        "macd_min": _round(rng.uniform(0.0, 0.00025), 5),
+        "macd_atr_min": _round(rng.uniform(0.0075, 0.0092), 4),
+        "bb_distance": _round(rng.uniform(0.0045, 0.0058), 4),
+        "bb_rsi_oversold": rng.choice([30, 35]),
+        "bb_rsi_overbought": rng.choice([65, 70]),
+        "cci_atr_min": _round(rng.uniform(0.0105, 0.0118), 4),
+        "vwap_atr_multiplier": _round(rng.uniform(1.85, 2.12), 2),
+    }
+
+
 def _parse_families(raw: str) -> tuple[str, ...]:
     families = tuple(part.strip() for part in raw.split(",") if part.strip())
     if not families:
@@ -162,6 +201,7 @@ def generate_candidate(
     run_index: int,
     *,
     seed: int,
+    symbol: str = "SOLUSDT",
     families: tuple[str, ...] = DEFAULT_FAMILIES,
     aggregator_focus: bool = False,
 ) -> Candidate:
@@ -174,6 +214,7 @@ def generate_candidate(
 
     rng = random.Random(seed + run_index * 7919)
     family = rng.choice(families)
+    trading_symbol = symbol.upper()
 
     if family == "aggregator_thresholds":
         if aggregator_focus:
@@ -195,14 +236,14 @@ def generate_candidate(
                     "buy_threshold_uptrend": buy_uptrend,
                     "sell_threshold": sell,
                 },
-                "per_symbol_aggregator_config": {
-                    "SOLUSDT": {
-                        "min_agreement": min_agreement,
-                        "buy_threshold": buy,
-                        "sell_threshold": sell,
-                        "sell_min_agreement": sell_min_agreement,
-                    }
-                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    min_agreement=min_agreement,
+                    sell_min_agreement=sell_min_agreement,
+                ),
             }
         }
         desc = (
@@ -304,16 +345,16 @@ def generate_candidate(
                     "buy_threshold_uptrend": buy_uptrend,
                     "sell_threshold": sell,
                 },
-                "per_symbol_aggregator_config": {
-                    "SOLUSDT": {
-                        "min_agreement": 1,
-                        "buy_threshold": buy,
-                        "sell_threshold": sell,
-                        "sell_min_agreement": rng.choice([1, 2]),
-                    }
-                },
             },
         }
+        combined_sell_min = rng.choice([1, 2])
+        overlay["strategy"]["per_symbol_aggregator_config"] = _per_symbol_aggregator_config(
+            trading_symbol,
+            buy=buy,
+            sell=sell,
+            buy_uptrend=buy_uptrend,
+            sell_min_agreement=combined_sell_min,
+        )
         desc = (
             f"combined buy={buy:.2f} uptrend={buy_uptrend:.2f} sell={sell:.2f} "
             f"bb={bb_distance:.4f} macd_atr={macd_atr_min:.4f} "
@@ -352,14 +393,13 @@ def generate_candidate(
                     "buy_threshold_uptrend": buy_uptrend,
                     "sell_threshold": sell,
                 },
-                "per_symbol_aggregator_config": {
-                    "SOLUSDT": {
-                        "min_agreement": 1,
-                        "buy_threshold": buy,
-                        "sell_threshold": sell,
-                        "sell_min_agreement": rng.choice([1, 2]),
-                    }
-                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
             },
         }
         desc = (
@@ -400,14 +440,13 @@ def generate_candidate(
                     "buy_threshold_uptrend": buy_uptrend,
                     "sell_threshold": sell,
                 },
-                "per_symbol_aggregator_config": {
-                    "SOLUSDT": {
-                        "min_agreement": 1,
-                        "buy_threshold": buy,
-                        "sell_threshold": sell,
-                        "sell_min_agreement": rng.choice([1, 2]),
-                    }
-                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
             },
         }
         desc = (
@@ -462,20 +501,224 @@ def generate_candidate(
                     "sell_threshold": sell,
                     "min_confidence": _round(rng.uniform(0.0, 0.45), 2),
                 },
-                "per_symbol_aggregator_config": {
-                    "SOLUSDT": {
-                        "min_agreement": 1,
-                        "buy_threshold": buy,
-                        "buy_threshold_uptrend": buy_uptrend,
-                        "sell_threshold": sell,
-                        "sell_min_agreement": rng.choice([1, 2]),
-                    }
-                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
             },
         }
         desc = (
             f"trend-pullback-overlay buy={buy:.2f} uptrend={buy_uptrend:.2f} "
             f"sell={sell:.2f} rsi={trend_pullback['config']['rsi_reclaim_level']} "
+            f"trend={trend_pullback['config']['min_trend_strength_pct']:.4f}"
+        )
+    elif family == "breakout_retest_overlay":
+        buy = _round(rng.uniform(1.12, 1.38), 2)
+        buy_uptrend = _round(rng.uniform(0.98, min(1.18, buy)), 2)
+        sell = _round(-rng.uniform(0.74, 0.86), 2)
+        stack = _sol_winner_stack_params(rng)
+        breakout_retest = {
+            "name": "breakout_retest",
+            "config": {
+                "min_trend_strength_pct": _round(rng.uniform(0.006, 0.010), 4),
+                "min_atr_pct": _round(rng.uniform(0.008, 0.011), 4),
+                "breakout_rsi_level": _round(rng.uniform(56.0, 60.0), 1),
+                "breakout_min_macd_hist": _round(rng.uniform(-0.002, 0.002), 4),
+                "breakout_band_distance_threshold": _round(rng.uniform(0.008, 0.012), 4),
+                "breakout_min_vwap_extension_pct": _round(rng.uniform(0.008, 0.014), 4),
+                "retest_window_bars": rng.choice([4, 5, 6]),
+                "retest_vwap_distance_pct": _round(rng.uniform(0.012, 0.020), 4),
+                "retest_ema50_distance_pct": _round(rng.uniform(0.012, 0.020), 4),
+                "reclaim_rsi_level": rng.choice([48, 50, 52]),
+                "retest_min_macd_hist": _round(rng.uniform(-0.012, 0.0), 4),
+                "max_extension_after_retest_pct": _round(rng.uniform(0.020, 0.030), 4),
+            },
+        }
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.10, 2.45), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.60, 4.40), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.55, 2.10), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.80, 1.10), 2),
+            },
+            "strategy": {
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                    breakout_retest,
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.40), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
+            },
+        }
+        desc = (
+            f"breakout-retest-overlay buy={buy:.2f} window="
+            f"{breakout_retest['config']['retest_window_bars']} "
+            f"reclaim={breakout_retest['config']['reclaim_rsi_level']}"
+        )
+    elif family == "volatility_squeeze_overlay":
+        buy = _round(rng.uniform(1.05, 1.28), 2)
+        buy_uptrend = _round(rng.uniform(0.92, min(1.12, buy)), 2)
+        sell = _round(-rng.uniform(0.74, 0.88), 2)
+        stack = _sol_winner_stack_params(rng)
+        volatility_squeeze = {
+            "name": "volatility_squeeze",
+            "config": {
+                "squeeze_lookback": rng.choice([40, 50, 60]),
+                "squeeze_percentile": _round(rng.uniform(0.15, 0.25), 2),
+                "sma_period": 20,
+                "momentum_period": rng.choice([8, 10, 12]),
+                "atr_trail_multiplier": _round(rng.uniform(2.5, 3.5), 2),
+                "max_hold_bars": rng.choice([20, 30, 40]),
+                "min_atr_pct": _round(rng.uniform(0.005, 0.009), 4),
+            },
+        }
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.0, 2.6), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.2, 4.8), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.4, 2.0), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.75, 1.05), 2),
+            },
+            "strategy": {
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                    volatility_squeeze,
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.35), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
+            },
+        }
+        desc = (
+            f"vol-squeeze-overlay buy={buy:.2f} pctile="
+            f"{volatility_squeeze['config']['squeeze_percentile']:.2f} "
+            f"hold={volatility_squeeze['config']['max_hold_bars']}"
+        )
+    elif family == "funding_extreme_overlay":
+        buy = _round(rng.uniform(0.85, 1.15), 2)
+        buy_uptrend = _round(rng.uniform(0.80, min(1.05, buy)), 2)
+        sell = _round(-rng.uniform(0.70, 0.85), 2)
+        stack = _sol_winner_stack_params(rng)
+        funding_rate = {
+            "name": "funding_rate",
+            "config": {
+                "entry_threshold": _round(rng.uniform(0.0003, 0.0008), 5),
+                "exit_threshold": _round(rng.uniform(0.00005, 0.00015), 5),
+                "lookback_periods": 1,
+            },
+        }
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.0, 2.5), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.4, 4.2), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.5, 2.0), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.80, 1.05), 2),
+            },
+            "strategy": {
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                    funding_rate,
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.30), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=1,
+                ),
+            },
+        }
+        desc = (
+            f"funding-extreme-overlay entry={funding_rate['config']['entry_threshold']:.5f} "
+            f"buy={buy:.2f}"
+        )
+    elif family == "regime_gated_pullback_overlay":
+        buy = _round(rng.uniform(1.15, 1.40), 2)
+        buy_uptrend = _round(rng.uniform(1.00, min(1.20, buy)), 2)
+        sell = _round(-rng.uniform(0.74, 0.86), 2)
+        stack = _sol_winner_stack_params(rng)
+        stack["macd_atr_min"] = _round(rng.uniform(0.0085, 0.0120), 4)
+        stack["cci_atr_min"] = _round(rng.uniform(0.0115, 0.0140), 4)
+        trend_pullback = {
+            "name": "trend_pullback",
+            "config": {
+                "rsi_reclaim_level": rng.choice([48, 50, 52]),
+                "min_trend_strength_pct": _round(rng.uniform(0.008, 0.014), 4),
+                "max_pullback_distance_pct": _round(rng.uniform(0.012, 0.025), 4),
+                "vwap_pullback_distance_pct": _round(rng.uniform(0.012, 0.030), 4),
+                "min_atr_pct": _round(rng.uniform(0.008, 0.014), 4),
+                "min_macd_hist": _round(rng.uniform(-0.010, 0.002), 4),
+                "strong_trend_strength_pct": _round(rng.uniform(0.014, 0.022), 4),
+                "continuation_rsi_level": rng.choice([52, 54, 56]),
+                "continuation_max_vwap_distance_pct": _round(rng.uniform(0.025, 0.045), 4),
+                "continuation_max_ema50_extension_pct": _round(rng.uniform(0.018, 0.035), 4),
+                "continuation_min_macd_hist": _round(rng.uniform(-0.010, 0.002), 4),
+            },
+        }
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.15, 2.50), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.70, 4.50), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.60, 2.15), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.85, 1.10), 2),
+            },
+            "strategy": {
+                "global_trend_filter_buffer_pct": _round(rng.uniform(0.0, 0.01), 4),
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                    trend_pullback,
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.10, 0.50), 2),
+                    "btc_regime_filter_enabled": True,
+                    "btc_dump_threshold_pct": _round(rng.uniform(-1.2, -0.8), 2),
+                    "btc_dump_require_below_ema200": True,
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
+            },
+        }
+        desc = (
+            f"regime-gated-pullback buy={buy:.2f} atr="
+            f"{trend_pullback['config']['min_atr_pct']:.4f} "
             f"trend={trend_pullback['config']['min_trend_strength_pct']:.4f}"
         )
     else:
@@ -510,14 +753,13 @@ def generate_candidate(
                     "buy_threshold_uptrend": buy_uptrend,
                     "sell_threshold": sell,
                 },
-                "per_symbol_aggregator_config": {
-                    "SOLUSDT": {
-                        "min_agreement": 1,
-                        "buy_threshold": buy,
-                        "sell_threshold": sell,
-                        "sell_min_agreement": 2,
-                    }
-                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=2,
+                ),
             },
         }
         desc = (
@@ -622,6 +864,7 @@ def main() -> None:
         candidate = generate_candidate(
             run_index,
             seed=args.seed,
+            symbol=args.symbol,
             families=families,
             aggregator_focus=args.aggregator_focus,
         )

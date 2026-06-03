@@ -349,6 +349,15 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             assert 1.10 <= aggregator["buy_threshold"] <= 1.35
             assert 0.95 <= aggregator["buy_threshold_uptrend"] <= 1.15
             assert -0.86 <= aggregator["sell_threshold"] <= -0.74
+        elif candidate.family in {
+            "breakout_retest_overlay",
+            "volatility_squeeze_overlay",
+            "funding_extreme_overlay",
+            "regime_gated_pullback_overlay",
+        }:
+            strategy = candidate.overlay["strategy"]
+            assert len(strategy["strategies"]) == 6
+            assert 0.80 <= strategy["aggregator"]["buy_threshold"] <= 1.40
         else:
             raise AssertionError(f"unexpected candidate family: {candidate.family}")
 
@@ -492,6 +501,80 @@ def test_autoresearch_loop_trend_pullback_overlay_adds_complementary_signal() ->
     assert 0.015 <= pullback_config["vwap_pullback_distance_pct"] <= 0.035
     assert 2.10 <= execution["sl_atr_multiplier"] <= 2.45
     assert 3.60 <= execution["tp_atr_multiplier"] <= 4.40
+
+
+def test_autoresearch_loop_breakout_retest_overlay_adds_specialist() -> None:
+    candidate = generate_candidate(
+        3,
+        seed=42,
+        symbol="ETHUSDT",
+        families=("breakout_retest_overlay",),
+    )
+
+    assert candidate.family == "breakout_retest_overlay"
+    strategy = candidate.overlay["strategy"]
+    names = [entry["name"] for entry in strategy["strategies"]]
+    assert names[-1] == "breakout_retest"
+    assert "ETHUSDT" in strategy["per_symbol_aggregator_config"]
+    assert not strategy["aggregator"].get("btc_regime_filter_enabled")
+
+
+def test_autoresearch_loop_volatility_squeeze_overlay_adds_specialist() -> None:
+    candidate = generate_candidate(
+        4,
+        seed=42,
+        symbol="SOLUSDT",
+        families=("volatility_squeeze_overlay",),
+    )
+
+    assert candidate.family == "volatility_squeeze_overlay"
+    names = [entry["name"] for entry in candidate.overlay["strategy"]["strategies"]]
+    assert names[-1] == "volatility_squeeze"
+    squeeze = candidate.overlay["strategy"]["strategies"][-1]["config"]
+    assert 0.15 <= squeeze["squeeze_percentile"] <= 0.25
+
+
+def test_autoresearch_loop_funding_extreme_overlay_adds_specialist() -> None:
+    candidate = generate_candidate(
+        5,
+        seed=42,
+        symbol="BNBUSDT",
+        families=("funding_extreme_overlay",),
+    )
+
+    assert candidate.family == "funding_extreme_overlay"
+    names = [entry["name"] for entry in candidate.overlay["strategy"]["strategies"]]
+    assert names[-1] == "funding_rate"
+    assert "BNBUSDT" in candidate.overlay["strategy"]["per_symbol_aggregator_config"]
+
+
+def test_autoresearch_loop_regime_gated_pullback_enables_btc_filter() -> None:
+    candidate = generate_candidate(
+        6,
+        seed=42,
+        symbol="AVAXUSDT",
+        families=("regime_gated_pullback_overlay",),
+    )
+
+    assert candidate.family == "regime_gated_pullback_overlay"
+    strategy = candidate.overlay["strategy"]
+    assert strategy["aggregator"]["btc_regime_filter_enabled"] is True
+    assert strategy["strategies"][-1]["name"] == "trend_pullback"
+    pullback = strategy["strategies"][-1]["config"]
+    assert pullback["min_atr_pct"] >= 0.008
+
+
+def test_parse_families_accepts_wave2_overlay_names() -> None:
+    families = _parse_families(
+        "breakout_retest_overlay,volatility_squeeze_overlay,funding_extreme_overlay,"
+        "regime_gated_pullback_overlay"
+    )
+    assert families == (
+        "breakout_retest_overlay",
+        "volatility_squeeze_overlay",
+        "funding_extreme_overlay",
+        "regime_gated_pullback_overlay",
+    )
 
 
 def test_autoresearch_loop_builds_existing_runner_command() -> None:
