@@ -58,13 +58,15 @@ Families in `scripts/autoresearch_loop.py`:
 - `funding_extreme_overlay` — crowded funding mean-reversion vote
 - `regime_gated_pullback_overlay` — trend_pullback + stricter ATR + BTC regime filter
 
-| Date | Symbol | TF | Families | Runs | Passes | Output dir | Decision |
-|------|--------|-----|----------|------|--------|------------|----------|
-| 2026-06-03 | ETHUSDT | 1h | breakout_retest_overlay | 50 | — | `research/ethusdt-1h-w2a-breakout` | IN_PROGRESS |
-| 2026-06-03 | BNBUSDT | 1h | breakout_retest_overlay | 50 | — | `research/bnbusdt-1h-w2a-breakout` | IN_PROGRESS |
-| 2026-06-03 | BTCUSDT | 1h | breakout_retest_overlay | 50 | — | `research/btcusdt-1h-w2a-breakout` | IN_PROGRESS |
-| 2026-06-03 | SOLUSDT | 4h | volatility_squeeze_overlay | 50 | — | `research/solusdt-4h-w2b-squeeze` | IN_PROGRESS |
-| 2026-06-03 | AVAXUSDT | 1h | regime_gated_pullback_overlay | 50 | — | `research/avaxusdt-1h-w2b-regime` | IN_PROGRESS |
+| Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
+|------|--------|-----|----------|------|--------|-----------|------------|----------|
+| 2026-06-03 | ETHUSDT | 1h | breakout_retest_overlay | 50 | 0 | 3 | `research/ethusdt-1h-w2a-breakout` | NEAR_MISS |
+| 2026-06-03 | BNBUSDT | 1h | breakout_retest_overlay | 50 | 0 | 1 | `research/bnbusdt-1h-w2a-breakout` | REJECT |
+| 2026-06-03 | BTCUSDT | 1h | breakout_retest_overlay | 50 | 0 | 0 | `research/btcusdt-1h-w2a-breakout` | REJECT |
+| 2026-06-03 | SOLUSDT | 4h | volatility_squeeze_overlay | 50 | 0 | 2 | `research/solusdt-4h-w2b-squeeze` | NEAR_MISS |
+| 2026-06-03 | AVAXUSDT | 1h | regime_gated_pullback_overlay | 50 | 0 | 5 | `research/avaxusdt-1h-w2b-regime` | NEAR_MISS |
+
+Wave 2 best: AVAX regime +6.55% OOS, 18 WFO trades, P(loss) 41%; ETH breakout 19 trades but Sharpe −0.22 / P(loss) 88%.
 
 Launch:
 
@@ -76,4 +78,4 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 
 **Phase 1 pass1 complete (6 lanes, 300 runs): 0 new standard passes.**
 
-After Wave 2: bootstrap=1000 on any `REVALIDATE_1000` lane; `funding_extreme_overlay` on BNB/ETH if breakout near-miss.
+**Wave 2 complete (250 runs): 0 standard passes.** Next: `funding_extreme_overlay` on ETH/BNB; bootstrap=1000 on AVAX/ETH best configs if bridge lifts WFO trades to 20+.
