@@ -42,6 +42,7 @@ futures:
 strategy:
   default_trading_mode: spot
   evaluation_interval_seconds: 3600
+  global_trend_filter_buffer_pct: 0.0
   strategies:
     - name: rsi_reversal
       config:
