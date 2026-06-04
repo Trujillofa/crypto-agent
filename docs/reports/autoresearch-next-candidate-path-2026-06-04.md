@@ -170,7 +170,8 @@ Define new family behavior before running broad campaigns:
 - max one entry per symbol per N bars,
 - time-stop exits included in backtest and live parity,
 - no repeated buys in the same volatility impulse,
-- optional cooldown after stop loss,
+- strategy-local cooldown after emitted exits/time stops; stop-loss cooldown only
+  if modeled by the executor/backtest path,
 - reject candidates whose added trades reduce Sharpe below 0.5.
 
 Candidate family ideas:

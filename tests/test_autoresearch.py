@@ -404,6 +404,11 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "regime_gated_pullback_overlay",
             "breakout_retest_bridge",
             "regime_gated_pullback_bridge",
+        }:
+            strategy = candidate.overlay["strategy"]
+            assert len(strategy["strategies"]) == 6
+            assert 0.80 <= strategy["aggregator"]["buy_threshold"] <= 1.40
+        elif candidate.family in {
             "trend_pullback_standalone",
             "breakout_retest_standalone",
             "volatility_squeeze_standalone",
@@ -412,8 +417,8 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "funding_primary_standalone",
         }:
             strategy = candidate.overlay["strategy"]
-            assert len(strategy["strategies"]) == 6
-            assert 0.80 <= strategy["aggregator"]["buy_threshold"] <= 1.40
+            assert len(strategy["strategies"]) == 1
+            assert 0.40 <= strategy["aggregator"]["buy_threshold"] <= 0.75
         else:
             raise AssertionError(f"unexpected candidate family: {candidate.family}")
 

@@ -106,9 +106,13 @@ no-lookahead semantics.
   the target decision timestamp and never newer.
 - Precedent: reuse the alignment logic in
   `IndicatorReader.fetch_multi_timeframe` / `_join_timeframes`
-  (`src/features/reader.py`), which already joins a second series by timestamp
-  using only completed bars ("same-timestamp bars are NOT available"). Generalize
-  it from second-*timeframe* to second-*symbol*; do not invent a new join.
+  (`src/features/reader.py`) as the no-lookahead pattern, but adapt the
+  availability rule for cross-symbol data. For the same target and anchor
+  timeframe, the join MUST use the anchor bar with `anchor_time <= target_time`;
+  same-timestamp closed bars MAY be used because both symbols' 1h/4h candles are
+  complete at the decision timestamp. For a different anchor timeframe, the join
+  MUST use the latest anchor bar whose close time is less than or equal to the
+  target decision time. In all cases, a newer anchor row MUST NOT be joined.
 
 **REQ-002a**: The anchor symbol MUST be a first-class campaign parameter threaded
 through `scripts/autoresearch_loop.py` (`--anchor-symbol`), `BacktestConfig`,
@@ -195,12 +199,23 @@ rule.
 - Verification: backtest tests cover SELL or executor exit when RS falls below
   the configured failure threshold.
 
-**REQ-010**: The strategy MUST support a cooldown measured in bars after an exit
-or stop loss.
+**REQ-010**: The strategy MUST support a cooldown measured in bars after its own
+entry, rotation-failure exit, or time-stop exit signal.
 
 - Rationale: repeated entries in the same rotation failure caused poor risk in
   earlier densified surfaces.
 - Verification: tests cover no immediate re-entry during cooldown.
+
+**REQ-010a**: The first backtest implementation MUST NOT claim stop-loss
+cooldown behavior unless execution feedback is added to the strategy row stream.
+
+- Rationale: the current strategy evaluation path sees market rows and emitted
+  signals, not executor stop-loss fills. Live stop-loss cooldown belongs to the
+  executor/risk configuration (for example `sl_cooldown_minutes`) until the
+  backtest engine exposes stop-loss outcomes back to the strategy.
+- Verification: the research report distinguishes strategy-local cooldown from
+  executor stop-loss cooldown; tests do not assert stop-loss cooldown unless the
+  execution feedback path exists.
 
 ### Risk And Execution Requirements
 
@@ -309,7 +324,7 @@ Initial bounded search MAY vary only these parameters:
 | `max_vwap_distance_pct` | 0.5%-3.0% |
 | `rsi_reset_min` | 35-45 |
 | `rsi_reset_max` | 55-65 |
-| `anchor_max_drawdown_pct` | -2.0% to -5.0% |
+| `anchor_max_fast_loss_pct` | 2.0%-5.0% |
 | `cooldown_bars` | 3-12 |
 | `time_stop_hours` | 12-72 |
 
@@ -332,10 +347,15 @@ Add a no-lookahead cross-symbol reader path for backtest and runtime by
 **generalizing** `IndicatorReader.fetch_multi_timeframe` / `_join_timeframes`
 (`src/features/reader.py`) from a second timeframe to a second symbol. That code
 already aligns a second series by timestamp using only completed bars; reuse its
-no-lookahead guarantee rather than writing a new join.
+no-lookahead guarantee rather than writing a new join. Same-timeframe
+cross-symbol joins MUST allow the same closed timestamp (`anchor_time <=
+target_time`), while higher-timeframe anchor joins MUST preserve completed-bar
+close-time semantics.
 
 Required output fields:
 
+- `anchor_time`,
+- `anchor_data_age_bars`,
 - `anchor_close_price`,
 - `anchor_return_fast`,
 - `anchor_return_slow`,
@@ -385,6 +405,7 @@ Run one discovery campaign:
 
 ```bash
 FAMILIES=relative_strength_rotation_standalone \
+ANCHOR_SYMBOL=BTCUSDT \
 MAX_RUNS=80 \
 GATE_PROFILE=standard \
 ./scripts/run_autoresearch_campaign_remote.sh ETHUSDT 1h w9-eth-1h-relative-strength
@@ -395,6 +416,7 @@ failure mode:
 
 ```bash
 FAMILIES=relative_strength_rotation_standalone \
+ANCHOR_SYMBOL=BTCUSDT \
 MAX_RUNS=80 \
 GATE_PROFILE=standard \
 ./scripts/run_autoresearch_campaign_remote.sh ETHUSDT 4h w9-eth-4h-relative-strength
