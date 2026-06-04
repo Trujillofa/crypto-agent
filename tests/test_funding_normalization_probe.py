@@ -7,6 +7,7 @@ from scripts.probe_funding_normalization import (
     NormalizationSide,
     ProbeConfig,
     detect_normalization_events,
+    entry_threshold_negative_tail,
     evaluate_pulse,
     index_price_bars,
     probe_funding_series,
@@ -93,6 +94,14 @@ def test_probe_funding_series_computes_net_forward_after_drag() -> None:
 def test_evaluate_pulse_sparse_when_below_min_events() -> None:
     summary = probe_funding_series([], _price_rows(4), _config(min_events_for_pulse=5))
     assert evaluate_pulse(summary, _config(min_events_for_pulse=5)) == "NO_PULSE"
+
+
+def test_negative_tail_threshold_uses_extreme_quantile() -> None:
+    negatives = [-0.0001 * (i + 1) for i in range(15)]
+    rates = [0.0001] * 50 + negatives
+    threshold = entry_threshold_negative_tail(rates, tail_pct=20.0)
+    assert threshold >= 0.0001
+    assert threshold <= 0.0020
 
 
 def test_evaluate_pulse_has_pulse_with_positive_net_and_enough_events() -> None:

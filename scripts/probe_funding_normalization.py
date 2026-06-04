@@ -168,19 +168,28 @@ def parse_args(argv: Sequence[str] | None = None) -> ProbeConfig:
         action="store_true",
         help="Count positive-normalization short signals (research only)",
     )
+    parser.add_argument(
+        "--entry-negative-tail-pct",
+        type=float,
+        default=None,
+        help="Override entry threshold from negative funding tail (e.g. 5 = 5%% most negative)",
+    )
     args = parser.parse_args(argv)
-    return ProbeConfig(
-        symbol=args.symbol.upper(),
-        timeframe=args.timeframe,
-        start=args.start,
-        end=args.end,
-        entry_threshold=args.entry_threshold,
-        exit_threshold=args.exit_threshold,
-        forward_bars_12h=args.forward_bars_12h,
-        forward_bars_24h=args.forward_bars_24h,
-        min_events_for_pulse=args.min_events,
-        max_profit_concentration_pct=args.max_concentration_pct,
-        long_only=not args.include_short_events,
+    return (
+        ProbeConfig(
+            symbol=args.symbol.upper(),
+            timeframe=args.timeframe,
+            start=args.start,
+            end=args.end,
+            entry_threshold=args.entry_threshold,
+            exit_threshold=args.exit_threshold,
+            forward_bars_12h=args.forward_bars_12h,
+            forward_bars_24h=args.forward_bars_24h,
+            min_events_for_pulse=args.min_events,
+            max_profit_concentration_pct=args.max_concentration_pct,
+            long_only=not args.include_short_events,
+        ),
+        args.entry_negative_tail_pct,
     )
 
 
@@ -196,6 +205,32 @@ def _median(values: Iterable[float]) -> float:
     if not materialized:
         return 0.0
     return float(statistics.median(materialized))
+
+
+def entry_threshold_negative_tail(
+    funding_rates: Sequence[float],
+    tail_pct: float,
+    floor: float = 0.00008,
+) -> float:
+    """Entry threshold from the most negative tail of observed funding (|rate|)."""
+    negatives = sorted(rate for rate in funding_rates if rate < 0)
+    if len(negatives) < 10:
+        return floor
+    index = max(0, min(len(negatives) - 1, int(len(negatives) * tail_pct / 100.0)))
+    return max(floor, abs(negatives[index]))
+
+
+def entry_threshold_positive_tail(
+    funding_rates: Sequence[float],
+    tail_pct: float,
+    floor: float = 0.00008,
+) -> float:
+    """Entry threshold from the most positive tail (for short-side normalization probe)."""
+    positives = sorted((rate for rate in funding_rates if rate > 0), reverse=True)
+    if len(positives) < 10:
+        return floor
+    index = max(0, min(len(positives) - 1, int(len(positives) * tail_pct / 100.0)))
+    return max(floor, positives[index])
 
 
 def _parse_dt(value: str | datetime) -> datetime:
@@ -407,11 +442,30 @@ async def _fetch_funding_ticks(symbol: str, start: str, end: str) -> list[Fundin
     ]
 
 
-async def run_probe(config: ProbeConfig) -> ProbeSummary:
+async def run_probe(
+    config: ProbeConfig,
+    *,
+    entry_negative_tail_pct: float | None = None,
+) -> ProbeSummary:
     db_config = build_db_config()
     await init_pool(db_config)
     try:
         funding_ticks = await _fetch_funding_ticks(config.symbol, config.start, config.end)
+        if entry_negative_tail_pct is not None:
+            rates = [tick.funding_rate for tick in funding_ticks]
+            config = ProbeConfig(
+                symbol=config.symbol,
+                timeframe=config.timeframe,
+                start=config.start,
+                end=config.end,
+                entry_threshold=entry_threshold_negative_tail(rates, entry_negative_tail_pct),
+                exit_threshold=config.exit_threshold,
+                forward_bars_12h=config.forward_bars_12h,
+                forward_bars_24h=config.forward_bars_24h,
+                min_events_for_pulse=config.min_events_for_pulse,
+                max_profit_concentration_pct=config.max_profit_concentration_pct,
+                long_only=config.long_only,
+            )
         reader = IndicatorReader(db_config)
         async with reader:
             price_rows = await reader.fetch_range(
@@ -490,8 +544,8 @@ def print_summary(summary: ProbeSummary, config: ProbeConfig) -> None:
 
 async def _main() -> int:
     configure_logger("WARNING")
-    config = parse_args()
-    summary = await run_probe(config)
+    config, tail_pct = parse_args()
+    summary = await run_probe(config, entry_negative_tail_pct=tail_pct)
     print_summary(summary, config)
     return 0
 
