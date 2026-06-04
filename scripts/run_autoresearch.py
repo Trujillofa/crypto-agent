@@ -17,6 +17,8 @@ from typing import Any
 
 import yaml
 
+from src.backtest.experiment_autopilot import ExperimentSummary, GateConfig, evaluate_gates
+
 GATE_PROFILES: dict[str, dict[str, float | int]] = {
     "standard": {
         "min_trades": 0,
@@ -44,6 +46,15 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 50.0,
+    },
+    "promotion_candidate": {
+        "min_trades": 0,
+        "min_wfo_trades": 20,
+        "min_wfo_sharpe": 0.5,
+        "max_drawdown_pct": 8.0,
+        "max_bootstrap_p_loss_pct": 20.0,
+        "min_oos_return_pct": 1.0,
+        "max_profit_concentration_pct": 40.0,
     },
 }
 
@@ -248,6 +259,52 @@ def _build_autopilot_command(args: argparse.Namespace, artifacts: RunArtifacts) 
     if args.replay_sentiment_max_age_hours is not None:
         cmd.extend(["--replay-sentiment-max-age-hours", str(args.replay_sentiment_max_age_hours)])
     return cmd
+
+
+def _gate_config_from_profile(profile_name: str) -> GateConfig:
+    profile = GATE_PROFILES[profile_name]
+    return GateConfig(
+        min_trades=int(profile["min_trades"]),
+        min_wfo_trades=int(profile["min_wfo_trades"]),
+        min_wfo_sharpe=float(profile["min_wfo_sharpe"]),
+        max_drawdown_pct=float(profile["max_drawdown_pct"]),
+        max_bootstrap_p_loss_pct=float(profile["max_bootstrap_p_loss_pct"]),
+        min_oos_return_pct=float(profile["min_oos_return_pct"]),
+        max_profit_concentration_pct=float(profile["max_profit_concentration_pct"]),
+    )
+
+
+def _summary_from_payload(summary: dict[str, Any]) -> ExperimentSummary:
+    return ExperimentSummary(
+        symbol=str(summary.get("symbol", "")),
+        timeframe=str(summary.get("timeframe", "")),
+        start=str(summary.get("start", "")),
+        end=str(summary.get("end", "")),
+        total_trades=int(summary.get("total_trades", 0)),
+        win_rate=float(summary.get("win_rate", 0.0)),
+        total_return_pct=float(summary.get("total_return_pct", 0.0)),
+        max_drawdown_pct=float(summary.get("max_drawdown_pct", 0.0)),
+        sharpe_ratio=float(summary.get("sharpe_ratio", 0.0)),
+        wfo_windows=int(summary.get("wfo_windows", 0)),
+        wfo_total_trades=int(summary.get("wfo_total_trades", 0)),
+        wfo_mean_sharpe=float(summary.get("wfo_mean_sharpe", 0.0)),
+        wfo_total_return_pct=float(summary.get("wfo_total_return_pct", 0.0)),
+        bootstrap_p_loss_pct=float(summary.get("bootstrap_p_loss_pct", 0.0)),
+        profit_concentration_pct=float(summary.get("profit_concentration_pct", 0.0)),
+        passes_gates=bool(summary.get("passes_gates", False)),
+        failure_reasons=list(summary.get("failure_reasons", [])),
+    )
+
+
+def _eligible_for_bootstrap_1000(
+    summary: dict[str, Any], *, bootstrap: int
+) -> tuple[bool, list[str]]:
+    """Stricter pre-filter before scheduling bootstrap=1000 revalidation."""
+    if bootstrap > 100:
+        return False, ["bootstrap_gt_100"]
+    promotion_gates = _gate_config_from_profile("promotion_candidate")
+    failures = evaluate_gates(_summary_from_payload(summary), promotion_gates)
+    return len(failures) == 0, failures
 
 
 def _resolve_gates(args: argparse.Namespace) -> dict[str, float | int]:
@@ -694,12 +751,17 @@ def main() -> None:
         stdout=stdout,
         stderr=stderr,
     )
+    eligible_b1000, promotion_failures = _eligible_for_bootstrap_1000(
+        summary, bootstrap=args.bootstrap
+    )
     last_result.update(
         {
             "score": round(score, 6),
             "previous_best_score": previous_best,
             "summary": summary,
             "gates": gates,
+            "eligible_for_bootstrap_1000": eligible_b1000,
+            "promotion_candidate_failures": promotion_failures,
             "results_row": row,
             "json_artifact_path": str(json_path.resolve()),
             "markdown_artifact_path": str(markdown_path.resolve()) if markdown_path else None,

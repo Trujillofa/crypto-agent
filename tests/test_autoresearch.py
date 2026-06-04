@@ -19,6 +19,7 @@ from scripts.run_autoresearch import (
     _append_results_row,
     _build_autopilot_command,
     _deep_merge,
+    _eligible_for_bootstrap_1000,
     _extract_output_path,
     _generate_run_id,
     _normalize_subprocess_output,
@@ -196,6 +197,53 @@ def test_probe_1h_gate_profile_resolves_expected_values() -> None:
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 50.0,
     }
+
+
+def test_promotion_candidate_gate_profile_is_stricter_than_standard() -> None:
+    promo = GATE_PROFILES["promotion_candidate"]
+    standard = GATE_PROFILES["standard"]
+
+    assert promo["min_oos_return_pct"] > standard["min_oos_return_pct"]
+    assert promo["max_drawdown_pct"] < standard["max_drawdown_pct"]
+    assert promo["max_bootstrap_p_loss_pct"] < standard["max_bootstrap_p_loss_pct"]
+    assert promo["max_profit_concentration_pct"] < standard["max_profit_concentration_pct"]
+
+
+def test_eligible_for_bootstrap_1000_requires_promotion_candidate_at_b100() -> None:
+    strong = {
+        "symbol": "BNBUSDT",
+        "timeframe": "1h",
+        "start": "2024-01-01T00:00:00+00:00",
+        "end": "2026-01-01T00:00:00+00:00",
+        "total_trades": 30,
+        "win_rate": 55.0,
+        "total_return_pct": 12.0,
+        "max_drawdown_pct": 6.0,
+        "sharpe_ratio": 0.8,
+        "wfo_windows": 7,
+        "wfo_total_trades": 24,
+        "wfo_mean_sharpe": 0.6,
+        "wfo_total_return_pct": 3.5,
+        "bootstrap_p_loss_pct": 12.0,
+        "profit_concentration_pct": 30.0,
+        "passes_gates": True,
+        "failure_reasons": [],
+    }
+    weak = dict(strong)
+    weak["wfo_total_return_pct"] = 0.5
+    weak["bootstrap_p_loss_pct"] = 30.0
+
+    ok, failures = _eligible_for_bootstrap_1000(strong, bootstrap=100)
+    assert ok is True
+    assert failures == []
+
+    ok_weak, weak_failures = _eligible_for_bootstrap_1000(weak, bootstrap=100)
+    assert ok_weak is False
+    assert weak_failures
+
+    ok_b1000, b1000_failures = _eligible_for_bootstrap_1000(strong, bootstrap=1000)
+    assert ok_b1000 is False
+    assert b1000_failures == ["bootstrap_gt_100"]
 
 
 def test_explicit_gate_flags_override_profile_defaults() -> None:

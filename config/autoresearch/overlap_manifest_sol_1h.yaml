@@ -1,0 +1,16 @@
+# Entry-overlap study: SOLUSDT 1h agents (WFO OOS windows + optional live DB).
+symbol: SOLUSDT
+timeframe: 1h
+train_months: 3
+test_months: 2
+tolerance_hours: 1
+agents:
+  - label: sol_1h_trend_pullback_overlay_live
+    config: config/settings.sol_1h_trend_pullback_overlay_live.yaml
+  - label: sentiment_macro
+    config: config/settings.sentiment_macro.yaml
+    replay_sentiment_log: data/event_log_sentiment-macro-bot.jsonl
+    replay_sentiment_max_age_hours: 24
+  - label: sol_1h_trend_pullback_overlay_paper
+    config: config/settings.sol_1h_trend_pullback_overlay_paper.yaml
+    note: Second SOL 1h config variant (same signal stack as live)

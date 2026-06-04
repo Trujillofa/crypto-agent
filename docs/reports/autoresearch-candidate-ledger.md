@@ -1,8 +1,19 @@
 # Autoresearch Candidate Ledger
 
-Tracks bounded autoresearch campaigns and promotion decisions. Gate profile `standard`:
-WFO trades ≥ 20, mean OOS Sharpe ≥ 0.5, OOS return > 0, max DD ≤ 10%, bootstrap P(loss) ≤ 25%,
-profit concentration ≤ 50%. Final promotion requires bootstrap=1000 revalidation.
+Tracks bounded autoresearch campaigns and promotion decisions.
+
+**Goal:** find up to 10 agents, but only if each survives bootstrap=1000 **and** adds independence.
+Count is secondary to gates.
+
+| Profile | Purpose |
+|---------|---------|
+| `standard` | Discovery / campaign pass |
+| `promotion_candidate` | Pre-filter before scheduling bootstrap=1000 (stricter) |
+| bootstrap=1000 | Final promotion gate (same thresholds as `standard`) |
+
+`standard`: WFO trades ≥ 20, mean OOS Sharpe ≥ 0.5, OOS return > 0, max DD ≤ 10%, bootstrap P(loss) ≤ 25%, concentration ≤ 50%.
+
+`promotion_candidate` (required before b=1000): WFO trades ≥ 20, OOS return ≥ 1%, max DD ≤ 8%, bootstrap P(loss) ≤ 20% at b=100, concentration ≤ 40%, Sharpe ≥ 0.5. Recorded in `last_result.json` as `eligible_for_bootstrap_1000`.
 
 ## Deployed / Tracked Candidates
 
