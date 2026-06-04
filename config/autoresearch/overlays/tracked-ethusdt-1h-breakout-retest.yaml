@@ -1,0 +1,60 @@
+# Best Wave 2 ETH candidate (run 0004, bootstrap=100).
+# WFO: +0.67% OOS, 19 trades — near-miss on Sharpe/bootstrap; validate at 1000.
+trading_execution:
+  sl_atr_multiplier: 2.19
+  tp_atr_multiplier: 4.37
+  trailing_activate_atr: 1.63
+  trailing_offset_atr: 1.07
+strategy:
+  strategies:
+    - name: rsi_reversal
+      config:
+        rsi_period: 7
+        oversold_threshold: 35
+        overbought_threshold: 65
+    - name: macd_histogram
+      config:
+        min_histogram_threshold: 0.00004
+        use_atr_filter: true
+        atr_min_pct: 0.008
+    - name: bollinger_bounce
+      config:
+        band_distance_threshold: 0.0053
+        rsi_oversold: 30
+        rsi_overbought: 70
+    - name: cci_breakout
+      config:
+        cci_buy_threshold: 100
+        cci_sell_threshold: -100
+        atr_min_pct: 0.0115
+    - name: vwap_reversion
+      config:
+        vwap_atr_multiplier: 1.85
+        rsi_oversold: 40
+        rsi_overbought: 60
+    - name: breakout_retest
+      config:
+        min_trend_strength_pct: 0.0061
+        min_atr_pct: 0.0094
+        breakout_rsi_level: 56.1
+        breakout_min_macd_hist: 0.0008
+        breakout_band_distance_threshold: 0.0111
+        breakout_min_vwap_extension_pct: 0.0118
+        retest_window_bars: 5
+        retest_vwap_distance_pct: 0.0124
+        retest_ema50_distance_pct: 0.0168
+        reclaim_rsi_level: 48
+        retest_min_macd_hist: -0.0016
+        max_extension_after_retest_pct: 0.0289
+  aggregator:
+    buy_threshold: 1.23
+    buy_threshold_uptrend: 1.11
+    sell_threshold: -0.8
+    min_confidence: 0.2
+  per_symbol_aggregator_config:
+    ETHUSDT:
+      min_agreement: 1
+      buy_threshold: 1.23
+      buy_threshold_uptrend: 1.11
+      sell_threshold: -0.8
+      sell_min_agreement: 1

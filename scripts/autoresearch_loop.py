@@ -32,6 +32,10 @@ DEFAULT_FAMILIES = (
     "regime_gated_pullback_overlay",
     "breakout_retest_bridge",
     "regime_gated_pullback_bridge",
+    "trend_pullback_standalone",
+    "breakout_retest_standalone",
+    "volatility_squeeze_standalone",
+    "mtf_breakout_standalone",
 )
 
 BASE_STRATEGY_CONFIGS: tuple[dict[str, Any], ...] = (
@@ -174,6 +178,49 @@ def _per_symbol_aggregator_config(
             "sell_min_agreement": sell_min,
         }
     }
+
+
+def _standalone_strategy_overlay(
+    *,
+    trading_symbol: str,
+    rng: random.Random,
+    strategy_entry: dict[str, Any],
+    buy_low: float,
+    buy_high: float,
+    sl_atr: float,
+    tp_atr: float,
+) -> tuple[dict[str, Any], str]:
+    """Single-strategy overlay without the five-vote technical stack."""
+    buy = _round(rng.uniform(buy_low, buy_high), 2)
+    buy_uptrend = _round(rng.uniform(max(0.35, buy - 0.12), buy), 2)
+    sell = _round(-rng.uniform(0.45, 0.75), 2)
+    strategy_name = str(strategy_entry["name"])
+    overlay: dict[str, Any] = {
+        "trading_execution": {
+            "sl_atr_multiplier": sl_atr,
+            "tp_atr_multiplier": tp_atr,
+            "trailing_activate_atr": _round(rng.uniform(1.2, 2.0), 2),
+            "trailing_offset_atr": _round(rng.uniform(0.65, 1.0), 2),
+        },
+        "strategy": {
+            "strategies": [strategy_entry],
+            "aggregator": {
+                "buy_threshold": buy,
+                "buy_threshold_uptrend": buy_uptrend,
+                "sell_threshold": sell,
+                "min_confidence": _round(rng.uniform(0.0, 0.25), 2),
+            },
+            "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                trading_symbol,
+                buy=buy,
+                sell=sell,
+                buy_uptrend=buy_uptrend,
+                sell_min_agreement=1,
+            ),
+        },
+    }
+    desc = f"{strategy_name}-standalone buy={buy:.2f} sl/tp={sl_atr:.2f}/{tp_atr:.2f}"
+    return overlay, desc
 
 
 def _sol_winner_stack_params(rng: random.Random) -> dict[str, float | int]:
@@ -838,6 +885,119 @@ def generate_candidate(
         desc = (
             f"regime-gated-pullback-bridge buy={buy:.2f} atr="
             f"{trend_pullback['config']['min_atr_pct']:.4f}"
+        )
+    elif family == "trend_pullback_standalone":
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "trend_pullback",
+                "config": {
+                    "rsi_reclaim_level": rng.choice([48, 50, 52]),
+                    "min_trend_strength_pct": _round(rng.uniform(0.006, 0.012), 4),
+                    "max_pullback_distance_pct": _round(rng.uniform(0.015, 0.030), 4),
+                    "vwap_pullback_distance_pct": _round(rng.uniform(0.015, 0.035), 4),
+                    "min_atr_pct": _round(rng.uniform(0.006, 0.012), 4),
+                    "min_macd_hist": _round(rng.uniform(-0.012, 0.002), 4),
+                    "strong_trend_strength_pct": _round(rng.uniform(0.012, 0.020), 4),
+                    "continuation_rsi_level": rng.choice([52, 54, 56]),
+                    "continuation_max_vwap_distance_pct": _round(rng.uniform(0.030, 0.050), 4),
+                    "continuation_max_ema50_extension_pct": _round(rng.uniform(0.020, 0.040), 4),
+                    "continuation_min_macd_hist": _round(rng.uniform(-0.012, 0.002), 4),
+                },
+            },
+            buy_low=0.42,
+            buy_high=0.72,
+            sl_atr=_round(rng.uniform(2.0, 2.6), 2),
+            tp_atr=_round(rng.uniform(3.2, 4.8), 2),
+        )
+    elif family == "breakout_retest_standalone":
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "breakout_retest",
+                "config": {
+                    "min_trend_strength_pct": _round(rng.uniform(0.006, 0.010), 4),
+                    "min_atr_pct": _round(rng.uniform(0.008, 0.011), 4),
+                    "breakout_rsi_level": _round(rng.uniform(56.0, 60.0), 1),
+                    "retest_window_bars": rng.choice([4, 5, 6]),
+                    "retest_vwap_distance_pct": _round(rng.uniform(0.012, 0.020), 4),
+                    "retest_ema50_distance_pct": _round(rng.uniform(0.012, 0.020), 4),
+                    "reclaim_rsi_level": rng.choice([48, 50, 52]),
+                    "max_extension_after_retest_pct": _round(rng.uniform(0.020, 0.030), 4),
+                },
+            },
+            buy_low=0.45,
+            buy_high=0.75,
+            sl_atr=_round(rng.uniform(2.0, 2.5), 2),
+            tp_atr=_round(rng.uniform(3.2, 4.5), 2),
+        )
+    elif family == "volatility_squeeze_standalone":
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "volatility_squeeze",
+                "config": {
+                    "squeeze_lookback": rng.choice([40, 50, 60]),
+                    "squeeze_percentile": _round(rng.uniform(0.15, 0.28), 2),
+                    "sma_period": 20,
+                    "momentum_period": rng.choice([8, 10, 12]),
+                    "atr_trail_multiplier": _round(rng.uniform(2.5, 3.5), 2),
+                    "max_hold_bars": rng.choice([20, 30, 40]),
+                    "min_atr_pct": _round(rng.uniform(0.005, 0.009), 4),
+                },
+            },
+            buy_low=0.40,
+            buy_high=0.70,
+            sl_atr=_round(rng.uniform(2.2, 2.8), 2),
+            tp_atr=_round(rng.uniform(3.0, 5.0), 2),
+        )
+    elif family == "mtf_breakout_standalone":
+        buy = _round(rng.uniform(0.48, 0.72), 2)
+        buy_uptrend = _round(rng.uniform(0.42, buy), 2)
+        sell = _round(-rng.uniform(0.50, 0.72), 2)
+        mtf_breakout = {
+            "name": "mtf_breakout",
+            "config": {
+                "volatility_threshold": _round(rng.uniform(50.0, 65.0), 1),
+                "breakout_threshold": _round(rng.uniform(0.015, 0.030), 4),
+                "trend_slope_threshold": _round(rng.uniform(0.0015, 0.0035), 4),
+                "reclaim_rsi_level": rng.choice([48, 50, 52]),
+                "reclaim_vwap_distance_pct": _round(rng.uniform(0.010, 0.020), 4),
+                "reclaim_ema50_distance_pct": _round(rng.uniform(0.010, 0.020), 4),
+                "min_atr_pct": _round(rng.uniform(0.006, 0.010), 4),
+            },
+        }
+        overlay = {
+            "trading": {"timeframe": "1h"},
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.0, 2.5), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.2, 4.5), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.4, 2.0), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.70, 1.0), 2),
+            },
+            "strategy": {
+                "strategies": [mtf_breakout],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.30), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=1,
+                ),
+            },
+        }
+        desc = (
+            f"mtf-breakout-standalone vol={mtf_breakout['config']['volatility_threshold']:.1f} "
+            f"buy={buy:.2f}"
         )
     else:
         buy = _round(rng.uniform(1.00, 1.10), 2)

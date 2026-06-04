@@ -466,12 +466,15 @@ def _append_results_row(results_path: Path, row: dict[str, str]) -> None:
 
 
 def _git_commit_short() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return "unknown"
     if result.returncode != 0:
         return "unknown"
     return result.stdout.strip() or "unknown"

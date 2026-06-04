@@ -81,6 +81,17 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 **Wave 2 complete (250 runs): 0 standard passes.**
 **Wave 3 complete (200 runs): 0 standard passes.** Cumulative search: **750+ runs**, **1** deployable (SOL 1h trend_pullback overlay live).
 
+## Wave 4 — Bootstrap 1000 + specialist-only (in progress)
+
+Tracked overlays: `config/autoresearch/overlays/`
+
+| Lane | Type | Output dir | Decision |
+|------|------|------------|----------|
+| AVAXUSDT 1h regime (W2 best) | bootstrap=1000 | `research/avaxusdt-1h-validation-b1000` | IN_PROGRESS |
+| ETHUSDT 1h breakout (W2 best) | bootstrap=1000 | `research/ethusdt-1h-validation-b1000` | IN_PROGRESS |
+| SOLUSDT 4h | `trend_pullback_standalone,volatility_squeeze_standalone,breakout_retest_standalone` | `research/solusdt-4h-w4-standalone` | IN_PROGRESS |
+| SOLUSDT 1h | `mtf_breakout_standalone` | `research/solusdt-1h-w4-mtf-breakout` | IN_PROGRESS |
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |

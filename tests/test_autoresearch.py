@@ -356,6 +356,10 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "regime_gated_pullback_overlay",
             "breakout_retest_bridge",
             "regime_gated_pullback_bridge",
+            "trend_pullback_standalone",
+            "breakout_retest_standalone",
+            "volatility_squeeze_standalone",
+            "mtf_breakout_standalone",
         }:
             strategy = candidate.overlay["strategy"]
             assert len(strategy["strategies"]) == 6
@@ -577,6 +581,34 @@ def test_parse_families_accepts_wave2_overlay_names() -> None:
         "funding_extreme_overlay",
         "regime_gated_pullback_overlay",
     )
+
+
+def test_autoresearch_loop_trend_pullback_standalone_single_strategy() -> None:
+    candidate = generate_candidate(
+        7,
+        seed=42,
+        symbol="SOLUSDT",
+        families=("trend_pullback_standalone",),
+    )
+
+    assert candidate.family == "trend_pullback_standalone"
+    strategies = candidate.overlay["strategy"]["strategies"]
+    assert len(strategies) == 1
+    assert strategies[0]["name"] == "trend_pullback"
+    assert "SOLUSDT" in candidate.overlay["strategy"]["per_symbol_aggregator_config"]
+
+
+def test_autoresearch_loop_mtf_breakout_standalone_sets_1h_timeframe() -> None:
+    candidate = generate_candidate(
+        8,
+        seed=42,
+        symbol="SOLUSDT",
+        families=("mtf_breakout_standalone",),
+    )
+
+    assert candidate.family == "mtf_breakout_standalone"
+    assert candidate.overlay["trading"]["timeframe"] == "1h"
+    assert candidate.overlay["strategy"]["strategies"][0]["name"] == "mtf_breakout"
 
 
 def test_autoresearch_loop_builds_existing_runner_command() -> None:
