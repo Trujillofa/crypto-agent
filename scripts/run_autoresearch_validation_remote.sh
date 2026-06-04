@@ -5,12 +5,12 @@ set -euo pipefail
 SYMBOL="${1:?SYMBOL required}"
 TIMEFRAME="${2:?TIMEFRAME required}"
 OVERLAY="${3:?OVERLAY path required}"
-LABEL="${4:-validation}"
+LABEL="${4:-validation-b1000}"
 REMOTE_HOST="${REMOTE_HOST:-crypto-agent}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/crypto-agent}"
 IMAGE="${IMAGE:-crypto-agent-agent_sentiment_macro:latest}"
 
-OUTPUT_DIR="research/$(echo "${SYMBOL}" | tr '[:upper:]' '[:lower:]')-${TIMEFRAME}-${LABEL}-b1000"
+OUTPUT_DIR="research/$(echo "${SYMBOL}" | tr '[:upper:]' '[:lower:]')-${TIMEFRAME}-${LABEL}"
 
 echo "Validation: ${SYMBOL} ${TIMEFRAME} overlay=${OVERLAY} -> ${OUTPUT_DIR}"
 

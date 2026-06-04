@@ -81,16 +81,18 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 **Wave 2 complete (250 runs): 0 standard passes.**
 **Wave 3 complete (200 runs): 0 standard passes.** Cumulative search: **750+ runs**, **1** deployable (SOL 1h trend_pullback overlay live).
 
-## Wave 4 — Bootstrap 1000 + specialist-only (in progress)
+## Wave 4 — Bootstrap 1000 + specialist-only (2026-06-04)
 
 Tracked overlays: `config/autoresearch/overlays/`
 
-| Lane | Type | Output dir | Decision |
-|------|------|------------|----------|
-| AVAXUSDT 1h regime (W2 best) | bootstrap=1000 | `research/avaxusdt-1h-validation-b1000` | IN_PROGRESS |
-| ETHUSDT 1h breakout (W2 best) | bootstrap=1000 | `research/ethusdt-1h-validation-b1000` | IN_PROGRESS |
-| SOLUSDT 4h | `trend_pullback_standalone,volatility_squeeze_standalone,breakout_retest_standalone` | `research/solusdt-4h-w4-standalone` | IN_PROGRESS |
-| SOLUSDT 1h | `mtf_breakout_standalone` | `research/solusdt-1h-w4-mtf-breakout` | IN_PROGRESS |
+| Lane | Type | Output dir | WFO trades | OOS | Sharpe | P(loss) | Decision |
+|------|------|------------|------------|-----|--------|---------|----------|
+| AVAXUSDT 1h regime (W2 #0004) | bootstrap=1000 | `research/avaxusdt-1h-validation-b1000-b1000` | 17 | −0.72% | −0.47 | 81.1% | **REJECT** (was +6.55% @ b=100) |
+| ETHUSDT 1h breakout (W2 #0004) | bootstrap=1000 | `research/ethusdt-1h-validation-b1000-b1000` | 9 | −2.35% | −0.31 | 87.8% | **REJECT** |
+| SOLUSDT 4h standalone (50) | sparse_trend_3_2 | `research/solusdt-4h-w4-standalone` | 16 | +7.08% | 0.08 | 57.0% | **REJECT** (DD 12%, Sharpe/P(loss) fail) |
+| SOLUSDT 1h mtf_breakout (30) | standard | `research/solusdt-1h-w4-mtf-breakout` | 151 | −48.5% | −3.74 | 100% | **REJECT** (over-trades, independence risk vs live SOL) |
+
+**Takeaway:** Do not promote AVAX/ETH from Wave-2 near-misses; bootstrap=1000 collapses edge. SOL 4h without the five-vote stack does not beat prior overlay lanes. **Still 1 deployable agent** (SOL 1h trend_pullback overlay live). Combined target 8–20 trades/month requires more lanes or lower bar only after paper-forward evidence—not gate shopping.
 
 ## Wave 3 — Bridge + funding
 
