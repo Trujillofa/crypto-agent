@@ -31,6 +31,12 @@ The next campaign must introduce a materially different source of edge:
 - different holding-period logic,
 - or different market microstructure input.
 
+The next selected surface is specified in
+[`../specs/relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md):
+cross-asset relative strength rotation with controlled pullback entry. It trades
+capital rotation versus BTC/ETH anchors instead of another single-symbol
+technical threshold stack.
+
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
 
@@ -283,11 +289,11 @@ Decision rule:
 | Step | Action | Expected Outcome |
 |------|--------|------------------|
 | 1 | Continue forward monitoring SOL overlay + sentiment-macro | real execution/frequency evidence |
-| 2 | ETHUSDT 4h regime-conditioned campaign | best next independent candidate surface |
-| 3 | BTCUSDT 4h regime-conditioned campaign | lower-noise BTC lane, not closed by BTC 1h result |
-| 4 | Design one bounded high-density family | avoid blind parameter sweeps |
-| 5 | Run bounded family on ETH/BTC/SOL 1h and 4h | seek 20-80 WFO trades without overtrading |
-| 6 | Funding/crowding research brief and data audit | different signal primitive |
+| 2 | Implement `relative_strength_rotation_standalone` from the spec | first-principles cross-asset surface |
+| 3 | Run ETHUSDT 1h relative-strength campaign | candidate #2 search with BTC anchor |
+| 4 | Review failure mode before any second lane | prevent blind sweeps |
+| 5 | Run ETHUSDT 4h only if 1h is readable but noisy | lower-noise follow-up |
+| 6 | Funding/crowding data audit | future different primitive, not current priority |
 | 7 | Short-side feasibility review | only if execution/risk parity is proven |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. Do not

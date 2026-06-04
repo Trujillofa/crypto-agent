@@ -45,6 +45,7 @@ the BNB/BTC/AVAX/ETH 1h and ETH/BTC 4h surfaces tested.
 | [`autoresearch-postmortem-2026-06-04.md`](./autoresearch-postmortem-2026-06-04.md) | What ~1,040 runs produced and why sweeps paused | To understand *why* we're here |
 | [`autoresearch-candidate-ledger.md`](./autoresearch-candidate-ledger.md) | Per-campaign data (Waves 1–6), gate definitions, decision labels | For exact numbers / before any new run |
 | [`autoresearch-next-candidate-path-2026-06-04.md`](./autoresearch-next-candidate-path-2026-06-04.md) | Forward plan — phases, promotion pipeline, prerequisites | To plan the next campaign |
+| [`../specs/relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md) | First-principles surface brief: cross-asset relative strength rotation | Before implementing the next research family |
 | [`entry-overlap-sol-1h.md`](./entry-overlap-sol-1h.md) | Independence evidence (SOL overlay vs sentiment-macro) | When checking candidate independence |
 
 Gate thresholds are defined once in the ledger and implemented in `GATE_PROFILES`
@@ -93,8 +94,10 @@ b=100 discovery (standard gate)
 
 ## What Happens Next
 
-Only **Phase 0 (forward monitoring)** is active. Everything else is gated behind
-forward evidence or a new surface brief.
+Only **Phase 0 (forward monitoring)** is active operationally. The next research
+surface brief now exists as
+[`relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md);
+implementation should start there instead of launching more generic sweeps.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
@@ -102,7 +105,7 @@ forward evidence or a new surface brief.
 | 1 | ETH/BTC **4h** regime-conditioned | **closed** (≤5 WFO trades best) |
 | 2 | `range_reversion_bounded` ETH/BTC 4h | ETH **near_miss**; BTC **closed** |
 | 3 | `funding_primary_standalone` BTC 4h | **closed** (0 trades) |
-| 4 | Short-side / two-sided (paper + execution parity first) | queued |
+| 4 | `relative_strength_rotation_standalone` | **designed**; implementation queued |
 | 5 | Longer-history revalidation | per-candidate |
 
 Full phase detail, gate-profile choices, and stop conditions are in the
