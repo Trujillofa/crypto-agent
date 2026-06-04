@@ -78,4 +78,13 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 
 **Phase 1 pass1 complete (6 lanes, 300 runs): 0 new standard passes.**
 
-**Wave 2 complete (250 runs): 0 standard passes.** Next: `funding_extreme_overlay` on ETH/BNB; bootstrap=1000 on AVAX/ETH best configs if bridge lifts WFO trades to 20+.
+**Wave 2 complete (250 runs): 0 standard passes.**
+
+## Wave 3 — Bridge + funding (in progress)
+
+| Date | Symbol | TF | Families | Runs | Output dir | Decision |
+|------|--------|-----|----------|------|------------|----------|
+| 2026-06-03 | ETHUSDT | 1h | breakout_retest_bridge,near_miss_trade_lift | 50 | `research/ethusdt-1h-w3-breakout-bridge` | IN_PROGRESS |
+| 2026-06-03 | AVAXUSDT | 1h | regime_gated_pullback_bridge,standard_gate_bridge | 50 | `research/avaxusdt-1h-w3-regime-bridge` | IN_PROGRESS |
+| 2026-06-03 | ETHUSDT | 1h | funding_extreme_overlay | 50 | `research/ethusdt-1h-w3-funding` | IN_PROGRESS |
+| 2026-06-03 | BNBUSDT | 1h | funding_extreme_overlay | 50 | `research/bnbusdt-1h-w3-funding` | IN_PROGRESS |

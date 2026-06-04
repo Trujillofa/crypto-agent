@@ -354,6 +354,8 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "volatility_squeeze_overlay",
             "funding_extreme_overlay",
             "regime_gated_pullback_overlay",
+            "breakout_retest_bridge",
+            "regime_gated_pullback_bridge",
         }:
             strategy = candidate.overlay["strategy"]
             assert len(strategy["strategies"]) == 6

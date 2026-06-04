@@ -30,6 +30,8 @@ DEFAULT_FAMILIES = (
     "volatility_squeeze_overlay",
     "funding_extreme_overlay",
     "regime_gated_pullback_overlay",
+    "breakout_retest_bridge",
+    "regime_gated_pullback_bridge",
 )
 
 BASE_STRATEGY_CONFIGS: tuple[dict[str, Any], ...] = (
@@ -720,6 +722,122 @@ def generate_candidate(
             f"regime-gated-pullback buy={buy:.2f} atr="
             f"{trend_pullback['config']['min_atr_pct']:.4f} "
             f"trend={trend_pullback['config']['min_trend_strength_pct']:.4f}"
+        )
+    elif family == "breakout_retest_bridge":
+        buy = _round(rng.uniform(1.045, 1.095), 2)
+        buy_uptrend = _round(rng.uniform(1.015, min(1.065, buy)), 2)
+        sell = _round(-rng.uniform(0.71, 0.78), 2)
+        sl_atr = _round(rng.uniform(2.05, 2.35), 2)
+        tp_atr = _round(rng.uniform(3.20, 4.75), 2)
+        breakout_retest = {
+            "name": "breakout_retest",
+            "config": {
+                "min_trend_strength_pct": _round(rng.uniform(0.007, 0.010), 4),
+                "min_atr_pct": _round(rng.uniform(0.008, 0.010), 4),
+                "breakout_rsi_level": _round(rng.uniform(57.0, 59.0), 1),
+                "retest_window_bars": rng.choice([4, 5]),
+                "retest_vwap_distance_pct": _round(rng.uniform(0.013, 0.018), 4),
+                "retest_ema50_distance_pct": _round(rng.uniform(0.013, 0.018), 4),
+                "reclaim_rsi_level": rng.choice([48, 50]),
+                "max_extension_after_retest_pct": _round(rng.uniform(0.022, 0.028), 4),
+            },
+        }
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": sl_atr,
+                "tp_atr_multiplier": tp_atr,
+                "trailing_activate_atr": _round(rng.uniform(1.5, 2.1), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.75, 1.05), 2),
+            },
+            "strategy": {
+                "strategies": [
+                    *_strategy_configs_with_overrides(
+                        macd_min=_round(rng.uniform(0.0, 0.00025), 5),
+                        macd_atr_min=_round(rng.uniform(0.0047, 0.0089), 4),
+                        bb_distance=_round(rng.uniform(0.0045, 0.0065), 4),
+                        bb_rsi_oversold=rng.choice([30, 35]),
+                        bb_rsi_overbought=rng.choice([65, 70]),
+                        cci_atr_min=_round(rng.uniform(0.0108, 0.0124), 4),
+                        vwap_atr_multiplier=_round(rng.uniform(1.25, 2.10), 2),
+                    ),
+                    breakout_retest,
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.35), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
+            },
+        }
+        desc = (
+            f"breakout-retest-bridge buy={buy:.2f} window="
+            f"{breakout_retest['config']['retest_window_bars']} sl/tp={sl_atr:.2f}/{tp_atr:.2f}"
+        )
+    elif family == "regime_gated_pullback_bridge":
+        buy = _round(rng.uniform(1.05, 1.12), 2)
+        buy_uptrend = _round(rng.uniform(1.02, min(1.10, buy)), 2)
+        sell = _round(-rng.uniform(0.72, 0.80), 2)
+        stack = _sol_winner_stack_params(rng)
+        stack["macd_atr_min"] = _round(rng.uniform(0.0080, 0.0110), 4)
+        stack["cci_atr_min"] = _round(rng.uniform(0.0108, 0.0130), 4)
+        trend_pullback = {
+            "name": "trend_pullback",
+            "config": {
+                "rsi_reclaim_level": rng.choice([48, 50, 52]),
+                "min_trend_strength_pct": _round(rng.uniform(0.007, 0.012), 4),
+                "max_pullback_distance_pct": _round(rng.uniform(0.014, 0.028), 4),
+                "vwap_pullback_distance_pct": _round(rng.uniform(0.014, 0.032), 4),
+                "min_atr_pct": _round(rng.uniform(0.007, 0.012), 4),
+                "min_macd_hist": _round(rng.uniform(-0.011, 0.002), 4),
+                "strong_trend_strength_pct": _round(rng.uniform(0.012, 0.020), 4),
+                "continuation_rsi_level": rng.choice([52, 54]),
+                "continuation_max_vwap_distance_pct": _round(rng.uniform(0.028, 0.048), 4),
+                "continuation_max_ema50_extension_pct": _round(rng.uniform(0.020, 0.038), 4),
+                "continuation_min_macd_hist": _round(rng.uniform(-0.011, 0.002), 4),
+            },
+        }
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.10, 2.40), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.50, 4.30), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.55, 2.05), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.80, 1.05), 2),
+            },
+            "strategy": {
+                "global_trend_filter_buffer_pct": _round(rng.uniform(0.0, 0.008), 4),
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                    trend_pullback,
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.05, 0.40), 2),
+                    "btc_regime_filter_enabled": True,
+                    "btc_dump_threshold_pct": _round(rng.uniform(-1.15, -0.85), 2),
+                    "btc_dump_require_below_ema200": True,
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=rng.choice([1, 2]),
+                ),
+            },
+        }
+        desc = (
+            f"regime-gated-pullback-bridge buy={buy:.2f} atr="
+            f"{trend_pullback['config']['min_atr_pct']:.4f}"
         )
     else:
         buy = _round(rng.uniform(1.00, 1.10), 2)
