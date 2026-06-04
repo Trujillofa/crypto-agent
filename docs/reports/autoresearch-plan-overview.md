@@ -23,7 +23,7 @@ agent adds risk faster than it adds validation speed.
 
 | Item | Value |
 |------|-------|
-| Total search runs | ~1,040+ |
+| Total search runs | ~1,440+ (incl. Wave 7 ~400) |
 | Deployable technical agents | **1** |
 | Live technical | `agent_sol_1h_trend_pullback_overlay_live` |
 | Independent live strategy | `agent_sentiment_macro` (0 shared OOS entry bars) |
@@ -32,8 +32,8 @@ agent adds risk faster than it adds validation speed.
 | Autoresearch sweeps | **Paused** after Wave 7 (0 passes; ETH 4h bounded near-miss only) |
 
 The bottleneck is **lack of independent edge**, not tooling. The infrastructure and
-gates behaved correctly; ~1,040 runs did not produce additional deployable edge on
-the BNB/BTC/AVAX/ETH 1h surfaces tested.
+gates behaved correctly; ~1,440 runs did not produce additional deployable edge on
+the BNB/BTC/AVAX/ETH 1h and ETH/BTC 4h surfaces tested.
 
 ---
 

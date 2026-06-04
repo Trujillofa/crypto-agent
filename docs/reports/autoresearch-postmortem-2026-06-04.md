@@ -159,3 +159,16 @@ Each new lane needs: hypothesis, independence plan (entry overlap vs live agents
 ## Conclusion
 
 One robust, promoted agent exists: **SOLUSDT 1h trend_pullback overlay live**. The search infrastructure and gates behaved correctly; ~1,040 runs did not produce additional deployable independent edge on BNB/BTC/AVAX/ETH 1h surfaces tested. **Next value is forward validation and new signal design—not incremental parameter search.**
+
+---
+
+## Addendum — Wave 7 (2026-06-04, after this post-mortem)
+
+This post-mortem's "new surfaces only" recommendation (longer-history BTC/ETH 4h, bounded high-density families, funding logic) was then **executed as Wave 7** — and all of it closed. ~400 additional runs (cumulative ~1,440), **0 standard passes, 0 `promotion_candidate` eligibles**:
+
+- ETH/BTC **4h regime** overlays — too sparse (best 1–5 WFO trades). CLOSED.
+- **BTC 4h `range_reversion_bounded`** — −15.89% OOS, DD 26.4%, P(loss) 94%. CLOSED.
+- **BTC 4h funding-primary** — 0 trades (same silent-surface failure as BNB 1h standalone). CLOSED.
+- **ETH 4h `range_reversion_bounded`** — +13.55% OOS, 24 trades, but DD 20.3% / P(loss) 56% / Sharpe 0.48. Near-miss only; not `promotion_candidate`.
+
+Detail in the [ledger](./autoresearch-candidate-ledger.md) Wave 7 section. **Conclusion unchanged: still 1 deployable agent; the bottleneck remains independent edge, and Wave 7 confirms 4h/bounded/funding-primary did not supply it.** The next attempt needs a genuinely new surface brief, not a retune of these lanes.
