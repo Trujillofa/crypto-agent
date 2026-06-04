@@ -98,6 +98,14 @@ class PortfolioManager:
             await conn.execute(
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'spot'"
             )
+            await conn.execute(
+                "ALTER TABLE positions ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT 'default'"
+            )
+            await conn.execute(
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT 'default'"
+            )
+            await conn.execute("UPDATE positions SET agent_id = 'default' WHERE agent_id IS NULL")
+            await conn.execute("UPDATE trades SET agent_id = 'default' WHERE agent_id IS NULL")
 
     async def _load_open_positions(self) -> None:
         """Load open positions from database into cache."""
