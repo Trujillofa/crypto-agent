@@ -88,15 +88,13 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 ## Priority Queue (remaining)
 
 **Cumulative search: ~1040+ runs**, **1** deployable (`agent_sol_1h_trend_pullback_overlay_live`).
+**Post-mortem:** [autoresearch-postmortem-2026-06-04.md](./autoresearch-postmortem-2026-06-04.md) — sweeps **paused** until live forward data or new surface brief.
 
 | Priority | Action | Status |
 |----------|--------|--------|
-| 1 | Monitor live SOL 1h + sentiment-macro forward | ongoing |
-| 2 | Wave 6 BTC 1h overlay (`w6-overlay`) | **closed — REJECT** |
-| 3 | BNB 1h standalone / overlay | **closed** |
-| 4 | AVAX/ETH W2 #0004 | **closed** (b=1000 reject) |
-
-After Wave 6: if no `promotion_candidate`, pivot to longer-history BTC/ETH regimes or new high-density bounded families — not threshold tweaks.
+| 1 | Forward validation: SOL overlay live + sentiment-macro | **active** |
+| 2 | New autoresearch sweeps | **paused** |
+| 3 | BTC/BNB 1h, AVAX/ETH W2 #0004 | **closed** |
 
 ## Wave 4 — Bootstrap 1000 + specialist-only (2026-06-04)
 
