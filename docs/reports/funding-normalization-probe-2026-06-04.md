@@ -61,3 +61,27 @@ short** (deferred until short-side parity review).
 
 Promotion gates unchanged. Agent-count target remains **5–10**; current deployable
 technical count **1**.
+
+---
+
+## Reshape matrix (2026-06-04, production DB)
+
+Command: `python scripts/run_funding_probe_reshape.py` (see
+[`candidate-search-options-2026-06-04.md`](./candidate-search-options-2026-06-04.md)).
+
+| Scenario | BTC long | BTC net24h | ETH long | ETH net24h | SOL long | SOL net24h | Verdict (long) |
+|----------|----------|------------|----------|------------|----------|------------|----------------|
+| fixed_0.05pct | 0 | — | 0 | — | 6 | −0.20% | NO_PULSE / SPARSE |
+| fixed_0.015pct | 1 | +3.18% | 12 | +0.19% | 53 | −0.12% | SPARSE / WEAK_EDGE |
+| neg_tail_5pct | 17 | +0.45% | 18 | +0.54% | 18 | +0.99% | SPARSE (all) |
+| neg_tail_10pct | 22 | +0.26% | 26 | +0.38% | **44** | **+0.06%** | **SOL HAS_PULSE** |
+| both_norm_probe | 17+178 short | +0.45% | 18+35 short | +0.54% | 18+20 short | +0.99% | SPARSE (long leg) |
+
+**Read:** Only **SOLUSDT** with **10% negative funding tail** clears the cheap probe
+(`44` events, positive mean net on **24h only**; 12h mean still negative). BTC/ETH
+remain sparse or concentration-limited at best. **Short-side** events are numerous in
+`both_norm_probe` but are **not** cleared for live (parity review required).
+
+**Recommendation:** If pursuing funding-primary further, scope v1 to **SOL-only**
+with quantile entry, then re-run WFO/autoresearch — still must pass full
+`standard` + bootstrap=1000 + overlap checks. Do not deploy from probe alone.

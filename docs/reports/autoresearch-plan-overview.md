@@ -42,6 +42,7 @@ the BNB/BTC/AVAX/ETH 1h and ETH/BTC 4h surfaces tested.
 | Doc | Role | When to read it |
 |-----|------|-----------------|
 | **This file** | Index + current-state snapshot | First |
+| [`candidate-search-options-2026-06-04.md`](./candidate-search-options-2026-06-04.md) | **Options A–G** — what to do next, trade-offs, commands | When choosing next surface |
 | [`autoresearch-postmortem-2026-06-04.md`](./autoresearch-postmortem-2026-06-04.md) | What ~1,040 runs produced and why sweeps paused | To understand *why* we're here |
 | [`autoresearch-candidate-ledger.md`](./autoresearch-candidate-ledger.md) | Per-campaign data (Waves 1–6), gate definitions, decision labels | For exact numbers / before any new run |
 | [`autoresearch-next-candidate-path-2026-06-04.md`](./autoresearch-next-candidate-path-2026-06-04.md) | Forward plan — phases, promotion pipeline, prerequisites | To plan the next campaign |
