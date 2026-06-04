@@ -105,6 +105,27 @@ Tracked overlays: `config/autoresearch/overlays/`
 
 **Takeaway:** Do not promote AVAX/ETH from Wave-2 near-misses; bootstrap=1000 collapses edge. SOL 4h without the five-vote stack does not beat prior overlay lanes. **Still 1 deployable agent** (SOL 1h trend_pullback overlay live). Combined target 8–20 trades/month requires more lanes or lower bar only after paper-forward evidence—not gate shopping.
 
+## Entry overlap — SOLUSDT 1h (2026-06-04)
+
+Report: `docs/reports/entry-overlap-sol-1h.md` (WFO OOS, train=3mo test=2mo, ±1h tolerance).
+
+| Pair | OOS entries A | OOS entries B | Shared | Jaccard | %A also in B |
+|------|---------------|---------------|--------|---------|--------------|
+| overlay_live vs sentiment_macro | 32 | 2 | 0 | 0% | 0% |
+| overlay_live vs overlay_paper | 32 | 36 | 31 | 84% | 97% |
+| sentiment_macro vs overlay_paper | 2 | 36 | 0 | 0% | 0% |
+
+**Read:** Live SOL 1h overlay and sentiment-macro are **independent on OOS entry timing** (0 shared bars). Paper/live configs are the same signal stack (expected ~97% overlap). Live DB `positions` rows lack `agent_id` tagging for these services yet — use forward paper/live logs for realized overlap.
+
+## Wave 5 — BNB/BTC 1h standalone (in progress)
+
+| Symbol | Output dir | Families | Gate |
+|--------|------------|----------|------|
+| BNBUSDT | `research/bnbusdt-1h-w5b-standalone` | 3 standalone | sparse_trend_3_2 |
+| BTCUSDT | `research/btcusdt-1h-w5b-standalone` | 3 standalone | sparse_trend_3_2 |
+
+(w5-standalone failed: `run_autoresearch` import path; fixed in `60702e3`.)
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |

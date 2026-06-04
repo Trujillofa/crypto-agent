@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-06-04T14:35:13.842811+00:00",
+  "symbol": "SOLUSDT",
+  "timeframe": "1h",
+  "train_months": 3,
+  "test_months": 2,
+  "tolerance_hours": 1,
+  "entry_counts": [
+    {
+      "label": "sol_1h_trend_pullback_overlay_live",
+      "symbol": "SOLUSDT",
+      "entries": 32,
+      "note": null
+    },
+    {
+      "label": "sentiment_macro",
+      "symbol": "SOLUSDT",
+      "entries": 2,
+      "note": null
+    },
+    {
+      "label": "sol_1h_trend_pullback_overlay_paper",
+      "symbol": "SOLUSDT",
+      "entries": 36,
+      "note": "Second SOL 1h config variant (same signal stack as live)"
+    }
+  ],
+  "pairwise_oos": [
+    {
+      "left": "sol_1h_trend_pullback_overlay_live",
+      "right": "sentiment_macro",
+      "shared_entries": 0,
+      "left_entries": 32,
+      "right_entries": 2,
+      "jaccard": 0.0,
+      "pct_of_left_also_in_right": 0.0,
+      "pct_of_right_also_in_left": 0.0
+    },
+    {
+      "left": "sol_1h_trend_pullback_overlay_live",
+      "right": "sol_1h_trend_pullback_overlay_paper",
+      "shared_entries": 31,
+      "left_entries": 32,
+      "right_entries": 36,
+      "jaccard": 0.8378,
+      "pct_of_left_also_in_right": 96.88,
+      "pct_of_right_also_in_left": 86.11
+    },
+    {
+      "left": "sentiment_macro",
+      "right": "sol_1h_trend_pullback_overlay_paper",
+      "shared_entries": 0,
+      "left_entries": 2,
+      "right_entries": 36,
+      "jaccard": 0.0,
+      "pct_of_left_also_in_right": 0.0,
+      "pct_of_right_also_in_left": 0.0
+    }
+  ],
+  "live_entry_counts": [
+    {
+      "label": "live:sol-1h-trend-pullback-overlay-live",
+      "entries": 0
+    },
+    {
+      "label": "live:sentiment-macro-bot",
+      "entries": 0
+    }
+  ],
+  "pairwise_live": [
+    {
+      "left": "live:sol-1h-trend-pullback-overlay-live",
+      "right": "live:sentiment-macro-bot",
+      "shared_entries": 0,
+      "left_entries": 0,
+      "right_entries": 0,
+      "jaccard": 0.0,
+      "pct_of_left_also_in_right": 0.0,
+      "pct_of_right_also_in_left": 0.0
+    }
+  ],
+  "interpretation": "Low OOS entry overlap between SOL 1h overlay and sentiment-macro. A second SOL 1h agent may add diversification if it passes promotion gates independently."
+}
