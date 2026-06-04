@@ -109,7 +109,7 @@ phases — it is listed separately as the active next research target.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 0 | Forward-monitor SOL overlay + sentiment-macro | **active** |
+| 0 | Forward-monitor SOL overlay + sentiment-macro | **active** — see [forward-validation-snapshot-2026-06-04.md](./forward-validation-snapshot-2026-06-04.md) |
 | 1 | ETH/BTC **4h** regime-conditioned | **closed** (≤5 WFO trades best) |
 | 2 | `range_reversion_bounded` ETH/BTC 4h | ETH **near_miss**; BTC **closed** |
 | 3 | `funding_primary_standalone` BTC 4h | **closed** (0 trades) |

@@ -287,16 +287,16 @@ Decision rule:
 
 ## Recommended Execution Order
 
-| Step | Action | Expected Outcome |
-|------|--------|------------------|
-| 1 | Continue forward monitoring SOL overlay + sentiment-macro | real execution/frequency evidence |
-| 2 | Review the failed ETH/BTC 1h relative-strength probe | 14 events / 20,508 rows, negative forward excess |
-| 3 | Reshape the probe or choose a different surface before implementation | avoid building a sparse, negative-edge surface |
-| 4 | Run ETHUSDT 1h relative-strength campaign | candidate #2 search with BTC anchor |
-| 5 | Review failure mode before any second lane | prevent blind sweeps |
-| 6 | Run ETHUSDT 4h only if 1h is readable but noisy | lower-noise follow-up |
-| 7 | Funding/crowding data audit | future different primitive, not current priority |
-| 8 | Short-side feasibility review | only if execution/risk parity is proven |
+| Step | Action | Status (2026-06-04) |
+|------|--------|---------------------|
+| 1 | Forward-monitor SOL overlay + sentiment-macro | **active** — live agents healthy; 0 post-deploy attributed fills yet |
+| 2 | Review failed ETH/BTC 1h relative-strength probe | **done** — 14 events, −0.66% mean excess vs BTC |
+| 3 | Reshape probe or choose different surface | **required** before RS full implementation |
+| 4 | ETHUSDT 1h relative-strength campaign | **blocked** (step 2 stop condition) |
+| 5 | Second RS lane | **blocked** |
+| 6 | ETHUSDT 4h RS follow-up | **blocked** |
+| 7 | Funding/crowding data audit | **done** — DB has **AVAXUSDT only**; backfill BTC/ETH/SOL before Phase 3 |
+| 8 | Short-side feasibility review | **queued** |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
 initial relative-strength probe already hit the stop condition: sparse events and

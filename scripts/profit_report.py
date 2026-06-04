@@ -182,11 +182,9 @@ async def generate_report(
     )
     try:
         async with pool.acquire() as conn:
-            overall, by_agent, by_symbol = await asyncio.gather(
-                _fetch_overall(conn),
-                _fetch_by_agent(conn),
-                _fetch_by_symbol(conn),
-            )
+            overall = await _fetch_overall(conn)
+            by_agent = await _fetch_by_agent(conn)
+            by_symbol = await _fetch_by_symbol(conn)
     finally:
         await pool.close()
 
