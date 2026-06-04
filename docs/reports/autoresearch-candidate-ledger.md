@@ -79,12 +79,15 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 **Phase 1 pass1 complete (6 lanes, 300 runs): 0 new standard passes.**
 
 **Wave 2 complete (250 runs): 0 standard passes.**
+**Wave 3 complete (200 runs): 0 standard passes.** Cumulative search: **750+ runs**, **1** deployable (SOL 1h trend_pullback overlay live).
 
-## Wave 3 — Bridge + funding (in progress)
+## Wave 3 — Bridge + funding
 
-| Date | Symbol | TF | Families | Runs | Output dir | Decision |
-|------|--------|-----|----------|------|------------|----------|
-| 2026-06-03 | ETHUSDT | 1h | breakout_retest_bridge,near_miss_trade_lift | 50 | `research/ethusdt-1h-w3-breakout-bridge` | IN_PROGRESS |
-| 2026-06-03 | AVAXUSDT | 1h | regime_gated_pullback_bridge,standard_gate_bridge | 50 | `research/avaxusdt-1h-w3-regime-bridge` | IN_PROGRESS |
-| 2026-06-03 | ETHUSDT | 1h | funding_extreme_overlay | 50 | `research/ethusdt-1h-w3-funding` | IN_PROGRESS |
-| 2026-06-03 | BNBUSDT | 1h | funding_extreme_overlay | 50 | `research/bnbusdt-1h-w3-funding` | IN_PROGRESS |
+| Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
+|------|--------|-----|----------|------|--------|-----------|------------|----------|
+| 2026-06-03 | ETHUSDT | 1h | breakout_retest_bridge,near_miss_trade_lift | 50 | 0 | 3 | `research/ethusdt-1h-w3-breakout-bridge` | NEAR_MISS |
+| 2026-06-03 | AVAXUSDT | 1h | regime_gated_pullback_bridge,standard_gate_bridge | 50 | 0 | 3 | `research/avaxusdt-1h-w3-regime-bridge` | NEAR_MISS |
+| 2026-06-03 | ETHUSDT | 1h | funding_extreme_overlay | 50 | 0 | 0 | `research/ethusdt-1h-w3-funding` | REJECT |
+| 2026-06-03 | BNBUSDT | 1h | funding_extreme_overlay | 50 | 0 | 0 | `research/bnbusdt-1h-w3-funding` | REJECT |
+
+Wave 3 best: ETH breakout-bridge +3.96% OOS, 16 WFO trades, Sharpe 0.44 (still under 20 WFO trades). AVAX regime-bridge 19 trades, Sharpe -0.35. BNB funding 28 trades but Sharpe -0.16, DD 13.9%.
