@@ -87,12 +87,12 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 
 ## Priority Queue (remaining)
 
-**Cumulative search: ~980+ runs**, **1** deployable (`agent_sol_1h_trend_pullback_overlay_live`).
+**Cumulative search: ~1040+ runs**, **1** deployable (`agent_sol_1h_trend_pullback_overlay_live`).
 
 | Priority | Action | Status |
 |----------|--------|--------|
 | 1 | Monitor live SOL 1h + sentiment-macro forward | ongoing |
-| 2 | Wave 6 BTC 1h overlay (`w6-overlay`) | in progress |
+| 2 | Wave 6 BTC 1h overlay (`w6-overlay`) | **closed — REJECT** |
 | 3 | BNB 1h standalone / overlay | **closed** |
 | 4 | AVAX/ETH W2 #0004 | **closed** (b=1000 reject) |
 
@@ -136,21 +136,23 @@ Families: `trend_pullback_standalone`, `breakout_retest_standalone`, `volatility
 
 **Read:** BNB 1h standalone is closed (0-trade best = wrong surface, not tuning). BTC 1h standalone found a small low-risk pocket but fails trade count / Sharpe for promotion. **Still 1 deployable agent** (SOL 1h overlay live).
 
-## Wave 6 — BTCUSDT 1h overlay (in progress)
+## Wave 6 — BTCUSDT 1h overlay (2026-06-04, complete)
 
-Denser signal stack after Wave 5 BTC standalone near-miss. **BNB not continued.**
+Families: `trend_pullback_overlay`, `combined_focus`, `standard_gate_bridge`. Gate: `standard`, bootstrap=100, 60 runs.
 
-| Symbol | Output dir | Families | Runs | Gate | bootstrap |
-|--------|------------|----------|------|------|-----------|
-| BTCUSDT | `research/btcusdt-1h-w6-overlay` | `trend_pullback_overlay`, `combined_focus`, `standard_gate_bridge` | 60 | `standard` | 100 |
+| Metric | Wave 5 standalone best | Wave 6 overlay best |
+|--------|------------------------|---------------------|
+| OOS return | **+2.83%** | **−2.23%** |
+| WFO trades | 10 | 16 |
+| Sharpe | 0.58 | −0.37 |
+| Max DD | 5.5% | 10.8% |
+| P(loss) | 38% | 94% |
+| Concentration | 50.4% | 75.1% |
+| Standard passes | 0 | **0** |
 
-Stop without promotion if: best WFO trades < 15, Sharpe ≈ 0, P(loss) > 20%, or edge is concentration-only. Promote only if `eligible_for_bootstrap_1000` → bootstrap=1000 pass → low entry overlap vs SOL overlay + sentiment-macro.
+**Decision: REJECT / CLOSED.** Overlay stack **worse** than BTC standalone near-miss. Stop conditions met (Sharpe ≈ 0, P(loss) ≫ 20%, concentration high). **Do not schedule bootstrap=1000** on any Wave 6 config. BTC 1h overlay lane closed; pivot to new surfaces (longer history, bounded-density families), not more BTC 1h threshold work.
 
-```bash
-FAMILIES=trend_pullback_overlay,combined_focus,standard_gate_bridge \
-MAX_RUNS=60 GATE_PROFILE=standard BOOTSTRAP=100 \
-./scripts/run_autoresearch_campaign_remote.sh BTCUSDT 1h w6-overlay
-```
+Output: `research/btcusdt-1h-w6-overlay`
 
 ## Wave 3 — Bridge + funding
 
