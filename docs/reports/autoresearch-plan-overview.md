@@ -99,14 +99,20 @@ surface brief now exists as
 [`relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md);
 implementation should start there instead of launching more generic sweeps.
 
+Phase numbers below match the phases in the
+[next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md). The
+relative-strength surface is a **new surface brief**, not one of those legacy
+phases — it is listed separately as the active next research target.
+
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 0 | Forward-monitor SOL overlay + sentiment-macro | **active** |
 | 1 | ETH/BTC **4h** regime-conditioned | **closed** (≤5 WFO trades best) |
 | 2 | `range_reversion_bounded` ETH/BTC 4h | ETH **near_miss**; BTC **closed** |
 | 3 | `funding_primary_standalone` BTC 4h | **closed** (0 trades) |
-| 4 | `relative_strength_rotation_standalone` | **designed**; implementation queued |
+| 4 | Short-side / two-sided (paper + execution parity first) | queued |
 | 5 | Longer-history revalidation | per-candidate |
+| **New surface** | `relative_strength_rotation_standalone` (cross-asset, ETH/BTC anchor) | **designed**; implementation queued |
 
 Full phase detail, gate-profile choices, and stop conditions are in the
 [next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md).

@@ -104,6 +104,24 @@ no-lookahead semantics.
 - Rationale: cross-symbol joins can accidentally leak future anchor closes.
 - Verification: a test proves the anchor row timestamp is less than or equal to
   the target decision timestamp and never newer.
+- Precedent: reuse the alignment logic in
+  `IndicatorReader.fetch_multi_timeframe` / `_join_timeframes`
+  (`src/features/reader.py`), which already joins a second series by timestamp
+  using only completed bars ("same-timestamp bars are NOT available"). Generalize
+  it from second-*timeframe* to second-*symbol*; do not invent a new join.
+
+**REQ-002a**: The anchor symbol MUST be a first-class campaign parameter threaded
+through `scripts/autoresearch_loop.py` (`--anchor-symbol`), `BacktestConfig`,
+`BacktestEngine`, and the reader join — **not** an overlay field alone.
+
+- Rationale: `autoresearch_loop.py` and `BacktestEngine` are single-symbol today
+  (`BacktestConfig.symbol` is singular; the loop calls
+  `strategy.evaluate(symbol, row)` with one symbol's dict). Without a real
+  `--anchor-symbol` param, a campaign launched per Step 5 silently runs
+  single-symbol with no anchor and the RS fields are undefined.
+- Verification: a campaign run records the resolved `anchor_symbol`, and a test
+  asserts the engine fails fast (not silently) if RS fields cannot be computed
+  because the anchor was not supplied.
 
 **REQ-003**: The first implementation SHOULD use existing `ohlcv` and
 `indicators` data only.
@@ -119,6 +137,25 @@ names such as `anchor_close_price`, `anchor_return_fast`,
 - Rationale: strategy code must not infer anchor data from ambiguous indicator
   names.
 - Verification: integration tests assert the joined row schema.
+
+**REQ-004a**: Before the first campaign, the implementation MUST verify the anchor
+symbol has `ohlcv` + `indicators` coverage over the same window and timeframe as
+the target.
+
+- Rationale: the join is only valid where both series exist; gaps produce silent
+  NaN/zero RS and false HOLDs rather than an honest error.
+- Verification: a coverage check (or the join itself) raises/records when anchor
+  rows are missing for target decision bars; partial-coverage campaigns are not
+  scored as clean rejects.
+
+**REQ-004b**: The pullback logic MUST confirm the semantics of the existing `vwap`
+column at the campaign timeframe before relying on "near VWAP."
+
+- Rationale: VWAP is anchored to a session/window; its meaning on 4h bars depends
+  on how `src/features/technical.py` computes it. "Distance from VWAP" is only
+  meaningful if the anchor period is known.
+- Verification: a note or test documents the VWAP anchoring used; if ambiguous on
+  4h, fall back to EMA distance for the pullback gate.
 
 ### Signal Requirements
 
@@ -274,7 +311,7 @@ Initial bounded search MAY vary only these parameters:
 | `rsi_reset_max` | 55-65 |
 | `anchor_max_drawdown_pct` | -2.0% to -5.0% |
 | `cooldown_bars` | 3-12 |
-| `time_stop_minutes` | 12-72 hours |
+| `time_stop_hours` | 12-72 |
 
 The first search MUST NOT vary more than these parameters. Adding more knobs
 before a baseline result exists risks recreating the prior threshold-sweep
@@ -284,9 +321,18 @@ failure mode.
 
 ## Implementation Plan
 
+> **Sizing note:** the cross-symbol join (Steps 1 + 3) is the dominant cost of
+> this surface — the backtest stack is single-symbol today. Treat the whole
+> surface as **medium**, with the join as the critical path; the strategy itself
+> (Step 2) is small by comparison.
+
 ### Step 1 — Data Join
 
-Add a no-lookahead cross-symbol reader path for backtest and runtime.
+Add a no-lookahead cross-symbol reader path for backtest and runtime by
+**generalizing** `IndicatorReader.fetch_multi_timeframe` / `_join_timeframes`
+(`src/features/reader.py`) from a second timeframe to a second symbol. That code
+already aligns a second series by timestamp using only completed bars; reuse its
+no-lookahead guarantee rather than writing a new join.
 
 Required output fields:
 
@@ -306,11 +352,16 @@ Add `src/strategy/relative_strength_rotation.py` and export/register it.
 The strategy MUST be usable as a single-strategy standalone candidate. It SHOULD
 not require the five-vote aggregator stack.
 
-### Step 3 — Backtest Parity
+### Step 3 — Anchor Plumbing + Backtest Parity
 
-Extend `BacktestEngine` and `StrategyEngine` only as much as needed to pass joined
-cross-symbol rows to the strategy. Mixed single-symbol and cross-symbol
-strategies MAY be rejected initially to keep scope controlled.
+Thread the anchor symbol end-to-end (per REQ-002a): add `--anchor-symbol` to
+`scripts/autoresearch_loop.py`, an `anchor_symbol` field to `BacktestConfig`, and
+pass it through `BacktestEngine` into the reader join so each target `row` carries
+the `anchor_*` / `rs_*` keys before `strategy.evaluate(symbol, row)` is called.
+The engine MUST fail fast if a `relative_strength_rotation` run is launched
+without an anchor symbol, rather than running single-symbol silently. Mixed
+single-symbol and cross-symbol strategies MAY be rejected initially to keep scope
+controlled.
 
 ### Step 4 — Autoresearch Family
 
@@ -357,13 +408,15 @@ Do not run BTC/BNB/SOL variants before ETH has a readable result.
 
 Close the surface if the first two ETH campaigns show:
 
-- best WFO trades < 15,
+- best WFO trades < 20 (cannot clear the `standard` gate the run is scored
+  against — a 15-19 trade "near-miss" is not promotable under REQ-015),
 - best P(loss) > 40%,
 - best max DD > 15%,
 - best Sharpe < 0.3,
 - or all positive OOS candidates have concentration > 60%.
 
-Continue only if at least one candidate is close to `promotion_candidate`.
+Continue only if at least one candidate is close to `promotion_candidate`
+(≥ 20 WFO trades and within reach on return / DD / P(loss) / concentration).
 
 ---
 
