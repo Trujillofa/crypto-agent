@@ -90,6 +90,7 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 **Cumulative search: ~1040+ runs**, **1** deployable (`agent_sol_1h_trend_pullback_overlay_live`).
 **Post-mortem:** [autoresearch-postmortem-2026-06-04.md](./autoresearch-postmortem-2026-06-04.md) — sweeps **paused** until live forward data or new surface brief.
 **Next candidate path:** [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candidate-path-2026-06-04.md).
+**Plan overview / index:** [autoresearch-plan-overview.md](./autoresearch-plan-overview.md) — start here.
 
 | Priority | Action | Status |
 |----------|--------|--------|
