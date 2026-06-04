@@ -45,7 +45,8 @@ the BNB/BTC/AVAX/ETH 1h and ETH/BTC 4h surfaces tested.
 | [`autoresearch-postmortem-2026-06-04.md`](./autoresearch-postmortem-2026-06-04.md) | What ~1,040 runs produced and why sweeps paused | To understand *why* we're here |
 | [`autoresearch-candidate-ledger.md`](./autoresearch-candidate-ledger.md) | Per-campaign data (Waves 1–6), gate definitions, decision labels | For exact numbers / before any new run |
 | [`autoresearch-next-candidate-path-2026-06-04.md`](./autoresearch-next-candidate-path-2026-06-04.md) | Forward plan — phases, promotion pipeline, prerequisites | To plan the next campaign |
-| [`../specs/relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md) | First-principles surface brief: cross-asset relative strength rotation | Before implementing the next research family |
+| [`../specs/funding-crowding-primary-surface-v0.md`](../specs/funding-crowding-primary-surface-v0.md) | Active surface brief: funding normalization primary | Before funding probe / implementation |
+| [`../specs/relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md) | Paused: cross-asset relative strength rotation | Do not implement until probe redesign passes |
 | [`relative-strength-rotation-implementation-summary-2026-06-04.md`](./relative-strength-rotation-implementation-summary-2026-06-04.md) | Implementation summary, missing code, and launch checklist for relative strength rotation | Before assigning implementation work |
 | [`entry-overlap-sol-1h.md`](./entry-overlap-sol-1h.md) | Independence evidence (SOL overlay vs sentiment-macro) | When checking candidate independence |
 
@@ -115,7 +116,7 @@ phases — it is listed separately as the active next research target.
 | 3 | `funding_primary_standalone` BTC 4h | **closed** (0 trades) |
 | 4 | Short-side / two-sided (paper + execution parity first) | queued |
 | 5 | Longer-history revalidation | per-candidate |
-| **New surface** | `relative_strength_rotation_standalone` (cross-asset, ETH/BTC anchor) | **paused** after sparse/negative initial probe |
+| **New surface** | `funding_normalization` primary (BTC/ETH/SOL) | **probe** — RS rotation **paused** |
 
 Full phase detail, gate-profile choices, and stop conditions are in the
 [next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md).

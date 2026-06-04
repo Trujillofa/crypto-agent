@@ -31,11 +31,11 @@ The next campaign must introduce a materially different source of edge:
 - different holding-period logic,
 - or different market microstructure input.
 
-The next selected surface is specified in
-[`../specs/relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md):
-cross-asset relative strength rotation with controlled pullback entry. It trades
-capital rotation versus BTC/ETH anchors instead of another single-symbol
-technical threshold stack.
+Relative strength rotation was probed and **paused** (sparse, negative excess).
+The active next surface is
+[`../specs/funding-crowding-primary-surface-v0.md`](../specs/funding-crowding-primary-surface-v0.md):
+funding/crowding as a **primary** trigger on normalization (not extreme level alone),
+net of funding cost, one entry per cycle, BTC/ETH/SOL only.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
@@ -289,13 +289,13 @@ Decision rule:
 
 | Step | Action | Status (2026-06-04) |
 |------|--------|---------------------|
-| 1 | Forward-monitor SOL overlay + sentiment-macro | **active** — live agents healthy; 0 post-deploy attributed fills yet |
-| 2 | Review failed ETH/BTC 1h relative-strength probe | **done** — 14 events, −0.66% mean excess vs BTC |
-| 3 | Reshape probe or choose different surface | **required** before RS full implementation |
-| 4 | ETHUSDT 1h relative-strength campaign | **blocked** (step 2 stop condition) |
-| 5 | Second RS lane | **blocked** |
-| 6 | ETHUSDT 4h RS follow-up | **blocked** |
-| 7 | Funding/crowding data audit | **done** — DB has **AVAXUSDT only**; backfill BTC/ETH/SOL before Phase 3 |
+| 1 | Forward-monitor SOL overlay + sentiment-macro | **active** — weekly `run_entry_overlap_remote.sh` |
+| 2 | Relative-strength probe | **done** — paused; do not implement RS v0 |
+| 3 | Merge `docs/relative-strength-rotation` → `main` | **open PR** |
+| 4 | Funding/crowding surface brief | **done** — `funding-crowding-primary-surface-v0.md` |
+| 5 | Cheap funding-normalization probe (BTC/ETH/SOL) | **in progress** — `probe_funding_normalization.py` |
+| 6 | Full impl + autoresearch only if probe HAS_PULSE | **blocked** until step 5 passes |
+| 7 | Funding DB coverage | **done** — BTC/ETH/SOL backfilled |
 | 8 | Short-side feasibility review | **queued** |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
