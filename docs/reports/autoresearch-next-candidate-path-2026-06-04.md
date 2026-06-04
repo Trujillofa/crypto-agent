@@ -88,13 +88,13 @@ Review thresholds:
 This phase does not block all research, but it should block scaling notional and
 prevent more SOL 1h clones unless their entry overlap is low.
 
-**Prerequisite (blocking for realized-overlap measurement):** live DB `positions`
-rows are not yet tagged with `agent_id` for these services (see ledger,
-"Entry overlap — SOLUSDT 1h"). Until `agent_id` is written on position rows,
-"do both live agents lose in the same regime?" and the acceptance-checklist
-"entry overlap vs live agents" can only be answered from WFO/paper logs, not
-realized live fills. Add `agent_id` tagging to the live position write path
-before relying on any live-overlap number.
+**Prerequisite — RESOLVED (`bc309ae`, deployed 2026-06-04):** the live position
+write path now tags the real per-agent `agent_id` on `positions` and `trades`, and
+reads are agent-scoped. "Do both live agents lose in the same regime?" and the
+acceptance-checklist "entry overlap vs live agents" can now be answered from real
+fills — but only for fills **after this deploy** (pre-deploy rows were backfilled
+to the `'default'` bucket and cannot be split retroactively). Let the two live
+agents accumulate post-deploy fills before computing realized overlap.
 
 ---
 

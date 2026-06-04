@@ -121,7 +121,7 @@ Report: `docs/reports/entry-overlap-sol-1h.md` (WFO OOS, train=3mo test=2mo, ±1
 | overlay_live vs overlay_paper | 32 | 36 | 31 | 84% | 97% |
 | sentiment_macro vs overlay_paper | 2 | 36 | 0 | 0% | 0% |
 
-**Read:** Live SOL 1h overlay and sentiment-macro are **independent on OOS entry timing** (0 shared bars). Paper/live configs are the same signal stack (expected ~97% overlap). Live DB `positions` rows lack `agent_id` tagging for these services yet — use forward paper/live logs for realized overlap.
+**Read:** Live SOL 1h overlay and sentiment-macro are **independent on OOS entry timing** (0 shared bars). Paper/live configs are the same signal stack (expected ~97% overlap). Live DB `positions`/`trades` now carry real per-agent `agent_id` (`bc309ae`, deployed 2026-06-04) — realized overlap is measurable from post-deploy fills onward; pre-deploy rows are bucketed as `'default'`.
 
 ## Wave 5 — BNB/BTC 1h standalone (2026-06-04, complete)
 

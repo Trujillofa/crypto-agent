@@ -108,12 +108,15 @@ forward evidence or a new surface brief.
 Full phase detail, gate-profile choices, and stop conditions are in the
 [next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md).
 
-### Known prerequisite (engineering)
+### Engineering prerequisite — RESOLVED (`bc309ae`, deployed 2026-06-04)
 
-Live DB `positions` rows are **not yet tagged with `agent_id`** for these services.
-Until the live position write path tags `agent_id`, realized live entry-overlap
-(the independence check Phases 0–4 depend on) can only be measured from WFO/paper
-logs, not real fills. Fix this before relying on any live-overlap number.
+The live position write path now tags the **real per-agent `agent_id`** on both
+`positions` and `trades`, and reads are agent-scoped (`src/portfolio/manager.py`).
+Realized live entry-overlap (the independence check Phases 0–4 depend on) can now
+be measured from real fills, **starting from this deploy forward**. Caveat:
+pre-deploy historical rows were backfilled to the literal `'default'` bucket and
+cannot be split per-agent retroactively — only post-`bc309ae` fills carry true
+attribution.
 
 ---
 
