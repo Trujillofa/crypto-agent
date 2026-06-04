@@ -95,7 +95,7 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 | Priority | Action | Status |
 |----------|--------|--------|
 | 1 | Forward validation: SOL overlay live + sentiment-macro | **active** |
-| 2 | Phase 7: ETH/BTC 4h regime + bounded + funding-primary | **in progress** |
+| 2 | Phase 7: ETH/BTC 4h (complete) | **0 passes** — ETH bounded near-miss only |
 | 3 | BTC/BNB 1h, AVAX/ETH W2 #0004 | **closed** |
 
 ## Wave 4 — Bootstrap 1000 + specialist-only (2026-06-04)
@@ -154,17 +154,19 @@ Families: `trend_pullback_overlay`, `combined_focus`, `standard_gate_bridge`. Ga
 
 Output: `research/btcusdt-1h-w6-overlay`
 
-## Wave 7 — New surfaces (2026-06-04, in progress)
+## Wave 7 — New surfaces (2026-06-04, complete)
 
-Per [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candidate-path-2026-06-04.md). Gate: `standard`, bootstrap=100, `promotion_candidate` pre-filter required before b=1000.
+Per [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candidate-path-2026-06-04.md). Gate: `standard`, bootstrap=100. **0 standard passes. 0 `promotion_candidate` eligibles.**
 
-| Lane | Output dir | Families | Runs |
-|------|------------|----------|------|
-| ETHUSDT 4h regime | `research/ethusdt-4h-w7-eth-4h-regime` | regime_gated_pullback_overlay, breakout_retest_overlay | 80 |
-| BTCUSDT 4h regime | `research/btcusdt-4h-w7-btc-4h-regime` | same | 80 |
-| ETHUSDT 4h bounded | `research/ethusdt-4h-w8-eth-4h-bounded` | range_reversion_bounded | 50 |
-| BTCUSDT 4h bounded | `research/btcusdt-4h-w8-btc-4h-bounded` | range_reversion_bounded | 50 |
-| BTCUSDT 4h funding | `research/btcusdt-4h-w8-btc-4h-funding-primary` | funding_primary_standalone | 50 |
+| Lane | Runs | Best OOS | WFO tr | Sharpe | DD | P(loss) | Decision |
+|------|------|----------|--------|--------|-----|---------|----------|
+| ETH 4h regime | 80 | −2.53% | 5 | −0.63 | 6.2% | 64% | **CLOSED** (too sparse) |
+| BTC 4h regime | 80 | −1.30% | 1 | −0.36 | 1.3% | 100% | **CLOSED** (too sparse) |
+| ETH 4h bounded | 50 | **+13.55%** | **24** | 0.48 | 20.3% | 56% | **NEAR_MISS** — DD/P(loss)/Sharpe fail |
+| BTC 4h bounded | ~78 | −15.89% | 23 | −1.05 | 26.4% | 94% | **CLOSED** |
+| BTC 4h funding-primary | 50 | 0% | **0** | — | — | 100% | **CLOSED** (no signals) |
+
+**Read:** 4h regime overlays did not improve on ETH/BTC vs 1h closed lanes. Only **ETH 4h `range_reversion_bounded`** shows positive OOS with adequate trades but fails promotion pre-filter (DD 20.3%, P(loss) 56%). Optional: one b=1000 stress-test on ETH bounded best overlay — expect reject like AVAX. **No new deployable agent.**
 
 Launcher: `scripts/run_phase7_4h_campaigns.sh`
 
