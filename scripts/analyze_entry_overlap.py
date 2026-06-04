@@ -254,7 +254,7 @@ async def _collect_oos_entries(
                 )
                 result_bt = await _run_backtest(reader, window_config)
                 for trade in result_bt.trades:
-                    if trade.side.lower() != "long":
+                    if trade.side.upper() not in {"BUY", "LONG"}:
                         continue
                     entries.append(_normalize_entry(trade.entry_time, timeframe=run_timeframe))
     finally:

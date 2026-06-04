@@ -5,9 +5,9 @@ set -euo pipefail
 REMOTE_HOST="${REMOTE_HOST:-crypto-agent}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/crypto-agent}"
 IMAGE="${IMAGE:-crypto-agent-agent_sentiment_macro:latest}"
-OUTPUT_JSON="${OUTPUT_JSON:-docs/reports/entry-overlap-sol-1h.json}"
+OUTPUT_JSON="${OUTPUT_JSON:-research/entry-overlap-sol-1h.json}"
 
-ssh "${REMOTE_HOST}" "mkdir -p ${REMOTE_DIR}/docs/reports ${REMOTE_DIR}/research/overlap-resolved && sudo chown -R 999:999 ${REMOTE_DIR}/docs/reports ${REMOTE_DIR}/research/overlap-resolved && docker run --rm \
+ssh "${REMOTE_HOST}" "mkdir -p ${REMOTE_DIR}/research/overlap-resolved && sudo chown -R 999:999 ${REMOTE_DIR}/research && docker run --rm \
   --network crypto-agent_crypto-net \
   -v ${REMOTE_DIR}:/app -w /app \
   --env-file .env \

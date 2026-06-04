@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import yaml
 
 from src.backtest.experiment_autopilot import ExperimentSummary, GateConfig, evaluate_gates
