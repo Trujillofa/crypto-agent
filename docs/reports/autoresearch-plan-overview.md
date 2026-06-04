@@ -46,6 +46,7 @@ the BNB/BTC/AVAX/ETH 1h and ETH/BTC 4h surfaces tested.
 | [`autoresearch-candidate-ledger.md`](./autoresearch-candidate-ledger.md) | Per-campaign data (Waves 1–6), gate definitions, decision labels | For exact numbers / before any new run |
 | [`autoresearch-next-candidate-path-2026-06-04.md`](./autoresearch-next-candidate-path-2026-06-04.md) | Forward plan — phases, promotion pipeline, prerequisites | To plan the next campaign |
 | [`../specs/relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md) | First-principles surface brief: cross-asset relative strength rotation | Before implementing the next research family |
+| [`relative-strength-rotation-implementation-summary-2026-06-04.md`](./relative-strength-rotation-implementation-summary-2026-06-04.md) | Implementation summary, missing code, and launch checklist for relative strength rotation | Before assigning implementation work |
 | [`entry-overlap-sol-1h.md`](./entry-overlap-sol-1h.md) | Independence evidence (SOL overlay vs sentiment-macro) | When checking candidate independence |
 
 Gate thresholds are defined once in the ledger and implemented in `GATE_PROFILES`
