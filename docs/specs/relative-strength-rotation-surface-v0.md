@@ -353,6 +353,25 @@ failure mode.
 > surface as **medium**, with the join as the critical path; the strategy itself
 > (Step 2) is small by comparison.
 
+### Step 0 — Feasibility Probe
+
+Before building the production backtest path, run the cheap offline probe:
+
+```bash
+uv run python -m scripts.probe_relative_strength_rotation \
+  --target-symbol ETHUSDT \
+  --anchor-symbol BTCUSDT \
+  --timeframe 1h \
+  --start 2024-01-01T00:00:00 \
+  --end 2026-06-01T00:00:00
+```
+
+The probe MUST NOT be treated as a promotion result. It only decides whether the
+surface has enough frequency and crude forward edge to justify implementing the
+full reader/engine/strategy path. Stop or reshape the surface before Step 1 if
+the probe produces zero/near-zero events or non-positive excess forward return
+versus the anchor.
+
 ### Step 1 — Data Join
 
 Add a no-lookahead cross-symbol reader path for backtest and runtime by

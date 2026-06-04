@@ -290,15 +290,17 @@ Decision rule:
 | Step | Action | Expected Outcome |
 |------|--------|------------------|
 | 1 | Continue forward monitoring SOL overlay + sentiment-macro | real execution/frequency evidence |
-| 2 | Implement `relative_strength_rotation_standalone` from the spec | first-principles cross-asset surface |
-| 3 | Run ETHUSDT 1h relative-strength campaign | candidate #2 search with BTC anchor |
-| 4 | Review failure mode before any second lane | prevent blind sweeps |
-| 5 | Run ETHUSDT 4h only if 1h is readable but noisy | lower-noise follow-up |
-| 6 | Funding/crowding data audit | future different primitive, not current priority |
-| 7 | Short-side feasibility review | only if execution/risk parity is proven |
+| 2 | Run `scripts/probe_relative_strength_rotation.py` on ETH/BTC 1h | frequency + crude forward-edge kill/go read |
+| 3 | Implement `relative_strength_rotation_standalone` only if the probe has a pulse | first-principles cross-asset surface justified by evidence |
+| 4 | Run ETHUSDT 1h relative-strength campaign | candidate #2 search with BTC anchor |
+| 5 | Review failure mode before any second lane | prevent blind sweeps |
+| 6 | Run ETHUSDT 4h only if 1h is readable but noisy | lower-noise follow-up |
+| 7 | Funding/crowding data audit | future different primitive, not current priority |
+| 8 | Short-side feasibility review | only if execution/risk parity is proven |
 
-Stop after each phase if no candidate reaches `promotion_candidate=true`. Do not
-chain campaigns just because compute is available.
+Stop after each phase if no candidate reaches `promotion_candidate=true`. For the
+probe step, stop before implementation if events are silent or crude forward
+excess is non-positive. Do not chain campaigns just because compute is available.
 
 ---
 

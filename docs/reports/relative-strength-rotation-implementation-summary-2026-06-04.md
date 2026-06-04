@@ -1,7 +1,7 @@
 # Relative Strength Rotation Implementation Summary
 
 **Date:** 2026-06-04
-**Status:** design-ready; implementation pending
+**Status:** design-ready; feasibility probe implemented; full surface pending
 **Surface:** `relative_strength_rotation_standalone`
 **First target:** `ETHUSDT`
 **First anchor:** `BTCUSDT`
@@ -16,8 +16,9 @@ is intentionally different from the exhausted surfaces: instead of tuning anothe
 single-symbol indicator stack, it tests whether capital is rotating into a target
 asset versus a market anchor, then enters on a controlled pullback.
 
-The plan is ready as a design and implementation spec. It is **not runnable yet**.
-The campaign command in the spec must wait until the cross-symbol reader path,
+The plan is ready as a design and implementation spec. A cheap feasibility probe
+now exists, but the full autoresearch campaign is **not runnable yet**. The
+campaign command in the spec must wait until the cross-symbol reader path,
 anchor plumbing, strategy, autoresearch family, and launcher passthrough are
 implemented and tested.
 
@@ -60,7 +61,38 @@ can we enter after a pullback without losing that leadership?"
 
 ---
 
-## Implementation Scope
+## Feasibility Probe Before Full Implementation
+
+Run the probe before building the full six-piece surface:
+
+```bash
+uv run python -m scripts.probe_relative_strength_rotation \
+  --target-symbol ETHUSDT \
+  --anchor-symbol BTCUSDT \
+  --timeframe 1h \
+  --start 2024-01-01T00:00:00 \
+  --end 2026-06-01T00:00:00
+```
+
+The probe is deliberately throwaway/offline. It reads existing target and anchor
+indicator rows, aligns same-timeframe closed candles, computes relative strength,
+counts how often the planned preconditions fire, and measures crude forward
+returns after those events.
+
+Use it as a kill/go gate:
+
+- **Kill or reshape** if it produces zero/near-zero events.
+- **Kill or reshape** if it produces many events but non-positive excess forward
+  return versus the anchor.
+- **Proceed to implementation** only if it has enough events to be analyzable and
+  positive crude forward excess.
+
+This probe does not replace the standard gate, bootstrap=1000, or overlap checks.
+It only decides whether the full implementation is worth building.
+
+---
+
+## Full Implementation Scope
 
 The implementation has six required pieces.
 
@@ -152,7 +184,7 @@ OHLCV/indicator data, standard gate.
 
 ---
 
-## First Campaign After Implementation
+## First Campaign After Full Implementation
 
 Run only after the implementation pieces above pass tests:
 
@@ -202,10 +234,12 @@ Do not paper or live-deploy from bootstrap=100 alone.
 | Research rationale | Ready |
 | Formal spec | Ready |
 | Implementation checklist | Ready |
+| Feasibility probe script | Ready: `scripts/probe_relative_strength_rotation.py` |
 | Campaign command | Ready after plumbing exists |
 | Code implementation | Missing |
 | Tests for implementation | Missing |
 | Hetzner campaign | Not started |
 | Deployable candidate | None yet |
 
-The next engineering task is implementation, not more planning.
+The next engineering task is to run the probe on production data. Full
+implementation should wait for that result.
