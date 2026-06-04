@@ -29,7 +29,7 @@ agent adds risk faster than it adds validation speed.
 | Independent live strategy | `agent_sentiment_macro` (0 shared OOS entry bars) |
 | New standard-gate passes beyond SOL | 0 |
 | Gates lowered to inflate count | No |
-| Autoresearch sweeps | **Paused** — forward evidence or new surface brief only |
+| Autoresearch sweeps | **Active** — Phase 1–3 (4h / bounded / funding-primary) per next-candidate-path |
 
 The bottleneck is **lack of independent edge**, not tooling. The infrastructure and
 gates behaved correctly; ~1,040 runs did not produce additional deployable edge on
@@ -99,9 +99,9 @@ forward evidence or a new surface brief.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 0 | Forward-monitor SOL overlay + sentiment-macro | **active** |
-| 1 | ETH/BTC **4h** regime-conditioned candidates | queued |
-| 2 | Bounded high-density families (trade-count caps by design) | queued |
-| 3 | Funding / carry / crowding surface (not the old light sweep) | queued |
+| 1 | ETH/BTC **4h** regime-conditioned candidates | **in progress** (`w7-*-4h-regime`) |
+| 2 | `range_reversion_bounded` on ETH/BTC 4h | **in progress** (`w8-*-4h-bounded`) |
+| 3 | `funding_primary_standalone` on BTC 4h | **in progress** (`w8-btc-4h-funding-primary`) |
 | 4 | Short-side / two-sided (paper + execution parity first) | queued |
 | 5 | Longer-history revalidation | per-candidate |
 

@@ -36,6 +36,8 @@ DEFAULT_FAMILIES = (
     "breakout_retest_standalone",
     "volatility_squeeze_standalone",
     "mtf_breakout_standalone",
+    "range_reversion_bounded",
+    "funding_primary_standalone",
 )
 
 BASE_STRATEGY_CONFIGS: tuple[dict[str, Any], ...] = (
@@ -998,6 +1000,59 @@ def generate_candidate(
         desc = (
             f"mtf-breakout-standalone vol={mtf_breakout['config']['volatility_threshold']:.1f} "
             f"buy={buy:.2f}"
+        )
+    elif family == "range_reversion_bounded":
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "bollinger_bounce",
+                "config": {
+                    "band_distance_threshold": _round(rng.uniform(0.002, 0.007), 4),
+                    "rsi_oversold": float(rng.choice([35, 38, 42])),
+                    "rsi_overbought": float(rng.choice([58, 62, 65])),
+                },
+            },
+            buy_low=0.48,
+            buy_high=0.72,
+            sl_atr=_round(rng.uniform(1.8, 2.4), 2),
+            tp_atr=_round(rng.uniform(2.4, 3.6), 2),
+        )
+        overlay["trading_execution"]["exit_rules"] = {
+            "backtest_use_executor_exit_model": True,
+            "time_stop_minutes": float(rng.choice([2880, 4320, 5760])),
+        }
+        overlay["strategy"]["global_trend_filter_buffer_pct"] = _round(rng.uniform(0.0, 0.005), 4)
+        desc = (
+            f"range-reversion-bounded bb={overlay['strategy']['strategies'][0]['config']['band_distance_threshold']:.4f} "
+            f"time_stop={overlay['trading_execution']['exit_rules']['time_stop_minutes']:.0f}m"
+        )
+    elif family == "funding_primary_standalone":
+        entry_thresh = _round(rng.uniform(0.00035, 0.0009), 5)
+        exit_thresh = _round(rng.uniform(entry_thresh * 0.25, entry_thresh * 0.65), 5)
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "funding_rate",
+                "config": {
+                    "entry_threshold": entry_thresh,
+                    "exit_threshold": exit_thresh,
+                    "lookback_periods": rng.choice([1, 3, 6]),
+                },
+            },
+            buy_low=0.42,
+            buy_high=0.68,
+            sl_atr=_round(rng.uniform(2.0, 2.6), 2),
+            tp_atr=_round(rng.uniform(3.0, 4.5), 2),
+        )
+        overlay["trading_execution"]["exit_rules"] = {
+            "backtest_use_executor_exit_model": True,
+            "time_stop_minutes": float(rng.choice([1440, 2880, 4320])),
+        }
+        desc = (
+            f"funding-primary entry={entry_thresh:.5f} exit={exit_thresh:.5f} "
+            f"lookback={overlay['strategy']['strategies'][0]['config']['lookback_periods']}"
         )
     else:
         buy = _round(rng.uniform(1.00, 1.10), 2)

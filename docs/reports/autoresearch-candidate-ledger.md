@@ -95,7 +95,7 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 | Priority | Action | Status |
 |----------|--------|--------|
 | 1 | Forward validation: SOL overlay live + sentiment-macro | **active** |
-| 2 | New autoresearch sweeps | **paused** |
+| 2 | Phase 7: ETH/BTC 4h regime + bounded + funding-primary | **in progress** |
 | 3 | BTC/BNB 1h, AVAX/ETH W2 #0004 | **closed** |
 
 ## Wave 4 — Bootstrap 1000 + specialist-only (2026-06-04)
@@ -153,6 +153,20 @@ Families: `trend_pullback_overlay`, `combined_focus`, `standard_gate_bridge`. Ga
 **Decision: REJECT / CLOSED.** Overlay stack **worse** than BTC standalone near-miss. Stop conditions met (Sharpe ≈ 0, P(loss) ≫ 20%, concentration high). **Do not schedule bootstrap=1000** on any Wave 6 config. BTC 1h overlay lane closed; pivot to new surfaces (longer history, bounded-density families), not more BTC 1h threshold work.
 
 Output: `research/btcusdt-1h-w6-overlay`
+
+## Wave 7 — New surfaces (2026-06-04, in progress)
+
+Per [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candidate-path-2026-06-04.md). Gate: `standard`, bootstrap=100, `promotion_candidate` pre-filter required before b=1000.
+
+| Lane | Output dir | Families | Runs |
+|------|------------|----------|------|
+| ETHUSDT 4h regime | `research/ethusdt-4h-w7-eth-4h-regime` | regime_gated_pullback_overlay, breakout_retest_overlay | 80 |
+| BTCUSDT 4h regime | `research/btcusdt-4h-w7-btc-4h-regime` | same | 80 |
+| ETHUSDT 4h bounded | `research/ethusdt-4h-w8-eth-4h-bounded` | range_reversion_bounded | 50 |
+| BTCUSDT 4h bounded | `research/btcusdt-4h-w8-btc-4h-bounded` | range_reversion_bounded | 50 |
+| BTCUSDT 4h funding | `research/btcusdt-4h-w8-btc-4h-funding-primary` | funding_primary_standalone | 50 |
+
+Launcher: `scripts/run_phase7_4h_campaigns.sh`
 
 ## Wave 3 — Bridge + funding
 

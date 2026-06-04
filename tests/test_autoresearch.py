@@ -408,6 +408,8 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "breakout_retest_standalone",
             "volatility_squeeze_standalone",
             "mtf_breakout_standalone",
+            "range_reversion_bounded",
+            "funding_primary_standalone",
         }:
             strategy = candidate.overlay["strategy"]
             assert len(strategy["strategies"]) == 6
@@ -657,6 +659,31 @@ def test_autoresearch_loop_mtf_breakout_standalone_sets_1h_timeframe() -> None:
     assert candidate.family == "mtf_breakout_standalone"
     assert candidate.overlay["trading"]["timeframe"] == "1h"
     assert candidate.overlay["strategy"]["strategies"][0]["name"] == "mtf_breakout"
+
+
+def test_autoresearch_loop_range_reversion_bounded_has_time_stop() -> None:
+    candidate = generate_candidate(
+        9,
+        seed=42,
+        symbol="ETHUSDT",
+        families=("range_reversion_bounded",),
+    )
+
+    assert candidate.family == "range_reversion_bounded"
+    assert candidate.overlay["strategy"]["strategies"][0]["name"] == "bollinger_bounce"
+    assert candidate.overlay["trading_execution"]["exit_rules"]["time_stop_minutes"] >= 2880
+
+
+def test_autoresearch_loop_funding_primary_standalone_single_strategy() -> None:
+    candidate = generate_candidate(
+        10,
+        seed=42,
+        symbol="BTCUSDT",
+        families=("funding_primary_standalone",),
+    )
+
+    assert candidate.family == "funding_primary_standalone"
+    assert candidate.overlay["strategy"]["strategies"][0]["name"] == "funding_rate"
 
 
 def test_autoresearch_loop_builds_existing_runner_command() -> None:
