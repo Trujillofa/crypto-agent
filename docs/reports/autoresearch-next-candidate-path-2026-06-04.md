@@ -293,8 +293,8 @@ Decision rule:
 | 2 | Relative-strength probe | **done** — paused; do not implement RS v0 |
 | 3 | Merge `docs/relative-strength-rotation` → `main` | **open PR** |
 | 4 | Funding/crowding surface brief | **done** — `funding-crowding-primary-surface-v0.md` |
-| 5 | Cheap funding-normalization probe (BTC/ETH/SOL) | **in progress** — `probe_funding_normalization.py` |
-| 6 | Full impl + autoresearch only if probe HAS_PULSE | **blocked** until step 5 passes |
+| 5 | Cheap funding-normalization probe (BTC/ETH/SOL) | **done** — see [funding-normalization-probe-2026-06-04.md](./funding-normalization-probe-2026-06-04.md) |
+| 6 | Full impl + autoresearch only if probe HAS_PULSE | **blocked** — default thresholds failed |
 | 7 | Funding DB coverage | **done** — BTC/ETH/SOL backfilled |
 | 8 | Short-side feasibility review | **queued** |
 

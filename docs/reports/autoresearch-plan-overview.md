@@ -116,7 +116,7 @@ phases — it is listed separately as the active next research target.
 | 3 | `funding_primary_standalone` BTC 4h | **closed** (0 trades) |
 | 4 | Short-side / two-sided (paper + execution parity first) | queued |
 | 5 | Longer-history revalidation | per-candidate |
-| **New surface** | `funding_normalization` primary (BTC/ETH/SOL) | **probe** — RS rotation **paused** |
+| **New surface** | `funding_normalization` primary (BTC/ETH/SOL) | **probe done** — default thresholds NO_PULSE/SPARSE; reshape before impl |
 
 Full phase detail, gate-profile choices, and stop conditions are in the
 [next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md).
