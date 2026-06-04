@@ -372,6 +372,10 @@ full reader/engine/strategy path. Stop or reshape the surface before Step 1 if
 the probe produces zero/near-zero events or non-positive excess forward return
 versus the anchor.
 
+Initial ETH/BTC 1h production probe result (2026-06-04): 14 events across 20,508
+aligned rows, mean target forward return -1.50%, mean excess versus BTC -0.66%.
+That hits the Step 0 stop condition for the default parameters.
+
 ### Step 1 — Data Join
 
 Add a no-lookahead cross-symbol reader path for backtest and runtime by

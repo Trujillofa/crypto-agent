@@ -1,7 +1,7 @@
 # Relative Strength Rotation Implementation Summary
 
 **Date:** 2026-06-04
-**Status:** design-ready; feasibility probe implemented; full surface pending
+**Status:** design-ready; initial feasibility probe failed; full surface paused
 **Surface:** `relative_strength_rotation_standalone`
 **First target:** `ETHUSDT`
 **First anchor:** `BTCUSDT`
@@ -17,10 +17,11 @@ single-symbol indicator stack, it tests whether capital is rotating into a targe
 asset versus a market anchor, then enters on a controlled pullback.
 
 The plan is ready as a design and implementation spec. A cheap feasibility probe
-now exists, but the full autoresearch campaign is **not runnable yet**. The
-campaign command in the spec must wait until the cross-symbol reader path,
-anchor plumbing, strategy, autoresearch family, and launcher passthrough are
-implemented and tested.
+now exists, and the first production run says **do not build the full surface
+yet**. The default ETH/BTC 1h preconditions were too sparse and had negative
+forward edge. The full campaign command must wait until the surface is reshaped
+and the cross-symbol reader path, anchor plumbing, strategy, autoresearch family,
+and launcher passthrough are implemented and tested.
 
 ---
 
@@ -89,6 +90,32 @@ Use it as a kill/go gate:
 
 This probe does not replace the standard gate, bootstrap=1000, or overlap checks.
 It only decides whether the full implementation is worth building.
+
+### Initial Production Probe Result
+
+Run on Hetzner against production TimescaleDB from inside
+`agent_sentiment_macro`:
+
+```text
+Target / anchor: ETHUSDT / BTCUSDT
+Timeframe:        1h
+Window:           2024-01-01T00:00:00 -> 2026-06-01T00:00:00
+Rows:             target=20508 anchor=20508
+Aligned rows:     20508
+Events:           14 (0.07% of rows)
+Forward bars:     12
+Mean target return:    -1.50%
+Median target return:  -0.60%
+Target win rate:       28.6%
+Mean excess vs anchor: -0.66%
+Median excess:         -1.05%
+Excess win rate:       28.6%
+```
+
+Read: the default ETH/BTC 1h surface is too sparse and crude forward edge is
+negative. Do **not** implement the full six-piece production surface from these
+defaults. The next useful work is either threshold/surface reshaping in the probe
+or a different first-principles surface.
 
 ---
 
@@ -235,11 +262,13 @@ Do not paper or live-deploy from bootstrap=100 alone.
 | Formal spec | Ready |
 | Implementation checklist | Ready |
 | Feasibility probe script | Ready: `scripts/probe_relative_strength_rotation.py` |
+| Initial ETH/BTC 1h probe | Failed: sparse, negative forward excess |
 | Campaign command | Ready after plumbing exists |
-| Code implementation | Missing |
+| Code implementation | Paused pending probe redesign |
 | Tests for implementation | Missing |
 | Hetzner campaign | Not started |
 | Deployable candidate | None yet |
 
-The next engineering task is to run the probe on production data. Full
-implementation should wait for that result.
+The next engineering task is not the full implementation. Either reshape the
+probe thresholds/surface and re-run the cheap check, or choose a different
+first-principles surface.

@@ -95,10 +95,12 @@ b=100 discovery (standard gate)
 
 ## What Happens Next
 
-Only **Phase 0 (forward monitoring)** is active operationally. The next research
-surface brief now exists as
+Only **Phase 0 (forward monitoring)** is active operationally. The relative
+strength surface brief exists, but its first ETH/BTC 1h feasibility probe failed
+(14 events / 20,508 rows, negative forward excess), so do not proceed to full
+implementation without reshaping the probe or selecting a different surface.
+The surface brief is:
 [`relative-strength-rotation-surface-v0.md`](../specs/relative-strength-rotation-surface-v0.md);
-run the cheap feasibility probe before building the full surface.
 
 Phase numbers below match the phases in the
 [next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md). The
@@ -113,7 +115,7 @@ phases — it is listed separately as the active next research target.
 | 3 | `funding_primary_standalone` BTC 4h | **closed** (0 trades) |
 | 4 | Short-side / two-sided (paper + execution parity first) | queued |
 | 5 | Longer-history revalidation | per-candidate |
-| **New surface** | `relative_strength_rotation_standalone` (cross-asset, ETH/BTC anchor) | **designed**; feasibility probe ready |
+| **New surface** | `relative_strength_rotation_standalone` (cross-asset, ETH/BTC anchor) | **paused** after sparse/negative initial probe |
 
 Full phase detail, gate-profile choices, and stop conditions are in the
 [next-candidate-path doc](./autoresearch-next-candidate-path-2026-06-04.md).

@@ -290,17 +290,18 @@ Decision rule:
 | Step | Action | Expected Outcome |
 |------|--------|------------------|
 | 1 | Continue forward monitoring SOL overlay + sentiment-macro | real execution/frequency evidence |
-| 2 | Run `scripts/probe_relative_strength_rotation.py` on ETH/BTC 1h | frequency + crude forward-edge kill/go read |
-| 3 | Implement `relative_strength_rotation_standalone` only if the probe has a pulse | first-principles cross-asset surface justified by evidence |
+| 2 | Review the failed ETH/BTC 1h relative-strength probe | 14 events / 20,508 rows, negative forward excess |
+| 3 | Reshape the probe or choose a different surface before implementation | avoid building a sparse, negative-edge surface |
 | 4 | Run ETHUSDT 1h relative-strength campaign | candidate #2 search with BTC anchor |
 | 5 | Review failure mode before any second lane | prevent blind sweeps |
 | 6 | Run ETHUSDT 4h only if 1h is readable but noisy | lower-noise follow-up |
 | 7 | Funding/crowding data audit | future different primitive, not current priority |
 | 8 | Short-side feasibility review | only if execution/risk parity is proven |
 
-Stop after each phase if no candidate reaches `promotion_candidate=true`. For the
-probe step, stop before implementation if events are silent or crude forward
-excess is non-positive. Do not chain campaigns just because compute is available.
+Stop after each phase if no candidate reaches `promotion_candidate=true`. The
+initial relative-strength probe already hit the stop condition: sparse events and
+non-positive crude forward excess. Do not chain campaigns just because compute is
+available.
 
 ---
 
