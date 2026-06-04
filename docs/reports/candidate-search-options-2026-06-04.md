@@ -85,10 +85,16 @@ from an extreme, net of funding drag, one entry per cycle.
 **Cons:** First probe pass weak; may be structurally low edge in 2024–2026 spot bull regime.
 **When to prefer:** After reshape matrix shows at least one HAS_PULSE cell.
 
-**Run reshape matrix on prod:**
+**Reshape matrix result (prod, 2026-06-04):** Only **SOL `neg_tail_10pct`** hit
+`HAS_PULSE` (44 long events, +0.06% mean net 24h; 12h mean still negative).
+BTC/ETH best cells stay SPARSE. `both_norm_probe` adds many short events — research
+only until short parity review.
 
 ```bash
-ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm ... python scripts/run_funding_probe_reshape.py'
+ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent_crypto-net \
+  -v /opt/crypto-agent:/app -w /app -e PYTHONPATH=/app --env-file /opt/crypto-agent/.env \
+  -e POSTGRES_HOST=timescaledb crypto-agent-agent_sentiment_macro:latest \
+  python scripts/run_funding_probe_reshape.py'
 ```
 
 ---
