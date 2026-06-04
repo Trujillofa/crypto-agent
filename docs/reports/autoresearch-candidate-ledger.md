@@ -87,10 +87,16 @@ FAMILIES=breakout_retest_overlay MAX_RUNS=50 ./scripts/run_autoresearch_campaign
 
 ## Priority Queue (remaining)
 
-**Phase 1 pass1 complete (6 lanes, 300 runs): 0 new standard passes.**
+**Cumulative search: ~980+ runs**, **1** deployable (`agent_sol_1h_trend_pullback_overlay_live`).
 
-**Wave 2 complete (250 runs): 0 standard passes.**
-**Wave 3 complete (200 runs): 0 standard passes.** Cumulative search: **750+ runs**, **1** deployable (SOL 1h trend_pullback overlay live).
+| Priority | Action | Status |
+|----------|--------|--------|
+| 1 | Monitor live SOL 1h + sentiment-macro forward | ongoing |
+| 2 | Wave 6 BTC 1h overlay (`w6-overlay`) | in progress |
+| 3 | BNB 1h standalone / overlay | **closed** |
+| 4 | AVAX/ETH W2 #0004 | **closed** (b=1000 reject) |
+
+After Wave 6: if no `promotion_candidate`, pivot to longer-history BTC/ETH regimes or new high-density bounded families — not threshold tweaks.
 
 ## Wave 4 — Bootstrap 1000 + specialist-only (2026-06-04)
 
@@ -117,14 +123,34 @@ Report: `docs/reports/entry-overlap-sol-1h.md` (WFO OOS, train=3mo test=2mo, ±1
 
 **Read:** Live SOL 1h overlay and sentiment-macro are **independent on OOS entry timing** (0 shared bars). Paper/live configs are the same signal stack (expected ~97% overlap). Live DB `positions` rows lack `agent_id` tagging for these services yet — use forward paper/live logs for realized overlap.
 
-## Wave 5 — BNB/BTC 1h standalone (in progress)
+## Wave 5 — BNB/BTC 1h standalone (2026-06-04, complete)
 
-| Symbol | Output dir | Families | Gate |
-|--------|------------|----------|------|
-| BNBUSDT | `research/bnbusdt-1h-w5b-standalone` | 3 standalone | sparse_trend_3_2 |
-| BTCUSDT | `research/btcusdt-1h-w5b-standalone` | 3 standalone | sparse_trend_3_2 |
+Families: `trend_pullback_standalone`, `breakout_retest_standalone`, `volatility_squeeze_standalone`. Gate: `sparse_trend_3_2`, bootstrap=100. Promotion pre-filter: `eligible_for_bootstrap_1000` in `last_result.json`.
 
-(w5-standalone failed: `run_autoresearch` import path; fixed in `60702e3`.)
+| Symbol | Output dir | Runs | Passes | Best OOS | WFO tr | Sharpe | Max DD | P(loss) | Conc | Decision |
+|--------|------------|------|--------|----------|--------|--------|--------|---------|------|----------|
+| BNBUSDT | `research/bnbusdt-1h-w5b-standalone` | 50 | 0 | 0% | **0** | — | — | — | — | **CLOSED** — search surface silent |
+| BTCUSDT | `research/btcusdt-1h-w5b-standalone` | 50 | 0 | +2.83% | 10 | 0.58 | 5.5% | 38% | 50.4% | **NEAR_MISS** — sparse, P(loss)/conc fail |
+
+`w5-standalone` lanes (BNB/BTC) aborted: `run_autoresearch` import path (fixed `60702e3`); no usable archive.
+
+**Read:** BNB 1h standalone is closed (0-trade best = wrong surface, not tuning). BTC 1h standalone found a small low-risk pocket but fails trade count / Sharpe for promotion. **Still 1 deployable agent** (SOL 1h overlay live).
+
+## Wave 6 — BTCUSDT 1h overlay (in progress)
+
+Denser signal stack after Wave 5 BTC standalone near-miss. **BNB not continued.**
+
+| Symbol | Output dir | Families | Runs | Gate | bootstrap |
+|--------|------------|----------|------|------|-----------|
+| BTCUSDT | `research/btcusdt-1h-w6-overlay` | `trend_pullback_overlay`, `combined_focus`, `standard_gate_bridge` | 60 | `standard` | 100 |
+
+Stop without promotion if: best WFO trades < 15, Sharpe ≈ 0, P(loss) > 20%, or edge is concentration-only. Promote only if `eligible_for_bootstrap_1000` → bootstrap=1000 pass → low entry overlap vs SOL overlay + sentiment-macro.
+
+```bash
+FAMILIES=trend_pullback_overlay,combined_focus,standard_gate_bridge \
+MAX_RUNS=60 GATE_PROFILE=standard BOOTSTRAP=100 \
+./scripts/run_autoresearch_campaign_remote.sh BTCUSDT 1h w6-overlay
+```
 
 ## Wave 3 — Bridge + funding
 
