@@ -127,6 +127,18 @@ through `scripts/autoresearch_loop.py` (`--anchor-symbol`), `BacktestConfig`,
   asserts the engine fails fast (not silently) if RS fields cannot be computed
   because the anchor was not supplied.
 
+**REQ-002b**: The remote campaign launcher MUST pass the anchor symbol through to
+the loop. `scripts/run_autoresearch_campaign_remote.sh` MUST translate
+`ANCHOR_SYMBOL=<symbol>` into `--anchor-symbol <symbol>` when launching
+`scripts/autoresearch_loop.py`.
+
+- Rationale: Step 5 uses the remote campaign launcher, not
+  `autoresearch_loop.py` directly. Without the launcher bridge, the documented
+  command can still run single-symbol even after `--anchor-symbol` exists.
+- Verification: launcher tests or a dry-run assertion prove `ANCHOR_SYMBOL=BTCUSDT`
+  appears in the child command as `--anchor-symbol BTCUSDT`; relative-strength
+  launcher runs fail fast if `ANCHOR_SYMBOL` is missing.
+
 **REQ-003**: The first implementation SHOULD use existing `ohlcv` and
 `indicators` data only.
 
@@ -382,6 +394,12 @@ The engine MUST fail fast if a `relative_strength_rotation` run is launched
 without an anchor symbol, rather than running single-symbol silently. Mixed
 single-symbol and cross-symbol strategies MAY be rejected initially to keep scope
 controlled.
+
+Also wire the outer remote launcher (per REQ-002b): `ANCHOR_SYMBOL=BTCUSDT` in
+`scripts/run_autoresearch_campaign_remote.sh` MUST become `--anchor-symbol
+BTCUSDT` in the `scripts/autoresearch_loop.py` invocation. The launcher MUST fail
+fast when `FAMILIES=relative_strength_rotation_standalone` is requested without
+`ANCHOR_SYMBOL`.
 
 ### Step 4 — Autoresearch Family
 
