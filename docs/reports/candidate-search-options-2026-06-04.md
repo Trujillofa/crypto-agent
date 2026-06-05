@@ -204,7 +204,7 @@ current live technical agent.
 2. Continue Option A weekly (`run_phase0_weekly.sh`)
 3. Wave 9 B-SOL autoresearch — CLOSED, 0/80 standard passes
 4. Option D1 (ETH b=1000) — SKIPPED
-5. Option F volatility squeeze — BTC/ETH probe passed; write implementation brief
+5. Option F volatility squeeze — implement brief, then F-BTC/F-ETH campaigns (40+40)
 6. Option E only after execution parity doc exists
 7. Option C only if RS probe v2 passes
 ```

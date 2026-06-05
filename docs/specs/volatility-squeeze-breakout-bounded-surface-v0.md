@@ -1,6 +1,7 @@
 # Volatility Squeeze Breakout Bounded — Surface v0 (Option F)
 
-**Status:** feasibility probe passed on BTC/ETH — implementation brief allowed next
+**Status:** BTC/ETH probe passed — implement per implementation brief (no campaign yet)
+**Implementation brief:** `volatility-squeeze-breakout-bounded-implementation-brief-v0.md`
 **Date:** 2026-06-05
 **Symbol order:** BTCUSDT → ETHUSDT → SOLUSDT (SOL last for correlation hygiene)
 
@@ -56,9 +57,12 @@ and did not show positive forward mean.
 
 ---
 
-## If probe passes (later)
+## Implementation (next)
 
-- Family: `volatility_squeeze_bounded` (standalone, time-stop in overlay)
+See `volatility-squeeze-breakout-bounded-implementation-brief-v0.md`:
+
+- Family: `volatility_squeeze_bounded` (reuse `volatility_squeeze`, 12h hold + `time_stop_minutes`)
+- Campaign: 40 runs BTC + 40 runs ETH (separate lanes)
 - Gates: unchanged (`standard` → `promotion_candidate` → b=1000)
 - Overlap: vs SOL overlay live + sentiment-macro before promotion
 

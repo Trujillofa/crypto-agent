@@ -32,10 +32,10 @@ The next campaign must introduce a materially different source of edge:
 - or different market microstructure input.
 
 Relative strength rotation was probed and **paused** (sparse, negative excess).
-The active next surface is
-[`../specs/funding-crowding-primary-surface-v0.md`](../specs/funding-crowding-primary-surface-v0.md):
-funding/crowding as a **primary** trigger on normalization (not extreme level alone),
-net of funding cost, one entry per cycle, BTC/ETH/SOL only.
+Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
+The active next surface is Option F:
+[`../specs/volatility-squeeze-breakout-bounded-implementation-brief-v0.md`](../specs/volatility-squeeze-breakout-bounded-implementation-brief-v0.md)
+(BTC/ETH 1h bounded squeeze — probe passed 2026-06-05; SOL excluded).
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
