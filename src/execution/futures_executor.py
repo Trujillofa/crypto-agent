@@ -606,6 +606,7 @@ class FuturesTradingExecutor:
                                 bars_held=bars_held,
                                 ticket_id=close_order.order_id,
                             )
+                            self._record_risk_close(symbol, pnl, self._account_balance)
                         except Exception as close_exc:
                             self._logger.error(
                                 "Failed to close %s after software %s: %s",
