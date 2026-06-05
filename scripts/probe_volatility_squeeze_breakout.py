@@ -158,30 +158,42 @@ def probe_squeeze_rows(rows: Sequence[Mapping[str, object]], config: ProbeConfig
     events: list[SqueezeEvent] = []
     cooldown_until = -1
     max_forward = max(config.forward_bars_12h, config.forward_bars_24h, config.forward_bars_48h)
-    closes = []
-    times = []
-    width_hist = deque(maxlen=config.squeeze_lookback)
-    close_hist = deque(maxlen=config.momentum_period + 1)
+    closes: list[float] = []
+    times: list[datetime] = []
+    bb_widths: list[float | None] = []
+    atr_pcts: list[float | None] = []
+    sma_20_values: list[float | None] = []
 
     for row in rows:
         close = _coerce_float(row.get("close_price"))
         if close is None or close <= 0:
             continue
+        time = row.get("time")
+        if not isinstance(time, datetime):
+            continue
         bb_upper = _coerce_float(row.get("bb_upper_dist"))
         bb_lower = _coerce_float(row.get("bb_lower_dist"))
-        atr_pct = _coerce_float(row.get("atr_pct"))
-        sma_20 = _coerce_float(row.get("sma_20"))
-        if None in {bb_upper, bb_lower, atr_pct, sma_20}:
-            closes.append(close)
-            times.append(row["time"])
+        bb_width = None
+        if bb_upper is not None and bb_lower is not None:
+            bb_width = (bb_upper + bb_lower) / close
+        closes.append(close)
+        times.append(time)
+        bb_widths.append(bb_width)
+        atr_pcts.append(_coerce_float(row.get("atr_pct")))
+        sma_20_values.append(_coerce_float(row.get("sma_20")))
+
+    width_hist = deque(maxlen=config.squeeze_lookback)
+    close_hist = deque(maxlen=config.momentum_period + 1)
+
+    for index, close in enumerate(closes):
+        bb_width = bb_widths[index]
+        atr_pct = atr_pcts[index]
+        sma_20 = sma_20_values[index]
+        if None in {bb_width, atr_pct, sma_20}:
             continue
 
-        bb_width = (bb_upper + bb_lower) / close
         width_hist.append(bb_width)
         close_hist.append(close)
-        closes.append(close)
-        times.append(row["time"])
-        index = len(closes) - 1
 
         if index <= cooldown_until:
             continue
