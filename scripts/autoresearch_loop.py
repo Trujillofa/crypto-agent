@@ -37,6 +37,7 @@ DEFAULT_FAMILIES = (
     "volatility_squeeze_standalone",
     "mtf_breakout_standalone",
     "range_reversion_bounded",
+    "volatility_squeeze_bounded",
     "funding_primary_standalone",
     "funding_normalization_standalone",
 )
@@ -1083,6 +1084,37 @@ def generate_candidate(
         desc = (
             f"funding-norm entry={entry_thresh:.5f} exit={exit_thresh:.5f} "
             f"time_stop={time_stop_min:.0f}m"
+        )
+    elif family == "volatility_squeeze_bounded":
+        max_hold_bars = int(rng.choice([10, 12, 14]))
+        time_stop_min = float(max_hold_bars * 60)
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "volatility_squeeze",
+                "config": {
+                    "squeeze_lookback": rng.choice([40, 50, 60]),
+                    "squeeze_percentile": _round(rng.uniform(0.15, 0.28), 2),
+                    "sma_period": 20,
+                    "momentum_period": rng.choice([8, 10, 12]),
+                    "atr_trail_multiplier": _round(rng.uniform(2.8, 4.0), 2),
+                    "max_hold_bars": max_hold_bars,
+                    "min_atr_pct": _round(rng.uniform(0.004, 0.009), 4),
+                },
+            },
+            buy_low=0.40,
+            buy_high=0.70,
+            sl_atr=_round(rng.uniform(2.0, 2.6), 2),
+            tp_atr=_round(rng.uniform(2.8, 4.0), 2),
+        )
+        overlay["trading_execution"]["exit_rules"] = {
+            "backtest_use_executor_exit_model": True,
+            "time_stop_minutes": time_stop_min,
+        }
+        desc = (
+            f"vol-squeeze-bounded pct={overlay['strategy']['strategies'][0]['config']['squeeze_percentile']:.2f} "
+            f"hold={max_hold_bars} time_stop={time_stop_min:.0f}m"
         )
     else:
         buy = _round(rng.uniform(1.00, 1.10), 2)

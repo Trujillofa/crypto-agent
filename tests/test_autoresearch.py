@@ -680,6 +680,28 @@ def test_autoresearch_loop_range_reversion_bounded_has_time_stop() -> None:
     assert candidate.overlay["trading_execution"]["exit_rules"]["time_stop_minutes"] >= 2880
 
 
+def test_autoresearch_loop_volatility_squeeze_bounded_hold_time_stop_pairing() -> None:
+    for run_index in range(1, 25):
+        candidate = generate_candidate(
+            run_index,
+            seed=42,
+            symbol="BTCUSDT",
+            families=("volatility_squeeze_bounded",),
+        )
+        assert candidate.family == "volatility_squeeze_bounded"
+        strat = candidate.overlay["strategy"]["strategies"][0]
+        assert strat["name"] == "volatility_squeeze"
+        max_hold_bars = int(strat["config"]["max_hold_bars"])
+        time_stop_minutes = candidate.overlay["trading_execution"]["exit_rules"][
+            "time_stop_minutes"
+        ]
+        assert max_hold_bars in (10, 12, 14)
+        assert time_stop_minutes == max_hold_bars * 60
+        assert candidate.overlay["trading_execution"]["exit_rules"][
+            "backtest_use_executor_exit_model"
+        ]
+
+
 def test_autoresearch_loop_funding_normalization_standalone_single_strategy() -> None:
     candidate = generate_candidate(
         11,

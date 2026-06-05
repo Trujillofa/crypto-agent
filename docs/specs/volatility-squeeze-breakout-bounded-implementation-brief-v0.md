@@ -99,8 +99,16 @@ trading_execution:
 2. **Strategy** `max_hold_bars` at 12 (bar-based time stop).
 3. **Strategy** ATR trailing stop after `bars_held > 2` (risk cap only).
 
-Campaign search should keep `max_hold_bars` and `time_stop_minutes` **coherent**
-(same 12h intent). Example pairs: `(12, 720)`, `(10, 600)`, `(14, 840)`.
+Campaign search must keep `max_hold_bars` and `time_stop_minutes` **paired**:
+
+| `max_hold_bars` | `time_stop_minutes` |
+|-----------------|---------------------|
+| 10 | 600 |
+| 12 | 720 |
+| 14 | 840 |
+
+Autoresearch samples one row from this table; `time_stop_minutes = max_hold_bars * 60` always.
+No orphan values (e.g. `max_hold_bars=16` without `960`).
 
 ---
 
@@ -120,9 +128,9 @@ Campaign search should keep `max_hold_bars` and `time_stop_minutes` **coherent**
 | `squeeze_percentile` | 0.15 – 0.28 | Wider = more events |
 | `momentum_period` | 8, 10, 12 | Probe default 10 |
 | `min_atr_pct` | 0.004 – 0.009 | Probe default 0.005 |
-| `max_hold_bars` | 10, 12, 14, 16 | **Center 12** |
+| `max_hold_bars` | 10, 12, 14 only | Paired with `time_stop_minutes` below |
 | `atr_trail_multiplier` | 2.8 – 4.0 | Wide trail; time stop primary |
-| `time_stop_minutes` | 600, 720, 840 | Must track `max_hold_bars` |
+| `time_stop_minutes` | `max_hold_bars * 60` | Exact pairing — see table above |
 | `sl_atr_multiplier` | 2.0 – 2.6 | Executor protective |
 | `tp_atr_multiplier` | 2.8 – 4.0 | |
 | `buy_threshold` | 0.40 – 0.70 | Standalone aggregator |
@@ -131,12 +139,27 @@ Campaign search should keep `max_hold_bars` and `time_stop_minutes` **coherent**
 
 ### Unit test
 
-Add `test_autoresearch_loop_volatility_squeeze_bounded_has_time_stop` mirroring
-`test_autoresearch_loop_range_reversion_bounded_has_time_stop`:
+`test_autoresearch_loop_volatility_squeeze_bounded_hold_time_stop_pairing`:
 
-- `time_stop_minutes` ∈ [600, 840]
-- `max_hold_bars` ≤ 16
-- strategy name == `volatility_squeeze`
+- `strategy.name == volatility_squeeze`
+- `max_hold_bars in (10, 12, 14)`
+- **`time_stop_minutes == max_hold_bars * 60`** (exact; not independent ranges)
+- `backtest_use_executor_exit_model is True`
+
+**Why pairing matters:** backtest checks executor time stop **before** strategy
+`evaluate()` each bar (`src/backtest/engine.py`). `VolatilitySqueezeStrategy` also
+keeps internal position state. Mismatched hold vs `time_stop_minutes` produces
+misleading WFO (executor exits while strategy still thinks it is in a trade, or vice versa).
+
+### Global trend filter (WFO vs probe)
+
+The cheap probe did **not** apply EMA200 global trend filtering. WFO/backtest
+**does** by default (`apply_global_trend_filter=True` in `BacktestConfig` and
+BUY blocking vs `ema_200` in `src/backtest/engine.py`).
+
+**Decision:** leave global trend filter **enabled** for the campaign. WFO is
+intentionally stricter than the probe; do not disable to “match probe” unless a
+follow-up probe re-runs with EMA200 gating.
 
 ---
 
