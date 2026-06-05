@@ -7,7 +7,7 @@ import argparse
 import asyncio
 import sys
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -32,6 +32,28 @@ def bar_duration(timeframe: str) -> timedelta:
     if timeframe not in mapping:
         raise ValueError(f"Unsupported timeframe for audit: {timeframe}")
     return mapping[timeframe]
+
+
+def has_valid_overlap(
+    ohlcv_min: datetime | None,
+    ohlcv_max: datetime | None,
+    basis_min: datetime | None,
+    basis_max: datetime | None,
+) -> bool:
+    """True when basis and ohlcv time ranges share at least one instant."""
+    if ohlcv_min is None or ohlcv_max is None or basis_min is None or basis_max is None:
+        return False
+    return max(ohlcv_min, basis_min) <= min(ohlcv_max, basis_max)
+
+
+def overlap_bounds(
+    ohlcv_min: datetime,
+    ohlcv_max: datetime,
+    basis_min: datetime,
+    basis_max: datetime,
+) -> tuple[datetime, datetime]:
+    """Inclusive overlap window; caller must ensure has_valid_overlap is True."""
+    return max(ohlcv_min, basis_min), min(ohlcv_max, basis_max)
 
 
 @dataclass(frozen=True)
@@ -174,14 +196,15 @@ async def audit_symbol(
     if basis_bars == 0:
         reasons.append("no perp_basis_metrics rows (backfill required)")
 
-    overlap_start = max(ohlcv_min, basis_min) if basis_min else ohlcv_min
-    overlap_end = min(ohlcv_max, basis_max) if basis_max else ohlcv_max
-
     overlap_ohlcv = 0
     overlap_basis = 0
     max_gap_hours = 0.0
 
-    if basis_bars > 0 and overlap_start and overlap_end and overlap_start <= overlap_end:
+    valid_overlap = has_valid_overlap(ohlcv_min, ohlcv_max, basis_min, basis_max)
+    if basis_bars > 0 and not valid_overlap:
+        reasons.append("no overlap between basis and ohlcv ranges")
+    elif basis_bars > 0 and valid_overlap:
+        overlap_start, overlap_end = overlap_bounds(ohlcv_min, ohlcv_max, basis_min, basis_max)
         overlap_ohlcv = int(
             await conn.fetchval(
                 """
@@ -238,6 +261,8 @@ async def audit_symbol(
                 )
 
     coverage_ratio = overlap_basis / overlap_ohlcv if overlap_ohlcv else 0.0
+    if valid_overlap and overlap_ohlcv == 0:
+        reasons.append("no ohlcv bars in overlap window")
     if overlap_ohlcv and coverage_ratio < MIN_COVERAGE_RATIO:
         reasons.append(
             f"coverage {coverage_ratio:.1%} < {MIN_COVERAGE_RATIO:.0%} "
