@@ -161,8 +161,8 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 
 | Idea | Different primitive | Notes |
 |------|---------------------|-------|
-| Volatility squeeze breakout bounded | Regime expansion | BTC/ETH prod probe passed on 2026-06-05 |
-| Session / liquidity window router | Time microstructure | Needs session labels |
+| Volatility squeeze breakout bounded | Regime expansion | **CLOSED** Wave 10 — 0/80 passes |
+| Session / liquidity window router | Time microstructure | **Active** — spec + probe: `session-liquidity-router-surface-v0.md` |
 | Cross-exchange basis / premium | Crowding | Data not in DB today |
 | Liquidation cascade proxy | Microstructure | Needs L2 or agg trades |
 
@@ -204,7 +204,7 @@ current live technical agent.
 2. Continue Option A weekly (`run_phase0_weekly.sh`)
 3. Wave 9 B-SOL autoresearch — CLOSED, 0/80 standard passes
 4. Option D1 (ETH b=1000) — SKIPPED
-5. Option F volatility squeeze — implement brief, then F-BTC/F-ETH campaigns (40+40)
+5. Option G session liquidity router — prod probe first (`run_session_liquidity_probe.sh`)
 6. Option E only after execution parity doc exists
 7. Option C only if RS probe v2 passes
 ```

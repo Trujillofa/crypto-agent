@@ -34,8 +34,9 @@ The next campaign must introduce a materially different source of edge:
 Relative strength rotation was probed and **paused** (sparse, negative excess).
 Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
 Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
-standard passes (see ledger). Next surface requires a **new** first-principles brief;
-do not retune vol-squeeze hold bands or re-open SOL.
+standard passes (see ledger). Active next surface:
+[`../specs/session-liquidity-router-surface-v0.md`](../specs/session-liquidity-router-surface-v0.md)
+— cheap UTC session probe before any router code. Do not retune vol-squeeze.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
