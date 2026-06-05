@@ -38,6 +38,7 @@ DEFAULT_FAMILIES = (
     "mtf_breakout_standalone",
     "range_reversion_bounded",
     "funding_primary_standalone",
+    "funding_normalization_standalone",
 )
 
 BASE_STRATEGY_CONFIGS: tuple[dict[str, Any], ...] = (
@@ -1053,6 +1054,35 @@ def generate_candidate(
         desc = (
             f"funding-primary entry={entry_thresh:.5f} exit={exit_thresh:.5f} "
             f"lookback={overlay['strategy']['strategies'][0]['config']['lookback_periods']}"
+        )
+    elif family == "funding_normalization_standalone":
+        # B-SOL sprint: band around SOL neg_tail_10pct probe (~0.00016 entry).
+        entry_thresh = _round(rng.uniform(0.00012, 0.00022), 5)
+        exit_thresh = _round(rng.uniform(0.00008, 0.00018), 5)
+        time_stop_min = float(rng.choice([720.0, 1440.0, 2880.0]))
+        overlay, desc = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "funding_normalization",
+                "config": {
+                    "entry_threshold": entry_thresh,
+                    "exit_threshold": exit_thresh,
+                    "long_only": True,
+                },
+            },
+            buy_low=0.45,
+            buy_high=0.72,
+            sl_atr=_round(rng.uniform(1.8, 2.4), 2),
+            tp_atr=_round(rng.uniform(2.8, 4.0), 2),
+        )
+        overlay["trading_execution"]["exit_rules"] = {
+            "backtest_use_executor_exit_model": True,
+            "time_stop_minutes": time_stop_min,
+        }
+        desc = (
+            f"funding-norm entry={entry_thresh:.5f} exit={exit_thresh:.5f} "
+            f"time_stop={time_stop_min:.0f}m"
         )
     else:
         buy = _round(rng.uniform(1.00, 1.10), 2)

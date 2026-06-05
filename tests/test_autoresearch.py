@@ -415,6 +415,7 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "mtf_breakout_standalone",
             "range_reversion_bounded",
             "funding_primary_standalone",
+            "funding_normalization_standalone",
         }:
             strategy = candidate.overlay["strategy"]
             assert len(strategy["strategies"]) == 1
@@ -677,6 +678,21 @@ def test_autoresearch_loop_range_reversion_bounded_has_time_stop() -> None:
     assert candidate.family == "range_reversion_bounded"
     assert candidate.overlay["strategy"]["strategies"][0]["name"] == "bollinger_bounce"
     assert candidate.overlay["trading_execution"]["exit_rules"]["time_stop_minutes"] >= 2880
+
+
+def test_autoresearch_loop_funding_normalization_standalone_single_strategy() -> None:
+    candidate = generate_candidate(
+        11,
+        seed=42,
+        symbol="SOLUSDT",
+        families=("funding_normalization_standalone",),
+    )
+
+    assert candidate.family == "funding_normalization_standalone"
+    strat = candidate.overlay["strategy"]["strategies"][0]
+    assert strat["name"] == "funding_normalization"
+    assert strat["config"]["long_only"] is True
+    assert 0.00012 <= strat["config"]["entry_threshold"] <= 0.00022
 
 
 def test_autoresearch_loop_funding_primary_standalone_single_strategy() -> None:

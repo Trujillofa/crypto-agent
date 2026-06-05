@@ -51,6 +51,7 @@ from src.strategy import (
     BollingerBounceStrategy,
     CCIBreakoutStrategy,
     EngineConfig,
+    FundingNormalizationStrategy,
     FundingRateStrategy,
     MACDHistogramStrategy,
     MacroVolatilityStrategy,
@@ -738,6 +739,7 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
         "sentiment_mean_reversion": SentimentMeanReversionStrategy,
         "macro_volatility": MacroVolatilityStrategy,
         "funding_rate": FundingRateStrategy,
+        "funding_normalization": FundingNormalizationStrategy,
     }
 
     optional_strategies = {
