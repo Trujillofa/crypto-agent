@@ -18,6 +18,7 @@ run_wfo() {
   local output_dir="$3"
   echo "===== WFO ${label} ====="
   ssh "${REMOTE_HOST}" "mkdir -p ${REMOTE_DIR}/${output_dir}/archive && \
+    sudo chown -R 999:999 ${REMOTE_DIR}/${output_dir} && \
     cd ${REMOTE_DIR} && docker run --rm \
     --network crypto-agent_crypto-net \
     -v ${REMOTE_DIR}:/app \
