@@ -178,6 +178,17 @@ the A/B comparison is invalid (router not applied) — stop and fix plumbing.
 
 **Phase 2 fail → CLOSED** in ledger; do not enable paper agent or autoresearch.
 
+**Formal WFO A/B hard stops (router lane):** reject if any of:
+
+- `blocked_buy_count == 0` on gated run
+- gated `wfo_total_trades` &lt; 70% of ungated
+- gated `wfo_total_trades` &lt; 20
+- gated OOS return &lt; 50% of ungated (when ungated OOS &gt; 0)
+- DD / P(loss) / concentration not clearly better (gated ≤ ungated on DD and P(loss);
+  concentration within +10pp)
+
+Runner: `scripts/run_session_router_wfo_ab.sh` + `scripts/evaluate_session_router_wfo_ab.py`
+
 ### Phase 3 — Paper shadow agent (no live)
 
 - New compose service or paper agent id: `sol-1h-trend-pullback-overlay-americas-gate-paper`

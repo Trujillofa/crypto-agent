@@ -215,6 +215,7 @@ def _render_markdown(
     lines.append(f"| Compound OOS return | {summary.wfo_total_return_pct:.2f}% |")
     lines.append(f"| Bootstrap P(loss) | {summary.bootstrap_p_loss_pct:.2f}% |")
     lines.append(f"| Profit concentration | {summary.profit_concentration_pct:.2f}% |")
+    lines.append(f"| Blocked BUY (session router) | {summary.blocked_buy_count} |")
     lines.append("")
 
     if windows:
@@ -373,6 +374,7 @@ async def main() -> None:
             wfo_total_return_pct=compound_returns_pct(oos_returns),
             bootstrap_p_loss_pct=bootstrap_p_loss_pct,
             profit_concentration_pct=profit_concentration_pct(oos_returns),
+            blocked_buy_count=baseline.blocked_buy_count,
             passes_gates=False,
             failure_reasons=[],
         )
@@ -430,6 +432,7 @@ async def main() -> None:
     print(f"OOS mean Sharpe: {summary.wfo_mean_sharpe:.2f}")
     print(f"Bootstrap P(loss): {summary.bootstrap_p_loss_pct:.2f}%")
     print(f"Profit concentration: {summary.profit_concentration_pct:.2f}%")
+    print(f"Blocked BUY (session router): {summary.blocked_buy_count}")
     if summary.failure_reasons:
         print("Failures:")
         for reason in summary.failure_reasons:
