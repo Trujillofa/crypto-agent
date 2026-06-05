@@ -170,6 +170,27 @@ Per [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candida
 
 Launcher: `scripts/run_phase7_4h_campaigns.sh`
 
+## Wave 9 — B-SOL funding normalization (in progress)
+
+Tightly scoped sprint after prod probe reshape (`neg_tail_10pct` HAS_PULSE on SOL only).
+**Not** a gate change; **not** live deploy from probe.
+
+| Item | Value |
+|------|-------|
+| Symbol | **SOLUSDT only** |
+| TF | 1h |
+| Family | `funding_normalization_standalone` |
+| Strategy | `funding_normalization` (normalize-from-negative, long-only) |
+| Entry band | 0.00012–0.00022 (~SOL 10% negative tail) |
+| Time stops | 12h / 24h / 48h |
+| Output | `research/solusdt-1h-w9-sol-1h-funding-norm` |
+| Launcher | `scripts/run_b_sol_funding_norm_campaign.sh` |
+
+**Mandatory before promotion:** entry overlap vs `agent_sol_1h_trend_pullback_overlay_live` +
+`agent_sentiment_macro`. Expect **correlated symbol risk** even if entries differ.
+
+**ETH 4h bounded b=1000:** skipped (formal reject expected; near-miss only).
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
