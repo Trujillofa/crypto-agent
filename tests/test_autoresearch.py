@@ -413,6 +413,7 @@ def test_autoresearch_loop_candidate_ranges_stay_bounded() -> None:
             "breakout_retest_standalone",
             "volatility_squeeze_standalone",
             "mtf_breakout_standalone",
+            "volatility_squeeze_bounded",
             "range_reversion_bounded",
             "funding_primary_standalone",
             "funding_normalization_standalone",
