@@ -230,10 +230,22 @@ gated WFO trades &lt; 20; concentration worse).
 **Decision: CLOSED.** Unconditional session pulse (americas 16–24 UTC probe on universe) did **not**
 transfer to promoted SOL 1h trend-pullback overlay. Router code remains **default-off** reusable infra.
 **Do not** enable on `agent_sol_1h_trend_pullback_overlay_live`. **Do not** add paper shadow service.
-**Do not** retune hours (time-window overfit). Next: new first-principles brief.
+**Do not** retune hours (time-window overfit).
 
 Probe report: `docs/reports/session-liquidity-router-probe-2026-06-05.md`.
 Runner: `scripts/run_session_router_wfo_ab.sh`.
+
+## Next lane — Basis / perp premium data (in progress)
+
+**Status:** data infrastructure only (no strategy probe until audit passes).
+
+Brief: `docs/specs/basis-premium-data-ingestion-brief-v0.md`.
+Schema: `migrations/010_add_perp_basis_metrics.sql` (`mark_price`, `index_price`,
+`premium_index`, `basis_bps`; join `funding_rates` at read time).
+Audit: `scripts/audit_basis_premium_coverage.py` (≥95% OHLCV overlap, gap checks).
+
+**Stop spending cycles** on SOL overlay routers/indicator filters. Next implementation:
+`import_perp_basis_metrics.py` + prod backfill → audit `PROBE_READY` → cheap probe.
 
 ## Wave 3 — Bridge + funding
 

@@ -22,7 +22,8 @@ inventing another thin breakout/mean-reversion shape.
 | Role | Filter/router on promoted agents | Standalone crowding primitive |
 | Cheap probe | Hour-of-week stratification | Blocked without data |
 
-**Cross-exchange basis** stays queued until reliable basis/perp premium history exists.
+**Cross-exchange basis** — see `basis-premium-data-ingestion-brief-v0.md` (v0: Binance
+USDT-M history; audit before probe).
 
 ---
 

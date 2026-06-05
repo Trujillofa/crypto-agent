@@ -34,10 +34,12 @@ The next campaign must introduce a materially different source of edge:
 Relative strength rotation was probed and **paused** (sparse, negative excess).
 Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
 Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
-standard passes (see ledger). Active work:
-[`../specs/session-liquidity-router-implementation-brief-v0.md`](../specs/session-liquidity-router-implementation-brief-v0.md)
-— `americas` entry gate on consensus BUY; SOL overlay backtest A/B before paper
-shadow. No live deploy. Do not retune vol-squeeze.
+standard passes (see ledger). Session router v1 **closed** (WFO A/B REJECT).
+
+**Active work (data-first, no autoresearch):**
+[`../specs/basis-premium-data-ingestion-brief-v0.md`](../specs/basis-premium-data-ingestion-brief-v0.md)
+— Binance USDT-M mark/index/premium index history → coverage audit → cheap probe.
+**Do not** add SOL overlay routers/filters or new live agents until probe passes.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
