@@ -210,9 +210,9 @@ Prod probe (2026-06-05) showed BTC/ETH `HAS_PULSE` on crude 12h forward returns;
 stricter EMA200 gating and full backtest exits. BTC near-miss on return/Sharpe/trades
 but fails risk gates. **Do not** run bootstrap=1000. **Do not** deploy.
 
-**Vol squeeze bounded BTC/ETH:** closed. Session liquidity router probe passed on
-BTC/ETH/SOL (`americas` window). Next: implementation brief for router/gate; no
-deployment or autoresearch campaign from the probe alone.
+**Vol squeeze bounded BTC/ETH:** closed. Session router probe passed (`americas`,
+BTC/ETH/SOL). Implement gate per `session-liquidity-router-implementation-brief-v0.md`;
+no live until SOL overlay A/B + paper shadow pass.
 
 Launcher: `scripts/run_option_f_vol_squeeze_campaign.sh`
 

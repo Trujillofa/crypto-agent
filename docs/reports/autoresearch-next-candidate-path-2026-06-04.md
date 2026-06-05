@@ -34,11 +34,10 @@ The next campaign must introduce a materially different source of edge:
 Relative strength rotation was probed and **paused** (sparse, negative excess).
 Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
 Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
-standard passes (see ledger). Active next surface:
-[`../specs/session-liquidity-router-surface-v0.md`](../specs/session-liquidity-router-surface-v0.md)
-— prod probe passed on BTC/ETH/SOL with `americas` as the favorable window. Next
-step is an implementation brief for a router/gate, not another entry signal. Do
-not retune vol-squeeze.
+standard passes (see ledger). Active work:
+[`../specs/session-liquidity-router-implementation-brief-v0.md`](../specs/session-liquidity-router-implementation-brief-v0.md)
+— `americas` entry gate on consensus BUY; SOL overlay backtest A/B before paper
+shadow. No live deploy. Do not retune vol-squeeze.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.

@@ -204,7 +204,7 @@ current live technical agent.
 2. Continue Option A weekly (`run_phase0_weekly.sh`)
 3. Wave 9 B-SOL autoresearch — CLOSED, 0/80 standard passes
 4. Option D1 (ETH b=1000) — SKIPPED
-5. Session liquidity router — prod probe passed; write implementation brief
+5. Session liquidity router — implement brief (engine gate + SOL overlay A/B); no live yet
 6. Option E only after execution parity doc exists
 7. Option C only if RS probe v2 passes
 ```

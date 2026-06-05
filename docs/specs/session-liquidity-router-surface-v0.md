@@ -1,6 +1,7 @@
 # Session Liquidity Router — Surface v0
 
-**Status:** feasibility probe passed — implementation brief allowed next
+**Status:** probe passed — implement per implementation brief (no live deploy yet)
+**Implementation brief:** `session-liquidity-router-implementation-brief-v0.md`
 **Date:** 2026-06-05
 **Priority:** next first-principles surface after Wave 10 (vol squeeze bounded closed)
 **Symbol order for probe:** BTCUSDT → ETHUSDT → SOLUSDT
@@ -140,19 +141,14 @@ WFO/shadow behavior without destroying trade frequency.
 
 ---
 
-## Implementation path (after `HAS_PULSE`)
+## Implementation (next)
 
-**Not** a new entry signal first. v1 implementation:
+Follow `session-liquidity-router-implementation-brief-v0.md`:
 
-1. `SessionLiquidityRouter` config block in strategy settings:
-   - `allowed_windows: [asia, europe]` (example)
-   - `block_entries_outside_windows: true`
-2. Hook in strategy engine or aggregator: convert BUY → HOLD outside window with reason.
-3. Apply to **paper shadow** on SOL overlay before any BTC/ETH standalone campaign.
-4. Autoresearch: optional `session_router_overlay` family wrapping existing standalone
-   with window mask — only after manual probe report names winning windows per symbol.
-
-Promotion path unchanged: `standard` → `promotion_candidate` → b=1000 → overlap.
+- v1 window: **`americas` only** (16:00–24:00 UTC)
+- BUY → HOLD outside window; SELL/exits unchanged
+- Phase 2: SOL overlay backtest A/B before paper shadow
+- No live deploy until shadow + overlap; autoresearch only after Phase 2 pass
 
 ---
 
