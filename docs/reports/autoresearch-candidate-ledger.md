@@ -170,26 +170,28 @@ Per [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candida
 
 Launcher: `scripts/run_phase7_4h_campaigns.sh`
 
-## Wave 9 — B-SOL funding normalization (in progress)
+## Wave 9 — B-SOL funding normalization (complete, CLOSED)
 
 Tightly scoped sprint after prod probe reshape (`neg_tail_10pct` HAS_PULSE on SOL only).
-**Not** a gate change; **not** live deploy from probe.
+**0 standard passes. 0 promotion_candidate eligibles.**
 
 | Item | Value |
 |------|-------|
-| Symbol | **SOLUSDT only** |
-| TF | 1h |
-| Family | `funding_normalization_standalone` |
-| Strategy | `funding_normalization` (normalize-from-negative, long-only) |
-| Entry band | 0.00012–0.00022 (~SOL 10% negative tail) |
-| Time stops | 12h / 24h / 48h |
-| Output | `research/solusdt-1h-w9-sol-1h-funding-norm` |
-| Launcher | `scripts/run_b_sol_funding_norm_campaign.sh` |
+| Runs | 80 |
+| Best OOS | +0.82% |
+| Best WFO trades | **15** (max across campaign; **0** runs ≥ 20) |
+| Best Sharpe | 0.52 |
+| Best DD | 7.4% |
+| P(loss) / conc (best) | 53% / **100%** |
+| Verdict | **CLOSED** — too sparse for standard gate; probe pulse did not transfer to WFO |
 
-**Mandatory before promotion:** entry overlap vs `agent_sol_1h_trend_pullback_overlay_live` +
-`agent_sentiment_macro`. Expect **correlated symbol risk** even if entries differ.
+**Read:** Cheap probe counted 44 normalization **events** on funding ticks; backtest/WFO
+produced at most **15** trades (28 runs had ≥10). Concentration and P(loss) fail on the
+best config. **Do not** run bootstrap=1000. **Do not** deploy.
 
-**ETH 4h bounded b=1000:** skipped (formal reject expected; near-miss only).
+**Funding-primary on SOL:** closed. Next: **Option F** (new first-principles surface).
+
+Launcher: `scripts/run_b_sol_funding_norm_campaign.sh`
 
 ## Wave 3 — Bridge + funding
 
