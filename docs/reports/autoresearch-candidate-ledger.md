@@ -210,11 +210,30 @@ Prod probe (2026-06-05) showed BTC/ETH `HAS_PULSE` on crude 12h forward returns;
 stricter EMA200 gating and full backtest exits. BTC near-miss on return/Sharpe/trades
 but fails risk gates. **Do not** run bootstrap=1000. **Do not** deploy.
 
-**Vol squeeze bounded BTC/ETH:** closed. Session router probe passed (`americas`,
-BTC/ETH/SOL). Implement gate per `session-liquidity-router-implementation-brief-v0.md`;
-no live until SOL overlay A/B + paper shadow pass.
+**Vol squeeze bounded BTC/ETH:** closed.
 
 Launcher: `scripts/run_option_f_vol_squeeze_campaign.sh`
+
+## Session Liquidity Router v1 — SOL overlay americas gate (complete, CLOSED)
+
+**2026-06-05** formal WFO A/B on prod DB (`train=3mo`, `test=2mo`, `bootstrap=100`):
+
+| Arm | Config | WFO trades | OOS return | Max DD | P(loss) | Conc | blocked_buy |
+|-----|--------|------------|------------|--------|---------|------|-------------|
+| A ungated | `settings.sol_1h_trend_pullback_overlay_paper.yaml` | 36 | −21.69% | 48.00% | 100% | 53.2% | 0 |
+| B gated | `settings.sol_1h_trend_pullback_overlay_paper_americas_gate.yaml` | 6 | −6.59% | 25.75% | 100% | 100% | 86 |
+
+Artifacts: `research/solusdt-1h-session-router-wfo-ungated/`, `research/solusdt-1h-session-router-wfo-gated/`.
+Phase 2 full-period backtest: 71 → 18 trades (25%). Evaluator: **REJECT** (sparse collapse 6/36 = 16.7%;
+gated WFO trades &lt; 20; concentration worse).
+
+**Decision: CLOSED.** Unconditional session pulse (americas 16–24 UTC probe on universe) did **not**
+transfer to promoted SOL 1h trend-pullback overlay. Router code remains **default-off** reusable infra.
+**Do not** enable on `agent_sol_1h_trend_pullback_overlay_live`. **Do not** add paper shadow service.
+**Do not** retune hours (time-window overfit). Next: new first-principles brief.
+
+Probe report: `docs/reports/session-liquidity-router-probe-2026-06-05.md`.
+Runner: `scripts/run_session_router_wfo_ab.sh`.
 
 ## Wave 3 — Bridge + funding
 
