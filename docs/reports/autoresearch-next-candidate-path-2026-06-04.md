@@ -35,11 +35,12 @@ Relative strength rotation was probed and **paused** (sparse, negative excess).
 Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
 Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
 standard passes (see ledger). Session router v1 **closed** (WFO A/B REJECT).
+Basis premium risk filter was also **closed** after WFO A/B on the promoted SOL
+overlay: it blocked only one WFO BUY and did not improve DD, P(loss), or
+concentration.
 
-**Active work (basis risk filter, no autoresearch yet):**
-[`../specs/basis-premium-risk-filter-surface-v0.md`](../specs/basis-premium-risk-filter-surface-v0.md)
-— default-off long filter on crowded positive premium; probe **HAS_PULSE**.
-Next: backtest A/B → WFO A/B on SOL overlay. **Do not** add live agents until Phase 2 pass.
+**Active work:** Phase 0 forward validation only. The next research lane must be a
+new first-principles brief, not another SOL overlay filter/router.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.

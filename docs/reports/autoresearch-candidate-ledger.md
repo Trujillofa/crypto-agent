@@ -235,9 +235,9 @@ transfer to promoted SOL 1h trend-pullback overlay. Router code remains **defaul
 Probe report: `docs/reports/session-liquidity-router-probe-2026-06-05.md`.
 Runner: `scripts/run_session_router_wfo_ab.sh`.
 
-## Next lane — Basis / perp premium data (in progress)
+## Basis / perp premium risk filter (complete, CLOSED)
 
-**Status:** data infrastructure only (no strategy probe until audit passes).
+**Status:** data infrastructure retained; SOL overlay risk-filter lane closed.
 
 Brief: `docs/specs/basis-premium-data-ingestion-brief-v0.md`.
 Schema: `migrations/010_add_perp_basis_metrics.sql` (`mark_price`, `index_price`,
@@ -248,9 +248,20 @@ Audit: `scripts/audit_basis_premium_coverage.py` (≥95% OHLCV overlap, gap chec
 
 **2026-06-05 update:** backfill done (prod ~21k bars/symbol). Audit **PROBE_READY**.
 Probe [`basis-premium-probe-2026-06-05.md`](./basis-premium-probe-2026-06-05.md): **HAS_PULSE**
-(exreme positive premium → forward drift + worse MAE on BTC/SOL; filter-first, not primary entry).
-Surface: `basis-premium-risk-filter-surface-v0.md` (filter-first). **No** autoresearch/live
-until backtest + WFO A/B per surface hard stops.
+(extreme positive premium → forward drift + worse MAE on BTC/SOL; filter-first, not primary entry).
+Surface: `basis-premium-risk-filter-surface-v0.md` (filter-first).
+
+Formal WFO A/B on SOL overlay paper config (`train=3mo`, `test=2mo`, `bootstrap=100`):
+
+| Arm | WFO trades | OOS return | Max DD | P(loss) | Conc | basis_blocked_buy |
+|-----|------------|------------|--------|---------|------|-------------------|
+| Baseline | 36 | -21.69% | 48.00% | 100.00% | 53.20% | 0 |
+| Basis filter | 31 | -22.32% | 48.22% | 100.00% | 53.20% | 1 |
+
+**Decision: CLOSED / REJECT.** Filter wiring worked, but it blocked only one WFO BUY
+and did not improve DD, P(loss), or concentration. **Do not** create paper shadow,
+**do not** attach to live SOL overlay, and **do not** run autoresearch on this filter.
+Keep `perp_basis_metrics` data infra for future non-SOL or cross-venue briefs.
 
 ## Wave 3 — Bridge + funding
 

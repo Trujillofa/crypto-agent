@@ -1,10 +1,10 @@
 # Basis / Premium Risk Filter — Surface v0
 
-**Status:** probe passed — **filter-first** validation only (no live deploy)
+**Status:** **CLOSED** — Phase 2 WFO A/B rejected filter-first lane (no live deploy)
 **Date:** 2026-06-05
 **Prerequisite:** [`basis-premium-probe-2026-06-05.md`](../reports/basis-premium-probe-2026-06-05.md) (**HAS_PULSE**)
 **Data brief:** [`basis-premium-data-ingestion-brief-v0.md`](./basis-premium-data-ingestion-brief-v0.md)
-**Implementation brief:** not written until Phase 2 backtest A/B passes
+**Implementation brief:** not written; Phase 2 did not pass
 
 ---
 
@@ -213,6 +213,23 @@ Planned runners (implementation PR): `scripts/run_basis_filter_wfo_ab.sh`,
 | Phase 2 PASS, Phase 3 fail | No live; optional reshape once |
 | Phase 2+3 PASS | Write implementation brief; consider autoresearch overlay family |
 | Filter wins only by skipping >30% trades | **REJECT** (same as session router) |
+
+---
+
+## Phase 2 Result — CLOSED
+
+Formal WFO A/B ran on Hetzner against the promoted SOL 1h overlay paper config
+(`train=3mo`, `test=2mo`, `bootstrap=100`):
+
+| Arm | WFO trades | OOS return | Max DD | P(loss) | Conc | basis_blocked_buy_count |
+|-----|------------|------------|--------|---------|------|-------------------------|
+| Baseline | 36 | -21.69% | 48.00% | 100.00% | 53.20% | 0 |
+| Basis filter | 31 | -22.32% | 48.22% | 100.00% | 53.20% | 1 |
+
+Evaluator verdict: **REJECT**. The filter wiring worked, but it blocked only one WFO
+BUY and did not improve risk: drawdown worsened slightly, P(loss) stayed 100%, and
+concentration was unchanged. Do not create a paper shadow service, do not write an
+implementation brief, and do not attach this filter to live SOL overlay.
 
 ---
 
