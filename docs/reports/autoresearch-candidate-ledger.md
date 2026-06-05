@@ -189,9 +189,30 @@ Tightly scoped sprint after prod probe reshape (`neg_tail_10pct` HAS_PULSE on SO
 produced at most **15** trades (28 runs had ≥10). Concentration and P(loss) fail on the
 best config. **Do not** run bootstrap=1000. **Do not** deploy.
 
-**Funding-primary on SOL:** closed. Next: **Option F** (new first-principles surface).
+**Funding-primary on SOL:** closed.
 
 Launcher: `scripts/run_b_sol_funding_norm_campaign.sh`
+
+## Wave 10 — Option F volatility squeeze bounded (complete, CLOSED)
+
+Prod probe (2026-06-05) showed BTC/ETH `HAS_PULSE` on crude 12h forward returns; SOL
+`WEAK_EDGE` (excluded). Campaign: `volatility_squeeze_bounded`, paired
+`time_stop_minutes = max_hold_bars * 60`, global EMA200 filter on in WFO.
+
+**0 standard passes. 0 promotion_candidate eligibles. 80 runs total (40+40).**
+
+| Symbol | Output dir | Runs | Passes | Best OOS | WFO tr | Sharpe | Max DD | P(loss) | Conc | Decision |
+|--------|------------|------|--------|----------|--------|--------|--------|---------|------|----------|
+| BTCUSDT | `research/btcusdt-1h-w10-btc-1h-vol-squeeze-bounded` | 40 | 0 | +5.82% | 33 | 0.80 | 13.3% | 64% | 59.4% | **REJECT** — DD/P(loss)/conc fail |
+| ETHUSDT | `research/ethusdt-1h-w10-eth-1h-vol-squeeze-bounded` | 40 | 0 | −19.44% | 108 | −1.53 | 37.6% | 99% | 67.7% | **REJECT** |
+
+**Read:** Probe thin edge (+0.02% / +0.15% crude 12h means) did not survive WFO with
+stricter EMA200 gating and full backtest exits. BTC near-miss on return/Sharpe/trades
+but fails risk gates. **Do not** run bootstrap=1000. **Do not** deploy.
+
+**Vol squeeze bounded BTC/ETH:** closed. Next: new first-principles brief (not gate tuning).
+
+Launcher: `scripts/run_option_f_vol_squeeze_campaign.sh`
 
 ## Wave 3 — Bridge + funding
 

@@ -33,9 +33,9 @@ The next campaign must introduce a materially different source of edge:
 
 Relative strength rotation was probed and **paused** (sparse, negative excess).
 Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
-The active next surface is Option F:
-[`../specs/volatility-squeeze-breakout-bounded-implementation-brief-v0.md`](../specs/volatility-squeeze-breakout-bounded-implementation-brief-v0.md)
-(BTC/ETH 1h bounded squeeze — probe passed 2026-06-05; SOL excluded).
+Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
+standard passes (see ledger). Next surface requires a **new** first-principles brief;
+do not retune vol-squeeze hold bands or re-open SOL.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
