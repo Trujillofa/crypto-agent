@@ -742,21 +742,23 @@ def _collect_required_timeframes(
 ) -> set[str]:
     """Derive the set of timeframes that must be ingested and have indicators computed.
 
-    Always includes the configured main `timeframe`. Strategies may declare
-    additional timeframes via the class attribute::
+    Always includes the configured main `timeframe`. Strategies declare
+    additional timeframes via the class attribute (treated generically, matching
+    the engine/backtest _get_required_timeframes and _validate_strategy_timeframes)::
 
         REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
+        # or any keys: {"entry": "15m", "trend": "1d", "context": "4h"}
 
     This makes multi-timeframe (MTF) support automatic and declarative
     (in the spirit of Freqtrade's @informative decorator + informative pairs),
     without requiring separate config or manual backfills for regime data.
+    The values() are collected so any future key names are supported.
     """
     tfs: set[str] = {main_timeframe}
     for strategy_cls in strategy_classes:
         required = getattr(strategy_cls, "REQUIRED_TIMEFRAMES", None)
         if isinstance(required, dict):
-            for key in ("entry", "regime", "higher", "context"):
-                tf = required.get(key)
+            for tf in required.values():
                 if isinstance(tf, str) and tf:
                     tfs.add(tf)
     return tfs
@@ -972,7 +974,7 @@ async def run() -> None:
             timeframe=tf,
             writer=indicator_writer,
             metrics=indicator_metrics,
-            compute_interval=60,  # Compute every 60 seconds
+            compute_interval=60,  # uniform across TFs; for 4h+ this is frequent but cheap + idempotent (harmless)
         )
         computers[tf] = comp
 
