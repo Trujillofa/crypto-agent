@@ -154,12 +154,13 @@ Also print `funding_rates` overlap summary (existing table) for context.
 ### Phase 2 — Backfill
 
 - [x] `import_perp_basis_metrics.py` for BTC/ETH/SOL `1h`
-- [ ] Run on Hetzner prod DB; archive row counts in report snippet
-- [ ] Audit → `PROBE_READY`
+- [x] Run on Hetzner prod DB; archive row counts in report snippet
+- [x] Audit → `PROBE_READY`
 
 ### Phase 3 — Cheap statistical probe (no autoresearch)
 
-Script: `scripts/probe_basis_premium.py` (future)
+Script: `scripts/probe_basis_premium.py` — report
+[`basis-premium-probe-2026-06-05.md`](../reports/basis-premium-probe-2026-06-05.md) (**HAS_PULSE**)
 
 Questions:
 

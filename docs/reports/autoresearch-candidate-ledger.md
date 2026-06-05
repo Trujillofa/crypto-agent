@@ -244,8 +244,12 @@ Schema: `migrations/010_add_perp_basis_metrics.sql` (`mark_price`, `index_price`
 `premium_index`, `basis_bps`; join `funding_rates` at read time).
 Audit: `scripts/audit_basis_premium_coverage.py` (≥95% OHLCV overlap, gap checks).
 
-**Stop spending cycles** on SOL overlay routers/indicator filters. Next implementation:
-`import_perp_basis_metrics.py` + prod backfill → audit `PROBE_READY` → cheap probe.
+**Stop spending cycles** on SOL overlay routers/indicator filters.
+
+**2026-06-05 update:** backfill done (prod ~21k bars/symbol). Audit **PROBE_READY**.
+Probe [`basis-premium-probe-2026-06-05.md`](./basis-premium-probe-2026-06-05.md): **HAS_PULSE**
+(exreme positive premium → forward drift + worse MAE on BTC/SOL; filter-first, not primary entry).
+Next: `basis-premium-primary-surface-v0.md` only — **no** autoresearch/live until surface + overlay A/B.
 
 ## Wave 3 — Bridge + funding
 
