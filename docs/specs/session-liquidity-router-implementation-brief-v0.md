@@ -1,6 +1,6 @@
 # Session Liquidity Router — Implementation Brief v0
 
-**Status:** approved for engineering — **no live deploy until shadow/WFO validation passes**
+**Status:** CLOSED (2026-06-05 WFO A/B REJECT) — router code default-off; no live/paper deploy
 **Date:** 2026-06-05
 **Prerequisite:** `docs/reports/session-liquidity-router-probe-2026-06-05.md` (BTC/ETH/SOL `HAS_PULSE`)
 **Surface spec:** `docs/specs/session-liquidity-router-surface-v0.md`
