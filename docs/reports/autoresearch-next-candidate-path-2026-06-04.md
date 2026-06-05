@@ -36,7 +36,9 @@ Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
 Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
 standard passes (see ledger). Active next surface:
 [`../specs/session-liquidity-router-surface-v0.md`](../specs/session-liquidity-router-surface-v0.md)
-— cheap UTC session probe before any router code. Do not retune vol-squeeze.
+— prod probe passed on BTC/ETH/SOL with `americas` as the favorable window. Next
+step is an implementation brief for a router/gate, not another entry signal. Do
+not retune vol-squeeze.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.

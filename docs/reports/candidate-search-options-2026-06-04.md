@@ -162,7 +162,7 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 | Idea | Different primitive | Notes |
 |------|---------------------|-------|
 | Volatility squeeze breakout bounded | Regime expansion | **CLOSED** Wave 10 — 0/80 passes |
-| Session / liquidity window router | Time microstructure | **Active** — spec + probe: `session-liquidity-router-surface-v0.md` |
+| Session / liquidity window router | Time microstructure | **HAS_PULSE** — `americas` window on BTC/ETH/SOL |
 | Cross-exchange basis / premium | Crowding | Data not in DB today |
 | Liquidation cascade proxy | Microstructure | Needs L2 or agg trades |
 
@@ -204,7 +204,7 @@ current live technical agent.
 2. Continue Option A weekly (`run_phase0_weekly.sh`)
 3. Wave 9 B-SOL autoresearch — CLOSED, 0/80 standard passes
 4. Option D1 (ETH b=1000) — SKIPPED
-5. Option G session liquidity router — prod probe first (`run_session_liquidity_probe.sh`)
+5. Session liquidity router — prod probe passed; write implementation brief
 6. Option E only after execution parity doc exists
 7. Option C only if RS probe v2 passes
 ```
@@ -225,11 +225,14 @@ current live technical agent.
 | `run_b_sol_funding_norm_campaign.sh` | Wave 9 SOL funding-normalization autoresearch |
 | `probe_volatility_squeeze_breakout.py` | Option F squeeze breakout feasibility probe |
 | `run_option_f_squeeze_probe.sh` | BTC/ETH/SOL squeeze probe on prod |
+| `probe_session_liquidity_router.py` | Session/liquidity window feasibility probe |
+| `run_session_liquidity_probe.sh` | BTC/ETH/SOL session probe on prod |
 
 ---
 
 ## One-line takeaway
 
 The **5–10 agent goal is not failed** — it needs **independent edge**. Run Phase 0
-continuously and move to **Option F BTC/ETH squeeze implementation brief**. Do not
-add SOL or run a campaign until the brief is written.
+continuously and move to a **Session Liquidity Router implementation brief**. The
+prod probe found the `americas` window across BTC/ETH/SOL; it still needs WFO or
+shadow validation before any deployment.

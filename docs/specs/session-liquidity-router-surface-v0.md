@@ -1,6 +1,6 @@
 # Session Liquidity Router — Surface v0
 
-**Status:** feasibility probe only — no router/strategy code until probe shows pulse
+**Status:** feasibility probe passed — implementation brief allowed next
 **Date:** 2026-06-05
 **Priority:** next first-principles surface after Wave 10 (vol squeeze bounded closed)
 **Symbol order for probe:** BTCUSDT → ETHUSDT → SOLUSDT
@@ -124,11 +124,23 @@ uv run python -m scripts.probe_session_liquidity_router --symbol BTCUSDT
 
 Script: `scripts/probe_session_liquidity_router.py`
 
-Report template: `docs/reports/session-liquidity-router-probe-YYYY-MM-DD.md` (after prod run)
+Report: `docs/reports/session-liquidity-router-probe-2026-06-05.md`
+
+### Production probe result — 2026-06-05
+
+| Symbol | Baseline 12h mean | Best window | Window 12h mean | Window MAE | Verdict |
+|--------|-------------------|-------------|-----------------|------------|---------|
+| BTCUSDT | +0.042% | `americas` | +0.058% | 1.175% | `HAS_PULSE` |
+| ETHUSDT | +0.025% | `americas` | +0.117% | 1.727% | `HAS_PULSE` |
+| SOLUSDT | +0.034% | `americas` | +0.168% | 2.160% | `HAS_PULSE` |
+
+Decision: proceed to a router implementation brief. Do not deploy from this probe
+alone; first validate whether an `americas` entry gate improves existing strategy
+WFO/shadow behavior without destroying trade frequency.
 
 ---
 
-## Implementation path (only after `HAS_PULSE`)
+## Implementation path (after `HAS_PULSE`)
 
 **Not** a new entry signal first. v1 implementation:
 
