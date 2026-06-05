@@ -187,12 +187,13 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 ## Recommended priority stack
 
 ```text
-1. Merge PR #55 (Option G)
-2. Continue Option A weekly
-3. Run Option B reshape matrix (B1–B3); stop if no HAS_PULSE
-4. If B fails: Option F (new brief) OR Option D1 (ETH b=1000 record only)
-5. Option E only after execution parity doc exists
-6. Option C only if RS probe v2 passes
+1. Merge PR #55 — DONE (main)
+2. Continue Option A weekly (`run_phase0_weekly.sh`)
+3. Wave 9 B-SOL autoresearch — IN PROGRESS (`run_b_sol_funding_norm_campaign.sh`)
+4. Option D1 (ETH b=1000) — SKIPPED
+5. If Wave 9 fails standard gates → Option F (new surface brief)
+6. Option E only after execution parity doc exists
+7. Option C only if RS probe v2 passes
 ```
 
 **Do not:** Rerun BNB/BTC 1h standalone, AVAX/ETH #0004, SOL 1h clones, or lower gates.
@@ -208,6 +209,7 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 | `probe_funding_normalization.py` | Single-symbol funding probe |
 | `run_funding_probe_reshape.py` | Multi-scenario reshape matrix |
 | `probe_relative_strength_rotation.py` | RS feasibility (paused) |
+| `run_b_sol_funding_norm_campaign.sh` | Wave 9 SOL funding-normalization autoresearch |
 
 ---
 
