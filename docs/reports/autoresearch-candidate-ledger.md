@@ -170,6 +170,29 @@ Per [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candida
 
 Launcher: `scripts/run_phase7_4h_campaigns.sh`
 
+## Wave 9 — B-SOL funding normalization (complete, CLOSED)
+
+Tightly scoped sprint after prod probe reshape (`neg_tail_10pct` HAS_PULSE on SOL only).
+**0 standard passes. 0 promotion_candidate eligibles.**
+
+| Item | Value |
+|------|-------|
+| Runs | 80 |
+| Best OOS | +0.82% |
+| Best WFO trades | **15** (max across campaign; **0** runs ≥ 20) |
+| Best Sharpe | 0.52 |
+| Best DD | 7.4% |
+| P(loss) / conc (best) | 53% / **100%** |
+| Verdict | **CLOSED** — too sparse for standard gate; probe pulse did not transfer to WFO |
+
+**Read:** Cheap probe counted 44 normalization **events** on funding ticks; backtest/WFO
+produced at most **15** trades (28 runs had ≥10). Concentration and P(loss) fail on the
+best config. **Do not** run bootstrap=1000. **Do not** deploy.
+
+**Funding-primary on SOL:** closed. Next: **Option F** (new first-principles surface).
+
+Launcher: `scripts/run_b_sol_funding_norm_campaign.sh`
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
