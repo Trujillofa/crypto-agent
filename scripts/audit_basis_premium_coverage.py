@@ -20,6 +20,20 @@ MIN_COVERAGE_RATIO = 0.95
 MAX_START_LAG = timedelta(days=7)
 
 
+def bar_duration(timeframe: str) -> timedelta:
+    """Bar duration for gap and end-lag checks."""
+    mapping = {
+        "1m": timedelta(minutes=1),
+        "5m": timedelta(minutes=5),
+        "15m": timedelta(minutes=15),
+        "1h": timedelta(hours=1),
+        "4h": timedelta(hours=4),
+    }
+    if timeframe not in mapping:
+        raise ValueError(f"Unsupported timeframe for audit: {timeframe}")
+    return mapping[timeframe]
+
+
 @dataclass(frozen=True)
 class SymbolAudit:
     symbol: str
@@ -211,9 +225,17 @@ async def audit_symbol(
         if basis_min and ohlcv_min and basis_min > ohlcv_min + MAX_START_LAG:
             reasons.append(f"basis starts {basis_min} > 7d after ohlcv {ohlcv_min}")
 
-        bar_hours = 1.0 if timeframe == "1h" else 4.0 if timeframe == "4h" else 1.0
+        bar_delta = bar_duration(timeframe)
+        bar_hours = bar_delta.total_seconds() / 3600.0
         if max_gap_hours > 2.0 * bar_hours:
             reasons.append(f"max gap {max_gap_hours:.1f}h > {2.0 * bar_hours:.1f}h")
+
+        if basis_max and ohlcv_max:
+            min_basis_end = ohlcv_max - 2 * bar_delta
+            if basis_max < min_basis_end:
+                reasons.append(
+                    f"basis ends {basis_max} before ohlcv {ohlcv_max} (need >= {min_basis_end})"
+                )
 
     coverage_ratio = overlap_basis / overlap_ohlcv if overlap_ohlcv else 0.0
     if overlap_ohlcv and coverage_ratio < MIN_COVERAGE_RATIO:

@@ -60,7 +60,7 @@ Official REST kline endpoints (same cadence as OHLCV backfill):
 | Field | Endpoint | Notes |
 |-------|----------|-------|
 | Mark price OHLC | `GET /fapi/v1/markPriceKlines` | `p` stream equivalent; use close for bar |
-| Index price OHLC | `GET /fapi/v1/indexPriceKline` | Spot index; pair param `pair=BTCUSDT` |
+| Index price OHLC | `GET /fapi/v1/indexPriceKlines` | Spot index; param `pair=BTCUSDT` |
 | Premium index OHLC | `GET /fapi/v1/premiumIndexKlines` | Binance “premium index” = perp premium |
 | Funding rate | existing `funding_rates` | 8h events; join at read time, do not duplicate |
 
@@ -102,7 +102,7 @@ same pattern as `IndicatorReader`.
 
 ## Ingestion requirements
 
-1. **Idempotent:** `ON CONFLICT DO UPDATE` or `DO NOTHING` with documented policy.
+1. **Idempotent:** `ON CONFLICT DO UPDATE` (re-backfill overwrites bad/partial rows).
 2. **Aligned bars:** For each `(symbol, timeframe, time)` row, mark/index/premium
    must come from the **same** open time; reject partial bars.
 3. **Rate limits:** reuse aiohttp session + backoff (mirror `import_funding_rates.py`).
@@ -134,6 +134,7 @@ uv run python scripts/audit_basis_premium_coverage.py \
 | Overlap vs `ohlcv` 1h | ≥ **95%** of OHLCV bar count in shared range |
 | Range start lag | `perp_basis_metrics.min(time)` ≤ `ohlcv.min(time)` + **7 days** |
 | Max gap | no gap **> 2 × bar duration** inside overlap (1h → 2h) |
+| End lag | `basis.max(time) >= ohlcv.max(time) - 2 × bar duration` |
 | `blocked` sanity | N/A at data layer |
 
 Exit code **0** = `PROBE_READY`; **1** = not ready (print remediation).
@@ -152,7 +153,7 @@ Also print `funding_rates` overlap summary (existing table) for context.
 
 ### Phase 2 — Backfill
 
-- [ ] `import_perp_basis_metrics.py` for BTC/ETH/SOL `1h`
+- [x] `import_perp_basis_metrics.py` for BTC/ETH/SOL `1h`
 - [ ] Run on Hetzner prod DB; archive row counts in report snippet
 - [ ] Audit → `PROBE_READY`
 
