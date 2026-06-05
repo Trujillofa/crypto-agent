@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from scripts.probe_session_liquidity_router import (
     DEFAULT_WINDOWS,
     ProbeConfig,
+    _coerce_datetime,
     evaluate_pulse,
     probe_session_rows,
     session_for_hour,
@@ -43,6 +44,10 @@ def test_session_for_hour_disjoint_windows() -> None:
     assert session_for_hour(15, DEFAULT_WINDOWS) == "europe"
     assert session_for_hour(16, DEFAULT_WINDOWS) == "americas"
     assert session_for_hour(23, DEFAULT_WINDOWS) == "americas"
+
+
+def test_coerce_datetime_accepts_iso_string() -> None:
+    assert _coerce_datetime("2024-01-01T00:00:00") == datetime(2024, 1, 1)
 
 
 def test_probe_detects_window_beating_baseline() -> None:

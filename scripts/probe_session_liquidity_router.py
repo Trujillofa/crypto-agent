@@ -52,8 +52,8 @@ PROBE_QUERY = """
 class ProbeConfig:
     symbol: str
     timeframe: str
-    start: str
-    end: str
+    start: str | datetime
+    end: str | datetime
     forward_bars: int
     min_bars_total: int
     min_bars_per_window: int
@@ -121,6 +121,12 @@ def _coerce_float(value: object) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     return None
+
+
+def _coerce_datetime(value: str | datetime) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
 
 
 def _forward_return_pct(closes: Sequence[float], index: int, forward_bars: int) -> float | None:
@@ -285,8 +291,8 @@ async def fetch_probe_rows(config: ProbeConfig) -> list[dict[str, object]]:
         PROBE_QUERY,
         config.symbol,
         config.timeframe,
-        config.start,
-        config.end,
+        _coerce_datetime(config.start),
+        _coerce_datetime(config.end),
     )
     return [dict(record) for record in records]
 
