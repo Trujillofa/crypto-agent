@@ -736,6 +736,34 @@ def _resolve_strategy_config(
     )
 
 
+def _collect_required_timeframes(
+    strategy_classes: list[type[BaseStrategy]],
+    main_timeframe: str,
+) -> set[str]:
+    """Derive the set of timeframes that must be ingested and have indicators computed.
+
+    Always includes the configured main `timeframe`. Strategies declare
+    additional timeframes via the class attribute (treated generically, matching
+    the engine/backtest _get_required_timeframes and _validate_strategy_timeframes)::
+
+        REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
+        # or any keys: {"entry": "15m", "trend": "1d", "context": "4h"}
+
+    This makes multi-timeframe (MTF) support automatic and declarative
+    (in the spirit of Freqtrade's @informative decorator + informative pairs),
+    without requiring separate config or manual backfills for regime data.
+    The values() are collected so any future key names are supported.
+    """
+    tfs: set[str] = {main_timeframe}
+    for strategy_cls in strategy_classes:
+        required = getattr(strategy_cls, "REQUIRED_TIMEFRAMES", None)
+        if isinstance(required, dict):
+            for tf in required.values():
+                if isinstance(tf, str) and tf:
+                    tfs.add(tf)
+    return tfs
+
+
 def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
     strategy_registry: dict[str, type[BaseStrategy]] = {
         "simple_ma": SimpleMACrossoverStrategy,
@@ -858,6 +886,21 @@ async def run() -> None:
         agent_id=settings.agent_id,
     )
 
+    # Resolve strategies *early* (before any ingestors/computers are created) so that
+    # REQUIRED_TIMEFRAMES declarations can drive multi-timeframe data collection.
+    strategy_classes, strategy_configs, aggregator_config, per_symbol_agg_config = (
+        _resolve_strategy_config(settings.strategy)
+    )
+    required_timeframes: set[str] = _collect_required_timeframes(
+        strategy_classes, settings.timeframe
+    )
+    if len(required_timeframes) > 1:
+        get_logger("main").info(
+            "MTF data pipeline: will collect OHLCV+indicators for %s (main=%s)",
+            sorted(required_timeframes),
+            settings.timeframe,
+        )
+
     agent_risk_path = Path(f"config/risk.{settings.agent_id}.yaml")
     risk_config_path = agent_risk_path if agent_risk_path.exists() else Path("config/risk.yaml")
     risk_manager = RiskManager(
@@ -907,26 +950,33 @@ async def run() -> None:
         settings.prometheus_port
     )
 
-    # Initialize OHLCV writer and ingestor
+    # Initialize OHLCV writer (shared) + per-timeframe ingestors and indicator computers.
+    # Multiple TFs are collected from strategy REQUIRED_TIMEFRAMES (see early resolve)
+    # so that MTF strategies (e.g. 1h entry + 4h regime) automatically receive the data
+    # they need without manual intervention or extra processes.
     writer = TimescaleWriter(settings.database, ingest_metrics)
 
-    if settings.use_websocket:
-        ingestor = BinanceWebSocketIngestor(
-            settings.trading_pairs, settings.timeframe, ingest_metrics
-        )
-    else:
-        ingestor = BinanceIngestor(settings.trading_pairs, settings.timeframe, ingest_metrics)
+    ingestors: dict[str, BinanceIngestor | BinanceWebSocketIngestor] = {}
+    for tf in sorted(required_timeframes):
+        if settings.use_websocket:
+            ing = BinanceWebSocketIngestor(settings.trading_pairs, tf, ingest_metrics)
+        else:
+            ing = BinanceIngestor(settings.trading_pairs, tf, ingest_metrics)
+        ingestors[tf] = ing
 
-    # Initialize indicator pipeline
+    # Initialize indicator pipeline (writer shared across TFs; computers per TF)
     indicator_writer = IndicatorWriter(settings.database)
-    indicator_computer = IndicatorComputer(
-        config=settings.database,
-        symbols=settings.trading_pairs,
-        timeframe=settings.timeframe,
-        writer=indicator_writer,
-        metrics=indicator_metrics,
-        compute_interval=60,  # Compute every 60 seconds
-    )
+    computers: dict[str, IndicatorComputer] = {}
+    for tf in sorted(required_timeframes):
+        comp = IndicatorComputer(
+            config=settings.database,
+            symbols=settings.trading_pairs,
+            timeframe=tf,
+            writer=indicator_writer,
+            metrics=indicator_metrics,
+            compute_interval=60,  # uniform across TFs; for 4h+ this is frequent but cheap + idempotent (harmless)
+        )
+        computers[tf] = comp
 
     # Initialize portfolio manager for position tracking
     portfolio_manager = PortfolioManager(settings.database, agent_id=settings.agent_id)
@@ -1106,9 +1156,7 @@ async def run() -> None:
 
     # Initialize indicator reader and strategy engine
     indicator_reader = IndicatorReader(settings.database)
-    strategy_classes, strategy_configs, aggregator_config, per_symbol_agg_config = (
-        _resolve_strategy_config(settings.strategy)
-    )
+    # (strategy resolution + required_timeframes already computed early for MTF ingest)
     engine_config = EngineConfig(
         symbols=settings.trading_pairs,
         database=settings.database,
@@ -1178,14 +1226,15 @@ async def run() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda _signum, _frame: _handle_signal())
 
-    # Prepare async context managers - conditionally add futures if enabled
+    # Prepare async context managers - conditionally add futures if enabled.
+    # Include *all* timeframe-specific ingestors (primary + any MTF regime TFs).
     context_managers = [
         writer,
         indicator_writer,
         indicator_reader,
         portfolio_manager,
-        ingestor,
         strategy_engine,
+        *list(ingestors.values()),
     ]
 
     if paper_executor:
@@ -1231,11 +1280,15 @@ async def run() -> None:
         # Start risk monitoring in background
         risk_task = asyncio.create_task(risk_manager.monitor_loop())
 
-        # Start OHLCV ingestion
-        ingest_task = asyncio.create_task(ingestor.run(writer.write_ohlcv))
+        # Start OHLCV ingestion for every required timeframe (main + MTF regime etc.)
+        ingest_tasks: list[asyncio.Task[None]] = [
+            asyncio.create_task(ing.run(writer.write_ohlcv)) for ing in ingestors.values()
+        ]
 
-        # Start indicator computation
-        indicator_task = asyncio.create_task(indicator_computer.run())
+        # Start indicator computation for every required timeframe
+        indicator_tasks: list[asyncio.Task[None]] = [
+            asyncio.create_task(comp.run()) for comp in computers.values()
+        ]
 
         # Start executor tasks
         paper_exit_task = None
@@ -1547,7 +1600,8 @@ async def run() -> None:
 
         await stop_event.wait()
 
-        indicator_computer.stop()
+        for comp in computers.values():
+            comp.stop()
         if paper_executor:
             paper_executor.stop()
         if trading_executor:
@@ -1560,9 +1614,7 @@ async def run() -> None:
         await _cancel_background_tasks(
             health_task,
             daily_summary_task,
-            ingest_task,
             risk_task,
-            indicator_task,
             trading_task,
             strategy_task,
             paper_exit_task,
@@ -1570,6 +1622,8 @@ async def run() -> None:
             futures_task,
             futures_ingest_task,
             recon_task,
+            *ingest_tasks,
+            *indicator_tasks,
         )
 
         await close_pool()
