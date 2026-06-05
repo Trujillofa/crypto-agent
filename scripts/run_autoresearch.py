@@ -15,7 +15,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import yaml
+
+from src.backtest.experiment_autopilot import ExperimentSummary, GateConfig, evaluate_gates
 
 GATE_PROFILES: dict[str, dict[str, float | int]] = {
     "standard": {
@@ -35,6 +39,24 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 65.0,
+    },
+    "probe_1h": {
+        "min_trades": 0,
+        "min_wfo_trades": 15,
+        "min_wfo_sharpe": 0.5,
+        "max_drawdown_pct": 10.0,
+        "max_bootstrap_p_loss_pct": 25.0,
+        "min_oos_return_pct": 0.0,
+        "max_profit_concentration_pct": 50.0,
+    },
+    "promotion_candidate": {
+        "min_trades": 0,
+        "min_wfo_trades": 20,
+        "min_wfo_sharpe": 0.5,
+        "max_drawdown_pct": 8.0,
+        "max_bootstrap_p_loss_pct": 20.0,
+        "min_oos_return_pct": 1.0,
+        "max_profit_concentration_pct": 40.0,
     },
 }
 
@@ -241,6 +263,52 @@ def _build_autopilot_command(args: argparse.Namespace, artifacts: RunArtifacts) 
     return cmd
 
 
+def _gate_config_from_profile(profile_name: str) -> GateConfig:
+    profile = GATE_PROFILES[profile_name]
+    return GateConfig(
+        min_trades=int(profile["min_trades"]),
+        min_wfo_trades=int(profile["min_wfo_trades"]),
+        min_wfo_sharpe=float(profile["min_wfo_sharpe"]),
+        max_drawdown_pct=float(profile["max_drawdown_pct"]),
+        max_bootstrap_p_loss_pct=float(profile["max_bootstrap_p_loss_pct"]),
+        min_oos_return_pct=float(profile["min_oos_return_pct"]),
+        max_profit_concentration_pct=float(profile["max_profit_concentration_pct"]),
+    )
+
+
+def _summary_from_payload(summary: dict[str, Any]) -> ExperimentSummary:
+    return ExperimentSummary(
+        symbol=str(summary.get("symbol", "")),
+        timeframe=str(summary.get("timeframe", "")),
+        start=str(summary.get("start", "")),
+        end=str(summary.get("end", "")),
+        total_trades=int(summary.get("total_trades", 0)),
+        win_rate=float(summary.get("win_rate", 0.0)),
+        total_return_pct=float(summary.get("total_return_pct", 0.0)),
+        max_drawdown_pct=float(summary.get("max_drawdown_pct", 0.0)),
+        sharpe_ratio=float(summary.get("sharpe_ratio", 0.0)),
+        wfo_windows=int(summary.get("wfo_windows", 0)),
+        wfo_total_trades=int(summary.get("wfo_total_trades", 0)),
+        wfo_mean_sharpe=float(summary.get("wfo_mean_sharpe", 0.0)),
+        wfo_total_return_pct=float(summary.get("wfo_total_return_pct", 0.0)),
+        bootstrap_p_loss_pct=float(summary.get("bootstrap_p_loss_pct", 0.0)),
+        profit_concentration_pct=float(summary.get("profit_concentration_pct", 0.0)),
+        passes_gates=bool(summary.get("passes_gates", False)),
+        failure_reasons=list(summary.get("failure_reasons", [])),
+    )
+
+
+def _eligible_for_bootstrap_1000(
+    summary: dict[str, Any], *, bootstrap: int
+) -> tuple[bool, list[str]]:
+    """Stricter pre-filter before scheduling bootstrap=1000 revalidation."""
+    if bootstrap > 100:
+        return False, ["bootstrap_gt_100"]
+    promotion_gates = _gate_config_from_profile("promotion_candidate")
+    failures = evaluate_gates(_summary_from_payload(summary), promotion_gates)
+    return len(failures) == 0, failures
+
+
 def _resolve_gates(args: argparse.Namespace) -> dict[str, float | int]:
     profile = GATE_PROFILES[args.gate_profile]
     resolved = dict(profile)
@@ -299,6 +367,15 @@ def _write_run_log(
         handle.write("\n".join(lines))
 
 
+def _normalize_subprocess_output(value: str | bytes | None) -> str:
+    """Return subprocess output as text for both completed and timed-out runs."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
 def _run_autopilot(
     cmd: list[str],
     *,
@@ -332,8 +409,8 @@ def _run_autopilot(
     except subprocess.TimeoutExpired as exc:
         duration = time.monotonic() - start_time
         finished = datetime.now(UTC)
-        stdout = exc.stdout or ""
-        stderr = exc.stderr or ""
+        stdout = _normalize_subprocess_output(exc.stdout)
+        stderr = _normalize_subprocess_output(exc.stderr)
         _write_run_log(
             run_log_path,
             cmd=cmd,
@@ -448,12 +525,15 @@ def _append_results_row(results_path: Path, row: dict[str, str]) -> None:
 
 
 def _git_commit_short() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return "unknown"
     if result.returncode != 0:
         return "unknown"
     return result.stdout.strip() or "unknown"
@@ -673,12 +753,17 @@ def main() -> None:
         stdout=stdout,
         stderr=stderr,
     )
+    eligible_b1000, promotion_failures = _eligible_for_bootstrap_1000(
+        summary, bootstrap=args.bootstrap
+    )
     last_result.update(
         {
             "score": round(score, 6),
             "previous_best_score": previous_best,
             "summary": summary,
             "gates": gates,
+            "eligible_for_bootstrap_1000": eligible_b1000,
+            "promotion_candidate_failures": promotion_failures,
             "results_row": row,
             "json_artifact_path": str(json_path.resolve()),
             "markdown_artifact_path": str(markdown_path.resolve()) if markdown_path else None,

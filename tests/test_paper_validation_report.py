@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -16,7 +16,9 @@ from src.utils.paper_validation_report import (
     EventSummary,
     PaperAgentReport,
     PaperValidationReport,
+    PromotionReadiness,
     RiskStateSummary,
+    assess_promotion_readiness,
     collect_agent_report,
     default_event_log_path,
     default_risk_state_path,
@@ -34,11 +36,42 @@ def test_default_paths_handle_default_and_named_agents() -> None:
     assert default_event_log_path("agent-x") == Path("data/event_log_agent-x.jsonl")
 
 
+def test_default_paper_agents_match_active_paper_services() -> None:
+    assert [spec.service for spec in DEFAULT_PAPER_AGENTS] == [
+        "agent_sol_sparse",
+        "agent_sol_panic_block_paper",
+    ]
+    assert all(spec.symbols == ("SOLUSDT",) for spec in DEFAULT_PAPER_AGENTS)
+
+
 def test_parse_iso_timestamp_handles_z_suffix() -> None:
     parsed = parse_iso_timestamp("2026-03-19T21:00:00Z")
 
     assert parsed is not None
     assert parsed.isoformat() == "2026-03-19T21:00:00+00:00"
+
+
+def test_assess_promotion_readiness_collects_evidence_until_both_floors_pass() -> None:
+    readiness = assess_promotion_readiness(
+        DEFAULT_PAPER_AGENTS[0],
+        campaign_closed_trades=0,
+        as_of=datetime(2026, 6, 2, 21, 45, tzinfo=UTC),
+    )
+
+    assert readiness.status == "collecting_evidence"
+    assert readiness.campaign_age_days == 1.0
+    assert readiness.reasons == ["campaign age 1.0d < 28d", "closed trades 0 < 10"]
+
+
+def test_assess_promotion_readiness_requires_human_review_after_floors_pass() -> None:
+    readiness = assess_promotion_readiness(
+        DEFAULT_PAPER_AGENTS[0],
+        campaign_closed_trades=10,
+        as_of=datetime(2026, 6, 29, 21, 45, tzinfo=UTC),
+    )
+
+    assert readiness.status == "ready_for_review"
+    assert readiness.reasons == []
 
 
 def test_summarize_event_log_counts_only_requested_day(tmp_path: Path) -> None:
@@ -180,6 +213,10 @@ async def test_collect_agent_report_aggregates_db_and_files(tmp_path: Path) -> N
             AsyncMock(return_value=(12.5, 3, 66.67)),
         ),
         patch(
+            "src.utils.paper_validation_report.PortfolioManager.get_closed_stats_since",
+            AsyncMock(return_value=(8.5, 2, 50.0)),
+        ),
+        patch(
             "src.utils.paper_validation_report.PortfolioManager.get_portfolio_summary",
             AsyncMock(
                 return_value=PortfolioSummary(
@@ -205,6 +242,8 @@ async def test_collect_agent_report_aggregates_db_and_files(tmp_path: Path) -> N
     assert report.events.signal_count == 1
     assert report.risk.snapshot_daily_pnl == 7.25
     assert report.daily_closed_trades == 3
+    assert report.campaign_realized_pnl == 8.5
+    assert report.campaign_closed_trades == 2
     assert report.risk_state_matches_report_day is True
     assert report.portfolio.total_realized_pnl == 25.0
 
@@ -243,6 +282,10 @@ async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path
             AsyncMock(return_value=(0.0, 0, 0.0)),
         ),
         patch(
+            "src.utils.paper_validation_report.PortfolioManager.get_closed_stats_since",
+            AsyncMock(return_value=(0.0, 0, 0.0)),
+        ),
+        patch(
             "src.utils.paper_validation_report.PortfolioManager.get_portfolio_summary",
             AsyncMock(return_value=PortfolioSummary()),
         ),
@@ -261,7 +304,7 @@ async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path
 
 def test_render_markdown_contains_key_sections() -> None:
     report = PaperAgentReport(
-        agent=DEFAULT_PAPER_AGENTS[2],
+        agent=DEFAULT_PAPER_AGENTS[1],
         day="2026-03-19",
         events=EventSummary(
             signal_count=2,
@@ -269,8 +312,8 @@ def test_render_markdown_contains_key_sections() -> None:
             risk_check_failed_count=0,
             last_signal_at="2026-03-19T12:00:00+00:00",
             last_order_at="2026-03-19T13:00:00+00:00",
-            signals_by_symbol={"AVAXUSDT": 2},
-            orders_by_symbol={"AVAXUSDT": 1},
+            signals_by_symbol={"SOLUSDT": 2},
+            orders_by_symbol={"SOLUSDT": 1},
         ),
         risk=RiskStateSummary(
             kill_switch_triggered=False,
@@ -284,6 +327,16 @@ def test_render_markdown_contains_key_sections() -> None:
         daily_realized_pnl=4.5,
         daily_closed_trades=1,
         daily_win_rate=100.0,
+        campaign_realized_pnl=4.5,
+        campaign_closed_trades=1,
+        campaign_win_rate=100.0,
+        promotion_readiness=PromotionReadiness(
+            status="collecting_evidence",
+            campaign_age_days=1.0,
+            min_review_days=28,
+            min_review_trades=10,
+            reasons=["campaign age 1.0d < 28d", "closed trades 1 < 10"],
+        ),
         risk_state_matches_report_day=True,
         portfolio=PortfolioSummary(
             total_positions=1,
@@ -305,9 +358,13 @@ def test_render_markdown_contains_key_sections() -> None:
     )
 
     assert "Daily Paper Validation Report" in markdown
-    assert "agent_avax" in markdown
-    assert "AVAXUSDT" in markdown
+    assert "agent_sol_panic_block_paper" in markdown
+    assert "SOLUSDT" in markdown
     assert "Daily realized PnL" in markdown
+    assert "Campaign realized PnL" in markdown
+    assert "Promotion readiness" in markdown
+    assert "collecting_evidence" in markdown
+    assert "Lifetime DB realized PnL (includes legacy runs)" in markdown
     assert "Current risk-state PnL snapshot" in markdown
     assert "Risk-state matches report day" in markdown
 
@@ -335,6 +392,16 @@ def test_report_to_json_serializes_datetime_fields() -> None:
         daily_realized_pnl=0.0,
         daily_closed_trades=0,
         daily_win_rate=0.0,
+        campaign_realized_pnl=1.25,
+        campaign_closed_trades=1,
+        campaign_win_rate=100.0,
+        promotion_readiness=PromotionReadiness(
+            status="ready_for_review",
+            campaign_age_days=28.0,
+            min_review_days=28,
+            min_review_trades=10,
+            reasons=[],
+        ),
         risk_state_matches_report_day=True,
         portfolio=PortfolioSummary(
             total_positions=1,

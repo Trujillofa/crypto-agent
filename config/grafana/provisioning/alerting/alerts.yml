@@ -62,7 +62,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: count(up{job="trading-agent"})
+              expr: min(up{job="trading-agent"})
               refId: A
           - refId: B
             relativeTimeRange:
@@ -87,13 +87,13 @@ groups:
                 - evaluator:
                     type: lt
                     params:
-                      - 7
+                      - 1
         noDataState: Alerting
         execErrState: Error
         for: 2m
         annotations:
           summary: "Crypto trading agent not reporting"
-          description: "Expected 7 agents, found: {{ $value }}"
+          description: "At least one configured trading agent is not reporting: {{ $value }}"
         labels:
           severity: critical
           alert_type: agent_down

@@ -3,15 +3,34 @@
 `paper_validation_report` summarizes the paper trading agents for one UTC day.
 
 It combines:
+
 - event-log activity
 - daily closed-trade stats from the database
 - cumulative portfolio stats
 - risk-state flags
+- campaign metrics scoped to each validator's explicit rollout timestamp
+- conservative paper-to-live review readiness based on campaign age and closed-trade count
+
+Promotion decisions must use campaign metrics. Lifetime database metrics are retained only for
+audit context because they can include rows from older strategy settings.
+
+`ready_for_review` is not automatic promotion. A validator reaches that state only after at
+least `28` days and `10` campaign closed trades. Promotion still requires human review of
+PnL, win rate, drawdown, trade quality, and operational logs.
 
 Current monitored paper agents:
+
 - `agent_sol_sparse`
-- `agent_sentiment_macro`
-- `agent_avax`
+- `agent_sol_panic_block_paper`
+
+Optional probe agents are not included until their compose services are explicitly
+enabled and added to `config/prometheus/agents.json`. As of 2026-06-03,
+`agent_sol_1h_probe_paper` is tracked as a disabled SOLUSDT 1h autoresearch
+probe because it passed the `probe_1h` gate but missed the standard WFO trade
+count gate.
+
+`agent_sentiment_macro` is intentionally excluded because it routes live SOL futures orders.
+`agent_avax` is disabled because its prior walk-forward edge did not persist in live trading.
 
 ## Manual Run
 

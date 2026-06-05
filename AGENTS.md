@@ -38,8 +38,8 @@ ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.
 ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d <service>"
 
 # Active strategy services in prod right now:
-# - agent_avax
 # - agent_sol_sparse
+# - agent_sol_panic_block_paper
 # - agent_sentiment_macro
 
 # WRONG — this is the dev command, NOT production:
@@ -57,7 +57,8 @@ ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.
 - Config is selected via `SETTINGS_PATH` env var (e.g., `config/settings.btc-4h.yaml`)
 - All agents share one TimescaleDB instance, isolated by `agent_id` columns (see `migrations/005_add_agent_isolation.sql`)
 
-Disabled strategy services are kept in `docker-compose.prod.yml` as commented blocks with WFO rationale (`agent`, `agent_2`, `agent_btc`, `agent_eth`).
+Disabled strategy services are kept in `docker-compose.prod.yml` as commented blocks with WFO
+or operational rationale (`agent`, `agent_2`, `agent_btc`, `agent_eth`, `agent_avax`).
 
 ### Futures execution gotchas
 - **Notional sizing is symbol-step constrained**: quantity is computed as `order_size_usdt / price`, then truncated to exchange LOT_SIZE `stepSize`. Final exposure can be slightly lower than requested because of truncation.

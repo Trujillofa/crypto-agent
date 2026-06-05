@@ -732,3 +732,36 @@ class TestSignalIgnoredLogging:
             call for call in mock_event_log.log.call_args_list if call.args[0] == "signal_ignored"
         ][0]
         assert ignored_call.args[1]["reason"] == "futures_sell_from_flat_long_only"
+
+
+class TestRiskCheckLogging:
+    @pytest.mark.asyncio
+    async def test_blocked_buy_logs_one_risk_check_failed_event(self):
+        executor = _make_executor()
+        executor._risk_manager.is_trading_allowed.return_value = (False, "Daily loss limit")
+        mock_event_log = AsyncMock()
+        mock_event_log.log = AsyncMock()
+        executor._event_log = mock_event_log
+        signal = Signal(
+            type=SignalType.BUY,
+            symbol="BTCUSDT",
+            price=50000.0,
+            confidence=0.9,
+            reason="Test BUY",
+            indicators={"close_price": 50000.0},
+            trading_mode="spot",
+        )
+
+        await executor.on_signal(signal)
+
+        risk_failures = [
+            call
+            for call in mock_event_log.log.call_args_list
+            if call.args[0] == "risk_check_failed"
+        ]
+        assert len(risk_failures) == 1
+        assert risk_failures[0].args[1] == {
+            "symbol": "BTCUSDT",
+            "reason": "Daily loss limit",
+            "stage": "paper_buy",
+        }

@@ -2,7 +2,7 @@
 # Multi-stage build for smaller image size
 
 # Stage 1: Build dependencies
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 
 # Stage 2: Production image
-FROM python:3.11-slim as production
+FROM python:3.11-slim AS production
 
 # Create non-root user for security
 RUN groupadd -r crypto && useradd -r -g crypto crypto

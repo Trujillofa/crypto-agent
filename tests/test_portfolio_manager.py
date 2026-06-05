@@ -117,6 +117,36 @@ async def test_portfolio_manager_scopes_symbols_for_non_default_agent():
             # The first argument is the SQL, arguments start from the second element
             # Actually, fetchval arguments are (query, *args)
             assert insert_call.args[1] == "agent2::BTCUSDT:spot"
+            assert insert_call.args[8] == "agent2"
+
+            trade_insert_call = mock_conn.execute.call_args_list[-1]
+            assert trade_insert_call.args[9] == "agent2"
+
+
+@pytest.mark.asyncio
+async def test_portfolio_manager_ensure_schema_adds_agent_id_columns() -> None:
+    """Runtime schema hardening should create/backfill agent attribution columns."""
+    manager = PortfolioManager({})
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        await manager._ensure_schema()
+
+    executed_sql = "\n".join(str(call.args[0]) for call in mock_conn.execute.call_args_list)
+
+    assert (
+        "ALTER TABLE positions ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT 'default'"
+        in executed_sql
+    )
+    assert (
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT 'default'"
+        in executed_sql
+    )
+    assert "UPDATE positions SET agent_id = 'default' WHERE agent_id IS NULL" in executed_sql
+    assert "UPDATE trades SET agent_id = 'default' WHERE agent_id IS NULL" in executed_sql
 
 
 @pytest.mark.asyncio
@@ -283,3 +313,29 @@ async def test_get_daily_stats_uses_full_utc_day_window():
     assert fetch_call.args[1] == manager._agent_id
     assert fetch_call.args[2] == expected_start
     assert fetch_call.args[3] == expected_end
+
+
+@pytest.mark.asyncio
+async def test_get_closed_stats_since_uses_campaign_start() -> None:
+    manager = PortfolioManager({}, agent_id="sol-trend-pullback-sparse")
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    mock_conn.fetchrow.return_value = {
+        "total_pnl": 2.5,
+        "trades_count": 4,
+        "wins": 3,
+    }
+    started_at = datetime(2026, 6, 1, 21, 45, tzinfo=UTC)
+
+    with patch("src.portfolio.manager.get_pool", return_value=mock_pool):
+        total_pnl, trades_count, win_rate = await manager.get_closed_stats_since(started_at)
+
+    assert total_pnl == pytest.approx(2.5)
+    assert trades_count == 4
+    assert win_rate == pytest.approx(75.0)
+    fetchrow_call = mock_conn.fetchrow.call_args
+    assert fetchrow_call is not None
+    assert fetchrow_call.args[1] == "sol-trend-pullback-sparse"
+    assert fetchrow_call.args[2] == started_at

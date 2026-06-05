@@ -12,6 +12,17 @@ from pathlib import Path
 from typing import Any
 
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
+PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
+PAPER_VALIDATION_REPORT_GLOB = "data/reports/paper-validation-report-*.json"
+PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB = "data/reports/production-drift-sentinel-*.json"
+REQUIRED_SYSTEMD_TIMERS = (
+    "crypto-agent-paper-validation-report.timer",
+    "crypto-agent-production-drift-sentinel.timer",
+)
+TIMER_ARTIFACT_POLICIES = {
+    "crypto-agent-paper-validation-report.timer": (PAPER_VALIDATION_REPORT_GLOB, 36),
+    "crypto-agent-production-drift-sentinel.timer": (PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB, 2),
+}
 
 
 class Severity(StrEnum):
@@ -42,6 +53,22 @@ class ServiceSnapshot:
 
 
 @dataclass(frozen=True)
+class TimerState:
+    timer: str
+    enabled: str
+    active: str
+    service_result: str
+    exec_main_status: str
+    latest_report_at: str | None
+    max_report_age_hours: int
+
+
+@dataclass(frozen=True)
+class TimerSnapshot:
+    timers: list[TimerState]
+
+
+@dataclass(frozen=True)
 class SignalSnapshot:
     signal_count: int
     last_signal_at: str | None
@@ -67,6 +94,7 @@ class DriftReport:
     local_config_hashes: dict[str, str]
     remote_config_hashes: dict[str, str]
     service_snapshot: ServiceSnapshot | None
+    timer_snapshot: TimerSnapshot | None
     signal_snapshot: SignalSnapshot | None
     watched_service_snapshot: WatchedServiceSnapshot | None
     findings: list[Finding]
@@ -84,9 +112,21 @@ def run_command(command: list[str], cwd: Path | None = None, timeout: int = 15) 
     return result.stdout.strip()
 
 
-def run_remote_command(host: str, remote_dir: str, command: str, timeout: int = 20) -> str:
+def run_remote_command(
+    host: str | None,
+    remote_dir: str,
+    command: str,
+    timeout: int = 20,
+    ssh_config: str | None = None,
+) -> str:
     remote_script = f"cd {shlex.quote(remote_dir)} && {command}"
-    return run_command(["ssh", host, remote_script], timeout=timeout)
+    if host is None:
+        return run_command(["bash", "-lc", remote_script], timeout=timeout)
+
+    ssh_command = ["ssh"]
+    if ssh_config:
+        ssh_command.extend(["-F", ssh_config])
+    return run_command([*ssh_command, host, remote_script], timeout=timeout)
 
 
 def collect_repo_snapshot(cwd: Path | None = None) -> RepoSnapshot:
@@ -96,10 +136,16 @@ def collect_repo_snapshot(cwd: Path | None = None) -> RepoSnapshot:
     return RepoSnapshot(branch=branch, commit=commit, dirty=dirty)
 
 
-def collect_remote_repo_snapshot(host: str, remote_dir: str) -> RepoSnapshot:
-    branch = run_remote_command(host, remote_dir, "git rev-parse --abbrev-ref HEAD")
-    commit = run_remote_command(host, remote_dir, "git rev-parse HEAD")
-    dirty = bool(run_remote_command(host, remote_dir, "git status --porcelain"))
+def collect_remote_repo_snapshot(
+    host: str | None, remote_dir: str, ssh_config: str | None = None
+) -> RepoSnapshot:
+    branch = run_remote_command(
+        host, remote_dir, "git rev-parse --abbrev-ref HEAD", ssh_config=ssh_config
+    )
+    commit = run_remote_command(host, remote_dir, "git rev-parse HEAD", ssh_config=ssh_config)
+    dirty = bool(
+        run_remote_command(host, remote_dir, "git status --porcelain", ssh_config=ssh_config)
+    )
     return RepoSnapshot(branch=branch, commit=commit, dirty=dirty)
 
 
@@ -120,11 +166,14 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def collect_remote_config_hashes(host: str, remote_dir: str) -> dict[str, str]:
+def collect_remote_config_hashes(
+    host: str | None, remote_dir: str, ssh_config: str | None = None
+) -> dict[str, str]:
     output = run_remote_command(
         host,
         remote_dir,
         'for f in config/settings*.yaml; do [ -f "$f" ] && sha256sum "$f"; done',
+        ssh_config=ssh_config,
     )
     return parse_sha256_lines(output)
 
@@ -146,16 +195,20 @@ def parse_sha256_lines(text: str) -> dict[str, str]:
     return hashes
 
 
-def collect_remote_service_snapshot(host: str, remote_dir: str) -> ServiceSnapshot:
+def collect_remote_service_snapshot(
+    host: str | None, remote_dir: str, ssh_config: str | None = None
+) -> ServiceSnapshot:
     all_services_output = run_remote_command(
         host,
         remote_dir,
-        "docker compose config --services",
+        f"{PRODUCTION_COMPOSE} config --services",
+        ssh_config=ssh_config,
     )
     running_services_output = run_remote_command(
         host,
         remote_dir,
-        "docker compose ps --status running --services",
+        f"{PRODUCTION_COMPOSE} ps --status running --services",
+        ssh_config=ssh_config,
     )
 
     all_services = [line.strip() for line in all_services_output.splitlines() if line.strip()]
@@ -166,11 +219,83 @@ def collect_remote_service_snapshot(host: str, remote_dir: str) -> ServiceSnapsh
     return ServiceSnapshot(all_services=all_services, running_services=running_services)
 
 
+def collect_remote_timer_snapshot(
+    host: str | None,
+    remote_dir: str,
+    timers: tuple[str, ...] = REQUIRED_SYSTEMD_TIMERS,
+    ssh_config: str | None = None,
+) -> TimerSnapshot:
+    states: list[TimerState] = []
+    for timer in timers:
+        report_glob, max_report_age_hours = TIMER_ARTIFACT_POLICIES.get(
+            timer, (PAPER_VALIDATION_REPORT_GLOB, 36)
+        )
+        rendered_timer = shlex.quote(timer)
+        enabled = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl is-enabled {rendered_timer} 2>/dev/null || true",
+            ssh_config=ssh_config,
+        )
+        active = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl is-active {rendered_timer} 2>/dev/null || true",
+            ssh_config=ssh_config,
+        )
+        service = timer.removesuffix(".timer") + ".service"
+        rendered_service = shlex.quote(service)
+        service_result = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl show {rendered_service} --property=Result --value",
+            ssh_config=ssh_config,
+        )
+        exec_main_status = run_remote_command(
+            host,
+            remote_dir,
+            f"systemctl show {rendered_service} --property=ExecMainStatus --value",
+            ssh_config=ssh_config,
+        )
+        latest_report_epoch = run_remote_command(
+            host,
+            remote_dir,
+            (
+                f"find {shlex.quote(str(Path(report_glob).parent))} "
+                f"-maxdepth 1 -type f -name {shlex.quote(Path(report_glob).name)} "
+                "-printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1"
+            ),
+            ssh_config=ssh_config,
+        )
+        latest_report_at = epoch_to_iso_timestamp(latest_report_epoch)
+        states.append(
+            TimerState(
+                timer=timer,
+                enabled=enabled or "unknown",
+                active=active or "unknown",
+                service_result=service_result or "unknown",
+                exec_main_status=exec_main_status or "unknown",
+                latest_report_at=latest_report_at,
+                max_report_age_hours=max_report_age_hours,
+            )
+        )
+    return TimerSnapshot(timers=states)
+
+
+def epoch_to_iso_timestamp(value: str) -> str | None:
+    try:
+        epoch = float(value.strip())
+    except ValueError:
+        return None
+    return datetime.fromtimestamp(epoch, tz=UTC).isoformat()
+
+
 def collect_remote_signal_snapshot(
-    host: str,
+    host: str | None,
     remote_dir: str,
     service_snapshot: ServiceSnapshot,
     tail_lines: int = 500,
+    ssh_config: str | None = None,
 ) -> SignalSnapshot:
     agent_services = [name for name in service_snapshot.all_services if name.startswith("agent")]
     if not agent_services:
@@ -180,8 +305,10 @@ def collect_remote_signal_snapshot(
     logs = run_remote_command(
         host,
         remote_dir,
-        f"docker compose logs --tail {tail_lines} --timestamps --no-log-prefix {rendered_services}",
+        f"{PRODUCTION_COMPOSE} logs --tail {tail_lines} --timestamps --no-log-prefix "
+        f"{rendered_services}",
         timeout=30,
+        ssh_config=ssh_config,
     )
 
     signal_lines = [line for line in logs.splitlines() if "Consensus Signal" in line]
@@ -199,11 +326,12 @@ def collect_remote_signal_snapshot(
 
 
 def collect_remote_watched_service_snapshot(
-    host: str,
+    host: str | None,
     remote_dir: str,
     service_snapshot: ServiceSnapshot,
     service: str,
     tail_lines: int = 500,
+    ssh_config: str | None = None,
 ) -> WatchedServiceSnapshot:
     exists = service in service_snapshot.all_services
     running = service in service_snapshot.running_services
@@ -222,8 +350,10 @@ def collect_remote_watched_service_snapshot(
     logs = run_remote_command(
         host,
         remote_dir,
-        f"docker compose logs --tail {tail_lines} --timestamps --no-log-prefix {shlex.quote(service)}",
+        f"{PRODUCTION_COMPOSE} logs --tail {tail_lines} --timestamps --no-log-prefix "
+        f"{shlex.quote(service)}",
         timeout=30,
+        ssh_config=ssh_config,
     )
     lines = logs.splitlines()
     signal_lines = [line for line in lines if "Consensus Signal" in line]
@@ -285,6 +415,7 @@ def analyze_drift(
     local_config_hashes: dict[str, str],
     remote_config_hashes: dict[str, str],
     service_snapshot: ServiceSnapshot | None,
+    timer_snapshot: TimerSnapshot | None = None,
     signal_snapshot: SignalSnapshot | None,
     watched_service_snapshot: WatchedServiceSnapshot | None,
     remote_error: str | None,
@@ -427,6 +558,58 @@ def analyze_drift(
                 )
             )
 
+    if timer_snapshot is not None:
+        for timer in timer_snapshot.timers:
+            if timer.enabled != "enabled" or timer.active != "active":
+                findings.append(
+                    Finding(
+                        severity=Severity.ERROR,
+                        code="REQUIRED_TIMER_NOT_HEALTHY",
+                        message=(
+                            f"Required timer '{timer.timer}' is not healthy "
+                            f"(enabled={timer.enabled}, active={timer.active})"
+                        ),
+                        recommendation="Enable and start the required production timer.",
+                    )
+                )
+            if timer.service_result != "success" or timer.exec_main_status != "0":
+                findings.append(
+                    Finding(
+                        severity=Severity.ERROR,
+                        code="REQUIRED_TIMER_SERVICE_FAILED",
+                        message=(
+                            f"Required timer service for '{timer.timer}' failed "
+                            f"(result={timer.service_result}, exec_status={timer.exec_main_status})"
+                        ),
+                        recommendation="Inspect the timer service journal and rerun the report.",
+                    )
+                )
+            if timer.latest_report_at is None:
+                findings.append(
+                    Finding(
+                        severity=Severity.ERROR,
+                        code="TIMER_REPORT_MISSING",
+                        message=f"No generated JSON report artifact was found for '{timer.timer}'",
+                        recommendation="Run the report wrapper and verify host artifact persistence.",
+                    )
+                )
+            else:
+                parsed = parse_iso_timestamp(timer.latest_report_at)
+                if parsed is not None:
+                    age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
+                    if age_hours > timer.max_report_age_hours:
+                        findings.append(
+                            Finding(
+                                severity=Severity.ERROR,
+                                code="TIMER_REPORT_STALE",
+                                message=(
+                                    f"Latest report artifact for '{timer.timer}' is stale "
+                                    f"({age_hours:.1f}h old at {timer.latest_report_at})"
+                                ),
+                                recommendation="Inspect the timer service and regenerate the report.",
+                            )
+                        )
+
     if signal_snapshot is not None:
         if signal_snapshot.saw_strategy_cycle and signal_snapshot.signal_count == 0:
             findings.append(
@@ -544,6 +727,7 @@ def report_to_json(report: DriftReport) -> str:
         "local_config_hashes": report.local_config_hashes,
         "remote_config_hashes": report.remote_config_hashes,
         "service_snapshot": asdict(report.service_snapshot) if report.service_snapshot else None,
+        "timer_snapshot": asdict(report.timer_snapshot) if report.timer_snapshot else None,
         "signal_snapshot": asdict(report.signal_snapshot) if report.signal_snapshot else None,
         "watched_service_snapshot": (
             asdict(report.watched_service_snapshot) if report.watched_service_snapshot else None

@@ -211,8 +211,6 @@ log_level: INFO
 
 trading:
   pairs:
-    - BTCUSDT
-    - ETHUSDT
     - SOLUSDT
   timeframe: 1h
 
@@ -269,8 +267,6 @@ trading_execution:
 futures:
   enabled: true
   symbols:
-    - BTCUSDT
-    - ETHUSDT
     - SOLUSDT
   default_leverage: 3
   max_leverage: 10
@@ -295,7 +291,7 @@ strategy:
         volatility_regime_filter: true
         atr_pct_threshold: 0.005
   global_trend_filter_enabled: true
-  global_trend_filter_buffer_pct: 0.05
+  global_trend_filter_buffer_pct: 0.0
   aggregator:
     min_agreement: 1
     buy_threshold: 0.6

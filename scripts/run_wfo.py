@@ -6,6 +6,7 @@ import asyncio
 import csv
 import os
 import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import mean
@@ -21,7 +22,7 @@ def run_backtest(
     replay_sentiment_max_age_hours: float | None = None,
 ) -> dict[str, float] | None:
     cmd = [
-        "python",
+        sys.executable,
         "scripts/run_backtest.py",
         "--symbol",
         symbol,

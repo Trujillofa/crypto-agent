@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -47,6 +48,9 @@ class BacktestConfig:
     futures_mode: bool = False
     futures_leverage: int = 5
     futures_funding_rate: float = 0.0001
+    fixed_notional_usdt: float = 0.0  # 0 = size from available capital
+    quantity_step_size: float = 0.0  # 0 = ideal fractional quantity
+    min_notional_usdt: float = 0.0  # 0 = disabled
 
 
 @dataclass
@@ -350,17 +354,36 @@ class BacktestEngine:
                 risk_amount = self._cash * self._config.risk_per_trade
                 stop_distance = atr * self._config.atr_multiplier
                 target_qty = risk_amount / stop_distance if stop_distance > 0 else 0.0
-                return min(target_qty, max_qty)
-            return max_qty
+                quantity = min(target_qty, max_qty)
+            else:
+                quantity = max_qty
+            return self._cap_fixed_notional(quantity, entry_price)
 
         if self._config.use_atr_sizing and atr > 0:
             risk_amount = self._cash * self._config.risk_per_trade
             stop_distance = atr * self._config.atr_multiplier
             target_qty = risk_amount / stop_distance if stop_distance > 0 else 0.0
             max_qty = (self._cash * (1 - self._config.fee_rate)) / entry_price
-            return min(target_qty, max_qty)
+            return self._cap_fixed_notional(min(target_qty, max_qty), entry_price)
 
-        return (self._cash * (1 - self._config.fee_rate)) / entry_price
+        quantity = (self._cash * (1 - self._config.fee_rate)) / entry_price
+        return self._cap_fixed_notional(quantity, entry_price)
+
+    def _cap_fixed_notional(self, quantity: float, entry_price: float) -> float:
+        if self._config.fixed_notional_usdt <= 0:
+            capped_quantity = quantity
+        else:
+            capped_quantity = min(quantity, self._config.fixed_notional_usdt / entry_price)
+        return self._apply_quantity_step(capped_quantity, entry_price)
+
+    def _apply_quantity_step(self, quantity: float, entry_price: float) -> float:
+        step = self._config.quantity_step_size
+        if step <= 0:
+            return quantity
+        truncated = math.floor(quantity / step) * step
+        if truncated * entry_price < self._config.min_notional_usdt:
+            return truncated + step
+        return truncated
 
     def _open_long(self, timestamp: str, price: float, atr: float) -> None:
         entry_price = price * (1 + self._config.slippage_pct)

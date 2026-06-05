@@ -41,25 +41,29 @@ export DB_HOST=127.0.0.1 DB_PORT=15432 DB_PASSWORD="$POSTGRES_PASSWORD"
 
 ## Paper Rollout
 
-The dedicated paper service is `agent_sol_sparse` in [docker-compose.yml](/home/yderf/TRADING/crypto-agent/docker-compose.yml).
+The dedicated paper service is `agent_sol_sparse` in
+[`docker-compose.prod.yml`](../docker-compose.prod.yml).
 
 Deploy on the server after syncing the repo:
 
 ```bash
-ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d agent_sol_sparse"
+ssh crypto-agent "cd /opt/crypto-agent && git pull"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build agent_sol_sparse"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d agent_sol_sparse"
 ```
 
 Verify:
 
 ```bash
-ssh crypto-agent "cd /opt/crypto-agent && docker compose ps agent_sol_sparse"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose logs agent_sol_sparse --tail=100 --no-log-prefix"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml ps agent_sol_sparse"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs agent_sol_sparse --tail=100 --no-log-prefix"
 ```
 
 Drift and activity check:
 
 ```bash
 python scripts/production_drift_sentinel.py \
+  --ssh-config ~/.ssh/config \
   --expected-branch main \
   --remote-host crypto-agent \
   --remote-dir /opt/crypto-agent \
@@ -72,8 +76,8 @@ python scripts/production_drift_sentinel.py \
 Stop or remove the paper validation service:
 
 ```bash
-ssh crypto-agent "cd /opt/crypto-agent && docker compose stop agent_sol_sparse"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose rm -f agent_sol_sparse"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml stop agent_sol_sparse"
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml rm -f agent_sol_sparse"
 ```
 
 ## Guardrails

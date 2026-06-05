@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
     collect_remote_repo_snapshot,
     collect_remote_service_snapshot,
     collect_remote_signal_snapshot,
+    collect_remote_timer_snapshot,
     collect_remote_watched_service_snapshot,
     collect_repo_snapshot,
     report_to_json,
@@ -29,9 +31,14 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Production drift sentinel")
-    parser.add_argument("--expected-branch", default="main", help="Expected deploy branch")
+    parser.add_argument(
+        "--expected-branch",
+        default=os.getenv("EXPECTED_DEPLOY_BRANCH", "main"),
+        help="Expected deploy branch (default: EXPECTED_DEPLOY_BRANCH or main)",
+    )
     parser.add_argument("--remote-host", default="crypto-agent", help="SSH host alias")
     parser.add_argument("--remote-dir", default="/opt/crypto-agent", help="Remote repo path")
+    parser.add_argument("--ssh-config", help="Optional OpenSSH config file passed with ssh -F")
     parser.add_argument("--signal-stale-hours", type=int, default=24)
     parser.add_argument("--log-tail", type=int, default=500)
     parser.add_argument(
@@ -39,6 +46,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional docker compose service to inspect separately (for example: agent_sol_sparse)",
     )
     parser.add_argument("--local-only", action="store_true", help="Skip remote checks")
+    parser.add_argument(
+        "--production-local",
+        action="store_true",
+        help="Inspect the production host directly without SSH (for server-side scheduling)",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON output")
     parser.add_argument(
         "--fail-on",
@@ -110,6 +122,20 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
         lines.append("- Service snapshot unavailable")
 
     lines.append("")
+    lines.append("## Required Timers")
+    lines.append("")
+    if report.timer_snapshot is not None:
+        for timer in report.timer_snapshot.timers:
+            lines.append(
+                f"- {timer.timer}: enabled={timer.enabled}, active={timer.active}, "
+                f"service_result={timer.service_result}, "
+                f"exec_status={timer.exec_main_status}, "
+                f"latest_report={timer.latest_report_at or 'none'}"
+            )
+    else:
+        lines.append("- Timer snapshot unavailable")
+
+    lines.append("")
     lines.append("## Signal Activity")
     lines.append("")
     if report.signal_snapshot is not None:
@@ -158,6 +184,8 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
 
 def main() -> int:
     args = parse_args()
+    if args.local_only and args.production_local:
+        raise SystemExit("--local-only and --production-local cannot be used together")
 
     local_repo = None
     local_config_hashes: dict[str, str] = {}
@@ -174,28 +202,41 @@ def main() -> int:
     remote_repo = None
     remote_config_hashes: dict[str, str] = {}
     service_snapshot = None
+    timer_snapshot = None
     signal_snapshot = None
     watched_service_snapshot = None
     remote_error = None
 
     if not args.local_only:
+        inspection_host = None if args.production_local else args.remote_host
         try:
-            remote_repo = collect_remote_repo_snapshot(args.remote_host, args.remote_dir)
-            remote_config_hashes = collect_remote_config_hashes(args.remote_host, args.remote_dir)
-            service_snapshot = collect_remote_service_snapshot(args.remote_host, args.remote_dir)
+            remote_repo = collect_remote_repo_snapshot(
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
+            )
+            remote_config_hashes = collect_remote_config_hashes(
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
+            )
+            service_snapshot = collect_remote_service_snapshot(
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
+            )
+            timer_snapshot = collect_remote_timer_snapshot(
+                inspection_host, args.remote_dir, ssh_config=args.ssh_config
+            )
             signal_snapshot = collect_remote_signal_snapshot(
-                args.remote_host,
+                inspection_host,
                 args.remote_dir,
                 service_snapshot,
                 tail_lines=args.log_tail,
+                ssh_config=args.ssh_config,
             )
             if args.watch_service:
                 watched_service_snapshot = collect_remote_watched_service_snapshot(
-                    args.remote_host,
+                    inspection_host,
                     args.remote_dir,
                     service_snapshot,
                     args.watch_service,
                     tail_lines=args.log_tail,
+                    ssh_config=args.ssh_config,
                 )
         except Exception as exc:  # noqa: BLE001
             remote_error = str(exc)
@@ -207,6 +248,7 @@ def main() -> int:
         local_config_hashes=local_config_hashes,
         remote_config_hashes=remote_config_hashes,
         service_snapshot=service_snapshot,
+        timer_snapshot=timer_snapshot,
         signal_snapshot=signal_snapshot,
         watched_service_snapshot=watched_service_snapshot,
         remote_error=remote_error,
@@ -233,6 +275,7 @@ def main() -> int:
         local_config_hashes=local_config_hashes,
         remote_config_hashes=remote_config_hashes,
         service_snapshot=service_snapshot,
+        timer_snapshot=timer_snapshot,
         signal_snapshot=signal_snapshot,
         watched_service_snapshot=watched_service_snapshot,
         findings=findings,

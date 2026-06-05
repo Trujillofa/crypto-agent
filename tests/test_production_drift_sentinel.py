@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from src.utils.production_drift_sentinel import (
     IGNORED_CONFIG_FILES,
     RepoSnapshot,
     ServiceSnapshot,
     SignalSnapshot,
+    TimerSnapshot,
+    TimerState,
     WatchedServiceSnapshot,
     analyze_drift,
     collect_local_config_hashes,
+    collect_remote_service_snapshot,
+    collect_remote_timer_snapshot,
+    epoch_to_iso_timestamp,
     parse_iso_timestamp,
     parse_sha256_lines,
+    run_remote_command,
 )
 
 
@@ -40,6 +48,144 @@ def test_collect_local_config_hashes_ignores_research_only_configs(tmp_path) -> 
 
     assert "settings.yaml" in hashes
     assert ignored_name not in hashes
+
+
+def test_collect_remote_service_snapshot_uses_production_compose(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str, remote_dir: str, command: str, ssh_config: str | None = None
+    ) -> str:
+        assert ssh_config is None
+        commands.append(command)
+        return "agent_sentiment_macro\n" if "config --services" in command else ""
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    snapshot = collect_remote_service_snapshot("host", "/srv/app")
+
+    assert snapshot.all_services == ["agent_sentiment_macro"]
+    assert commands == [
+        "docker compose -f docker-compose.prod.yml config --services",
+        "docker compose -f docker-compose.prod.yml ps --status running --services",
+    ]
+
+
+def test_run_remote_command_passes_explicit_ssh_config(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_command(command: list[str], cwd=None, timeout: int = 15) -> str:
+        commands.append(command)
+        return ""
+
+    monkeypatch.setattr("src.utils.production_drift_sentinel.run_command", fake_run_command)
+
+    run_remote_command("host", "/srv/app", "git status", ssh_config="~/.ssh/config")
+
+    assert commands == [["ssh", "-F", "~/.ssh/config", "host", "cd /srv/app && git status"]]
+
+
+def test_run_remote_command_can_inspect_production_locally(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_command(command: list[str], cwd=None, timeout: int = 15) -> str:
+        commands.append(command)
+        return ""
+
+    monkeypatch.setattr("src.utils.production_drift_sentinel.run_command", fake_run_command)
+
+    run_remote_command(None, "/srv/app", "git status")
+
+    assert commands == [["bash", "-lc", "cd /srv/app && git status"]]
+
+
+def test_collect_remote_timer_snapshot_reads_enabled_and_active(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str, remote_dir: str, command: str, ssh_config: str | None = None
+    ) -> str:
+        commands.append(command)
+        if "is-enabled" in command:
+            return "enabled"
+        if "is-active" in command:
+            return "active"
+        if "--property=Result" in command:
+            return "success"
+        if "--property=ExecMainStatus" in command:
+            return "0"
+        return "1780359302.0"
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    snapshot = collect_remote_timer_snapshot("host", "/srv/app", timers=("report.timer",))
+
+    assert snapshot == TimerSnapshot(
+        timers=[
+            TimerState(
+                timer="report.timer",
+                enabled="enabled",
+                active="active",
+                service_result="success",
+                exec_main_status="0",
+                latest_report_at="2026-06-02T00:15:02+00:00",
+                max_report_age_hours=36,
+            )
+        ]
+    )
+    assert commands == [
+        "systemctl is-enabled report.timer 2>/dev/null || true",
+        "systemctl is-active report.timer 2>/dev/null || true",
+        "systemctl show report.service --property=Result --value",
+        "systemctl show report.service --property=ExecMainStatus --value",
+        "find data/reports -maxdepth 1 -type f -name 'paper-validation-report-*.json' -printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1",
+    ]
+
+
+def test_collect_remote_timer_snapshot_uses_hourly_sentinel_artifact_policy(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str, remote_dir: str, command: str, ssh_config: str | None = None
+    ) -> str:
+        commands.append(command)
+        if "is-enabled" in command:
+            return "enabled"
+        if "is-active" in command:
+            return "active"
+        if "--property=Result" in command:
+            return "success"
+        if "--property=ExecMainStatus" in command:
+            return "0"
+        return "1780359302.0"
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    snapshot = collect_remote_timer_snapshot(
+        "host",
+        "/srv/app",
+        timers=("crypto-agent-production-drift-sentinel.timer",),
+    )
+
+    assert snapshot.timers[0].max_report_age_hours == 2
+    assert (
+        "find data/reports -maxdepth 1 -type f "
+        "-name 'production-drift-sentinel-*.json' -printf '%T@\\n' "
+        "2>/dev/null | sort -nr | head -n 1"
+    ) in commands
+
+
+def test_epoch_to_iso_timestamp_returns_none_for_missing_artifact() -> None:
+    assert epoch_to_iso_timestamp("") is None
 
 
 def test_analyze_drift_detects_remote_branch_mismatch_and_dirty() -> None:
@@ -89,6 +235,103 @@ def test_analyze_drift_detects_config_and_service_drift() -> None:
     assert "REMOTE_CONFIG_MISSING" in codes
     assert "SERVICES_NOT_RUNNING" in codes
     assert "SIGNAL_DROUGHT" in codes
+
+
+def test_analyze_drift_detects_unhealthy_required_timer() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={"settings.yaml": "111"},
+        remote_config_hashes={"settings.yaml": "111"},
+        service_snapshot=ServiceSnapshot(all_services=["agent"], running_services=["agent"]),
+        timer_snapshot=TimerSnapshot(
+            timers=[
+                TimerState(
+                    timer="crypto-agent-paper-validation-report.timer",
+                    enabled="disabled",
+                    active="inactive",
+                    service_result="success",
+                    exec_main_status="0",
+                    latest_report_at=datetime.now(UTC).isoformat(),
+                    max_report_age_hours=36,
+                )
+            ]
+        ),
+        signal_snapshot=SignalSnapshot(
+            signal_count=1, last_signal_at=None, saw_strategy_cycle=True
+        ),
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "REQUIRED_TIMER_NOT_HEALTHY" in codes
+
+
+def test_analyze_drift_detects_failed_timer_service_and_missing_report() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        timer_snapshot=TimerSnapshot(
+            timers=[
+                TimerState(
+                    timer="report.timer",
+                    enabled="enabled",
+                    active="active",
+                    service_result="failed",
+                    exec_main_status="1",
+                    latest_report_at=None,
+                    max_report_age_hours=36,
+                )
+            ]
+        ),
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "REQUIRED_TIMER_SERVICE_FAILED" in codes
+    assert "TIMER_REPORT_MISSING" in codes
+
+
+def test_analyze_drift_detects_stale_paper_validation_report() -> None:
+    stale_report = (datetime.now(UTC) - timedelta(hours=37)).isoformat()
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        timer_snapshot=TimerSnapshot(
+            timers=[
+                TimerState(
+                    timer="report.timer",
+                    enabled="enabled",
+                    active="active",
+                    service_result="success",
+                    exec_main_status="0",
+                    latest_report_at=stale_report,
+                    max_report_age_hours=36,
+                )
+            ]
+        ),
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "TIMER_REPORT_STALE" in codes
 
 
 def test_remote_error_short_circuits_remote_analysis() -> None:

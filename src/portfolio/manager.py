@@ -98,6 +98,14 @@ class PortfolioManager:
             await conn.execute(
                 "ALTER TABLE trades ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'spot'"
             )
+            await conn.execute(
+                "ALTER TABLE positions ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT 'default'"
+            )
+            await conn.execute(
+                "ALTER TABLE trades ADD COLUMN IF NOT EXISTS agent_id TEXT DEFAULT 'default'"
+            )
+            await conn.execute("UPDATE positions SET agent_id = 'default' WHERE agent_id IS NULL")
+            await conn.execute("UPDATE trades SET agent_id = 'default' WHERE agent_id IS NULL")
 
     async def _load_open_positions(self) -> None:
         """Load open positions from database into cache."""
@@ -446,6 +454,31 @@ class PortfolioManager:
         """Return stats for a specific UTC calendar day."""
         details = await self.get_daily_summary_details(day)
         return details["total_pnl"], details["trades_count"], details["win_rate"]
+
+    async def get_closed_stats_since(self, started_at: datetime) -> tuple[float, int, float]:
+        """Return realized PnL, closed trades, and win rate since a UTC timestamp."""
+        async with self._db_lock:
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT
+                        COALESCE(SUM(realized_pnl), 0) AS total_pnl,
+                        COUNT(*) AS trades_count,
+                        COUNT(*) FILTER (WHERE realized_pnl > 0) AS wins
+                    FROM positions
+                    WHERE status = 'closed'
+                      AND exit_time >= $2
+                      AND agent_id = $1
+                    """,
+                    self._agent_id,
+                    started_at,
+                )
+
+        trades_count = int(row["trades_count"] or 0)
+        wins = int(row["wins"] or 0)
+        win_rate = (wins / trades_count * 100.0) if trades_count > 0 else 0.0
+        return float(row["total_pnl"] or 0.0), trades_count, win_rate
 
     async def get_daily_summary_details(self, day: date) -> dict[str, object]:
         """Return richer daily summary details for notifications/reporting."""

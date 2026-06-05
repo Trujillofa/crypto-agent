@@ -109,7 +109,6 @@ class PaperExecutor:
         self._guard_pipeline = guard_pipeline
         self._staged_manager = staged_manager
         self._agent_id = self._normalize_agent_id(agent_id)
-        self._agent_id = self._normalize_agent_id(agent_id)
         self._position_prefix = "" if self._agent_id == "default" else f"{self._agent_id}::"
         self._logger = get_logger("PaperExecutor")
 
@@ -692,11 +691,6 @@ class PaperExecutor:
         # Risk check
         is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
-            if self._event_log:
-                await self._event_log.log(
-                    "risk_check_failed",
-                    {"symbol": signal.symbol, "reason": reason, "stage": "paper_buy"},
-                )
             if self._event_log:
                 await self._event_log.log(
                     "risk_check_failed",

@@ -14,8 +14,6 @@ mode: live
 
 trading:
   pairs:
-    - BTCUSDT
-    - ETHUSDT
     - SOLUSDT
   timeframe: 1h
 
@@ -37,6 +35,8 @@ trading_execution:
   tp_atr_multiplier: 3.5
   exit_rules:
     time_stop_minutes: 1440
+    # Keep replay validation aligned with futures ATR SL/TP behavior.
+    backtest_use_executor_exit_model: true
 
 futures:
   enabled: true
@@ -51,8 +51,6 @@ futures:
   # Wait longer after SL before re-entry on the same symbol.
   sl_cooldown_minutes: 240
   symbols:
-    - BTCUSDT
-    - ETHUSDT
     - SOLUSDT
 
 strategy:
@@ -71,9 +69,9 @@ strategy:
         # Threshold based on actual ATR% data: BTC avg ~0.004-0.005, ETH avg ~0.005-0.007
         # 0.005 catches elevated-vol regimes where MR gets chopped
         atr_pct_threshold: 0.005
-  # Mean-reversion buys dips by design, so allow entries up to 5% below EMA200.
-  # Strict 0.0 blocked every BUY when BTC/ETH dipped below EMA200 (Apr 18-20 bear).
-  global_trend_filter_buffer_pct: 0.05
+  # Keep dip buys above EMA200. Historical testing found that the prior 5% buffer
+  # materially worsened BTC drawdown by allowing entries during sustained downtrends.
+  global_trend_filter_buffer_pct: 0.0
   aggregator:
     buy_threshold: 0.6
     sell_threshold: -0.6

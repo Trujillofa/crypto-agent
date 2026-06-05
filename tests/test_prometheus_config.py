@@ -35,16 +35,25 @@ def test_file_sd_targets_cover_all_current_agent_services() -> None:
     targets_by_service = {entry["labels"]["service"]: entry["targets"] for entry in entries}
 
     assert set(labels_by_service) == {
-        "agent_avax",
         "agent_sol_sparse",
         "agent_sentiment_macro",
+        "agent_sol_panic_block_paper",
+        "agent_sol_1h_trend_pullback_overlay_live",
     }
-    assert targets_by_service["agent_avax"] == ["agent_avax:8000"]
     assert targets_by_service["agent_sol_sparse"] == ["agent_sol_sparse:8000"]
     assert targets_by_service["agent_sentiment_macro"] == ["agent_sentiment_macro:8000"]
-    assert labels_by_service["agent_avax"]["agent_id"] == "avax-4h-ma"
+    assert targets_by_service["agent_sol_panic_block_paper"] == ["agent_sol_panic_block_paper:8000"]
+    assert targets_by_service["agent_sol_1h_trend_pullback_overlay_live"] == [
+        "agent_sol_1h_trend_pullback_overlay_live:8000"
+    ]
     assert labels_by_service["agent_sol_sparse"]["agent_id"] == "sol-trend-pullback-sparse"
     assert labels_by_service["agent_sentiment_macro"]["agent_id"] == "sentiment-macro-bot"
+    assert labels_by_service["agent_sol_panic_block_paper"]["agent_id"] == (
+        "sol-4h-panic-block-paper"
+    )
+    assert labels_by_service["agent_sol_1h_trend_pullback_overlay_live"]["agent_id"] == (
+        "sol-1h-trend-pullback-overlay-live"
+    )
 
 
 def test_compose_mounts_prometheus_target_directory() -> None:

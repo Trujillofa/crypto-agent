@@ -1,0 +1,16 @@
+[Unit]
+Description=Audit crypto-agent production drift
+After=docker.service
+Requires=docker.service
+OnFailure=crypto-agent-telegram-failure@%n.service
+
+[Service]
+Type=oneshot
+User=emilio
+WorkingDirectory=/opt/crypto-agent
+Environment=EXPECTED_DEPLOY_BRANCH=main
+EnvironmentFile=-/etc/default/crypto-agent-production-drift-sentinel
+ExecStart=/usr/bin/python3 scripts/production_drift_sentinel.py --production-local --remote-dir /opt/crypto-agent --watch-service agent_sol_sparse --signal-stale-hours 72 --fail-on error --output-prefix data/reports/production-drift-sentinel
+
+[Install]
+WantedBy=multi-user.target

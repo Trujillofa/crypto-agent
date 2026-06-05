@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 import yaml
 
@@ -61,8 +63,10 @@ class TestFuturesConfig:
         assert settings.mode == "paper"
         assert settings.trading_pairs == ["BTCUSDT", "ETHUSDT"]
 
-    def test_futures_enabled_valid_config(self, base_config, tmp_path):
+    def test_futures_enabled_valid_config(self, base_config, tmp_path, monkeypatch):
         """Test loading valid futures configuration."""
+        logger = MagicMock()
+        monkeypatch.setattr("src.main.get_logger", lambda _name: logger)
         base_config["futures"] = {
             "enabled": True,
             "symbols": ["BTCUSDT", "ETHUSDT"],
@@ -83,6 +87,7 @@ class TestFuturesConfig:
         # Should load without errors
         assert settings.mode == "paper"
         assert settings.trading_execution.test_mode is True
+        assert "leverage=5x, max_leverage=10x" in logger.info.call_args.args[0]
 
     def test_futures_max_leverage_enforced_rejects_50x(self, base_config, tmp_path):
         """Test that leverage > 20x is rejected."""
