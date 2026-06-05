@@ -1,6 +1,6 @@
 # Volatility Squeeze Breakout Bounded — Surface v0 (Option F)
 
-**Status:** feasibility probe only — no autoresearch until `HAS_PULSE`
+**Status:** feasibility probe passed on BTC/ETH — implementation brief allowed next
 **Date:** 2026-06-05
 **Symbol order:** BTCUSDT → ETHUSDT → SOLUSDT (SOL last for correlation hygiene)
 
@@ -37,6 +37,22 @@ uv run python -m scripts.probe_volatility_squeeze_breakout --symbol BTCUSDT
 - ≥ 20 events per symbol tested
 - Positive mean forward return on at least one of 12h / 24h / 48h horizons
 - Max single-event share of positive returns ≤ 30%
+
+---
+
+## Production probe result — 2026-06-05
+
+Source: `docs/reports/volatility-squeeze-breakout-probe-2026-06-05.md`
+
+| Symbol | Events | 12h mean | 24h mean | 48h mean | Verdict |
+|--------|--------|----------|----------|----------|---------|
+| BTCUSDT | 176 | +0.02% | -0.06% | -0.19% | `HAS_PULSE` |
+| ETHUSDT | 241 | +0.15% | -0.20% | -0.51% | `HAS_PULSE` |
+| SOLUSDT | 269 | -0.03% | -0.23% | -0.27% | `WEAK_EDGE` |
+
+Decision: proceed only with a bounded **BTC/ETH** implementation brief. Do not
+include SOL in the first campaign; it adds correlation with the live SOL overlay
+and did not show positive forward mean.
 
 ---
 
