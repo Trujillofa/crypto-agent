@@ -46,10 +46,12 @@ run_wfo "ungated" "config/settings.sol_1h_trend_pullback_overlay_paper.yaml" \
 run_wfo "gated" "config/settings.sol_1h_trend_pullback_overlay_paper_americas_gate.yaml" \
   "research/solusdt-1h-session-router-wfo-gated"
 
-ungated_json="$(ssh "${REMOTE_HOST}" "ls -1t ${REMOTE_DIR}/research/solusdt-1h-session-router-wfo-ungated/archive/*.json | head -1")"
-gated_json="$(ssh "${REMOTE_HOST}" "ls -1t ${REMOTE_DIR}/research/solusdt-1h-session-router-wfo-gated/archive/*.json | head -1")"
-echo "Ungated JSON: ${ungated_json}"
-echo "Gated JSON:   ${gated_json}"
+ungated_host="$(ssh "${REMOTE_HOST}" "ls -1t ${REMOTE_DIR}/research/solusdt-1h-session-router-wfo-ungated/archive/*.json | head -1")"
+gated_host="$(ssh "${REMOTE_HOST}" "ls -1t ${REMOTE_DIR}/research/solusdt-1h-session-router-wfo-gated/archive/*.json | head -1")"
+ungated_json="${ungated_host/${REMOTE_DIR}/\/app}"
+gated_json="${gated_host/${REMOTE_DIR}/\/app}"
+echo "Ungated JSON: ${ungated_host}"
+echo "Gated JSON:   ${gated_host}"
 
 ssh "${REMOTE_HOST}" "cd ${REMOTE_DIR} && docker run --rm \
   --network crypto-agent_crypto-net \
