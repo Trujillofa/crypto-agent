@@ -5,6 +5,7 @@ import pytest
 from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine
+from src.strategy.session_liquidity import SessionLiquidityRouterConfig
 from src.strategy.signals import Signal, SignalType
 
 
@@ -43,6 +44,7 @@ class TestStrategyEngineIntegration:
                     "ema_200": 90.0,
                 },
                 {
+                    "time": "2024-06-01T15:00:00+00:00",
                     "close_price": 101.0,
                     "ema_12": 101.0,
                     "ema_26": 100.0,
@@ -198,3 +200,102 @@ class TestStrategyEngineIntegration:
 
         assert len(received_signals) == 1
         assert received_signals[0].trading_mode == "futures"
+
+    @pytest.mark.asyncio
+    async def test_session_router_blocks_buy_outside_americas(self, mock_reader, caplog):
+        config = EngineConfig(
+            symbols=["SOLUSDT"],
+            strategy_classes=[MockStrategy],
+            aggregator_config={"buy_threshold": 0.5, "min_agreement": 1},
+            global_trend_filter_enabled=False,
+            session_liquidity_router=SessionLiquidityRouterConfig(
+                enabled=True,
+                allowed_windows=("americas",),
+            ),
+        )
+        engine = StrategyEngine(config, mock_reader)
+        engine._strategies["SOLUSDT"][0].signal_to_emit = SignalType.BUY
+        engine._strategies["SOLUSDT"][0].confidence = 0.9
+
+        received: list[Signal] = []
+
+        async def on_signal(sig: Signal) -> None:
+            received.append(sig)
+
+        with caplog.at_level("INFO"):
+            await engine._evaluate_all(on_signal)
+
+        assert received == []
+        assert "Blocked by Session Liquidity Router" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_session_router_allows_buy_in_americas(self):
+        reader = IndicatorReader({})
+        reader._connected = True
+
+        async def _mock_fetch_rows(symbol: str, timeframe: str, limit: int) -> list[dict]:
+            return [
+                {
+                    "time": "2024-06-01T16:00:00+00:00",
+                    "close_price": 100.0,
+                    "ema_12": 100.0,
+                    "ema_26": 99.0,
+                    "ema_200": 90.0,
+                },
+                {
+                    "time": "2024-06-01T17:00:00+00:00",
+                    "close_price": 101.0,
+                    "ema_12": 101.0,
+                    "ema_26": 100.0,
+                    "ema_200": 90.0,
+                },
+            ]
+
+        reader._fetch_rows = _mock_fetch_rows
+
+        config = EngineConfig(
+            symbols=["SOLUSDT"],
+            strategy_classes=[MockStrategy],
+            aggregator_config={"buy_threshold": 0.5, "min_agreement": 1},
+            global_trend_filter_enabled=False,
+            session_liquidity_router=SessionLiquidityRouterConfig(
+                enabled=True,
+                allowed_windows=("americas",),
+            ),
+        )
+        engine = StrategyEngine(config, reader)
+        engine._strategies["SOLUSDT"][0].signal_to_emit = SignalType.BUY
+        engine._strategies["SOLUSDT"][0].confidence = 0.9
+
+        received: list[Signal] = []
+
+        async def on_signal(sig: Signal) -> None:
+            received.append(sig)
+
+        await engine._evaluate_all(on_signal)
+
+        assert len(received) == 1
+        assert received[0].type == SignalType.BUY
+
+    @pytest.mark.asyncio
+    async def test_session_router_disabled_allows_buy(self, mock_reader):
+        config = EngineConfig(
+            symbols=["SOLUSDT"],
+            strategy_classes=[MockStrategy],
+            aggregator_config={"buy_threshold": 0.5, "min_agreement": 1},
+            global_trend_filter_enabled=False,
+            session_liquidity_router=SessionLiquidityRouterConfig(enabled=False),
+        )
+        engine = StrategyEngine(config, mock_reader)
+        engine._strategies["SOLUSDT"][0].signal_to_emit = SignalType.BUY
+        engine._strategies["SOLUSDT"][0].confidence = 0.9
+
+        received: list[Signal] = []
+
+        async def on_signal(sig: Signal) -> None:
+            received.append(sig)
+
+        await engine._evaluate_all(on_signal)
+
+        assert len(received) == 1
+        assert received[0].type == SignalType.BUY

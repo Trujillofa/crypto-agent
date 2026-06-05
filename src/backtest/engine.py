@@ -10,6 +10,10 @@ from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
+from src.strategy.session_liquidity import (
+    SessionLiquidityRouterConfig,
+    apply_session_liquidity_gate,
+)
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
@@ -36,6 +40,9 @@ class BacktestConfig:
     atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
     apply_global_trend_filter: bool = True
     global_trend_filter_buffer_pct: float = 0.0
+    session_liquidity_router: SessionLiquidityRouterConfig = field(
+        default_factory=SessionLiquidityRouterConfig
+    )
     allow_short: bool = False
     use_executor_exit_model: bool = False
     ignore_signal_sells: bool = False
@@ -84,6 +91,7 @@ class BacktestResult:
     sortino_ratio: float
     profit_factor: float
     avg_win_loss_ratio: float
+    blocked_buy_count: int = 0
 
 
 class BacktestEngine:
@@ -108,6 +116,7 @@ class BacktestEngine:
         self._position_funding_paid = 0.0
         self._equity_curve: list[float] = []
         self._trades: list[Trade] = []
+        self._blocked_buy_count = 0
 
     @staticmethod
     def _get_required_timeframes(strategy: BaseStrategy) -> dict[str, str]:
@@ -237,6 +246,20 @@ class BacktestEngine:
                         ),
                         indicators=final_signal.indicators,
                         trading_mode=final_signal.trading_mode,
+                    )
+
+            if final_signal.type == SignalType.BUY:
+                final_signal, blocked = apply_session_liquidity_gate(
+                    final_signal,
+                    row["time"],
+                    self._config.session_liquidity_router,
+                )
+                if blocked:
+                    self._blocked_buy_count += 1
+                    self._logger.info(
+                        "Blocked by Session Liquidity Router at %s: %s",
+                        current_time,
+                        final_signal.reason,
                     )
 
             atr = row.get("atr_14", 0.0)
@@ -652,6 +675,7 @@ class BacktestEngine:
             sortino_ratio=sortino_ratio,
             profit_factor=profit_factor,
             avg_win_loss_ratio=avg_win_loss_ratio,
+            blocked_buy_count=self._blocked_buy_count,
         )
 
     def _create_empty_result(self) -> BacktestResult:
@@ -667,4 +691,5 @@ class BacktestEngine:
             sortino_ratio=0.0,
             profit_factor=0.0,
             avg_win_loss_ratio=0.0,
+            blocked_buy_count=self._blocked_buy_count,
         )

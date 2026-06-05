@@ -9,6 +9,10 @@ from typing import Any
 from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
+from src.strategy.session_liquidity import (
+    SessionLiquidityRouterConfig,
+    apply_session_liquidity_gate,
+)
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
@@ -38,6 +42,9 @@ class EngineConfig:
     per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     global_trend_filter_enabled: bool = True
     global_trend_filter_buffer_pct: float = 0.05  # Allow buys within 5% below EMA200
+    session_liquidity_router: SessionLiquidityRouterConfig = field(
+        default_factory=SessionLiquidityRouterConfig
+    )
 
 
 class StrategyEngine:
@@ -260,6 +267,26 @@ class StrategyEngine:
                             reason=f"Blocked by Global Trend Filter (Price < {buffer_pct * 100:.0f}% of EMA200)",
                             indicators=final_signal.indicators,
                             trading_mode=final_signal.trading_mode,
+                        )
+
+                if final_signal.type == SignalType.BUY:
+                    bar_time = indicators.get("time")
+                    if bar_time is not None:
+                        final_signal, blocked = apply_session_liquidity_gate(
+                            final_signal,
+                            bar_time,
+                            self._config.session_liquidity_router,
+                        )
+                        if blocked:
+                            self._logger.info(
+                                "Blocked by Session Liquidity Router for %s: %s",
+                                symbol,
+                                final_signal.reason,
+                            )
+                    elif self._config.session_liquidity_router.enabled:
+                        self._logger.warning(
+                            "Session router enabled but bar time missing for %s; BUY not gated",
+                            symbol,
                         )
 
                 # Inject atr_14 from indicators into the signal if not already present

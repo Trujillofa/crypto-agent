@@ -164,6 +164,10 @@ Run same window, symbol, overlay as promoted agent:
 
 Compare on prod DB date range (2024-01 → 2026-06):
 
+**Wiring guard (required before interpreting metrics):** gated run must report
+`blocked_buy_count > 0` in `run_backtest.py` / `BacktestResult` output. If zero,
+the A/B comparison is invalid (router not applied) — stop and fix plumbing.
+
 | Metric | Accept direction for B vs A |
 |--------|----------------------------|
 | WFO trade count | B ≥ 70% of A (not sparse collapse) |

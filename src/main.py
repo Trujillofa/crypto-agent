@@ -65,6 +65,10 @@ from src.strategy import (
 )
 from src.strategy.lifecycle import LifecycleManager
 from src.strategy.sentiment_mean_reversion import SentimentScorer
+from src.strategy.session_liquidity import (
+    SessionLiquidityRouterConfig,
+    parse_session_liquidity_router,
+)
 from src.strategy.signals import Signal
 from src.utils.logger import configure_logger, get_logger
 
@@ -109,6 +113,9 @@ class StrategySettings:
     per_symbol_aggregator_config: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     global_trend_filter_enabled: bool = True
     global_trend_filter_buffer_pct: float = 0.05
+    session_liquidity_router: SessionLiquidityRouterConfig = field(
+        default_factory=SessionLiquidityRouterConfig
+    )
 
 
 @dataclass(frozen=True)
@@ -336,6 +343,9 @@ def load_settings(config_path: Path) -> Settings:
             strategy.get("global_trend_filter_buffer_pct"),
             "strategy.global_trend_filter_buffer_pct",
             default=0.05,
+        ),
+        session_liquidity_router=parse_session_liquidity_router(
+            strategy.get("session_liquidity_router")
         ),
     )
 
@@ -1112,6 +1122,7 @@ async def run() -> None:
         per_symbol_aggregator_config=per_symbol_agg_config,
         global_trend_filter_enabled=settings.strategy.global_trend_filter_enabled,
         global_trend_filter_buffer_pct=settings.strategy.global_trend_filter_buffer_pct,
+        session_liquidity_router=settings.strategy.session_liquidity_router,
     )
 
     # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB

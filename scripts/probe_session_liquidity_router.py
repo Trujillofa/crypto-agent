@@ -18,14 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.db import close_pool, get_pool, init_pool
+from src.strategy.session_liquidity import DEFAULT_WINDOWS, session_for_hour
 from src.utils.logger import configure_logger
-
-# Disjoint UTC windows [start_hour, end_hour) — see surface v0 spec.
-DEFAULT_WINDOWS: dict[str, tuple[int, int]] = {
-    "asia": (0, 8),
-    "europe": (8, 16),
-    "americas": (16, 24),
-}
 
 PROBE_QUERY = """
     SELECT
@@ -102,19 +96,6 @@ def _median(values: Iterable[float]) -> float:
     if not materialized:
         return 0.0
     return float(statistics.median(materialized))
-
-
-def session_for_hour(
-    hour: int, windows: Mapping[str, tuple[int, int]] = DEFAULT_WINDOWS
-) -> str | None:
-    """Return disjoint session name for UTC hour, or None if unmapped."""
-    for name, (start, end) in windows.items():
-        if start < end:
-            if start <= hour < end:
-                return name
-        elif hour >= start or hour < end:
-            return name
-    return None
 
 
 def _coerce_float(value: object) -> float | None:

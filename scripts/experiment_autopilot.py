@@ -32,6 +32,7 @@ from src.backtest.experiment_autopilot import (  # noqa: E402
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
+from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger  # noqa: E402
 
 
@@ -154,6 +155,9 @@ def _build_backtest_config(
         apply_global_trend_filter=not disable_trend_filter,
         global_trend_filter_buffer_pct=float(
             raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.0)
+        ),
+        session_liquidity_router=parse_session_liquidity_router(
+            raw_config.get("strategy", {}).get("session_liquidity_router")
         ),
         allow_short=False,
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
