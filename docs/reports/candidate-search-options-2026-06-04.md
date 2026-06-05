@@ -9,7 +9,7 @@ second agent adds risk faster than it adds validation speed.
 
 This document elaborates **what to do next**, with trade-offs, after ~1,440+
 autoresearch runs, Wave 7 (4h surfaces), relative-strength probe failure, and
-funding-normalization probe failure at default thresholds.
+funding-normalization Wave 9 closure, and the Option F squeeze probe result.
 
 ---
 
@@ -161,14 +161,27 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 
 | Idea | Different primitive | Notes |
 |------|---------------------|-------|
-| Volatility squeeze breakout bounded | Regime expansion | Complements mean reversion |
+| Volatility squeeze breakout bounded | Regime expansion | BTC/ETH prod probe passed on 2026-06-05 |
 | Session / liquidity window router | Time microstructure | Needs session labels |
 | Cross-exchange basis / premium | Crowding | Data not in DB today |
 | Liquidation cascade proxy | Microstructure | Needs L2 or agg trades |
 
 **Pros:** Avoids repeating failed lanes.
 **Cons:** Highest spec + data cost.
-**When to prefer:** Funding reshape matrix all fail AND Phase 0 still shows only one edge.
+**Prod probe result (2026-06-05):**
+
+| Symbol | Events | Best forward read | Verdict |
+|--------|--------|-------------------|---------|
+| BTCUSDT | 176 | +0.02% mean at 12h | `HAS_PULSE` |
+| ETHUSDT | 241 | +0.15% mean at 12h | `HAS_PULSE` |
+| SOLUSDT | 269 | No positive horizon | `WEAK_EDGE` |
+
+Report: `docs/reports/volatility-squeeze-breakout-probe-2026-06-05.md`
+
+**When to prefer:** Now. Wave 9 closed funding-primary, and BTC/ETH squeeze
+showed enough non-concentrated events to justify an implementation brief. Keep SOL
+out of the first campaign because it failed the probe and is correlated with the
+current live technical agent.
 
 ---
 
@@ -189,9 +202,9 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 ```text
 1. Merge PR #55 — DONE (main)
 2. Continue Option A weekly (`run_phase0_weekly.sh`)
-3. Wave 9 B-SOL autoresearch — IN PROGRESS (`run_b_sol_funding_norm_campaign.sh`)
+3. Wave 9 B-SOL autoresearch — CLOSED, 0/80 standard passes
 4. Option D1 (ETH b=1000) — SKIPPED
-5. If Wave 9 fails standard gates → Option F (new surface brief)
+5. Option F volatility squeeze — BTC/ETH probe passed; write implementation brief
 6. Option E only after execution parity doc exists
 7. Option C only if RS probe v2 passes
 ```
@@ -210,11 +223,13 @@ ssh crypto-agent 'cd /opt/crypto-agent && docker run --rm --network crypto-agent
 | `run_funding_probe_reshape.py` | Multi-scenario reshape matrix |
 | `probe_relative_strength_rotation.py` | RS feasibility (paused) |
 | `run_b_sol_funding_norm_campaign.sh` | Wave 9 SOL funding-normalization autoresearch |
+| `probe_volatility_squeeze_breakout.py` | Option F squeeze breakout feasibility probe |
+| `run_option_f_squeeze_probe.sh` | BTC/ETH/SOL squeeze probe on prod |
 
 ---
 
 ## One-line takeaway
 
 The **5–10 agent goal is not failed** — it needs **independent edge**. Run Phase 0
-continuously, merge the research record, reshape funding probes once; if still no
-pulse, pick **Option F** (new brief) rather than another 1h parameter sweep.
+continuously and move to **Option F BTC/ETH squeeze implementation brief**. Do not
+add SOL or run a campaign until the brief is written.
