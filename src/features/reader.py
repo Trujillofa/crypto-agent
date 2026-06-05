@@ -114,6 +114,8 @@ class IndicatorReader:
                 i.rsi_slope,
                 i.trend_consistency,
                 fr.funding_rate,
+                pbm.basis_bps,
+                pbm.premium_index,
                 o.high_price,
                 o.low_price
             FROM indicators i
@@ -121,6 +123,11 @@ class IndicatorReader:
                 ON i.time = o.time
                 AND i.symbol = o.symbol
                 AND i.timeframe = o.timeframe
+            LEFT JOIN perp_basis_metrics pbm
+                ON pbm.time = i.time
+                AND pbm.symbol = i.symbol
+                AND pbm.timeframe = i.timeframe
+                AND pbm.exchange = 'binance_usdm'
             LEFT JOIN LATERAL (
                 SELECT funding_rate
                 FROM funding_rates
@@ -217,6 +224,12 @@ class IndicatorReader:
                     ),
                     "funding_rate": (
                         float(row["funding_rate"]) if row["funding_rate"] is not None else None
+                    ),
+                    "basis_bps": (
+                        float(row["basis_bps"]) if row["basis_bps"] is not None else None
+                    ),
+                    "premium_index": (
+                        float(row["premium_index"]) if row["premium_index"] is not None else None
                     ),
                     "high_price": (
                         float(high_price) if high_price is not None else float(row["close_price"])

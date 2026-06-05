@@ -32,6 +32,12 @@ from src.backtest.experiment_autopilot import (  # noqa: E402
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
+from src.strategy.basis_premium_filter import (
+    BasisPremiumFilterConfig,
+    compute_positive_tail_threshold,
+    parse_basis_premium_filter,
+    with_calibrated_threshold,
+)
 from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger  # noqa: E402
 
@@ -126,6 +132,7 @@ def _build_backtest_config(
     disable_trend_filter: bool,
     replay_sentiment_path: str | None,
     replay_sentiment_max_age_hours: float | None,
+    basis_calibrated_threshold: float | None = None,
 ) -> BacktestConfig:
     trading_exec = raw_config.get("trading_execution", {})
     if not isinstance(trading_exec, dict):
@@ -159,6 +166,10 @@ def _build_backtest_config(
         session_liquidity_router=parse_session_liquidity_router(
             raw_config.get("strategy", {}).get("session_liquidity_router")
         ),
+        basis_premium_filter=with_calibrated_threshold(
+            parse_basis_premium_filter(raw_config.get("strategy", {}).get("basis_premium_filter")),
+            basis_calibrated_threshold,
+        ),
         allow_short=False,
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
@@ -177,6 +188,44 @@ def _build_backtest_config(
 
 async def _run_backtest(reader: IndicatorReader, config: BacktestConfig) -> BacktestResult:
     return await BacktestEngine(config, reader).run()
+
+
+async def _calibrate_basis_threshold(
+    *,
+    symbol: str,
+    timeframe: str,
+    filter_config: BasisPremiumFilterConfig,
+    train_start: str,
+    train_end: str,
+) -> float | None:
+    """Calibrate positive tail threshold from train window only (no lookahead)."""
+    if not filter_config.enabled:
+        return None
+
+    metric_column = "basis_bps" if filter_config.tail_metric == "basis_bps" else "premium_index"
+    query = f"""
+        SELECT {metric_column} AS metric_value
+        FROM perp_basis_metrics
+        WHERE exchange = $1
+          AND symbol = $2
+          AND timeframe = $3
+          AND time >= $4
+          AND time < $5
+        ORDER BY time ASC
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            query,
+            filter_config.exchange,
+            symbol,
+            timeframe,
+            datetime.fromisoformat(train_start),
+            datetime.fromisoformat(train_end),
+        )
+
+    values = [float(row["metric_value"]) for row in rows if row["metric_value"] is not None]
+    return compute_positive_tail_threshold(values, filter_config.positive_tail_pct)
 
 
 def _render_markdown(
@@ -216,6 +265,7 @@ def _render_markdown(
     lines.append(f"| Bootstrap P(loss) | {summary.bootstrap_p_loss_pct:.2f}% |")
     lines.append(f"| Profit concentration | {summary.profit_concentration_pct:.2f}% |")
     lines.append(f"| Blocked BUY (session router) | {summary.blocked_buy_count} |")
+    lines.append(f"| Blocked BUY (basis filter) | {summary.basis_blocked_buy_count} |")
     lines.append("")
 
     if windows:
@@ -287,6 +337,27 @@ async def main() -> None:
         start = args.start or range_start
         end = args.end or range_end
 
+        basis_filter = parse_basis_premium_filter(
+            raw_config.get("strategy", {}).get("basis_premium_filter")
+        )
+
+        windows = build_wfo_windows(
+            start=start,
+            end=end,
+            train_months=args.train_months,
+            test_months=args.test_months,
+        )
+
+        baseline_threshold: float | None = None
+        if basis_filter.enabled and windows:
+            baseline_threshold = await _calibrate_basis_threshold(
+                symbol=symbol,
+                timeframe=timeframe,
+                filter_config=basis_filter,
+                train_start=windows[0].train_start,
+                train_end=windows[0].train_end,
+            )
+
         base_config = _build_backtest_config(
             settings=settings,
             raw_config=raw_config,
@@ -301,21 +372,24 @@ async def main() -> None:
             disable_trend_filter=args.disable_trend_filter,
             replay_sentiment_path=args.replay_sentiment_log,
             replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+            basis_calibrated_threshold=baseline_threshold,
         )
 
         reader = IndicatorReader(db_config)
         async with reader:
             baseline = await _run_backtest(reader, base_config)
 
-            windows = build_wfo_windows(
-                start=start,
-                end=end,
-                train_months=args.train_months,
-                test_months=args.test_months,
-            )
-
             window_results: list[WfoWindowResult] = []
             for index, window in enumerate(windows, start=1):
+                window_threshold: float | None = None
+                if basis_filter.enabled:
+                    window_threshold = await _calibrate_basis_threshold(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        filter_config=basis_filter,
+                        train_start=window.train_start,
+                        train_end=window.train_end,
+                    )
                 window_config = _build_backtest_config(
                     settings=settings,
                     raw_config=raw_config,
@@ -330,6 +404,7 @@ async def main() -> None:
                     disable_trend_filter=args.disable_trend_filter,
                     replay_sentiment_path=args.replay_sentiment_log,
                     replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+                    basis_calibrated_threshold=window_threshold,
                 )
                 window_backtest = await _run_backtest(reader, window_config)
                 window_results.append(
@@ -375,6 +450,7 @@ async def main() -> None:
             bootstrap_p_loss_pct=bootstrap_p_loss_pct,
             profit_concentration_pct=profit_concentration_pct(oos_returns),
             blocked_buy_count=baseline.blocked_buy_count,
+            basis_blocked_buy_count=baseline.basis_blocked_buy_count,
             passes_gates=False,
             failure_reasons=[],
         )
@@ -433,6 +509,7 @@ async def main() -> None:
     print(f"Bootstrap P(loss): {summary.bootstrap_p_loss_pct:.2f}%")
     print(f"Profit concentration: {summary.profit_concentration_pct:.2f}%")
     print(f"Blocked BUY (session router): {summary.blocked_buy_count}")
+    print(f"Blocked BUY (basis filter): {summary.basis_blocked_buy_count}")
     if summary.failure_reasons:
         print("Failures:")
         for reason in summary.failure_reasons:

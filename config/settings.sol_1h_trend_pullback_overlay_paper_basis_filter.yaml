@@ -1,0 +1,107 @@
+agent_id: sol-1h-trend-pullback-overlay-basis-filter-paper
+display_name: sol-1h-trend-pullback-overlay-basis-filter-paper
+mode: paper
+
+trading:
+  pairs:
+    - SOLUSDT
+  timeframe: 1h
+
+ingest:
+  use_websocket: false
+
+telegram:
+  enabled: false
+  daily_summary_enabled: true
+
+trading_execution:
+  # Paper/probe default. Do not enable live execution from this file without a
+  # separate promotion review.
+  enabled: false
+  test_mode: true
+  use_atr_sizing: false
+  order_size_usdt: 22.0
+  sl_atr_multiplier: 2.38
+  tp_atr_multiplier: 4.23
+  trailing_activate_atr: 1.82
+  trailing_offset_atr: 1.07
+
+futures:
+  enabled: false
+  test_mode: true
+  default_leverage: 1
+  max_leverage: 3
+  margin_mode: isolated
+  position_mode: one-way
+  liquidation_buffer_pct: 5.0
+  max_concurrent_longs: 1
+  sl_cooldown_minutes: 240
+  symbols:
+    - SOLUSDT
+
+strategy:
+  default_trading_mode: spot
+  evaluation_interval_seconds: 3600
+  global_trend_filter_buffer_pct: 0.0
+  basis_premium_filter:
+    enabled: true
+    exchange: binance_usdm
+    tail_metric: basis_bps
+    positive_tail_pct: 0.05
+    block_positive_tail_longs: true
+    missing_data_policy: allow
+  strategies:
+    - name: rsi_reversal
+      config:
+        rsi_period: 7
+        oversold_threshold: 35
+        overbought_threshold: 65
+    - name: macd_histogram
+      config:
+        min_histogram_threshold: 0.0
+        use_atr_filter: true
+        atr_min_pct: 0.0078
+    - name: bollinger_bounce
+      config:
+        band_distance_threshold: 0.0049
+        rsi_oversold: 35
+        rsi_overbought: 70
+    - name: cci_breakout
+      config:
+        cci_buy_threshold: 100
+        cci_sell_threshold: -100
+        atr_min_pct: 0.0114
+    - name: vwap_reversion
+      config:
+        vwap_atr_multiplier: 2.02
+        rsi_oversold: 40
+        rsi_overbought: 60
+    - name: trend_pullback
+      config:
+        rsi_reclaim_level: 50
+        min_trend_strength_pct: 0.0089
+        max_pullback_distance_pct: 0.0291
+        vwap_pullback_distance_pct: 0.0151
+        min_atr_pct: 0.0064
+        min_macd_hist: -0.0084
+        strong_trend_strength_pct: 0.0153
+        continuation_rsi_level: 52
+        continuation_max_vwap_distance_pct: 0.0434
+        continuation_max_ema50_extension_pct: 0.0361
+        continuation_min_macd_hist: -0.0054
+  aggregator:
+    buy_threshold: 1.27
+    buy_threshold_uptrend: 1.07
+    sell_threshold: -0.79
+    btc_regime_filter_enabled: true
+    btc_reference_symbol: BTCUSDT
+    btc_dump_threshold_pct: -1.0
+    btc_dump_require_below_ema200: true
+    min_confidence: 0.04
+  per_symbol_aggregator_config:
+    SOLUSDT:
+      min_agreement: 1
+      buy_threshold: 1.27
+      buy_threshold_uptrend: 1.07
+      sell_threshold: -0.79
+      sell_min_agreement: 1

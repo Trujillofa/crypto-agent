@@ -15,6 +15,7 @@ from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
+from src.strategy.basis_premium_filter import parse_basis_premium_filter
 from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger
 
@@ -136,6 +137,9 @@ async def main():
         session_liquidity_router=parse_session_liquidity_router(
             raw_config.get("strategy", {}).get("session_liquidity_router")
         ),
+        basis_premium_filter=parse_basis_premium_filter(
+            raw_config.get("strategy", {}).get("basis_premium_filter")
+        ),
         time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
@@ -181,6 +185,12 @@ async def main():
         f"windows={list(config.session_liquidity_router.allowed_windows)}"
     )
     print(
+        "Basis Filter: "
+        f"enabled={config.basis_premium_filter.enabled}, "
+        f"metric={config.basis_premium_filter.tail_metric}, "
+        f"tail={config.basis_premium_filter.positive_tail_pct:.2f}"
+    )
+    print(
         f"Execution: futures={config.futures_mode}, leverage={config.futures_leverage}x, "
         f"fixed_notional=${config.fixed_notional_usdt:.2f}, fee={config.fee_rate:.4f}, "
         f"quantity_step={config.quantity_step_size:g}, "
@@ -206,6 +216,7 @@ async def main():
     print("=" * 40)
     print(f"Total Trades: {result.total_trades}")
     print(f"Blocked BUY (session router): {result.blocked_buy_count}")
+    print(f"Blocked BUY (basis filter): {result.basis_blocked_buy_count}")
     print(f"Win Rate:     {result.win_rate:.2f}%")
     print(f"Total Return: ${result.total_return:.2f} ({result.total_return_pct:.2f}%)")
     print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")
