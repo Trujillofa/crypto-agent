@@ -36,10 +36,10 @@ Wave 9 funding-primary SOL was **closed** (0/80 standard passes).
 Wave 10 Option F (`volatility_squeeze_bounded`, BTC/ETH 1h) was **closed** — 0/80
 standard passes (see ledger). Session router v1 **closed** (WFO A/B REJECT).
 
-**Active work (data-first, no autoresearch):**
-[`../specs/basis-premium-data-ingestion-brief-v0.md`](../specs/basis-premium-data-ingestion-brief-v0.md)
-— Binance USDT-M mark/index/premium index history → coverage audit → cheap probe.
-**Do not** add SOL overlay routers/filters or new live agents until probe passes.
+**Active work (basis risk filter, no autoresearch yet):**
+[`../specs/basis-premium-risk-filter-surface-v0.md`](../specs/basis-premium-risk-filter-surface-v0.md)
+— default-off long filter on crowded positive premium; probe **HAS_PULSE**.
+Next: backtest A/B → WFO A/B on SOL overlay. **Do not** add live agents until Phase 2 pass.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.

@@ -3,7 +3,7 @@
 **Status:** approved for engineering — **no strategy probe until coverage audit passes**
 **Date:** 2026-06-05
 **Prerequisite:** Gate discipline validated; OHLCV/session/funding-primary lanes closed on SOL overlay
-**Next probe (blocked):** `basis-premium-primary-surface-v0.md` — write only after Phase 2 probe passes
+**Surface (filter-first):** [`basis-premium-risk-filter-surface-v0.md`](./basis-premium-risk-filter-surface-v0.md)
 
 ---
 
@@ -199,7 +199,7 @@ Fail → **CLOSED** in ledger; do not write strategy brief.
 |---------|--------|
 | Audit fails after backfill | Fix ingest; do not probe |
 | Probe `NO_PULSE` | Close lane; keep table for future research |
-| Probe `HAS_PULSE` | Write `basis-premium-primary-surface-v0.md`; filter-first |
+| Probe `HAS_PULSE` | Write `basis-premium-risk-filter-surface-v0.md`; filter-first |
 | Probe `HAS_PULSE` but WFO fails later | Close strategy lane; retain data infra |
 
 ---

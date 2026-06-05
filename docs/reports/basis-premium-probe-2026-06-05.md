@@ -76,7 +76,7 @@ Unlike funding-normalization (NO_PULSE at default thresholds), basis tails fire 
 | Action | Status |
 |--------|--------|
 | Close data lane | **No** — infra validated |
-| Write `basis-premium-primary-surface-v0.md` | **Yes** — next doc step |
+| Write `basis-premium-risk-filter-surface-v0.md` | **Yes** — done |
 | Implementation / autoresearch | **No** until surface brief + filter-first design |
 | Live / paper config | **No** |
 

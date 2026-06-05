@@ -249,7 +249,8 @@ Audit: `scripts/audit_basis_premium_coverage.py` (≥95% OHLCV overlap, gap chec
 **2026-06-05 update:** backfill done (prod ~21k bars/symbol). Audit **PROBE_READY**.
 Probe [`basis-premium-probe-2026-06-05.md`](./basis-premium-probe-2026-06-05.md): **HAS_PULSE**
 (exreme positive premium → forward drift + worse MAE on BTC/SOL; filter-first, not primary entry).
-Next: `basis-premium-primary-surface-v0.md` only — **no** autoresearch/live until surface + overlay A/B.
+Surface: `basis-premium-risk-filter-surface-v0.md` (filter-first). **No** autoresearch/live
+until backtest + WFO A/B per surface hard stops.
 
 ## Wave 3 — Bridge + funding
 
