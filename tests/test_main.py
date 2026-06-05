@@ -93,18 +93,17 @@ def test_collect_required_timeframes_includes_main_and_declared() -> None:
     tfs = _collect_required_timeframes([SimpleMACrossoverStrategy], "4h")
     assert tfs == {"4h"}
 
-    """MTF strategies pull in their declared TFs (entry/regime etc.)."""
+    # MTF strategies pull in their declared TFs (entry/regime etc.).
     tfs = _collect_required_timeframes([MTFStrategyTemplate], "1h")
     assert tfs == {"1h", "4h"}
 
-    """Collector is fully generic over dict values (matches engine + backtest)."""
-
+    # Collector is fully generic over dict values (matches engine + backtest).
     class _GenericMTF:
         REQUIRED_TIMEFRAMES = {"entry": "15m", "trend": "1d", "ignored": 123}
 
     tfs = _collect_required_timeframes([_GenericMTF], "1h")
     assert tfs == {"1h", "15m", "1d"}
 
-    """Mixed strategies produce the union."""
+    # Mixed strategies produce the union.
     tfs = _collect_required_timeframes([SimpleMACrossoverStrategy, MTFStrategyTemplate], "1h")
     assert tfs == {"1h", "4h"}
