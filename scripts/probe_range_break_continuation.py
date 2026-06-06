@@ -21,7 +21,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from src.db import close_pool, init_pool
-from src.utils.logger import configure_logger
+from src.utils.logger import configure_logger, get_logger
 
 PROBE_QUERY = """
     SELECT
@@ -580,7 +580,8 @@ def probe_symbol(
 
 
 async def run_probe(config: ProbeConfig) -> ProbeReport:
-    logger = configure_logger("probe.range_break_continuation")
+    configure_logger("INFO")
+    logger = get_logger("probe.range_break_continuation")
     pool = await init_pool(build_db_config())
     try:
         summaries: list[SymbolProbeSummary] = []
