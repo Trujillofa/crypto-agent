@@ -71,8 +71,8 @@ def test_backtest_open_short_sets_inverted_atr_sl_tp() -> None:
 
 
 @pytest.mark.asyncio
-async def test_strategy_engine_suppresses_sell_from_flat() -> None:
-    """P0 gap: runtime path cannot open shorts via SELL consensus."""
+async def test_strategy_engine_suppresses_sell_from_flat_by_default() -> None:
+    """Default long-only: SELL-from-flat suppressed when allow_short_entry=False."""
     reader = IndicatorReader({})
     reader._connected = True
 

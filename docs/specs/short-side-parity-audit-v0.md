@@ -19,9 +19,10 @@ independent directionality before more long-only agents.
 | **Portfolio / risk models** | **Mostly yes** | PnL, liquidation math SHORT-aware |
 | **Telegram / reporting** | **No** | BUY/SELL labels only; short entry indistinguishable from long close |
 
-**Conclusion:** Do **not** start a short strategy campaign or WFO lane until parity
-blockers below are resolved. A cheap crowding/basis **short probe** may use backtest
-with fixed-% SL/TP only — not production configs using `backtest_use_executor_exit_model`.
+**Conclusion:** Short **WFO** is unblocked after backtest executor-exit parity (P0
+backtest, done). Short **paper shadow** requires engine + paper wiring (Step 2).
+Short **live/testnet** requires futures executor MVP and reporting fixes. Do not
+conflate these gates — cheap short probes must not wait on live executor work.
 
 ---
 
@@ -159,15 +160,30 @@ positions.
 
 ---
 
+## Gate Classification (by milestone)
+
+| Milestone | Required | Status |
+|-----------|----------|--------|
+| **Short WFO / backtest research** | Backtest executor-exit parity | **Done** (2026-06-05) |
+| **Paper shadow** | Engine short-entry gate + `allow_short_entry` wiring | **Done** (2026-06-05) |
+| **Live / testnet promotion** | Futures short MVP, side-aware PnL, inverted SL/TP, guards, Telegram | Not started |
+
 ## Blockers Before Short Research
 
-### P0 — must fix before any short WFO or paper shadow
+### Before short WFO (backtest only)
 
 1. ~~Backtest: mirror `_open_long` ATR SL/TP + trailing in `_open_short` /
    `_check_executor_exit`.~~ **Done** (2026-06-05).
-2. Strategy engine: distinguish short-entry SELL from exit SELL (config-gated).
-3. Live futures: short branch in `on_signal`, inverted SL/TP, BUY close, correct PnL.
-4. Wire `allow_short_entry` from settings into paper (and live when ready).
+
+### Before paper shadow
+
+2. ~~Strategy engine: allow SELL-from-flat only when `allow_short_entry=True` (default off).~~ **Done**.
+3. ~~Wire `strategy.allow_short_entry` from settings into `PaperTradingConfig` + `EngineConfig`.~~ **Done**.
+
+### Before live / testnet (not required for WFO or paper)
+
+4. Live futures: short branch in `on_signal`, inverted SL/TP, BUY close, correct PnL.
+5. Wire `allow_short_entry` into live futures config when MVP is ready.
 
 ### P1 — before live short promotion
 
@@ -192,8 +208,9 @@ and parity tests pass.
 | Step | Task | Gate |
 |------|------|------|
 | 1 | Fix backtest short executor-exit parity + tests | **Done** |
-| 2 | Wire paper `allow_short_entry`; engine short-entry gate | Paper short E2E test |
-| 3 | Live futures short MVP (paper-first, then testnet) | Manual testnet checklist |
+| 2 | Wire paper `allow_short_entry`; engine short-entry gate | **Done** |
+| 3 | Cheap short crowding probe (funding + premium) | HAS_PULSE / NO_PULSE |
+| 4 | Live futures short MVP (testnet only) | Manual testnet checklist |
 | 4 | Cheap probe: basis/crowding **short** hypothesis (funding + premium) | HAS_PULSE / NO_PULSE |
 | 5 | Surface brief (only if probe pulses) | Human review |
 | 6 | Strategy/backtest lane | WFO with parity configs |

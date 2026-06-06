@@ -146,3 +146,19 @@ class TestLoadSettings:
         assert settings.strategy.mirror_spot_to_futures is True
 
         config_path.unlink()
+
+    def test_allow_short_entry_defaults_false(self) -> None:
+        config = {
+            "trading": {"pairs": ["BTCUSDT"]},
+            "database": {},
+            "strategy": {},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(config, f)
+            config_path = Path(f.name)
+
+        settings = load_settings(config_path)
+
+        assert settings.strategy.allow_short_entry is False
+
+        config_path.unlink()

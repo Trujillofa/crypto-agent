@@ -265,7 +265,7 @@ Keep `perp_basis_metrics` data infra for future non-SOL or cross-venue briefs.
 
 ## Short-side parity audit (in progress)
 
-**Status:** audit complete; P0 backtest executor-exit parity **done**; runtime P0 next.
+**Status:** backtest P0 + paper short-entry wiring done; short crowding probe next.
 
 **Goal:** determine whether the system can safely research and paper short strategies
 without hidden mismatch in SL/TP, liquidation risk, sizing, Telegram reporting, PnL

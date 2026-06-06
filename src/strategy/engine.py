@@ -45,6 +45,7 @@ class EngineConfig:
     session_liquidity_router: SessionLiquidityRouterConfig = field(
         default_factory=SessionLiquidityRouterConfig
     )
+    allow_short_entry: bool = False
 
 
 class StrategyEngine:
@@ -103,8 +104,8 @@ class StrategyEngine:
         """Register a callable that returns True when the agent holds a position.
 
         Signature: checker(symbol, trading_mode) -> bool
-        When set, SELL signals are suppressed to HOLD for flat positions,
-        preventing strategy exit signals from reaching the executor unnecessarily.
+        When set, SELL-from-flat is suppressed to HOLD unless ``allow_short_entry``
+        is enabled (short-entry intent). SELL with an open position is forwarded.
         """
         self._position_checker = checker
 
@@ -229,9 +230,10 @@ class StrategyEngine:
                     final_signal.type == SignalType.SELL
                     and self._position_checker is not None
                     and not self._position_checker(symbol, final_signal.trading_mode)
+                    and not self._config.allow_short_entry
                 ):
                     self._logger.debug(
-                        "SELL suppressed for %s: no open %s position",
+                        "SELL suppressed for %s: no open %s position (allow_short_entry=False)",
                         symbol,
                         final_signal.trading_mode,
                     )

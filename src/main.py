@@ -116,6 +116,7 @@ class StrategySettings:
     session_liquidity_router: SessionLiquidityRouterConfig = field(
         default_factory=SessionLiquidityRouterConfig
     )
+    allow_short_entry: bool = False
 
 
 @dataclass(frozen=True)
@@ -346,6 +347,11 @@ def load_settings(config_path: Path) -> Settings:
         ),
         session_liquidity_router=parse_session_liquidity_router(
             strategy.get("session_liquidity_router")
+        ),
+        allow_short_entry=_as_bool(
+            strategy.get("allow_short_entry"),
+            "strategy.allow_short_entry",
+            default=False,
         ),
     )
 
@@ -1071,6 +1077,7 @@ async def run() -> None:
                 default=240.0,
             ),
             timeframe=settings.timeframe,
+            allow_short_entry=settings.strategy.allow_short_entry,
         )
         paper_executor = PaperExecutor(
             config=paper_config,
@@ -1171,6 +1178,7 @@ async def run() -> None:
         global_trend_filter_enabled=settings.strategy.global_trend_filter_enabled,
         global_trend_filter_buffer_pct=settings.strategy.global_trend_filter_buffer_pct,
         session_liquidity_router=settings.strategy.session_liquidity_router,
+        allow_short_entry=settings.strategy.allow_short_entry,
     )
 
     # Lifecycle gate: warn if strategies aren't promoted to 'live' in DB
@@ -1214,7 +1222,7 @@ async def run() -> None:
 
     def _has_position(symbol: str, market: str) -> bool:
         pos = portfolio_manager.get_position(symbol, market=market)
-        return pos is not None and pos.quantity > 0
+        return pos is not None and pos.is_open
 
     strategy_engine.set_position_checker(_has_position)
 
