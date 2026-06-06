@@ -38,6 +38,7 @@ SOL overlay, not crowding mean-reversion, not session/premium/funding gates.
 | RS rotation v1 | Probe | PAUSED | Sparse, negative excess |
 | Short crowding (premium/funding) | Probe | WEAK_EDGE | Bullish crowding **continues up**; shorts lose |
 | Liquidity sweep / failed breakout (mean-reversion) | Probe | WEAK_EDGE | Continuation after 1h structural breaks on BTC/ETH/SOL; no mean-rev edge that also beats MAE |
+| Range-break / structural continuation (close-outside) | Probe | WEAK_EDGE / CLOSED | Confirmed 1h breaks (high+close > prior max or low+close < prior min + expansion) on BTC/ETH/SOL: dense events, flat/negative forward after fees, MAE not improved vs baseline. Both sides of 1h sweep/break family now closed. |
 | BTC/BNB 1h standalone/overlay | WFO sweeps | CLOSED | No edge / silent |
 | AVAX/ETH Wave-2 near-misses | bootstrap=1000 | REJECT | Edge collapsed at b=1000 |
 | SOL 4h / MTF breakout campaigns | WFO | REJECT | Sparse or over-trades / negative OOS |
@@ -118,6 +119,7 @@ quality, overlap with sentiment-macro, regime correlation.
 | Crowding mean-reversion as **entry** (long or short) | Basis + short crowding probes: continuation |
 | Premium/funding as **direct short entry** | Short crowding WEAK_EDGE |
 | Mean-reversion after 1h sweeps on BTC/ETH/SOL | Liquidity sweep probe WEAK_EDGE + short crowding: both show continuation (failed breakout/breakdown followed by drift, not fade). Banned unless new evidence appears. |
+| Continuation after 1h close-outside range break on BTC/ETH/SOL | Range-break continuation probe WEAK_EDGE: dense events (~600/side/symbol), but forward returns after fees flat/negative across 6h/12h/24h and MAE not controlled (often worse than random entry). Clear failure mode; both sides of the 1h sweep/break family closed. |
 | More SOL 1h aggregator/threshold tuning | Exhausted; live forward data pending |
 | Short live / paper shadow / futures MVP | No probe pulse; infra parked |
 | Autoresearch campaigns without cheap-probe HAS_PULSE | Gate discipline |
@@ -138,7 +140,23 @@ Must satisfy **all**:
 5. **Independent directionality** — prefer surfaces that do not pile on existing
    long-biased live agents.
 
-**Recommended next probe:** **Range-break / structural continuation** — trade *with* a sweep or breakout that closes and holds outside the prior N-bar range (not the fade back inside). Probe first on 6h/12h/24h forward (forward return + MAE + MFE + concentration) for BTC/ETH/SOL 1h. See new probe worktree. Liquidity-sweep mean-reversion variant is now explicitly banned per its WEAK_EDGE result.
+**Meta-lesson from closing both 1h range-structure lanes:**
+
+> 1h range events on majors are frequent but not independently predictive enough after fees and MAE gates.
+
+**Pause new price-action-only probes.** We have now tested enough OHLCV-only 1h structures (sweep-reject mean-rev + confirmed-break continuation) to see the pattern: they are too weak without another explanatory variable.
+
+**Best next direction (toward original goal of candidate #2):** Move away from single-symbol 1h OHLCV structure. The next primitive should require **new information** or a **different horizon**.
+
+Recommended ranking for next work:
+1. **Cross-venue basis / dislocation** — Best next surface if data can be added. Genuinely different from single-exchange premium. May capture arbitrage stress or venue imbalance. (Data-first: `feat/cross-venue-basis-ingestion` worktree.)
+2. **Higher timeframe portfolio regime** — 1d/4h regime classification that decides when agents should be active/inactive (portfolio-level risk allocator, not a 1h entry signal).
+3. **News/event calendar filter** — Macro/event-aware risk gating (if data source available).
+4. **Order book / liquidation data** — Potentially useful, but requires new ingestion + careful validation.
+
+Immediate: Merge + prune this probe branch. Keep Phase 0 weekly. Next worktree data-first, not another OHLCV probe. Continuing BTC/ETH/SOL 1h OHLCV probes is unlikely to produce a gate-passing independent agent.
+
+The goal remains candidate #2, but the path now needs a new data primitive.
 
 ---
 
@@ -153,16 +171,17 @@ Must satisfy **all**:
 | Short crowding entry | **Closed** |
 | Short infra | **Parked** |
 | Liquidity sweep / failed breakout (mean-reversion) | **Closed** — WEAK_EDGE ([probe report](./liquidity-sweep-probe-2026-06-06.md)) |
-| Range-break continuation probe | **Queued** — new isolated worktree/branch; probe only until HAS_PULSE |
-| New autoresearch campaigns | **Paused** — need new primitive outside banned family |
+| Range-break continuation probe | **Closed** — WEAK_EDGE ([probe report](./range-break-continuation-probe-2026-06-07.md)). Both sides of 1h sweep/break family closed. |
+| New autoresearch campaigns | **Paused** — need new primitive (data-first) outside banned family |
 
 ---
 
-## Operating rules (from 2026-06-06, post-liquidity close)
+## Operating rules (post range-break-continuation close, 2026-06-06)
 
-1. **No new campaigns** until range-break-continuation probe (or successor outside banned list) shows HAS_PULSE.
+1. **No new 1h price-action-only OHLCV probes** (sweep/break family on majors now both WEAK_EDGE/CLOSED with clear failure: dense events, no net forward edge after fees, no MAE control). Pause such lanes.
 2. **Phase 0 weekly** — non-negotiable (still the only real validation of the promoted technical agent).
 3. **Main branch** — production hotfixes + Phase 0 ops only.
-4. **Feature worktree (next surface)** — `crypto-agent-range-break-continuation` on `feat/range-break-continuation-probe`.
-5. **Merge to main** only after probe report + human review; no live changes from probes. Negative results (liquidity sweep CLOSED WEAK_EDGE) are recorded in main as part of the research ledger.
-6. **Do not reshape liquidity sweep** into a continuation variant under the old name — that would be a new primitive and must use a fresh branch/worktree.
+4. **Next worktree must be data-first** — e.g. `feat/cross-venue-basis-ingestion` (or higher-TF regime / event calendar). Not another single-symbol 1h OHLCV probe.
+5. **Merge negative results to main** (as done here) + prune worktree; they are useful only if canonical in the ledger.
+6. **Do not reshape this probe** (or the liquidity sweep). Failure mode is clear and broad. A reshape would be parameter fishing unless genuinely new data/variable is added.
+7. **Allowed next hypothesis family** rules still apply (different primitive, cheap probe first, standalone, WFO-realistic count, independent directionality). Prefer surfaces requiring new information (cross-venue basis > higher-TF regime > news filter > orderbook/liquidations).
