@@ -307,6 +307,31 @@ premium+funding dense but same continuation pattern.
 short entry primitive. **Do not** write surface brief, strategy lane, paper shadow, or
 live futures short MVP from this probe. Keep data infra.
 
+## Research reset (2026-06-06)
+
+**Status:** campaigns paused; Phase 0 only on live agents.
+
+Report: [`research-reset-2026-06-06.md`](./research-reset-2026-06-06.md).
+
+Summarizes failed surfaces, repeated failure modes (continuation > mean-reversion,
+overlay attachment, MAE-only), banned hypotheses, and allowed next family (price
+structure, not crowding/session/funding gates).
+
+**Operating rule:** no autoresearch campaigns until next cheap probe shows HAS_PULSE.
+
+## Liquidity sweep / failed breakout probe (QUEUED)
+
+**Status:** probe script on `feat/liquidity-sweep-probe`; prod run pending.
+
+Spec: [`liquidity-sweep-probe-v0.md`](../specs/liquidity-sweep-probe-v0.md).
+Script: `scripts/probe_liquidity_sweep.py`.
+
+Tests failed upside breakout (short) and failed downside breakdown (long) on BTC/ETH/SOL
+1h OHLCV. Requires **both** forward edge and MAE improvement (unlike short crowding).
+
+**Do not** implement strategy class, overlay attachment, or autoresearch until probe
+verdict is HAS_PULSE.
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |

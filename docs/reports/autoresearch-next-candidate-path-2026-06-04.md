@@ -41,16 +41,19 @@ concentration.
 
 **Active work:**
 
-1. **Phase 0 forward validation** (mandatory weekly).
-2. **Short-side parity audit** — `docs/specs/short-side-parity-audit-v0.md` (audit
-   complete; P0 fixes next). No short WFO or crowding probe until parity blockers
-   clear.
+1. **Phase 0 forward validation** (mandatory weekly) — only live validation path.
+2. **Liquidity sweep probe** — `feat/liquidity-sweep-probe` worktree; see
+   [`research-reset-2026-06-06.md`](./research-reset-2026-06-06.md) and
+   [`liquidity-sweep-probe-v0.md`](../specs/liquidity-sweep-probe-v0.md).
+
+**Paused:** autoresearch campaigns, short live MVP, SOL overlay filters.
 
 **Frozen:** SOL overlay filter/router modifications (session, basis, funding, hour,
-confidence gates). The promoted stack is a standalone live candidate, not a patch target.
+confidence gates). Short crowding entry lane closed (WEAK_EDGE). The promoted stack is
+a standalone live candidate, not a patch target.
 
-The next **strategy** lane after parity P0 is a new first-principles surface — not
-another filter on the same SOL stack.
+The next **strategy** lane is liquidity sweep / failed breakout (price structure) — not
+another filter on the same SOL stack and not crowding/session/funding gates.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
@@ -319,6 +322,8 @@ Decision rule:
 | 9 | Backtest short executor-exit parity | **done** |
 | 10 | Paper `allow_short_entry` + engine short-entry gate | **done** |
 | 11 | Cheap short crowding probe (funding + premium) | **done — WEAK_EDGE, lane closed** |
+| 12 | Research reset report | **done** — `research-reset-2026-06-06.md` |
+| 13 | Liquidity sweep / failed breakout cheap probe | **queued** — `probe_liquidity_sweep.py`; prod run pending |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
 initial relative-strength probe already hit the stop condition: sparse events and
@@ -357,6 +362,9 @@ Before adding any new tracked config:
 - Do not attach more filters/routers to the promoted SOL overlay (session, basis,
   funding, hour, confidence gates are closed).
 - Do not start short WFO before short-side parity P0 fixes land.
+- Do not reopen crowding mean-reversion, premium/funding short entry, or SOL overlay
+  filters (see research-reset banned list).
+- Do not start autoresearch until liquidity-sweep probe shows HAS_PULSE.
 
 ---
 
