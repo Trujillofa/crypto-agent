@@ -316,8 +316,9 @@ Decision rule:
 | 6 | Full impl + autoresearch only if probe HAS_PULSE | **blocked** — default thresholds failed |
 | 7 | Funding DB coverage | **done** — BTC/ETH/SOL backfilled |
 | 8 | Short-side parity audit | **done** — `short-side-parity-audit-v0.md`; P0 fixes next |
-| 9 | Backtest short executor-exit parity | **queued** |
-| 10 | Cheap short crowding probe (funding + premium) | **blocked** until step 9 |
+| 9 | Backtest short executor-exit parity | **done** |
+| 10 | Paper `allow_short_entry` + engine short-entry gate | **queued** |
+| 11 | Cheap short crowding probe (funding + premium) | **blocked** until step 10 |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
 initial relative-strength probe already hit the stop condition: sparse events and

@@ -1,7 +1,8 @@
-"""Document known short-side parity gaps (audit v0).
+"""Short-side parity assertions and remaining runtime gaps (audit v0).
 
-These tests encode current behavior. They are not failures to fix immediately —
-they guard against accidentally assuming short parity exists before P0 work lands.
+Backtest executor-exit parity for shorts is covered here and in
+``test_backtest_executor_exit_model.py``. Remaining tests document runtime gaps
+(engine, live futures, guards) not yet fixed.
 """
 
 from __future__ import annotations
@@ -47,14 +48,15 @@ def _mock_reader(rows: list[dict[str, object]]) -> IndicatorReader:
     return reader
 
 
-def test_backtest_open_short_leaves_atr_sl_tp_unset() -> None:
-    """P0 gap: _open_short does not set ATR SL/TP (unlike _open_long)."""
+def test_backtest_open_short_sets_inverted_atr_sl_tp() -> None:
+    """Backtest short executor-exit parity: inverted ATR SL/TP at entry."""
     config = BacktestConfig(
         symbol="SOLUSDT",
         timeframe="1h",
         start_date="2024-06-01",
         end_date="2024-06-04",
         use_executor_exit_model=True,
+        slippage_pct=0.0,
         sl_atr_multiplier=2.0,
         tp_atr_multiplier=4.0,
     )
@@ -62,8 +64,10 @@ def test_backtest_open_short_leaves_atr_sl_tp_unset() -> None:
     engine._open_short("2024-06-03T12:00:00", 100.0, 2.0)
 
     assert engine._position_qty < 0
-    assert engine._position_sl_price == 0.0
-    assert engine._position_tp_price == 0.0
+    assert engine._position_entry_price == pytest.approx(100.0)
+    assert engine._position_sl_price == pytest.approx(104.0)
+    assert engine._position_tp_price == pytest.approx(92.0)
+    assert engine._position_high_water_mark == pytest.approx(100.0)
 
 
 @pytest.mark.asyncio

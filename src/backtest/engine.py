@@ -348,9 +348,15 @@ class BacktestEngine:
         return False
 
     def _check_executor_exit(self, timestamp: str, high_price: float, low_price: float) -> bool:
-        if self._position_qty <= 0:
-            return self._check_fixed_exit(timestamp, high_price, low_price)
+        if self._position_qty > 0:
+            return self._check_executor_exit_long(timestamp, high_price, low_price)
+        if self._position_qty < 0:
+            return self._check_executor_exit_short(timestamp, high_price, low_price)
+        return False
 
+    def _check_executor_exit_long(
+        self, timestamp: str, high_price: float, low_price: float
+    ) -> bool:
         if self._position_atr > 0:
             if high_price > self._position_high_water_mark:
                 self._position_high_water_mark = high_price
@@ -370,6 +376,34 @@ class BacktestEngine:
                 self._close_position(timestamp, self._position_sl_price, reason="STOP_LOSS")
                 return True
             if self._position_tp_price > 0 and high_price >= self._position_tp_price:
+                self._close_position(timestamp, self._position_tp_price, reason="TAKE_PROFIT")
+                return True
+            return False
+
+        return self._check_fixed_exit(timestamp, high_price, low_price)
+
+    def _check_executor_exit_short(
+        self, timestamp: str, high_price: float, low_price: float
+    ) -> bool:
+        if self._position_atr > 0:
+            if low_price < self._position_high_water_mark:
+                self._position_high_water_mark = low_price
+
+            trailing_activation = (
+                self._position_entry_price - self._config.trailing_activate_atr * self._position_atr
+            )
+            if self._position_high_water_mark <= trailing_activation:
+                trailing_sl = (
+                    self._position_high_water_mark
+                    + self._config.trailing_offset_atr * self._position_atr
+                )
+                if self._position_sl_price == 0.0 or trailing_sl < self._position_sl_price:
+                    self._position_sl_price = trailing_sl
+
+            if self._position_sl_price > 0 and high_price >= self._position_sl_price:
+                self._close_position(timestamp, self._position_sl_price, reason="STOP_LOSS")
+                return True
+            if self._position_tp_price > 0 and low_price <= self._position_tp_price:
                 self._close_position(timestamp, self._position_tp_price, reason="TAKE_PROFIT")
                 return True
             return False
@@ -481,9 +515,21 @@ class BacktestEngine:
         self._position_entry_fee = fee
         self._position_entry_time = timestamp
         self._position_atr = atr if atr > 0 else 0.0
-        self._position_sl_price = 0.0
-        self._position_tp_price = 0.0
         self._position_high_water_mark = entry_price
+        if self._config.use_executor_exit_model and atr > 0:
+            self._position_sl_price = entry_price + self._config.sl_atr_multiplier * atr
+            self._position_tp_price = entry_price - self._config.tp_atr_multiplier * atr
+        else:
+            self._position_sl_price = (
+                entry_price * (1 + self._config.stop_loss_pct)
+                if self._config.stop_loss_pct > 0
+                else 0.0
+            )
+            self._position_tp_price = (
+                entry_price * (1 - self._config.take_profit_pct)
+                if self._config.take_profit_pct > 0
+                else 0.0
+            )
 
     def _close_position(self, timestamp: str, price: float, reason: str = "SIGNAL") -> None:
         is_long = self._position_qty > 0

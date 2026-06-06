@@ -1,6 +1,6 @@
 # Short-Side Execution / Backtest Parity Audit — v0
 
-**Status:** **IN PROGRESS** — audit complete; fixes not started
+**Status:** **IN PROGRESS** — P0 backtest executor-exit parity landed; runtime gaps remain
 **Date:** 2026-06-05
 **Trigger:** SOL overlay filter/router lanes closed; portfolio is long-biased and needs
 independent directionality before more long-only agents.
@@ -15,7 +15,7 @@ independent directionality before more long-only agents.
 | **Live futures executor** | **No** | Explicit LONG-only MVP; inverted SL/TP/PnL missing |
 | **Strategy engine (runtime)** | **No** | SELL-from-flat suppressed before executor |
 | **Paper executor** | **Partial** | Full short path exists behind `allow_short_entry=True`; not wired from `main.py` |
-| **Backtest engine** | **Partial** | `allow_short` opens/closes shorts; executor exit model is long-biased |
+| **Backtest engine** | **Partial** | Executor ATR SL/TP/trailing parity for shorts (P0 done); funding sign still long-biased |
 | **Portfolio / risk models** | **Mostly yes** | PnL, liquidation math SHORT-aware |
 | **Telegram / reporting** | **No** | BUY/SELL labels only; short entry indistinguishable from long close |
 
@@ -110,14 +110,14 @@ With `--allow-short`:
 | BUY + short → close short | Yes |
 | SELL + short → close | **No** (no-op) |
 | Fixed-% SL/TP | Yes (symmetric) |
-| Executor/ATR SL/TP at entry | **No** — `_open_short` zeros SL/TP |
-| Trailing stop | **No** — `_check_executor_exit` long-only when `qty > 0` |
+| Executor/ATR SL/TP at entry | **Yes** (P0, 2026-06-05) |
+| Trailing stop | **Yes** (P0, low-water mark + inverted triggers) |
 | Futures margin / PnL | Yes |
 | Funding | Always cost; no sign flip for shorts receiving funding |
 | Spot short | Synthetic (fee-only); not realistic |
 
-Production configs use `backtest_use_executor_exit_model: true` with ATR exits.
-Short backtests under those configs **do not get the same risk management as longs**.
+Tests: `tests/test_backtest_executor_exit_model.py` (short TP/SL/trailing),
+`tests/test_short_side_parity_audit.py::test_backtest_open_short_sets_inverted_atr_sl_tp`.
 
 ### 5. Portfolio (`src/portfolio/models.py`, `manager.py`)
 
@@ -148,14 +148,14 @@ positions.
 |------------|-------------|---------------|------------------|
 | Open from signal | BUY | Blocked (engine + executor) | **P0** |
 | Close from signal | SELL | BUY only (paper/backtest) | P1 |
-| ATR SL/TP at entry | Yes | Paper yes; live no; backtest no | **P0** for WFO |
-| Trailing stop | Yes | Paper yes; live no; backtest no | P1 |
+| ATR SL/TP at entry | Yes | Paper yes; live no; backtest **yes** | P1 for live |
+| Trailing stop | Yes | Paper yes; live no; backtest **yes** | P1 for live |
 | Live PnL on close | Correct | LONG formula | **P0** for live |
 | Liquidation handling | Alert | Alert (SHORT-aware) | P2 |
 | Position-limit guard on entry | BUY checked | SELL bypassed | P1 |
 | Telegram clarity | BUY/SELL | Ambiguous | P2 |
-| Backtest ↔ live parity | Good | Poor | **P0** for research |
-| WFO with executor exit model | Good | Broken SL/TP | **P0** for research |
+| Backtest ↔ live parity | Good | Partial (backtest fixed) | P1 for live |
+| WFO with executor exit model | Good | **Yes** (backtest P0) | Unblocks short WFO research |
 
 ---
 
@@ -163,9 +163,9 @@ positions.
 
 ### P0 — must fix before any short WFO or paper shadow
 
-1. Strategy engine: distinguish short-entry SELL from exit SELL (config-gated).
-2. Backtest: mirror `_open_long` ATR SL/TP + trailing in `_open_short` /
-   `_check_executor_exit`.
+1. ~~Backtest: mirror `_open_long` ATR SL/TP + trailing in `_open_short` /
+   `_check_executor_exit`.~~ **Done** (2026-06-05).
+2. Strategy engine: distinguish short-entry SELL from exit SELL (config-gated).
 3. Live futures: short branch in `on_signal`, inverted SL/TP, BUY close, correct PnL.
 4. Wire `allow_short_entry` from settings into paper (and live when ready).
 
@@ -191,7 +191,7 @@ and parity tests pass.
 
 | Step | Task | Gate |
 |------|------|------|
-| 1 | Fix backtest short executor-exit parity + tests | Unit tests green |
+| 1 | Fix backtest short executor-exit parity + tests | **Done** |
 | 2 | Wire paper `allow_short_entry`; engine short-entry gate | Paper short E2E test |
 | 3 | Live futures short MVP (paper-first, then testnet) | Manual testnet checklist |
 | 4 | Cheap probe: basis/crowding **short** hypothesis (funding + premium) | HAS_PULSE / NO_PULSE |
