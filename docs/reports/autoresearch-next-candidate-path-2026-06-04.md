@@ -138,6 +138,23 @@ Priority lanes:
 
 Avoid BNB first; recent BNB 1h evidence was too silent or concentration-heavy.
 
+---
+
+## Post-liquidity (2026-06-06): Current research surface
+
+**Banned (per research-reset-2026-06-06.md):** mean-reversion after 1h sweeps / failed breakouts on BTC/ETH/SOL (liquidity sweep probe CLOSED WEAK_EDGE; both it and short crowding showed continuation, not fade).
+
+**Active cheap probe lane:** Range-break / structural continuation.
+
+- New primitive: trade *with* a range sweep/breakout that *closes outside* the prior lookback range (confirmed break, not the reject).
+- Script: `scripts/probe_range_break_continuation.py`
+- Spec: `docs/specs/range-break-continuation-probe-v0.md`
+- Gate: HAS_PULSE requires forward edge **and** MAE improvement (same thresholds as liquidity probe).
+- Worktree (when opened): `crypto-agent-range-break-continuation` on `feat/range-break-continuation-probe`.
+- Do not attach to SOL overlay; standalone surface first. Probe → report → only then consider strategy.
+
+See updated [research-reset-2026-06-06.md](./research-reset-2026-06-06.md) (operating rules + banned table + lane map). Phase 0 continues; campaigns paused.
+
 Design requirements:
 
 - explicit BTC/market regime gate,
