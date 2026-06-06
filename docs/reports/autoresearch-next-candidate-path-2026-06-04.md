@@ -39,8 +39,18 @@ Basis premium risk filter was also **closed** after WFO A/B on the promoted SOL
 overlay: it blocked only one WFO BUY and did not improve DD, P(loss), or
 concentration.
 
-**Active work:** Phase 0 forward validation only. The next research lane must be a
-new first-principles brief, not another SOL overlay filter/router.
+**Active work:**
+
+1. **Phase 0 forward validation** (mandatory weekly).
+2. **Short-side parity audit** — `docs/specs/short-side-parity-audit-v0.md` (audit
+   complete; P0 fixes next). No short WFO or crowding probe until parity blockers
+   clear.
+
+**Frozen:** SOL overlay filter/router modifications (session, basis, funding, hour,
+confidence gates). The promoted stack is a standalone live candidate, not a patch target.
+
+The next **strategy** lane after parity P0 is a new first-principles surface — not
+another filter on the same SOL stack.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
@@ -249,15 +259,19 @@ Run this only after confirming funding data coverage in production DB.
 **Why:** Current live technical edge is long-biased. Additional agents may remain
 correlated during broad selloffs unless a controlled short-side surface exists.
 
-Precondition:
+**Precondition (audit complete 2026-06-05):** `docs/specs/short-side-parity-audit-v0.md`.
+Verdict: **not safe** for short WFO or live until P0 blockers clear (live futures
+LONG-only, engine suppresses SELL-from-flat, backtest executor exit model long-biased).
+
+P0 fixes required before any short probe:
 
 - futures execution supports the exact short lifecycle safely,
-- risk manager blocks liquidation proximity for shorts,
-- notifications clearly distinguish long and short entries,
-- backtest exit model matches live futures short SL/TP behavior.
+- backtest exit model matches live/paper short SL/TP behavior,
+- strategy engine distinguishes short-entry SELL from exit SELL,
+- `allow_short_entry` wired from settings for paper.
 
-Do not launch short-side live from research alone. First create a dedicated
-paper/shadow candidate and run an execution parity review.
+Do not launch short-side live from research alone. Sequence: P0 parity → cheap
+crowding/basis short probe → surface brief only if HAS_PULSE → standalone strategy lane.
 
 Candidate surfaces:
 
@@ -301,7 +315,9 @@ Decision rule:
 | 5 | Cheap funding-normalization probe (BTC/ETH/SOL) | **done** — see [funding-normalization-probe-2026-06-04.md](./funding-normalization-probe-2026-06-04.md) |
 | 6 | Full impl + autoresearch only if probe HAS_PULSE | **blocked** — default thresholds failed |
 | 7 | Funding DB coverage | **done** — BTC/ETH/SOL backfilled |
-| 8 | Short-side feasibility review | **queued** |
+| 8 | Short-side parity audit | **done** — `short-side-parity-audit-v0.md`; P0 fixes next |
+| 9 | Backtest short executor-exit parity | **queued** |
+| 10 | Cheap short crowding probe (funding + premium) | **blocked** until step 9 |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
 initial relative-strength probe already hit the stop condition: sparse events and
@@ -337,6 +353,9 @@ Before adding any new tracked config:
 - Do not deploy from bootstrap=100.
 - Do not lower gates to reach 5-10 agents.
 - Do not add more SOL 1h technical variants without entry-overlap proof.
+- Do not attach more filters/routers to the promoted SOL overlay (session, basis,
+  funding, hour, confidence gates are closed).
+- Do not start short WFO before short-side parity P0 fixes land.
 
 ---
 

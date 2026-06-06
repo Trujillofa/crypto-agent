@@ -263,6 +263,35 @@ and did not improve DD, P(loss), or concentration. **Do not** create paper shado
 **do not** attach to live SOL overlay, and **do not** run autoresearch on this filter.
 Keep `perp_basis_metrics` data infra for future non-SOL or cross-venue briefs.
 
+## Short-side parity audit (in progress)
+
+**Status:** audit complete; P0 fixes not started.
+
+**Goal:** determine whether the system can safely research and paper short strategies
+without hidden mismatch in SL/TP, liquidation risk, sizing, Telegram reporting, PnL
+accounting, and circuit breakers — **before** any short crowding/basis probe or WFO lane.
+
+Brief: `docs/specs/short-side-parity-audit-v0.md`.
+Tests: `tests/test_short_side_parity_audit.py`.
+
+**Verdict (2026-06-05):**
+
+| Layer | Safe for short research? |
+|-------|------------------------|
+| Live futures executor | **No** — LONG-only MVP |
+| Strategy engine | **No** — SELL-from-flat suppressed |
+| Paper executor | **Partial** — `allow_short_entry=True` only; not wired from `main.py` |
+| Backtest engine | **Partial** — `allow_short` works; executor exit model long-biased |
+| Portfolio models | Mostly yes |
+| Telegram | No — no LONG/SHORT labels |
+
+**Do not** start short WFO or attach short probes to the promoted SOL long overlay until
+P0 blockers in the audit brief are resolved. Next step after P0: cheap short crowding
+probe (funding + premium), then surface brief only if HAS_PULSE.
+
+**Freeze:** no more SOL overlay filter/router modifications unless live Phase 0 data
+shows a specific failure mode.
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
