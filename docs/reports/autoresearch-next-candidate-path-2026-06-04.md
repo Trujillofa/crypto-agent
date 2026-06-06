@@ -42,9 +42,9 @@ concentration.
 **Active work:**
 
 1. **Phase 0 forward validation** (mandatory weekly) — only live validation path.
-2. **Liquidity sweep probe** — `feat/liquidity-sweep-probe` worktree; see
-   [`research-reset-2026-06-06.md`](./research-reset-2026-06-06.md) and
-   [`liquidity-sweep-probe-v0.md`](../specs/liquidity-sweep-probe-v0.md).
+2. **Research reset complete** — [`research-reset-2026-06-06.md`](./research-reset-2026-06-06.md).
+   Liquidity sweep probe **closed WEAK_EDGE** — see
+   [`liquidity-sweep-probe-2026-06-06.md`](./liquidity-sweep-probe-2026-06-06.md).
 
 **Paused:** autoresearch campaigns, short live MVP, SOL overlay filters.
 
@@ -52,8 +52,8 @@ concentration.
 confidence gates). Short crowding entry lane closed (WEAK_EDGE). The promoted stack is
 a standalone live candidate, not a patch target.
 
-The next **strategy** lane is liquidity sweep / failed breakout (price structure) — not
-another filter on the same SOL stack and not crowding/session/funding gates.
+The next **strategy** lane must be a **new primitive outside** liquidity sweep, crowding,
+session, and SOL overlay filters — research reset banned list applies.
 
 Agent count is secondary. A second weak agent increases risk faster than it
 improves validation speed.
@@ -323,7 +323,7 @@ Decision rule:
 | 10 | Paper `allow_short_entry` + engine short-entry gate | **done** |
 | 11 | Cheap short crowding probe (funding + premium) | **done — WEAK_EDGE, lane closed** |
 | 12 | Research reset report | **done** — `research-reset-2026-06-06.md` |
-| 13 | Liquidity sweep / failed breakout cheap probe | **queued** — `probe_liquidity_sweep.py`; prod run pending |
+| 13 | Liquidity sweep / failed breakout cheap probe | **done — WEAK_EDGE, lane closed** |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
 initial relative-strength probe already hit the stop condition: sparse events and

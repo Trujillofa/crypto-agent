@@ -319,18 +319,21 @@ structure, not crowding/session/funding gates).
 
 **Operating rule:** no autoresearch campaigns until next cheap probe shows HAS_PULSE.
 
-## Liquidity sweep / failed breakout probe (QUEUED)
+## Liquidity sweep / failed breakout probe (complete, CLOSED)
 
-**Status:** probe script on `feat/liquidity-sweep-probe`; prod run pending.
+**Status:** probe WEAK_EDGE — lane closed at cheap-probe stage.
 
 Spec: [`liquidity-sweep-probe-v0.md`](../specs/liquidity-sweep-probe-v0.md).
 Script: `scripts/probe_liquidity_sweep.py`.
+Report: [`liquidity-sweep-probe-2026-06-06.md`](./liquidity-sweep-probe-2026-06-06.md).
 
-Tests failed upside breakout (short) and failed downside breakdown (long) on BTC/ETH/SOL
-1h OHLCV. Requires **both** forward edge and MAE improvement (unlike short crowding).
+**2026-06-06 prod run:** dense events (BTC 525 long / 429 short; similar ETH/SOL). Long
+failed breakdown shows marginal positive 12h forward on BTC/ETH but **worse MAE** than
+baseline. Short failed breakout negative forward on BTC/ETH (continuation up). No side
+passes forward **and** MAE gates together.
 
-**Do not** implement strategy class, overlay attachment, or autoresearch until probe
-verdict is HAS_PULSE.
+**Decision: CLOSED / WEAK_EDGE.** Do not write surface brief, strategy lane, or
+autoresearch. Next surface must be a **different primitive** (see research-reset).
 
 ## Wave 3 — Bridge + funding
 

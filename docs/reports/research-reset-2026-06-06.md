@@ -151,8 +151,8 @@ after sweep-and-reject (see [liquidity-sweep-probe-v0.md](../specs/liquidity-swe
 | Basis long filter | **Closed** (data infra kept) |
 | Short crowding entry | **Closed** |
 | Short infra | **Parked** |
-| Liquidity sweep / failed breakout | **Probe queued** (`feat/liquidity-sweep-probe`) |
-| New autoresearch campaigns | **Paused** until probe pulse |
+| Liquidity sweep / failed breakout | **Closed** — WEAK_EDGE ([probe report](./liquidity-sweep-probe-2026-06-06.md)) |
+| New autoresearch campaigns | **Paused** — need new primitive outside banned family |
 
 ---
 

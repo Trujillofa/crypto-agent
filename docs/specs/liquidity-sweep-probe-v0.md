@@ -1,6 +1,6 @@
 # Liquidity Sweep / Failed Breakout — Cheap Probe v0
 
-**Status:** **QUEUED** — implement on `feat/liquidity-sweep-probe`, run on prod DB
+**Status:** **CLOSED** — WEAK_EDGE on 2026-06-06 prod run; see [probe report](../reports/liquidity-sweep-probe-2026-06-06.md)
 **Date:** 2026-06-06
 **Prerequisite:** [research-reset-2026-06-06.md](../reports/research-reset-2026-06-06.md)
 **Script:** `scripts/probe_liquidity_sweep.py`
