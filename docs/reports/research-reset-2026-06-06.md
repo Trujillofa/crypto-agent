@@ -37,6 +37,7 @@ SOL overlay, not crowding mean-reversion, not session/premium/funding gates.
 | Vol squeeze bounded (BTC/ETH) | Autoresearch | CLOSED | 0/80 passes |
 | RS rotation v1 | Probe | PAUSED | Sparse, negative excess |
 | Short crowding (premium/funding) | Probe | WEAK_EDGE | Bullish crowding **continues up**; shorts lose |
+| Liquidity sweep / failed breakout (mean-reversion) | Probe | WEAK_EDGE | Continuation after 1h structural breaks on BTC/ETH/SOL; no mean-rev edge that also beats MAE |
 | BTC/BNB 1h standalone/overlay | WFO sweeps | CLOSED | No edge / silent |
 | AVAX/ETH Wave-2 near-misses | bootstrap=1000 | REJECT | Edge collapsed at b=1000 |
 | SOL 4h / MTF breakout campaigns | WFO | REJECT | Sparse or over-trades / negative OOS |
@@ -116,6 +117,7 @@ quality, overlap with sentiment-macro, regime correlation.
 | SOL overlay funding / vol squeeze / RS filters | Prior probes/campaigns closed |
 | Crowding mean-reversion as **entry** (long or short) | Basis + short crowding probes: continuation |
 | Premium/funding as **direct short entry** | Short crowding WEAK_EDGE |
+| Mean-reversion after 1h sweeps on BTC/ETH/SOL | Liquidity sweep probe WEAK_EDGE + short crowding: both show continuation (failed breakout/breakdown followed by drift, not fade). Banned unless new evidence appears. |
 | More SOL 1h aggregator/threshold tuning | Exhausted; live forward data pending |
 | Short live / paper shadow / futures MVP | No probe pulse; infra parked |
 | Autoresearch campaigns without cheap-probe HAS_PULSE | Gate discipline |
@@ -136,8 +138,7 @@ Must satisfy **all**:
 5. **Independent directionality** — prefer surfaces that do not pile on existing
    long-biased live agents.
 
-**Recommended next probe:** **Liquidity sweep / failed breakout** — price structure
-after sweep-and-reject (see [liquidity-sweep-probe-v0.md](../specs/liquidity-sweep-probe-v0.md)).
+**Recommended next probe:** **Range-break / structural continuation** — trade *with* a sweep or breakout that closes and holds outside the prior N-bar range (not the fade back inside). Probe first on 6h/12h/24h forward (forward return + MAE + MFE + concentration) for BTC/ETH/SOL 1h. See new probe worktree. Liquidity-sweep mean-reversion variant is now explicitly banned per its WEAK_EDGE result.
 
 ---
 
@@ -151,15 +152,17 @@ after sweep-and-reject (see [liquidity-sweep-probe-v0.md](../specs/liquidity-swe
 | Basis long filter | **Closed** (data infra kept) |
 | Short crowding entry | **Closed** |
 | Short infra | **Parked** |
-| Liquidity sweep / failed breakout | **Closed** — WEAK_EDGE ([probe report](./liquidity-sweep-probe-2026-06-06.md)) |
+| Liquidity sweep / failed breakout (mean-reversion) | **Closed** — WEAK_EDGE ([probe report](./liquidity-sweep-probe-2026-06-06.md)) |
+| Range-break continuation probe | **Queued** — new isolated worktree/branch; probe only until HAS_PULSE |
 | New autoresearch campaigns | **Paused** — need new primitive outside banned family |
 
 ---
 
-## Operating rules (from 2026-06-06)
+## Operating rules (from 2026-06-06, post-liquidity close)
 
-1. **No new campaigns** until liquidity-sweep probe (or successor) shows HAS_PULSE.
-2. **Phase 0 weekly** — non-negotiable.
+1. **No new campaigns** until range-break-continuation probe (or successor outside banned list) shows HAS_PULSE.
+2. **Phase 0 weekly** — non-negotiable (still the only real validation of the promoted technical agent).
 3. **Main branch** — production hotfixes + Phase 0 ops only.
-4. **Feature worktree** — `crypto-agent-liquidity-sweep` on `feat/liquidity-sweep-probe`.
-5. **Merge to main** only after probe report + human review; no live changes from probes.
+4. **Feature worktree (next surface)** — `crypto-agent-range-break-continuation` on `feat/range-break-continuation-probe`.
+5. **Merge to main** only after probe report + human review; no live changes from probes. Negative results (liquidity sweep CLOSED WEAK_EDGE) are recorded in main as part of the research ledger.
+6. **Do not reshape liquidity sweep** into a continuation variant under the old name — that would be a new primitive and must use a fresh branch/worktree.
