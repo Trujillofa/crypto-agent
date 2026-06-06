@@ -207,13 +207,13 @@ and parity tests pass.
 
 | Step | Task | Gate |
 |------|------|------|
-| 1 | Fix backtest short executor-exit parity + tests | **Done** |
-| 2 | Wire paper `allow_short_entry`; engine short-entry gate | **Done** |
-| 3 | Cheap short crowding probe (funding + premium) | HAS_PULSE / NO_PULSE |
-| 4 | Live futures short MVP (testnet only) | Manual testnet checklist |
-| 4 | Cheap probe: basis/crowding **short** hypothesis (funding + premium) | HAS_PULSE / NO_PULSE |
-| 5 | Surface brief (only if probe pulses) | Human review |
-| 6 | Strategy/backtest lane | WFO with parity configs |
+| 1 | Backtest short executor-exit parity | **Done** |
+| 2 | Paper short-entry wiring | **Done** |
+| 3 | Cheap short crowding probe | HAS_PULSE / NO_PULSE |
+| 4 | Surface brief | Only if probe pulses |
+| 5 | Strategy/backtest lane | WFO with parity configs |
+| 6 | Paper shadow | After backtest lane passes |
+| 7 | Live futures short MVP (testnet only) | After paper evidence |
 
 Do **not** attach short probes to the promoted SOL long overlay. New standalone surface
 only.
