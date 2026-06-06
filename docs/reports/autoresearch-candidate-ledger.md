@@ -307,6 +307,34 @@ premium+funding dense but same continuation pattern.
 short entry primitive. **Do not** write surface brief, strategy lane, paper shadow, or
 live futures short MVP from this probe. Keep data infra.
 
+## Research reset (2026-06-06)
+
+**Status:** campaigns paused; Phase 0 only on live agents.
+
+Report: [`research-reset-2026-06-06.md`](./research-reset-2026-06-06.md).
+
+Summarizes failed surfaces, repeated failure modes (continuation > mean-reversion,
+overlay attachment, MAE-only), banned hypotheses, and allowed next family (price
+structure, not crowding/session/funding gates).
+
+**Operating rule:** no autoresearch campaigns until next cheap probe shows HAS_PULSE.
+
+## Liquidity sweep / failed breakout probe (complete, CLOSED)
+
+**Status:** probe WEAK_EDGE — lane closed at cheap-probe stage.
+
+Spec: [`liquidity-sweep-probe-v0.md`](../specs/liquidity-sweep-probe-v0.md).
+Script: `scripts/probe_liquidity_sweep.py`.
+Report: [`liquidity-sweep-probe-2026-06-06.md`](./liquidity-sweep-probe-2026-06-06.md).
+
+**2026-06-06 prod run:** dense events (BTC 525 long / 429 short; similar ETH/SOL). Long
+failed breakdown shows marginal positive 12h forward on BTC/ETH but **worse MAE** than
+baseline. Short failed breakout negative forward on BTC/ETH (continuation up). No side
+passes forward **and** MAE gates together.
+
+**Decision: CLOSED / WEAK_EDGE.** Do not write surface brief, strategy lane, or
+autoresearch. Next surface must be a **different primitive** (see research-reset).
+
 ## Wave 3 — Bridge + funding
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
