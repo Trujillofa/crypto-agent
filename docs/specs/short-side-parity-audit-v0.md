@@ -209,7 +209,7 @@ and parity tests pass.
 |------|------|------|
 | 1 | Backtest short executor-exit parity | **Done** |
 | 2 | Paper short-entry wiring | **Done** |
-| 3 | Cheap short crowding probe | HAS_PULSE / NO_PULSE |
+| 3 | Cheap short crowding probe | **Done — WEAK_EDGE** (lane closed) |
 | 4 | Surface brief | Only if probe pulses |
 | 5 | Strategy/backtest lane | WFO with parity configs |
 | 6 | Paper shadow | After backtest lane passes |

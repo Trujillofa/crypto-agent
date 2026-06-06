@@ -318,7 +318,7 @@ Decision rule:
 | 8 | Short-side parity audit | **done** — `short-side-parity-audit-v0.md`; P0 fixes next |
 | 9 | Backtest short executor-exit parity | **done** |
 | 10 | Paper `allow_short_entry` + engine short-entry gate | **done** |
-| 11 | Cheap short crowding probe (funding + premium) | **queued** (after step 10) |
+| 11 | Cheap short crowding probe (funding + premium) | **done — WEAK_EDGE, lane closed** |
 
 Stop after each phase if no candidate reaches `promotion_candidate=true`. The
 initial relative-strength probe already hit the stop condition: sparse events and

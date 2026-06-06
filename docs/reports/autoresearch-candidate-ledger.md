@@ -285,12 +285,27 @@ Tests: `tests/test_short_side_parity_audit.py`.
 | Portfolio models | Mostly yes |
 | Telegram | No — no LONG/SHORT labels |
 
-**Do not** start short WFO or attach short probes to the promoted SOL long overlay until
-P0 blockers in the audit brief are resolved. Next step after P0: cheap short crowding
-probe (funding + premium), then surface brief only if HAS_PULSE.
+Paper short-entry wiring (Step 2) **done** (`fbab9ec`). Cheap short crowding probe
+**closed** at probe stage — see below.
 
 **Freeze:** no more SOL overlay filter/router modifications unless live Phase 0 data
 shows a specific failure mode.
+
+## Short crowding entry probe (complete, CLOSED)
+
+**Status:** probe WEAK_EDGE — no standalone short surface.
+
+Script: `scripts/probe_short_crowding.py`.
+Report: [`short-crowding-probe-2026-06-06.md`](./short-crowding-probe-2026-06-06.md).
+
+**2026-06-06 prod run:** BTC/SOL positive premium tail5 (~1k events/symbol) show
+**negative** short forward (−0.18/−0.42% BTC 12h/24h; −0.30/−0.68% SOL). ETH weak
+flat/slightly positive raw forward fails fee + concentration/month gates. Combined
+premium+funding dense but same continuation pattern.
+
+**Decision: CLOSED / WEAK_EDGE.** Crowded bullish perp regimes **continue up** — not a
+short entry primitive. **Do not** write surface brief, strategy lane, paper shadow, or
+live futures short MVP from this probe. Keep data infra.
 
 ## Wave 3 — Bridge + funding
 
