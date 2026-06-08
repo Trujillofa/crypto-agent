@@ -60,7 +60,6 @@ Do not proceed until you can.
 ```bash
 python scripts/autoresearch.py           # primary exploration
 python scripts/autoresearch_universal.py  # multi-symbol sweep
-python scripts/autoresearch_phase2.py    # focused follow-up sweep
 ```
 
 ### What to do
