@@ -153,60 +153,11 @@ services:
         max-file: "3"
 
   # === Trading Agents (all use Dockerfile.prod — no bind mounts) ===
-
-  # agent (default): DISABLED 2026-04-08 — WFO: no edge on SOLUSDT 4h simple_ma
-  # agent:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: default
-  #     SETTINGS_PATH: config/settings.yaml
-  #   ports:
-  #     - "127.0.0.1:18000:8000"
-
-  # agent_2: DISABLED 2026-04-08 — WFO: no edge on BNBUSDT 4h (all strategies negative OOS)
-  # agent_2:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: agent2
-  #     SETTINGS_PATH: config/settings.agent2.yaml
-
-  # agent_btc: DISABLED 2026-04-07 — WFO: no edge on BTCUSDT 4h
-  # agent_btc:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: btc-4h
-  #     SETTINGS_PATH: config/settings.btc-4h.yaml
-
-  # agent_eth: DISABLED 2026-04-08 — WFO: 12% win rate on ETHUSDT 4h simple_ma
-  # agent_eth:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: eth-4h
-  #     SETTINGS_PATH: config/settings.eth_4h.yaml
-
-  # agent_avax: DISABLED 2026-05-20 — live performance: 2W/11L (15% win rate), -$9.58 net.
-  # CCI breakout has no edge on AVAX at current $9-10 price range. WFO (Sharpe 2.04)
-  # was overfit to a prior trending regime. Re-evaluate if AVAX resumes strong trending.
-  # agent_avax:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: avax-4h-ma
-  #     SETTINGS_PATH: config/settings.avax_4h_ma.yaml
+  #
+  # Historical disabled agents (default SOL 4h simple_ma, BNB 4h, BTC 4h, ETH 4h,
+  # AVAX 4h CCI) have been removed from this file. See git history at commit
+  # 250e3ab and earlier for the prior definitions. Rationale for each disable
+  # decision is preserved in docs/reports/ and the CLAUDE.md disabled-agent table.
 
   agent_sol_sparse:
     <<: *agent-common
@@ -225,30 +176,6 @@ services:
       PROMETHEUS_PORT: "8000"
       AGENT_ID: sol-4h-panic-block-paper
       SETTINGS_PATH: config/settings.sol_4h_panic_block_paper.yaml
-
-  # agent_sol_1h_probe_paper: DISABLED 2026-06-03 — autoresearch probe only.
-  # Passed probe_1h but missed the standard gate on sample count: 17/20 WFO trades.
-  # Uncomment only for paper/shadow validation, then add a matching Prometheus target.
-  # agent_sol_1h_probe_paper:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: sol-1h-probe-paper
-  #     SETTINGS_PATH: config/settings.sol_1h_probe_paper.yaml
-
-  # agent_sol_1h_trend_pullback_overlay_paper: DISABLED 2026-06-03 — standard-gate pass.
-  # Passed SOLUSDT 1h WFO/bootstrap standard gate with trend_pullback overlay.
-  # Uncomment only for paper/shadow validation, then add a matching Prometheus target.
-  # agent_sol_1h_trend_pullback_overlay_paper:
-  #   <<: *agent-common
-  #   environment:
-  #     POSTGRES_HOST: timescaledb
-  #     POSTGRES_PORT: "5432"
-  #     PROMETHEUS_PORT: "8000"
-  #     AGENT_ID: sol-1h-trend-pullback-overlay-paper
-  #     SETTINGS_PATH: config/settings.sol_1h_trend_pullback_overlay_paper.yaml
 
   agent_sol_1h_trend_pullback_overlay_live:
     <<: *agent-common

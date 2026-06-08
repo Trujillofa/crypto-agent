@@ -23,7 +23,6 @@ from src.strategy import (
     SentimentMeanReversionStrategy,
     Signal,
     SignalType,
-    SimpleMACrossoverStrategy,
     StrategyEngine,
     TrendPullbackStrategy,
     VWAPReversionStrategy,
@@ -177,43 +176,6 @@ def test_sol_panic_block_paper_config_resolves_paper_safe_strategy():
     assert aggregator_config["min_agreement"] == 1
     assert aggregator_config["buy_threshold"] == 0.45
     assert aggregator_config["sell_threshold"] == -0.45
-
-
-def test_avax_4h_ma_config_resolves_simple_ma_spot_only():
-    settings = load_settings(Path("config/settings.avax_4h_ma.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert settings.agent_id == "avax-4h-ma"
-    assert settings.display_name == "avax-4h-simple-ma"
-    assert settings.trading_pairs == ["AVAXUSDT"]
-    assert settings.timeframe == "4h"
-    assert settings.ai.enabled is False
-    assert settings.trading_execution.enabled is True
-    assert settings.strategy.default_trading_mode == "spot"
-    assert settings.futures is None
-    assert strategy_classes == [CCIBreakoutStrategy]
-    assert len(strategy_configs) == 1
-    assert aggregator_config["buy_threshold"] == 0.5
-    assert aggregator_config["btc_regime_filter_enabled"] is False
-
-
-def test_eth_4h_config_resolves_simple_ma():
-    settings = load_settings(Path("config/settings.eth_4h.yaml"))
-    strategy_classes, strategy_configs, aggregator_config, _per_symbol = _resolve_strategy_config(
-        settings.strategy
-    )
-
-    assert settings.agent_id == "eth-4h"
-    assert settings.display_name == "eth-4h-simple-ma"
-    assert settings.trading_pairs == ["ETHUSDT"]
-    assert settings.timeframe == "4h"
-    assert settings.ai.enabled is False
-    assert settings.trading_execution.enabled is False
-    assert strategy_classes == [SimpleMACrossoverStrategy]
-    assert len(strategy_configs) == 1
-    assert aggregator_config["buy_threshold"] == 0.5
 
 
 def test_optional_strategy_registry_skips_missing_modules(monkeypatch):

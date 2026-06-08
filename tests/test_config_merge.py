@@ -106,103 +106,6 @@ reconciliation:
   dust_threshold_usdt: 1.0
 """
 
-_ORIGINAL_BTC_4H = """
-mode: paper
-agent_id: btc-4h
-display_name: btc-4h-simple-ma
-log_level: INFO
-
-trading:
-  pairs:
-    - BTCUSDT
-  timeframe: 4h
-
-ingest:
-  use_websocket: true
-
-database:
-  host: timescaledb
-  port: 5432
-  name: marketdata
-  user: trading
-  password: ""
-
-telegram:
-  enabled: true
-  daily_summary_enabled: false
-  daily_summary_send_empty: false
-  bot_token: ""
-  chat_id: ""
-  rate_limit_seconds: 5
-  allowed_updates:
-    - message
-
-ai:
-  enabled: false
-  provider: xai
-  model: grok-4-1-fast-reasoning
-  polling_interval: 1.0
-  max_history: 10
-  allowed_chat_ids: []
-  api_key: ""
-
-prometheus:
-  port: 8000
-
-trading_execution:
-  enabled: true
-  api_key: ""
-  api_secret: ""
-  test_mode: true
-  order_size_usdt: 100.0
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.05
-  sl_atr_multiplier: 2.5
-  tp_atr_multiplier: 3.0
-  trailing_activate_atr: 2.5
-  trailing_offset_atr: 1.5
-  use_atr_sizing: true
-  atr_multiplier: 1.0
-  risk_per_trade_pct: 0.02
-  exit_rules:
-    time_stop_minutes: 720
-
-futures:
-  enabled: true
-  symbols:
-    - BTCUSDT
-  default_leverage: 3
-  max_leverage: 10
-  margin_mode: isolated
-  position_mode: one-way
-  test_mode: true
-  liquidation_buffer_pct: 5.0
-
-strategy:
-  evaluation_interval_seconds: 14400
-  cooldown_candles: 1
-  default_trading_mode: futures
-  strategies:
-    - name: simple_ma
-      config: {}
-  global_trend_filter_enabled: true
-  global_trend_filter_buffer_pct: 0.05
-  aggregator:
-    min_agreement: 1
-    buy_threshold: 0.5
-    buy_threshold_uptrend: 0.5
-    sell_threshold: -0.5
-    min_confidence: 0.0
-    btc_regime_filter_enabled: false
-
-reconciliation:
-  enabled: true
-  on_divergence: alert
-  quantity_tolerance_pct: 1.0
-  periodic_interval_seconds: 0
-  dust_threshold_usdt: 1.0
-"""
-
 _ORIGINAL_SENTIMENT_MACRO = """
 mode: live
 agent_id: sentiment-macro-bot
@@ -326,15 +229,6 @@ def test_merge_preserves_original_settings_yaml() -> None:
     merged = _deep_merge(base, overlay)
 
     assert merged == _load_yaml_string(_ORIGINAL_SETTINGS)
-
-
-def test_merge_preserves_original_btc_4h_yaml() -> None:
-    base = _load_yaml(Path("config/base.yaml"))
-    overlay = _load_yaml(Path("config/settings.btc-4h.yaml"))
-
-    merged = _deep_merge(base, overlay)
-
-    assert merged == _load_yaml_string(_ORIGINAL_BTC_4H)
 
 
 def test_merge_preserves_original_sentiment_macro_yaml() -> None:

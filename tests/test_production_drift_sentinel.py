@@ -22,11 +22,11 @@ from src.utils.production_drift_sentinel import (
 
 
 def test_parse_sha256_lines_extracts_file_names() -> None:
-    text = "abc123  config/settings.yaml\ndef456  config/settings.agent2.yaml\n"
+    text = "abc123  config/settings.yaml\ndef456  config/settings.sentiment_macro.yaml\n"
     parsed = parse_sha256_lines(text)
 
     assert parsed["settings.yaml"] == "abc123"
-    assert parsed["settings.agent2.yaml"] == "def456"
+    assert parsed["settings.sentiment_macro.yaml"] == "def456"
 
 
 def test_parse_sha256_lines_ignores_research_only_configs() -> None:
@@ -216,7 +216,7 @@ def test_analyze_drift_detects_config_and_service_drift() -> None:
         expected_branch="main",
         local_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
         remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
-        local_config_hashes={"settings.yaml": "111", "settings.agent2.yaml": "222"},
+        local_config_hashes={"settings.yaml": "111", "settings.sentiment_macro.yaml": "222"},
         remote_config_hashes={"settings.yaml": "999"},
         service_snapshot=ServiceSnapshot(
             all_services=["agent", "timescaledb"],
