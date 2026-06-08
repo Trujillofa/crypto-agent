@@ -452,28 +452,24 @@ ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20
 
 ## Multi-Agent Architecture
 
-The system supports running multiple isolated trading agents simultaneously. In `docker-compose.prod.yml`, three strategy agents are currently active and four are intentionally disabled based on WFO outcomes.
+The system supports running multiple isolated trading agents simultaneously. The active set in `docker-compose.prod.yml`:
 
 | Agent | Config | Description |
 |-------|--------|-------------|
-| ~~`agent`~~ | ~~`config/settings.yaml`~~ | DISABLED — WFO: no edge on SOLUSDT 4h simple_ma |
-| ~~`agent_2`~~ | ~~`config/settings.agent2.yaml`~~ | DISABLED — WFO: no edge on BNBUSDT 4h |
-| ~~`agent_btc`~~ | ~~`config/settings.btc-4h.yaml`~~ | DISABLED — WFO: no edge on BTCUSDT 4h |
-| ~~`agent_eth`~~ | ~~`config/settings.eth_4h.yaml`~~ | DISABLED — WFO: 12% win rate on ETHUSDT 4h simple_ma |
-| ~~`agent_avax`~~ | ~~`config/settings.avax_4h_ma.yaml`~~ | DISABLED — live performance: 2W/11L, no current edge |
-| `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback |
-| `agent_sol_panic_block_paper` | `config/settings.sol_4h_panic_block_paper.yaml` | SOL panic-block paper validation |
+| `agent_sol_1h_trend_pullback_overlay_live` | `config/settings.sol_1h_trend_pullback_overlay_live.yaml` | **Only deployable technical agent** — SOL 1h trend-pullback overlay, Phase 0 forward validation in progress |
 | `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | SOL-only sentiment mean reversion, live futures routing |
+| `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback (paper) |
+| `agent_sol_panic_block_paper` | `config/settings.sol_4h_panic_block_paper.yaml` | SOL panic-block paper validation |
 
-**Disabled agent rationale:**
+**Historically disabled agents (configs removed — see git history for prior definitions):**
 
-| Agent | Reason | Reference |
-|-------|--------|-----------|
-| `agent` (default, SOLUSDT 4h simple_ma) | WFO showed no edge. May 2025 refresh: failed sparse gate (3 WFO trades vs min 4, concentration 67.4% vs max 65%). | `docs/reports/backtesting-follow-up-2026-05-05.md`, commit `3bc3759` |
-| `agent_2` (BNBUSDT 4h) | All 5 strategies negative OOS, best -7.7%. | commit `5be9a0d` |
-| `agent_btc` (BTCUSDT 4h) | 50+ param combos (simple_ma, CCI, MTF regime) all deeply negative OOS. Post-fix P&L: -$25 across 4 trades. | commit `21419d3` |
-| `agent_eth` (ETHUSDT 4h) | 12% win rate on simple_ma, no edge across any strategy. WFO sweep: all candidates failed quality gates. | commit `5be9a0d`, `docs/reports/mtf-ethusdt-sweep-analysis.md` |
-| `agent_avax` (AVAXUSDT 4h) | Live performance degraded to 2W/11L and `-$9.58`; prior WFO edge did not persist. | `docker-compose.prod.yml` |
+| Agent | Symbol/TF | Reason | Reference |
+|-------|-----------|--------|-----------|
+| `agent` (default) | SOLUSDT 4h simple_ma | WFO showed no edge. May 2025 refresh: failed sparse gate (3 WFO trades vs min 4, concentration 67.4% vs max 65%). | `docs/reports/backtesting-follow-up-2026-05-05.md`, commit `3bc3759` |
+| `agent_2` | BNBUSDT 4h | All 5 strategies negative OOS, best -7.7%. | commit `5be9a0d` |
+| `agent_btc` | BTCUSDT 4h | 50+ param combos (simple_ma, CCI, MTF regime) all deeply negative OOS. Post-fix P&L: -$25 across 4 trades. | commit `21419d3` |
+| `agent_eth` | ETHUSDT 4h | 12% win rate on simple_ma, no edge across any strategy. WFO sweep: all candidates failed quality gates. | commit `5be9a0d`, `docs/reports/mtf-ethusdt-sweep-analysis.md` |
+| `agent_avax` | AVAXUSDT 4h | Live performance degraded to 2W/11L and `-$9.58`; prior WFO edge did not persist. | commit `23e3174` |
 
 Agents are isolated via `AGENT_ID` environment variable. Database tables use `agent_id` columns for state separation (see `migrations/005_add_agent_isolation.sql`).
 

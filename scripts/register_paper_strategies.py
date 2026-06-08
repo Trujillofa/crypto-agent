@@ -23,14 +23,14 @@ PAPER_STRATEGIES = [
         "name": "MTFStrategyTemplate",
         "version": "1.0",
         "metrics": {
-            "notes": "Paper-only validation strategy wired through settings.btc_1h_mtf.yaml",
+            "notes": "Paper-only validation strategy (config file removed with disabled BTC agent)",
         },
     },
     {
         "name": "SimpleMACrossoverStrategy",
         "version": "1.0",
         "metrics": {
-            "notes": "Paper-only validation strategy wired through settings.avax_4h_ma.yaml",
+            "notes": "Paper-only validation strategy (config file removed with disabled AVAX agent)",
         },
     },
 ]
