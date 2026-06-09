@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-06-09T16:37:11.233960+00:00",
+  "lane_name": "basis-premium-filter-v0",
+  "execute": false,
+  "decision": {
+    "action": "ITERATE_OR_CLOSE",
+    "allowed": false,
+    "reasons": [
+      "autoresearch result did not pass the standard gate"
+    ],
+    "evidence": {
+      "lane_brief": "docs/specs/basis-premium-risk-filter-surface-v0.md",
+      "probe_verdict": "HAS_PULSE",
+      "last_result_status": "keep",
+      "gate_profile": "filter_wfo_ab",
+      "bootstrap": null,
+      "passes_standard_gate": false,
+      "eligible_for_bootstrap_1000": false,
+      "promotion_candidate_failures": [
+        "insufficient_blocks",
+        "no_risk_improvement",
+        "oos_return_not_better"
+      ]
+    }
+  },
+  "selected_command": null,
+  "execution": null
+}

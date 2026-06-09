@@ -1,0 +1,19 @@
+{
+  "status": "keep",
+  "gate_profile": "filter_wfo_ab",
+  "command": ["bash", "scripts/run_basis_filter_wfo_ab.sh"],
+  "summary": {
+    "passes_gates": false,
+    "note": "Phase 2 WFO A/B on SOL 1h overlay: filter blocked only 1 BUY (wiring worked), WFO trades 31 vs baseline 36, OOS return slightly worse, DD and P(loss) not improved. See docs/specs/basis-premium-risk-filter-surface-v0.md Phase 2 Result."
+  },
+  "eligible_for_bootstrap_1000": false,
+  "promotion_candidate_failures": [
+    "insufficient_blocks",
+    "no_risk_improvement",
+    "oos_return_not_better"
+  ],
+  "wfo_trades_baseline": 36,
+  "wfo_trades_filtered": 31,
+  "basis_blocked_buy_count": 1,
+  "description": "basis-premium-filter-v0 Phase2 WFO A/B reject"
+}

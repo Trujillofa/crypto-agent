@@ -2,6 +2,10 @@
 
 A formal protocol for developing, validating, and promoting trading strategies in this codebase. Follow this for every new strategy and every major revision to an existing one.
 
+For the automated closed-loop operating model that wraps this framework with
+autoresearch, stop rules, artifact handoff, and human approval points, see
+[`RBI_AUTORESEARCH_LOOP.md`](RBI_AUTORESEARCH_LOOP.md).
+
 ---
 
 ## Overview
