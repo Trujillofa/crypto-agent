@@ -25,16 +25,17 @@ report_output: docs/reports/rbi-loop-cross-venue-basis-v1.md
 timeout_seconds: 3600
 
 commands:
-  # Cheap probe / coverage + dislocation signal (read-only).
-  # Does not exist yet; will be a new or extended script (see investigation of
-  # probe_basis_premium.py + audit_basis_premium_coverage.py + funding probes).
-  # Must support at least two venues and compute relative dislocation metrics.
+  # Cheap probe: cross-venue spread extremes gated on forward price returns/MAE
+  # (read-only; reuses probe_basis_premium machinery). Venues limited to those
+  # with real importers/backfill — add okx only once an OKX importer exists.
+  # After reviewing the written verdict JSON, set probe_verdict above to advance.
   RUN_CHEAP_PROBE: >-
     uv run python scripts/probe_cross_venue_basis.py
-    --venues binance_usdm,bybit,okx
+    --venues binance_usdm,bybit
     --symbols BTCUSDT,ETHUSDT,SOLUSDT
     --timeframe 1h
     --start 2024-01-01
+    --verdict-output research/rbi_loop/cross-venue-basis-v1/probe-verdict.json
 
   # Bounded autoresearch only after HAS_PULSE + guard allows.
   # Families will be new (dislocation / venue-regime / cross-basis filters), not
