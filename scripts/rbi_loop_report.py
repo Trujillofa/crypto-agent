@@ -26,6 +26,11 @@ def _read_decision(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _escape_cell(text: str) -> str:
+    """Escape characters that would break a Markdown table cell."""
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
 def _default_output_path(record: dict[str, Any]) -> Path:
     lane_name = str(record.get("lane_name", "unknown-lane"))
     return Path("docs") / "reports" / f"rbi-loop-{lane_name}.md"
@@ -35,12 +40,12 @@ def _table_rows(mapping: dict[str, Any]) -> list[str]:
     rows = []
     for key, value in mapping.items():
         if isinstance(value, (dict, list)):
-            rendered = f"`{json.dumps(value, sort_keys=True)}`"
+            rendered = f"`{_escape_cell(json.dumps(value, sort_keys=True))}`"
         elif value is None:
             rendered = ""
         else:
-            rendered = str(value)
-        rows.append(f"| {key} | {rendered} |")
+            rendered = _escape_cell(str(value))
+        rows.append(f"| {_escape_cell(str(key))} | {rendered} |")
     return rows
 
 
@@ -60,10 +65,10 @@ def render_report(record: dict[str, Any]) -> str:
         "| Field | Value |",
         "|---|---|",
         f"| Generated at | {generated_at} |",
-        f"| Action | `{decision.get('action', '')}` |",
+        f"| Action | `{_escape_cell(str(decision.get('action', '')))}` |",
         f"| Allowed | {decision.get('allowed', False)} |",
         f"| Execute requested | {record.get('execute', False)} |",
-        f"| Selected command | `{record.get('selected_command') or ''}` |",
+        f"| Selected command | `{_escape_cell(str(record.get('selected_command') or ''))}` |",
         "",
         "## Reasons",
         "",

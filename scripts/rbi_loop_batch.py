@@ -76,6 +76,11 @@ def summarize_batch(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _escape_cell(text: str) -> str:
+    """Escape characters that would break a Markdown table cell."""
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
 def render_markdown_summary(summary: dict[str, Any]) -> str:
     lines = [
         "# RBI Loop Batch Summary",
@@ -96,8 +101,10 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         record = item["record"]
         decision = record["decision"]
         lines.append(
-            f"| {record['lane_name']} | `{decision['action']}` | {decision['allowed']} | "
-            f"`{item['decision_output']}` | `{item.get('report_output') or ''}` |"
+            f"| {_escape_cell(str(record['lane_name']))} | "
+            f"`{_escape_cell(str(decision['action']))}` | {decision['allowed']} | "
+            f"`{_escape_cell(str(item['decision_output']))}` | "
+            f"`{_escape_cell(str(item.get('report_output') or ''))}` |"
         )
     lines.append("")
     return "\n".join(lines)

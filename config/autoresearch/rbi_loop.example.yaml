@@ -6,6 +6,9 @@
 lane_name: example-data-first-lane
 lane_brief: docs/specs/example-data-first-lane.md
 probe_verdict:
+# After the RUN_AUTORESEARCH step runs, point last_result at the child run result
+# it writes (run_autoresearch.py defaults to research/last_result.json) so the next
+# pass can advance from RUN_AUTORESEARCH to RUN_BOOTSTRAP_1000.
 last_result:
 overlap_report:
 

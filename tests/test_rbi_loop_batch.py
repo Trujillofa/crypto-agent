@@ -85,6 +85,29 @@ def test_render_markdown_summary_lists_lanes() -> None:
     assert "| basis-v0 | `RUN_CHEAP_PROBE` | True |" in markdown
 
 
+def test_render_markdown_summary_escapes_pipes_in_lane_name() -> None:
+    markdown = render_markdown_summary(
+        {
+            "generated_at": "2026-06-09T00:00:00+00:00",
+            "lane_count": 1,
+            "blocked_count": 0,
+            "failed_execution_count": 0,
+            "results": [
+                {
+                    "decision_output": "decision.json",
+                    "report_output": "report.md",
+                    "record": {
+                        "lane_name": "basis | v0",
+                        "decision": {"action": "RUN_CHEAP_PROBE", "allowed": True},
+                    },
+                }
+            ],
+        }
+    )
+
+    assert "| basis \\| v0 | `RUN_CHEAP_PROBE` | True |" in markdown
+
+
 def test_run_batch_processes_multiple_manifests(tmp_path: Path) -> None:
     brief = tmp_path / "brief.md"
     brief.write_text("# Brief\n", encoding="utf-8")

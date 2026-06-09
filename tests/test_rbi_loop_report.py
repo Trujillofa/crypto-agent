@@ -38,6 +38,25 @@ def test_render_report_includes_decision_reasons_and_evidence() -> None:
     assert "No command execution was recorded." in report
 
 
+def test_render_report_escapes_pipes_in_command_cell() -> None:
+    record = _record()
+    record["selected_command"] = "probe.py --a 1 | tee log"
+
+    report = render_report(record)
+
+    assert "| Selected command | `probe.py --a 1 \\| tee log` |" in report
+    assert "1 | tee" not in report
+
+
+def test_render_report_escapes_pipes_in_evidence_cell() -> None:
+    record = _record()
+    record["decision"]["evidence"]["lane_brief"] = "a | b"
+
+    report = render_report(record)
+
+    assert "| lane_brief | a \\| b |" in report
+
+
 def test_write_report_creates_parent_directories(tmp_path: Path) -> None:
     output = tmp_path / "docs" / "reports" / "rbi-loop-basis-v0.md"
 
