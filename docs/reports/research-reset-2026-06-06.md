@@ -5,7 +5,8 @@ what stays live, what is banned, and what kind of idea is allowed next.
 
 **Related:** [autoresearch-candidate-ledger.md](./autoresearch-candidate-ledger.md),
 [autoresearch-next-candidate-path-2026-06-04.md](./autoresearch-next-candidate-path-2026-06-04.md),
-[short-crowding-probe-2026-06-06.md](./short-crowding-probe-2026-06-06.md).
+[short-crowding-probe-2026-06-06.md](./short-crowding-probe-2026-06-06.md),
+and the closed-loop runbook [RBI_AUTORESEARCH_LOOP.md](../RBI_AUTORESEARCH_LOOP.md).
 
 ---
 

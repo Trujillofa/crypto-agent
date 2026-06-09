@@ -2,6 +2,10 @@
 
 `experiment_autopilot` combines baseline backtest, walk-forward validation, bootstrap uncertainty, and explicit acceptance gates in one command.
 
+For the higher-level RBI loop that decides when to run autoresearch, when to stop,
+and when a result can advance toward implementation or deployment, see
+[`RBI_AUTORESEARCH_LOOP.md`](RBI_AUTORESEARCH_LOOP.md).
+
 ## What It Does
 
 - Runs baseline backtest on a full range

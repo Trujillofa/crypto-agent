@@ -1,0 +1,10 @@
+[Unit]
+Description=Run dry crypto-agent RBI loop supervisor daily
+
+[Timer]
+OnCalendar=*-*-* 01:15:00 UTC
+Persistent=true
+Unit=crypto-agent-rbi-loop-batch.service
+
+[Install]
+WantedBy=timers.target
