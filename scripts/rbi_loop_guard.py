@@ -94,6 +94,16 @@ def _promotion_eligible(last_result: dict[str, Any]) -> bool:
     return bool(last_result.get("eligible_for_bootstrap_1000"))
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Coerce value to float, treating None/missing/bad as default (hardens overlap JSON)."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _high_overlap_pairs(overlap_report: dict[str, Any]) -> list[dict[str, Any]]:
     high_pairs: list[dict[str, Any]] = []
     pairwise = overlap_report.get("pairwise_oos")
@@ -102,9 +112,9 @@ def _high_overlap_pairs(overlap_report: dict[str, Any]) -> list[dict[str, Any]]:
     for item in pairwise:
         if not isinstance(item, dict):
             continue
-        jaccard = float(item.get("jaccard", 0.0))
-        pct_left = float(item.get("pct_of_left_also_in_right", 0.0))
-        pct_right = float(item.get("pct_of_right_also_in_left", 0.0))
+        jaccard = _safe_float(item.get("jaccard"), 0.0)
+        pct_left = _safe_float(item.get("pct_of_left_also_in_right"), 0.0)
+        pct_right = _safe_float(item.get("pct_of_right_also_in_left"), 0.0)
         if jaccard >= HIGH_OVERLAP_JACCARD or max(pct_left, pct_right) >= HIGH_OVERLAP_PCT:
             high_pairs.append(item)
     return high_pairs

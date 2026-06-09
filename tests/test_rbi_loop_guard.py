@@ -132,3 +132,54 @@ def test_low_overlap_allows_paper_review(tmp_path: Path) -> None:
 
     assert decision.action == ACTION_READY_FOR_PAPER_REVIEW
     assert decision.allowed is True
+
+
+def test_high_overlap_handles_null_values(tmp_path: Path) -> None:
+    """Null/missing metrics in overlap items must not crash; treated as 0 (low overlap here)."""
+    decision = decide_loop_action(
+        lane_brief=_brief(tmp_path),
+        probe_verdict="HAS_PULSE",
+        last_result=_last_result(bootstrap=1000, eligible_for_bootstrap_1000=False),
+        overlap_report={
+            "pairwise_oos": [
+                {
+                    "left": "live",
+                    "right": "candidate",
+                    "jaccard": None,
+                    "pct_of_left_also_in_right": None,
+                    "pct_of_right_also_in_left": 12.0,
+                },
+                {
+                    "left": "other",
+                    "right": "candidate2",
+                    # all null/missing -> 0s, low overlap
+                },
+            ]
+        },
+    )
+
+    assert decision.action == ACTION_READY_FOR_PAPER_REVIEW
+    assert decision.allowed is True
+
+
+def test_high_pct_null_jaccard_still_blocks(tmp_path: Path) -> None:
+    """High pct metric triggers block even if jaccard is null."""
+    decision = decide_loop_action(
+        lane_brief=_brief(tmp_path),
+        probe_verdict="HAS_PULSE",
+        last_result=_last_result(bootstrap=1000, eligible_for_bootstrap_1000=False),
+        overlap_report={
+            "pairwise_oos": [
+                {
+                    "left": "live",
+                    "right": "candidate",
+                    "jaccard": None,
+                    "pct_of_left_also_in_right": 55.0,
+                    "pct_of_right_also_in_left": None,
+                }
+            ]
+        },
+    )
+
+    assert decision.action == ACTION_ITERATE_OR_CLOSE
+    assert decision.allowed is False
