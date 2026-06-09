@@ -57,6 +57,16 @@ Monitor: `ssh crypto-agent 'tail -f /opt/crypto-agent/research/<lane>/campaign.l
 |-------|--------|-----|-------|
 | agent_sol_1h_trend_pullback_overlay_live | SOLUSDT | 1h | Standard-gate technical stack + trend_pullback |
 | agent_sentiment_macro | SOLUSDT | 1h | Sentiment/macro — overlap risk for second SOL 1h technical |
+
+## RBI Loop Records (post 2026-06-09)
+
+Lanes are now processed through the supervised RBI guard + manifest system (see `docs/RBI_AUTORESEARCH_LOOP.md` and `config/autoresearch/rbi_loop.*.yaml`).
+
+| Lane | Probe Verdict | Validation Outcome | RBI Decision | Artifacts |
+|------|---------------|--------------------|--------------|-----------|
+| basis-premium-filter-v0 | HAS_PULSE (2026-06-05 probe) | Phase 2 WFO A/B: only 1 block, no DD/P(loss)/concentration improvement vs baseline (31 vs 36 trades). Surface v0 spec marked CLOSED. | ITERATE_OR_CLOSE (standard gate fail) | `research/rbi_loop/basis-premium-filter-v0/decision.json`, `docs/reports/rbi-loop-basis-premium-filter-v0.md` (generated via `rbi_loop_from_manifest.py` + batch) |
+
+This lane is closed per prior WFO evidence. New work must target a different primitive (cross-venue basis dislocation ranked highest in research-reset-2026-06-06).
 | agent_sol_sparse | SOLUSDT | 4h | trend_pullback sparse paper |
 | agent_sol_panic_block_paper | SOLUSDT | 4h | panic block paper |
 

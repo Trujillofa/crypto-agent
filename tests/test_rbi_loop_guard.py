@@ -183,3 +183,39 @@ def test_high_pct_null_jaccard_still_blocks(tmp_path: Path) -> None:
 
     assert decision.action == ACTION_ITERATE_OR_CLOSE
     assert decision.allowed is False
+
+
+def test_malformed_partial_overlap_rows_are_ignored(tmp_path: Path) -> None:
+    """Non-dict rows, bad types, and partial rows must not crash; only valid numeric pairs are considered."""
+    decision = decide_loop_action(
+        lane_brief=_brief(tmp_path),
+        probe_verdict="HAS_PULSE",
+        last_result=_last_result(bootstrap=1000, eligible_for_bootstrap_1000=False),
+        overlap_report={
+            "pairwise_oos": [
+                "not a dict",
+                None,
+                {
+                    "left": "live",
+                    "right": "bad",
+                    "jaccard": "not-a-number",
+                    "pct_of_left_also_in_right": 99.0,
+                },  # bad jaccard but high pct
+                {
+                    "left": "live",
+                    "right": "candidate",
+                    "jaccard": 0.9,
+                    "pct_of_left_also_in_right": None,
+                },
+                {"foo": "bar"},  # missing keys -> treated as 0
+            ]
+        },
+    )
+
+    # The high-pct bad-jaccard row and the high-jaccard row should trigger block
+    assert decision.action == ACTION_ITERATE_OR_CLOSE
+    assert decision.allowed is False
+    # Evidence should only contain the rows that passed the numeric threshold checks
+    high = decision.evidence.get("high_overlap_pairs", [])
+    assert any(p.get("right") == "bad" for p in high)
+    assert any(p.get("right") == "candidate" for p in high)
