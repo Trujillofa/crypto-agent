@@ -137,7 +137,7 @@ def _build_backtest_config(
     replay_sentiment_path: str | None,
     replay_sentiment_max_age_hours: float | None,
     basis_calibrated_threshold: float | None = None,
-    cross_venue_dislocation: CrossVenueDislocationConfig = None,
+    cross_venue_dislocation: CrossVenueDislocationConfig | None = None,
 ) -> BacktestConfig:
     trading_exec = raw_config.get("trading_execution", {})
     if not isinstance(trading_exec, dict):
@@ -272,6 +272,9 @@ def _render_markdown(
     lines.append(f"| Profit concentration | {summary.profit_concentration_pct:.2f}% |")
     lines.append(f"| Blocked BUY (session router) | {summary.blocked_buy_count} |")
     lines.append(f"| Blocked BUY (basis filter) | {summary.basis_blocked_buy_count} |")
+    lines.append(
+        f"| Blocked BUY (cross-venue dislocation) | {summary.dislocation_blocked_buy_count} |"
+    )
     lines.append("")
 
     if windows:
@@ -462,6 +465,7 @@ async def main() -> None:
             profit_concentration_pct=profit_concentration_pct(oos_returns),
             blocked_buy_count=baseline.blocked_buy_count,
             basis_blocked_buy_count=baseline.basis_blocked_buy_count,
+            dislocation_blocked_buy_count=getattr(baseline, "dislocation_blocked_buy_count", 0),
             passes_gates=False,
             failure_reasons=[],
         )
@@ -521,6 +525,7 @@ async def main() -> None:
     print(f"Profit concentration: {summary.profit_concentration_pct:.2f}%")
     print(f"Blocked BUY (session router): {summary.blocked_buy_count}")
     print(f"Blocked BUY (basis filter): {summary.basis_blocked_buy_count}")
+    print(f"Blocked BUY (cross-venue dislocation): {summary.dislocation_blocked_buy_count}")
     if summary.failure_reasons:
         print("Failures:")
         for reason in summary.failure_reasons:

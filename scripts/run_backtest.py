@@ -217,6 +217,7 @@ async def main():
     print(f"Total Trades: {result.total_trades}")
     print(f"Blocked BUY (session router): {result.blocked_buy_count}")
     print(f"Blocked BUY (basis filter): {result.basis_blocked_buy_count}")
+    print(f"Blocked BUY (cross-venue dislocation): {result.dislocation_blocked_buy_count}")
     print(f"Win Rate:     {result.win_rate:.2f}%")
     print(f"Total Return: ${result.total_return:.2f} ({result.total_return_pct:.2f}%)")
     print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")

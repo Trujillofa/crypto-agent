@@ -3,6 +3,10 @@
 Per CLAUDE.md: assertions in it/test, no .only/.skip in committed, etc.
 """
 
+import pytest
+
+from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.cross_venue_dislocation import (
     CrossVenueDislocationConfig,
@@ -383,3 +387,100 @@ def test_ab_uses_real_build_path_for_different_counts():
         f"Strengthened A/B via _build path: tiny(1.0) blocked={blocked_tiny} huge(500.0) blocked={blocked_huge}"
     )
     assert blocked_tiny != blocked_huge
+
+
+class _AlwaysBuyStrategy(BaseStrategy):
+    """Strategy that emits BUY on every bar for gate consumption tests."""
+
+    def get_name(self) -> str:
+        return "AlwaysBuy"
+
+    async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
+        price = indicators["close_price"]
+        return Signal(SignalType.BUY, symbol, price, 1.0, "always buy", indicators)
+
+
+def _build_mock_reader(rows: list[dict[str, object]]) -> IndicatorReader:
+    """Build an IndicatorReader whose fetch_range returns the provided synthetic rows."""
+    reader = IndicatorReader({})
+    # Mark as connected for any internal checks (pattern from basis premium backtest test)
+    reader._connected = True  # type: ignore[attr-defined]
+
+    async def _mock_fetch_range(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        return rows
+
+    reader.fetch_range = _mock_fetch_range  # type: ignore[method-assign]
+    return reader
+
+
+def _synth_row(cross_basis_spread: float | None = None, close: float = 100.0) -> dict[str, object]:
+    """Synthetic indicator row containing the cross-venue columns the gate reads."""
+    return {
+        "time": "2024-06-03T12:00:00",
+        "close_price": close,
+        "high_price": close + 1.0,
+        "low_price": close - 1.0,
+        "ema_200": 50.0,
+        "atr_14": 1.0,
+        "cross_venue_basis_spread_bps": cross_basis_spread,
+        "cross_venue_premium_spread": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_backtest_engine_applies_cross_venue_dislocation_gate_ab() -> None:
+    """Engine-level A/B: identical data, tiny vs huge min_spread_bps -> different blocked/trade counts.
+
+    This exercises the full path: BacktestConfig -> reader rows with cross_venue_* keys ->
+    engine gate call after basis -> counters in BacktestResult. Mirrors test_basis_premium_backtest.
+    """
+    # 10 bars, spreads alternate around the 5bps example range (p90-p99 was 3.45-7)
+    # Tiny threshold (0.1) in require mode with side=both: most/all will be "dislocated" -> allow BUY
+    # Huge (1000): almost none dislocated -> block BUY (require mode)
+    # Use spreads that are |4-6| so tiny allows, huge blocks.
+    spreads = [4.0, 5.5, 3.2, 6.1, 4.8, 5.0, 3.8, 6.5, 4.2, 5.9]
+    rows = [_synth_row(s) for s in spreads]
+
+    base_kwargs = {
+        "symbol": "SOLUSDT",
+        "timeframe": "1h",
+        "start_date": "2024-06-01",
+        "end_date": "2024-06-04",
+        "initial_capital": 10000.0,
+        "fee_rate": 0.0,
+        "slippage_pct": 0.0,
+        "apply_global_trend_filter": False,
+        "strategy_classes": [_AlwaysBuyStrategy],
+        "aggregator_config": {"min_agreement": 1, "buy_threshold": 0.5},
+    }
+
+    tiny_cfg = CrossVenueDislocationConfig(
+        enabled=True, metric="basis_spread", mode="require", min_spread_bps=0.1, side="both"
+    )
+    huge_cfg = CrossVenueDislocationConfig(
+        enabled=True, metric="basis_spread", mode="require", min_spread_bps=1000.0, side="both"
+    )
+
+    reader_tiny = _build_mock_reader(rows)
+    res_tiny = await BacktestEngine(
+        BacktestConfig(**base_kwargs, cross_venue_dislocation=tiny_cfg),
+        reader_tiny,
+    ).run()
+
+    reader_huge = _build_mock_reader(rows)
+    res_huge = await BacktestEngine(
+        BacktestConfig(**base_kwargs, cross_venue_dislocation=huge_cfg),
+        reader_huge,
+    ).run()
+
+    # With tiny: spreads ~4-6 >0.1 -> dislocated -> require allows -> more trades, 0 (or low) blocked
+    # With huge: |spread| <<1000 -> not dislocated -> require blocks -> fewer trades, high blocked count
+    print(
+        f"Engine A/B: tiny blocked={res_tiny.dislocation_blocked_buy_count} trades={res_tiny.total_trades}; "
+        f"huge blocked={res_huge.dislocation_blocked_buy_count} trades={res_huge.total_trades}"
+    )
+    assert res_tiny.dislocation_blocked_buy_count != res_huge.dislocation_blocked_buy_count
+    assert res_tiny.total_trades != res_huge.total_trades
+    # Sanity: tiny should have blocked near 0 for this data
+    assert res_tiny.dislocation_blocked_buy_count == 0
+    assert res_huge.dislocation_blocked_buy_count > 0
