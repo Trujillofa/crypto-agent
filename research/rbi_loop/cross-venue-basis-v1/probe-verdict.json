@@ -1,0 +1,48 @@
+{
+  "verdict": "HAS_PULSE",
+  "note": "Forward price-return/MAE gates on cross-venue spread extremes (see brief).",
+  "passing_scenarios": [
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:tail10",
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:tail5",
+    "BTCUSDT|binance_usdm-bybit:normalization:basis_bps:tail5",
+    "BTCUSDT|binance_usdm-bybit:normalization:premium_index:tail10",
+    "BTCUSDT|binance_usdm-bybit:normalization:premium_index:tail5",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:tail10",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:tail5",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:tail10",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:tail5",
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:tail10",
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:tail5",
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:tail5",
+    "ETHUSDT|binance_usdm-bybit:normalization:basis_bps:tail5",
+    "POOLED:extreme_positive:basis_bps:tail5",
+    "POOLED:extreme_positive:premium_index:tail10",
+    "POOLED:extreme_positive:premium_index:tail5",
+    "POOLED:normalization:premium_index:tail10",
+    "POOLED:normalization:premium_index:tail5",
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:tail10",
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:tail5",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:tail10",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:tail5",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:tail10",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:tail5",
+    "SOLUSDT|binance_usdm-bybit:normalization:basis_bps:tail5",
+    "SOLUSDT|binance_usdm-bybit:normalization:premium_index:tail10",
+    "SOLUSDT|binance_usdm-bybit:normalization:premium_index:tail5"
+  ],
+  "generated_at": "2026-06-10T14:46:20.003043+00:00",
+  "config": {
+    "venues": [
+      "binance_usdm",
+      "bybit"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "timeframe": "1h",
+    "start": "2024-01-01",
+    "end": "2026-06-10"
+  }
+}
