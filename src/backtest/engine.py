@@ -13,6 +13,9 @@ from src.strategy.basis_premium_filter import (
     BasisPremiumFilterConfig,
     apply_basis_premium_gate,
 )
+from src.strategy.cross_venue_dislocation import (
+    CrossVenueDislocationConfig,
+)
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
 from src.strategy.session_liquidity import (
     SessionLiquidityRouterConfig,
@@ -48,6 +51,9 @@ class BacktestConfig:
         default_factory=SessionLiquidityRouterConfig
     )
     basis_premium_filter: BasisPremiumFilterConfig = field(default_factory=BasisPremiumFilterConfig)
+    cross_venue_dislocation: CrossVenueDislocationConfig = field(
+        default_factory=CrossVenueDislocationConfig
+    )
     allow_short: bool = False
     use_executor_exit_model: bool = False
     ignore_signal_sells: bool = False

@@ -38,6 +38,10 @@ from src.strategy.basis_premium_filter import (
     parse_basis_premium_filter,
     with_calibrated_threshold,
 )
+from src.strategy.cross_venue_dislocation import (
+    CrossVenueDislocationConfig,
+    parse_cross_venue_dislocation,
+)
 from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger  # noqa: E402
 
@@ -133,6 +137,7 @@ def _build_backtest_config(
     replay_sentiment_path: str | None,
     replay_sentiment_max_age_hours: float | None,
     basis_calibrated_threshold: float | None = None,
+    cross_venue_dislocation: CrossVenueDislocationConfig = None,
 ) -> BacktestConfig:
     trading_exec = raw_config.get("trading_execution", {})
     if not isinstance(trading_exec, dict):
@@ -170,6 +175,7 @@ def _build_backtest_config(
             parse_basis_premium_filter(raw_config.get("strategy", {}).get("basis_premium_filter")),
             basis_calibrated_threshold,
         ),
+        cross_venue_dislocation=cross_venue_dislocation or CrossVenueDislocationConfig(),
         allow_short=False,
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
@@ -340,6 +346,9 @@ async def main() -> None:
         basis_filter = parse_basis_premium_filter(
             raw_config.get("strategy", {}).get("basis_premium_filter")
         )
+        cross_venue_disloc = parse_cross_venue_dislocation(
+            raw_config.get("strategy", {}).get("cross_venue_dislocation")
+        )
 
         windows = build_wfo_windows(
             start=start,
@@ -373,6 +382,7 @@ async def main() -> None:
             replay_sentiment_path=args.replay_sentiment_log,
             replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
             basis_calibrated_threshold=baseline_threshold,
+            cross_venue_dislocation=cross_venue_disloc,
         )
 
         reader = IndicatorReader(db_config)
@@ -405,6 +415,7 @@ async def main() -> None:
                     replay_sentiment_path=args.replay_sentiment_log,
                     replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
                     basis_calibrated_threshold=window_threshold,
+                    cross_venue_dislocation=cross_venue_disloc,
                 )
                 window_backtest = await _run_backtest(reader, window_config)
                 window_results.append(
