@@ -14,7 +14,12 @@
 
 lane_name: cross-venue-basis-v1
 lane_brief: docs/specs/cross-venue-basis-dislocation-brief-v0.md
-probe_verdict:   # Empty on purpose — first step is cheap probe after data lands
+# 2026-06-10 human review: probe run on full 3-symbol, 2-venue data (~21,365 joined
+# bars/symbol, 2024-01-01 → 2026-06-10) → HAS_PULSE with 27 passing scenarios
+# (SOL 9, ETH 8, BTC 5, pooled 5); unconditional drift 0.013–0.036%/12h vs the
+# 0.15% gate, so the edge is conditional on dislocation events.
+# Evidence: research/rbi_loop/cross-venue-basis-v1/probe-verdict.json
+probe_verdict: HAS_PULSE
 
 # last_result and overlap_report will be populated by prior steps once the lane advances.
 last_result:
