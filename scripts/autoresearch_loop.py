@@ -41,6 +41,11 @@ DEFAULT_FAMILIES = (
     "funding_primary_standalone",
     "funding_normalization_standalone",
 )
+CV_FAMILIES = (
+    "cross_venue_dislocation",
+    "venue_basis_filter",
+)
+ALL_FAMILIES = DEFAULT_FAMILIES + CV_FAMILIES
 
 BASE_STRATEGY_CONFIGS: tuple[dict[str, Any], ...] = (
     {
@@ -99,8 +104,7 @@ def parse_args() -> argparse.Namespace:
         "--families",
         default=",".join(DEFAULT_FAMILIES),
         help=(
-            "Comma-separated candidate families to sample. Supported: "
-            + ", ".join(DEFAULT_FAMILIES)
+            "Comma-separated candidate families to sample. Supported: " + ", ".join(ALL_FAMILIES)
         ),
     )
     parser.add_argument(
@@ -244,7 +248,7 @@ def _parse_families(raw: str) -> tuple[str, ...]:
     families = tuple(part.strip() for part in raw.split(",") if part.strip())
     if not families:
         raise ValueError("At least one candidate family is required")
-    invalid = sorted(set(families) - set(DEFAULT_FAMILIES))
+    invalid = sorted(set(families) - set(ALL_FAMILIES))
     if invalid:
         raise ValueError(f"Unsupported candidate families: {', '.join(invalid)}")
     return families
@@ -715,6 +719,89 @@ def generate_candidate(
             f"funding-extreme-overlay entry={funding_rate['config']['entry_threshold']:.5f} "
             f"buy={buy:.2f}"
         )
+    elif family == "cross_venue_dislocation":
+        # Real sampler for cross-venue (require mode: enter only on dislocation)
+        # min_spread_bps from real p90-p99 of |binance-bybit basis spread| on SOL 1h.
+        buy = _round(rng.uniform(0.85, 1.15), 2)
+        buy_uptrend = _round(rng.uniform(0.80, min(1.05, buy)), 2)
+        sell = _round(-rng.uniform(0.70, 0.85), 2)
+        stack = _sol_winner_stack_params(rng)
+        min_bps = _round(rng.uniform(3.45, 7.08), 2)
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.0, 2.5), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.4, 4.2), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.5, 2.0), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.80, 1.05), 2),
+            },
+            "strategy": {
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.30), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=1,
+                ),
+                "cross_venue_dislocation": {
+                    "enabled": True,
+                    "metric": "basis_spread",
+                    "mode": "require",
+                    "min_spread_bps": min_bps,
+                    "side": rng.choice(["positive", "both"]),
+                },
+            },
+        }
+        desc = f"cross-venue-dislocation min_bps={min_bps:.2f} buy={buy:.2f}"
+    elif family == "venue_basis_filter":
+        # Real sampler for venue basis filter (block mode during high dislocation).
+        buy = _round(rng.uniform(0.85, 1.15), 2)
+        buy_uptrend = _round(rng.uniform(0.80, min(1.05, buy)), 2)
+        sell = _round(-rng.uniform(0.70, 0.85), 2)
+        stack = _sol_winner_stack_params(rng)
+        min_bps = _round(rng.uniform(4.49, 7.08), 2)
+        overlay = {
+            "trading_execution": {
+                "sl_atr_multiplier": _round(rng.uniform(2.0, 2.5), 2),
+                "tp_atr_multiplier": _round(rng.uniform(3.4, 4.2), 2),
+                "trailing_activate_atr": _round(rng.uniform(1.5, 2.0), 2),
+                "trailing_offset_atr": _round(rng.uniform(0.80, 1.05), 2),
+            },
+            "strategy": {
+                "strategies": [
+                    *_strategy_configs_with_overrides(**stack),
+                ],
+                "aggregator": {
+                    "buy_threshold": buy,
+                    "buy_threshold_uptrend": buy_uptrend,
+                    "sell_threshold": sell,
+                    "min_confidence": _round(rng.uniform(0.0, 0.30), 2),
+                },
+                "per_symbol_aggregator_config": _per_symbol_aggregator_config(
+                    trading_symbol,
+                    buy=buy,
+                    sell=sell,
+                    buy_uptrend=buy_uptrend,
+                    sell_min_agreement=1,
+                ),
+                "cross_venue_dislocation": {
+                    "enabled": True,
+                    "metric": "basis_spread",
+                    "mode": "block",
+                    "min_spread_bps": min_bps,
+                    "side": "both",
+                },
+            },
+        }
+        desc = f"venue-basis-filter min_bps={min_bps:.2f} buy={buy:.2f}"
     elif family == "regime_gated_pullback_overlay":
         buy = _round(rng.uniform(1.15, 1.40), 2)
         buy_uptrend = _round(rng.uniform(1.00, min(1.20, buy)), 2)

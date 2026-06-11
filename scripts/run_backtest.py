@@ -16,6 +16,7 @@ from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
 from src.strategy.basis_premium_filter import parse_basis_premium_filter
+from src.strategy.cross_venue_dislocation import parse_cross_venue_dislocation
 from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger
 
@@ -140,6 +141,9 @@ async def main():
         basis_premium_filter=parse_basis_premium_filter(
             raw_config.get("strategy", {}).get("basis_premium_filter")
         ),
+        cross_venue_dislocation=parse_cross_venue_dislocation(
+            raw_config.get("strategy", {}).get("cross_venue_dislocation")
+        ),
         time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
         ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
@@ -217,6 +221,7 @@ async def main():
     print(f"Total Trades: {result.total_trades}")
     print(f"Blocked BUY (session router): {result.blocked_buy_count}")
     print(f"Blocked BUY (basis filter): {result.basis_blocked_buy_count}")
+    print(f"Blocked BUY (cross-venue dislocation): {result.dislocation_blocked_buy_count}")
     print(f"Win Rate:     {result.win_rate:.2f}%")
     print(f"Total Return: ${result.total_return:.2f} ({result.total_return_pct:.2f}%)")
     print(f"Max Drawdown: {result.max_drawdown * 100:.2f}%")

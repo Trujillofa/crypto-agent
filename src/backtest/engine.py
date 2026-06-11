@@ -13,6 +13,10 @@ from src.strategy.basis_premium_filter import (
     BasisPremiumFilterConfig,
     apply_basis_premium_gate,
 )
+from src.strategy.cross_venue_dislocation import (
+    CrossVenueDislocationConfig,
+    apply_cross_venue_dislocation_gate,
+)
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
 from src.strategy.session_liquidity import (
     SessionLiquidityRouterConfig,
@@ -48,6 +52,9 @@ class BacktestConfig:
         default_factory=SessionLiquidityRouterConfig
     )
     basis_premium_filter: BasisPremiumFilterConfig = field(default_factory=BasisPremiumFilterConfig)
+    cross_venue_dislocation: CrossVenueDislocationConfig = field(
+        default_factory=CrossVenueDislocationConfig
+    )
     allow_short: bool = False
     use_executor_exit_model: bool = False
     ignore_signal_sells: bool = False
@@ -98,6 +105,7 @@ class BacktestResult:
     avg_win_loss_ratio: float
     blocked_buy_count: int = 0
     basis_blocked_buy_count: int = 0
+    dislocation_blocked_buy_count: int = 0
 
 
 class BacktestEngine:
@@ -124,6 +132,7 @@ class BacktestEngine:
         self._trades: list[Trade] = []
         self._blocked_buy_count = 0
         self._basis_blocked_buy_count = 0
+        self._dislocation_blocked_buy_count = 0
 
     @staticmethod
     def _get_required_timeframes(strategy: BaseStrategy) -> dict[str, str]:
@@ -279,6 +288,20 @@ class BacktestEngine:
                     self._basis_blocked_buy_count += 1
                     self._logger.info(
                         "Blocked by Basis Premium Filter at %s: %s",
+                        current_time,
+                        final_signal.reason,
+                    )
+
+            if final_signal.type == SignalType.BUY:
+                final_signal, disloc_blocked = apply_cross_venue_dislocation_gate(
+                    final_signal,
+                    row,
+                    self._config.cross_venue_dislocation,
+                )
+                if disloc_blocked:
+                    self._dislocation_blocked_buy_count += 1
+                    self._logger.info(
+                        "Blocked by Cross Venue Dislocation Filter at %s: %s",
                         current_time,
                         final_signal.reason,
                     )
@@ -744,6 +767,7 @@ class BacktestEngine:
             avg_win_loss_ratio=avg_win_loss_ratio,
             blocked_buy_count=self._blocked_buy_count,
             basis_blocked_buy_count=self._basis_blocked_buy_count,
+            dislocation_blocked_buy_count=self._dislocation_blocked_buy_count,
         )
 
     def _create_empty_result(self) -> BacktestResult:
@@ -761,4 +785,5 @@ class BacktestEngine:
             avg_win_loss_ratio=0.0,
             blocked_buy_count=self._blocked_buy_count,
             basis_blocked_buy_count=self._basis_blocked_buy_count,
+            dislocation_blocked_buy_count=self._dislocation_blocked_buy_count,
         )

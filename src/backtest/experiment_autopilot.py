@@ -67,6 +67,7 @@ class ExperimentSummary:
     failure_reasons: list[str] = field(default_factory=list)
     blocked_buy_count: int = 0
     basis_blocked_buy_count: int = 0
+    dislocation_blocked_buy_count: int = 0
 
 
 def add_months(base: datetime, months: int) -> datetime:
