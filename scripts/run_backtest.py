@@ -16,6 +16,7 @@ from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
 from src.strategy.basis_premium_filter import parse_basis_premium_filter
+from src.strategy.cross_venue_dislocation import parse_cross_venue_dislocation
 from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger
 
@@ -139,6 +140,9 @@ async def main():
         ),
         basis_premium_filter=parse_basis_premium_filter(
             raw_config.get("strategy", {}).get("basis_premium_filter")
+        ),
+        cross_venue_dislocation=parse_cross_venue_dislocation(
+            raw_config.get("strategy", {}).get("cross_venue_dislocation")
         ),
         time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
         use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
