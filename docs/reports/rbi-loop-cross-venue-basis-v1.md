@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Generated at | 2026-06-10T15:20:27.900672+00:00 |
-| Action | `RUN_AUTORESEARCH` |
-| Allowed | True |
+| Generated at | 2026-06-11T21:13:21.842319+00:00 |
+| Action | `ITERATE_OR_CLOSE` |
+| Allowed | False |
 | Execute requested | False |
-| Selected command | `uv run python scripts/autoresearch_loop.py --config config/settings.autoresearch.yaml --symbol SOLUSDT --timeframe 1h --train-months 3 --test-months 2 --gate-profile standard --families cross_venue_dislocation,venue_basis_filter --max-runs 30` |
+| Selected command | `` |
 
 ## Reasons
 
-- cheap probe passed; autoresearch result missing
+- autoresearch result did not pass the standard gate
 
 ## Evidence
 
@@ -18,6 +18,12 @@
 |---|---|
 | lane_brief | docs/specs/cross-venue-basis-dislocation-brief-v0.md |
 | probe_verdict | HAS_PULSE |
+| last_result_status | discard_all |
+| gate_profile | standard |
+| bootstrap |  |
+| passes_standard_gate | False |
+| eligible_for_bootstrap_1000 | False |
+| promotion_candidate_failures | `["require_mode_trade_starvation", "block_mode_no_risk_improvement", "bootstrap_p_loss_far_above_gate"]` |
 
 ## Execution
 
@@ -25,4 +31,4 @@ No command execution was recorded.
 
 ## Next Action
 
-RUN_AUTORESEARCH
+ITERATE_OR_CLOSE
