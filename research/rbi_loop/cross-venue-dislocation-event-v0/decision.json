@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-11T22:43:29.440942+00:00",
+  "lane_name": "cross-venue-dislocation-event-v0",
+  "execute": false,
+  "decision": {
+    "action": "RUN_CHEAP_PROBE",
+    "allowed": true,
+    "reasons": [
+      "lane brief exists; cheap-probe verdict missing"
+    ],
+    "evidence": {
+      "lane_brief": "docs/specs/cross-venue-dislocation-event-strategy-v0.md",
+      "probe_verdict": null
+    }
+  },
+  "selected_command": "uv run python scripts/probe_dislocation_event_strategy.py --venues binance_usdm,bybit --symbols BTCUSDT,ETHUSDT,SOLUSDT --timeframe 1h --start 2024-01-01 --fee-pct 0.08 --slippage-pct 0.02 --verdict-output research/rbi_loop/cross-venue-dislocation-event-v0/probe-verdict.json",
+  "execution": null
+}
