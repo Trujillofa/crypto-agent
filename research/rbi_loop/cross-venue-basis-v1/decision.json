@@ -1,18 +1,28 @@
 {
-  "generated_at": "2026-06-10T15:20:27.900672+00:00",
+  "generated_at": "2026-06-11T21:13:21.842319+00:00",
   "lane_name": "cross-venue-basis-v1",
   "execute": false,
   "decision": {
-    "action": "RUN_AUTORESEARCH",
-    "allowed": true,
+    "action": "ITERATE_OR_CLOSE",
+    "allowed": false,
     "reasons": [
-      "cheap probe passed; autoresearch result missing"
+      "autoresearch result did not pass the standard gate"
     ],
     "evidence": {
       "lane_brief": "docs/specs/cross-venue-basis-dislocation-brief-v0.md",
-      "probe_verdict": "HAS_PULSE"
+      "probe_verdict": "HAS_PULSE",
+      "last_result_status": "discard_all",
+      "gate_profile": "standard",
+      "bootstrap": null,
+      "passes_standard_gate": false,
+      "eligible_for_bootstrap_1000": false,
+      "promotion_candidate_failures": [
+        "require_mode_trade_starvation",
+        "block_mode_no_risk_improvement",
+        "bootstrap_p_loss_far_above_gate"
+      ]
     }
   },
-  "selected_command": "uv run python scripts/autoresearch_loop.py --config config/settings.autoresearch.yaml --symbol SOLUSDT --timeframe 1h --train-months 3 --test-months 2 --gate-profile standard --families cross_venue_dislocation,venue_basis_filter --max-runs 30",
+  "selected_command": null,
   "execution": null
 }

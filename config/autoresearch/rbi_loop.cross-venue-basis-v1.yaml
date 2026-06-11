@@ -21,8 +21,12 @@ lane_brief: docs/specs/cross-venue-basis-dislocation-brief-v0.md
 # Evidence: research/rbi_loop/cross-venue-basis-v1/probe-verdict.json
 probe_verdict: HAS_PULSE
 
-# last_result and overlap_report will be populated by prior steps once the lane advances.
-last_result:
+# 2026-06-11 human review: RUN_AUTORESEARCH executed (30-run bounded sweep, all rc=0).
+# 0/30 candidates passed the standard gate: require-mode dislocation starves WFO trades
+# (67-217 blocks -> 0-7 trades), block-mode engages rarely (1-11 blocks) with no risk
+# improvement (best: sharpe 0.32 / P(loss) 92% / DD 25.9%). Guard now returns
+# ITERATE_OR_CLOSE. Evidence: research/rbi_loop/cross-venue-basis-v1/last_autoresearch_result.json
+last_result: research/rbi_loop/cross-venue-basis-v1/last_autoresearch_result.json
 overlap_report:
 
 decision_output: research/rbi_loop/cross-venue-basis-v1/decision.json

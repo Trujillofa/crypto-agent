@@ -1,0 +1,31 @@
+{
+  "status": "discard_all",
+  "gate_profile": "standard",
+  "command": [
+    "uv", "run", "python", "scripts/autoresearch_loop.py",
+    "--config", "config/settings.autoresearch.yaml",
+    "--symbol", "SOLUSDT",
+    "--timeframe", "1h",
+    "--train-months", "3",
+    "--test-months", "2",
+    "--gate-profile", "standard",
+    "--families", "cross_venue_dislocation,venue_basis_filter",
+    "--max-runs", "30"
+  ],
+  "summary": {
+    "passes_gates": false,
+    "note": "Bounded 30-run sweep 2026-06-11 (20:59-21:04 UTC, 310.5s, all rc=0, no crashes). 13 cross_venue_dislocation (require-mode) + 17 venue_basis_filter (block-mode) candidates, min_spread_bps sampled 3.53-7.06 from measured SOL 1h spread p90-p99. 0/30 passed the standard gate. Require-mode candidates blocked 67-217 BUYs, starving WFO to 0-7 aggregate trades (min_wfo_trades 20 unreachable). Block-mode candidates engaged rarely (1-11 blocks over ~2y) and left underlying stack metrics unimproved: best candidate venue-basis-filter min_bps=5.87 buy=0.97 reached WFO sharpe 0.32 / 70 trades but bootstrap P(loss) 92% vs 25% gate and DD 25.9% vs 10% gate. Gates verified non-inert: dislocation_blocked_buy_count varied with sampled threshold and family mode across all 30 runs."
+  },
+  "eligible_for_bootstrap_1000": false,
+  "promotion_candidate_failures": [
+    "require_mode_trade_starvation",
+    "block_mode_no_risk_improvement",
+    "bootstrap_p_loss_far_above_gate"
+  ],
+  "runs": 30,
+  "runs_passed": 0,
+  "session": "research/autoresearch_session.json (untracked, sweep 2026-06-11T20:59:26Z)",
+  "results_rows": "research/results.tsv run_ids 20260611-205926* through 20260611-210427*",
+  "archives": "research/archive/experiment-autopilot-20260611-20*/21*-*.json (30 files, untracked)",
+  "description": "cross-venue-basis-v1 RUN_AUTORESEARCH 30-run bounded sweep: all candidates discarded under standard gates"
+}
