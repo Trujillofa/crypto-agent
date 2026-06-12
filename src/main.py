@@ -50,6 +50,7 @@ from src.strategy import (
     BaseStrategy,
     BollingerBounceStrategy,
     CCIBreakoutStrategy,
+    DislocationEventStrategy,
     EngineConfig,
     FundingNormalizationStrategy,
     FundingRateStrategy,
@@ -784,6 +785,7 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
         "macro_volatility": MacroVolatilityStrategy,
         "funding_rate": FundingRateStrategy,
         "funding_normalization": FundingNormalizationStrategy,
+        "dislocation_event": DislocationEventStrategy,
     }
 
     optional_strategies = {

@@ -4,6 +4,7 @@ from src.strategy.base import BaseStrategy
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.breakout_retest import BreakoutRetestStrategy
 from src.strategy.cci_strategy import CCIBreakoutStrategy
+from src.strategy.dislocation_event import DislocationEventStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine
 from src.strategy.funding_normalization import FundingNormalizationStrategy
 from src.strategy.funding_rate import FundingRateStrategy
@@ -46,4 +47,5 @@ __all__ = [
     "MacroVolatilityStrategy",
     "RegimeRouterStrategy",
     "MultiTimeframeRegimeRouter",
+    "DislocationEventStrategy",
 ]
