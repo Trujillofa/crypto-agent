@@ -45,6 +45,7 @@ CV_FAMILIES = (
     "cross_venue_dislocation",
     "venue_basis_filter",
     "dislocation_event_entry",
+    "dislocation_event_rolling_entry",
 )
 ALL_FAMILIES = DEFAULT_FAMILIES + CV_FAMILIES
 
@@ -1209,6 +1210,50 @@ def generate_candidate(
             "time_stop_minutes": time_stop_min,
         }
         desc = f"dislocation-event-entry min_bps={min_bps:.2f} horizon={horizon_bars}"
+    elif family == "dislocation_event_rolling_entry":
+        # Gate 2 of cross-venue-dislocation-event-v1: rolling-threshold variant (no new probe).
+        # Sampled free (3): metric (basis/premium), tail_pct (5/10), horizon (12/24).
+        # basis_spread constrained to tail_pct=5 (per v0 probe table: only tail5 h12 passed for basis).
+        # Tied/fixed: threshold_mode="rolling", rolling_days=90, cooldown_bars=horizon.
+        # SL/TP/trailing/time-stop/backtest_use_executor_exit_model exactly as v0 family.
+        # _standalone_strategy_overlay used for aggregator/per-symbol wiring (conf fixed 0.75
+        # in strategy ensures buy_threshold samples <=0.75 can produce trades for both metrics).
+        horizon = int(rng.choice([12, 24]))
+        metric = rng.choice(["premium_spread", "basis_spread"])
+        tail_pct = int(rng.choice([5, 10]))
+        if metric == "basis_spread":
+            tail_pct = 5  # constraint per brief/probe evidence (only basis tail5 passed)
+        cooldown_bars = horizon
+        overlay, _ = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "dislocation_event",
+                "config": {
+                    "threshold_mode": "rolling",
+                    "metric": metric,
+                    "tail_pct": tail_pct,
+                    "rolling_days": 90,
+                    "cooldown_bars": cooldown_bars,
+                },
+            },
+            buy_low=0.42,
+            buy_high=0.68,
+            sl_atr=4.0,
+            tp_atr=8.0,
+        )
+        # Force the design's fixed wide values (helper samples trail; neutralize here)
+        overlay["trading_execution"]["sl_atr_multiplier"] = 4.0
+        overlay["trading_execution"]["tp_atr_multiplier"] = 8.0
+        overlay["trading_execution"]["trailing_activate_atr"] = _round(rng.uniform(8.0, 12.0), 1)
+        overlay["trading_execution"]["trailing_offset_atr"] = 0.5
+        # Time stop exactly at horizon (bars)
+        time_stop_min = float(horizon * 60)
+        overlay["trading_execution"]["exit_rules"] = {
+            "backtest_use_executor_exit_model": True,
+            "time_stop_minutes": time_stop_min,
+        }
+        desc = f"dislocation-event-rolling-entry metric={metric} tail={tail_pct} horizon={horizon}"
     elif family == "volatility_squeeze_bounded":
         max_hold_bars = int(rng.choice([10, 12, 14]))
         time_stop_min = float(max_hold_bars * 60)
