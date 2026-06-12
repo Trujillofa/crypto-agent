@@ -1,0 +1,31 @@
+{
+  "status": "discard_all",
+  "gate_profile": "standard",
+  "command": [
+    "uv", "run", "python", "scripts/autoresearch_loop.py",
+    "--config", "config/settings.autoresearch.yaml",
+    "--symbol", "SOLUSDT",
+    "--timeframe", "1h",
+    "--train-months", "3",
+    "--test-months", "2",
+    "--gate-profile", "standard",
+    "--families", "dislocation_event_entry",
+    "--max-runs", "30"
+  ],
+  "summary": {
+    "passes_gates": false,
+    "note": "Bounded 30-run sweep 2026-06-12 (19:59-20:05 UTC, 366.0s, all rc=0, no crashes). 30 dislocation_event_entry candidates (standalone long-only event entry, min_spread_bps sampled 4.51-6.91, horizon 12/24, cooldown==horizon, time-stop exit). 0/30 passed the standard gate. Failure is structural, not parametric: full-period in-engine performance is POSITIVE in 26/30 runs (best min_bps~6.4-6.6 h24: +43.7%, win 72%, sharpe 0.96, 25 trades) and improves monotonically with threshold, but WFO test-window performance is negative across the ENTIRE grid (-7.4% to -45.6%). At edge-bearing thresholds events run ~1/month, so 2-month test windows catch 0-3 trades each (7-16 WFO trades total vs min 20); at low thresholds where WFO trade counts suffice (20-26), WFO returns are -30% to -46% (noise events dominate). Profit concentration 66.5-100% (max month): the edge lives in a few episodes that fall largely inside train-only windows, so no threshold setting can simultaneously satisfy min_wfo_trades and OOS profitability. Anti-inertness verified: returns, trade counts, and gate failures all vary monotonically with sampled min_spread_bps and horizon."
+  },
+  "eligible_for_bootstrap_1000": false,
+  "promotion_candidate_failures": [
+    "wfo_oos_negative_across_entire_grid",
+    "event_sparsity_vs_min_wfo_trades_structural_conflict",
+    "episode_concentrated_profits_outside_oos_coverage"
+  ],
+  "runs": 30,
+  "runs_passed": 0,
+  "session": "research/autoresearch_session.json (untracked, sweep 2026-06-12T19:59:04Z)",
+  "results_rows": "research/results.tsv run_ids 20260612-195913* through 20260612-200459*",
+  "archives": "research/archive/experiment-autopilot-20260612-*.json (30 files, untracked)",
+  "description": "cross-venue-dislocation-event-v0 RUN_AUTORESEARCH 30-run bounded sweep: all candidates discarded under standard gates"
+}
