@@ -265,6 +265,49 @@ def _apply_cooldown_thin(heads: list[int], cooldown: int) -> list[int]:
     return selected
 
 
+def _precompute_rolling_thresholds(
+    bars: list[EventBar],
+    rolling_days: int,
+    tail_pcts: tuple[int, ...],
+) -> dict[tuple[str, int], dict[str, list[float]]]:
+    """Cache per-bar rolling thresholds per (metric, tail_pct) once per pair.
+
+    Reuses the same window across positive (high), negative (low), and normalization
+    (high+low+band). Uses two-pointer sliding window per metric for efficiency
+    (avoids O(N^2) repeated full scans from _get_window_values and the prior
+    double-compute of window inside _collect_extreme + _compute_threshold).
+    """
+    if not bars:
+        return {}
+    metrics = ("basis_bps", "premium_index")
+    delta = timedelta(days=rolling_days)
+    times = [b.time for b in bars]
+    cache: dict[tuple[str, int], dict[str, list[float]]] = {}
+    for metric in metrics:
+        vals = [_metric_value(b, metric) for b in bars]
+        n = len(bars)
+        for tp in tail_pcts:
+            highs = [0.0] * n
+            lows = [0.0] * n
+            bands = [0.0] * n
+            left = 0
+            for i in range(n):
+                cutoff = times[i] - delta
+                while left < i and times[left] < cutoff:
+                    left += 1
+                if left >= i:
+                    continue
+                win = vals[left:i]
+                if len(win) < 2:
+                    continue
+                highs[i] = tail_threshold_high(win, tp)
+                lows[i] = tail_threshold_low(win, tp)
+                abs_win = [abs(v) for v in win]
+                bands[i] = _percentile(abs_win, 50.0) if abs_win else 0.0
+            cache[(metric, tp)] = {"high": highs, "low": lows, "band": bands}
+    return cache
+
+
 def _collect_extreme_candidate_indices(
     bars: list[EventBar],
     metric: str,
@@ -272,16 +315,37 @@ def _collect_extreme_candidate_indices(
     threshold_mode: str,
     threshold_spec: float,
     rolling_days: int,
+    rolling_cache: dict[tuple[str, int], dict[str, list[float]]] | None = None,
 ) -> list[int]:
-    """All bars meeting the (possibly per-bar rolling) threshold. Raw before dedup."""
+    """All bars meeting the (possibly per-bar rolling) threshold. Raw before dedup.
+
+    When rolling_cache provided (for mode=rolling), uses precomputed per-bar thresholds
+    (avoids repeated _get_window_values per kind and the double window computation
+    that used to happen inside the len-check + _compute_threshold).
+    """
     cands: list[int] = []
     for i in range(len(bars)):
         val = _metric_value(bars[i], metric)
         if threshold_mode == "rolling":
-            win = _get_window_values(bars, i, metric, rolling_days)
-            if len(win) < 2:
-                continue
-        th = _compute_threshold(bars, i, metric, threshold_mode, threshold_spec, rolling_days, kind)
+            if rolling_cache is not None:
+                key = (metric, int(threshold_spec))
+                entry = rolling_cache.get(key)
+                if entry is None:
+                    continue
+                th = entry["high"][i] if kind == ScenarioKind.EXTREME_POSITIVE else entry["low"][i]
+                if th == 0.0:
+                    continue
+            else:
+                win = _get_window_values(bars, i, metric, rolling_days)
+                if len(win) < 2:
+                    continue
+                th = _compute_threshold(
+                    bars, i, metric, threshold_mode, threshold_spec, rolling_days, kind
+                )
+        else:
+            th = _compute_threshold(
+                bars, i, metric, threshold_mode, threshold_spec, rolling_days, kind
+            )
         if kind == ScenarioKind.EXTREME_POSITIVE:
             if val >= th:
                 cands.append(i)
@@ -297,6 +361,7 @@ def _collect_normalization_candidate_indices(
     threshold_mode: str,
     threshold_spec: float,
     rolling_days: int,
+    rolling_cache: dict[tuple[str, int], dict[str, list[float]]] | None = None,
 ) -> list[int]:
     """State-machine fire points for normalization (pre-cooldown)."""
     if not bars:
@@ -304,16 +369,28 @@ def _collect_normalization_candidate_indices(
     cands: list[int] = []
     state = "idle"
     prior_extreme = 0.0
+    n = len(bars)
     for i, bar in enumerate(bars):
         val = _metric_value(bar, metric)
         if threshold_mode == "rolling":
-            win = _get_window_values(bars, i, metric, rolling_days)
-            if len(win) < 2:
-                continue
-            high_entry = tail_threshold_high(win, int(threshold_spec))
-            low_entry = tail_threshold_low(win, int(threshold_spec))
-            abs_win = [abs(v) for v in win]
-            exit_band = _percentile(abs_win, 50.0) if abs_win else 0.0
+            if rolling_cache is not None:
+                key = (metric, int(threshold_spec))
+                entry = rolling_cache.get(key)
+                if entry is None:
+                    continue
+                high_entry = entry["high"][i] if i < n else 0.0
+                low_entry = entry["low"][i] if i < n else 0.0
+                exit_band = entry["band"][i] if i < n else 0.0
+                if high_entry == 0.0 and low_entry == 0.0:
+                    continue
+            else:
+                win = _get_window_values(bars, i, metric, rolling_days)
+                if len(win) < 2:
+                    continue
+                high_entry = tail_threshold_high(win, int(threshold_spec))
+                low_entry = tail_threshold_low(win, int(threshold_spec))
+                abs_win = [abs(v) for v in win]
+                exit_band = _percentile(abs_win, 50.0) if abs_win else 0.0
         else:
             high_entry = float(threshold_spec)
             low_entry = -float(threshold_spec)
@@ -444,29 +521,53 @@ def _probe_bars(
         else:
             for tp in config.tail_pcts:
                 thresh_items.append((float(tp), f"tail{tp}"))
+        # For rolling, precompute per-bar thresholds once per (metric, tail_pct) and reuse
+        # across all three kinds + avoid re-computes inside collects. Hoisted below.
+        rolling_cache: dict[tuple[str, int], dict[str, list[float]]] | None = None
+        if mode == "rolling":
+            rolling_cache = _precompute_rolling_thresholds(
+                bars, config.rolling_days, config.tail_pcts
+            )
         for metric in ("basis_bps", "premium_index"):
             for kind in (
                 ScenarioKind.EXTREME_POSITIVE,
                 ScenarioKind.EXTREME_NEGATIVE,
                 ScenarioKind.NORMALIZATION,
             ):
+                if mode == "fixed" and kind == ScenarioKind.NORMALIZATION:
+                    # fixed mode has no meaningful exit band; rolling mode covers normalization
+                    continue
                 for spec_val, spec_label in thresh_items:
+                    # Hoist candidate collection (and clustering for extremes) out of the
+                    # horizon loop: these are independent of horizon (only the cooldown
+                    # thinning + forward/MAE window inside directed stats depend on it).
+                    if kind in (ScenarioKind.EXTREME_POSITIVE, ScenarioKind.EXTREME_NEGATIVE):
+                        qual = _collect_extreme_candidate_indices(
+                            bars,
+                            metric,
+                            kind,
+                            mode,
+                            spec_val,
+                            config.rolling_days,
+                            rolling_cache=rolling_cache,
+                        )
+                        raw_c = len(qual)
+                        base_cands = _first_of_clusters(qual)
+                    else:
+                        cands = _collect_normalization_candidate_indices(
+                            bars,
+                            metric,
+                            mode,
+                            spec_val,
+                            config.rolling_days,
+                            rolling_cache=rolling_cache,
+                        )
+                        raw_c = len(cands)
+                        base_cands = cands
                     horizon_details: dict[str, Any] = {}
                     for horizon in config.horizons:
                         cooldown = horizon  # --cooldown-mode horizon
-                        if kind in (ScenarioKind.EXTREME_POSITIVE, ScenarioKind.EXTREME_NEGATIVE):
-                            qual = _collect_extreme_candidate_indices(
-                                bars, metric, kind, mode, spec_val, config.rolling_days
-                            )
-                            raw_c = len(qual)
-                            heads = _first_of_clusters(qual)
-                            dedup_is = _apply_cooldown_thin(heads, cooldown)
-                        else:
-                            cands = _collect_normalization_candidate_indices(
-                                bars, metric, mode, spec_val, config.rolling_days
-                            )
-                            raw_c = len(cands)
-                            dedup_is = _apply_cooldown_thin(cands, cooldown)
+                        dedup_is = _apply_cooldown_thin(base_cands, cooldown)
                         dir_stats: dict[str, Any] = {}
                         for direction in ("long", "short"):
                             dst = _compute_directed_event_stats(

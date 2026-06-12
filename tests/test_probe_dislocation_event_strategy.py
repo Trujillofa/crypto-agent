@@ -176,25 +176,6 @@ def test_cooldown_blocks_overlap():
 
 def test_rolling_threshold_at_i_ignores_bars_ge_i():
     """Construct series where full-sample tail th differs from trailing; prove bar i uses only <i."""
-    # 20 bars. Early (0-9) have a huge outlier 100 at bar 2, making full p95 very high.
-    # Late (10-19) are small values 0-1; at bar 15 we plant a 2.0 which crosses a *late* rolling p95
-    # but would be below full-sample p95.
-    bars = [_mk_bar(i, float(i % 3) * 0.3, 100.0, 99.0, 101.0) for i in range(20)]
-    bars[2] = _mk_bar(2, 100.0, 100.2, 99.0, 101.0)  # full-sample poison
-    # late window before 15 (rolling_days=1 ~24 but we use tiny data, adjust: use rolling_days=0.5 days? use 10 bars window by using days=1 with 1h, but make data sparse? use small rolling_days=1 (24h=24>len, so use rolling that takes last 5 manually? For test use explicit small.
-    # To force: set rolling_days so that for i=15, window before 15 covers say bars 10-14 only (values ~0-1), p95 ~0.9 something.
-    # full sample p95 high because of 100.
-    # Plant at 15 a value 1.5 which > rolling p95(~1.0) but << full p95(~90).
-    bars[15] = _mk_bar(15, 1.5, 101.5, 99.0, 101.0)
-    # For rolling_days small enough that window at 15 is only recent: since 1h bars, rolling_days=1 means 24 bars, but our series 0-19, so for i=15 window is 0-14 still includes poison.
-    # Force small effective: use rolling_days=0 (but timedelta(0) -> only before? wait 0 days takes all prior.
-    # Instead, hack test by calling _get_window_values and tail directly, and the collect with rolling.
-    # Simpler: make rolling_days very small by using fractional? timedelta(days=0.2) but int arg. rolling_days int.
-    # Use 1h bars, set rolling_days=1 (24h), but truncate the series length? For i late, window will include early if total <24.
-    # Solution: construct with enough late-only bars. Make first 30 low, spike early? Put poison early, then 100 low bars, then at far i the test bar.
-    #  rolling_days=1 (24 bars) ; put poison at bar 0, then bars 1-40 normal 0.1, bar 30 plant 0.8 .
-    # At bar 30, window=30-24=6 to 29 : all ~0.1, tail5 high ~0.1x ; 0.8 > that.
-    # Full sample tail5 high dominated by 100 at 0 -> very high, 0.8 < full th.
     bars = [_mk_bar(i, 0.1, 100.0 + i * 0.01, 99.9, 100.1) for i in range(50)]
     bars[0] = _mk_bar(0, 100.0, 100.0, 99.0, 101.0)
     bars[1] = _mk_bar(1, 80.0, 100.0, 99.0, 101.0)
