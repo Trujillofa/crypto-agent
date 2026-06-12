@@ -1,0 +1,5856 @@
+{
+  "verdict": "HAS_PULSE",
+  "note": "Dislocation event probe: net-of-cost forward edge after no-lookahead thresholds (see brief).",
+  "passing_scenarios": [
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs4.5:long:h12",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs4.5:long:h24",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs4.5:long:h6",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs5.5:long:h12",
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs5.5:long:h6",
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs5.5:long:h24",
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs7.0:long:h12",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs4.5:long:h12",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs4.5:long:h24",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs5.5:long:h12",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs5.5:long:h24",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs7.0:long:h24",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail5:long:h12",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail10:long:h12",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail10:long:h24",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail5:long:h24",
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail5:long:h6"
+  ],
+  "per_scenario_stats": {
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 614,
+          "deduped_count_long": 251,
+          "deduped_count_short": 251,
+          "long": {
+            "deduped_count": 251,
+            "net_mean": 0.05346536176328231,
+            "net_median": -0.04602001411785342,
+            "win_rate": 48.60557768924303,
+            "mae_mean": 1.247367938062676,
+            "monthly_concentration_pct": 118.83519481288182
+          },
+          "short": {
+            "deduped_count": 251,
+            "net_mean": -0.25346536176328227,
+            "net_median": -0.1539799858821466,
+            "win_rate": 44.223107569721115,
+            "mae_mean": 1.2555978152795069,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 614,
+          "deduped_count_long": 192,
+          "deduped_count_short": 192,
+          "long": {
+            "deduped_count": 192,
+            "net_mean": -0.009716067719951323,
+            "net_median": 0.17845135034966217,
+            "win_rate": 52.083333333333336,
+            "mae_mean": 1.7217814208590096,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 192,
+            "net_mean": -0.19028393228004872,
+            "net_median": -0.37845135034966215,
+            "win_rate": 45.83333333333333,
+            "mae_mean": 1.7137901178247403,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 614,
+          "deduped_count_long": 143,
+          "deduped_count_short": 143,
+          "long": {
+            "deduped_count": 143,
+            "net_mean": -0.16197697856683468,
+            "net_median": -0.05608318429896056,
+            "win_rate": 48.95104895104895,
+            "mae_mean": 2.4795702657491123,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 143,
+            "net_mean": -0.03802302143316533,
+            "net_median": -0.14391681570103945,
+            "win_rate": 46.85314685314685,
+            "mae_mean": 2.2438114724048135,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 288,
+          "deduped_count_long": 128,
+          "deduped_count_short": 128,
+          "long": {
+            "deduped_count": 128,
+            "net_mean": 0.027837785556482114,
+            "net_median": 0.013552017823048684,
+            "win_rate": 51.5625,
+            "mae_mean": 1.348981716562622,
+            "monthly_concentration_pct": 357.92262822004983
+          },
+          "short": {
+            "deduped_count": 128,
+            "net_mean": -0.2278377855564823,
+            "net_median": -0.2135520178230487,
+            "win_rate": 41.40625,
+            "mae_mean": 1.2395312856630605,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 288,
+          "deduped_count_long": 95,
+          "deduped_count_short": 95,
+          "long": {
+            "deduped_count": 95,
+            "net_mean": -0.1273352213245079,
+            "net_median": 0.20724977341722858,
+            "win_rate": 52.63157894736842,
+            "mae_mean": 1.8985496878370354,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 95,
+            "net_mean": -0.07266477867549201,
+            "net_median": -0.40724977341722857,
+            "win_rate": 45.26315789473684,
+            "mae_mean": 1.736529276836391,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 288,
+          "deduped_count_long": 77,
+          "deduped_count_short": 77,
+          "long": {
+            "deduped_count": 77,
+            "net_mean": -0.30997027987193976,
+            "net_median": -0.21444794445389928,
+            "win_rate": 44.15584415584416,
+            "mae_mean": 2.9549395142127963,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 77,
+            "net_mean": 0.10997027987193998,
+            "net_median": 0.01444794445389927,
+            "win_rate": 50.649350649350644,
+            "mae_mean": 2.319490540723541,
+            "monthly_concentration_pct": 301.6623146554696
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 138,
+          "deduped_count_long": 68,
+          "deduped_count_short": 68,
+          "long": {
+            "deduped_count": 68,
+            "net_mean": 0.09810786005572165,
+            "net_median": 0.03505957098858267,
+            "win_rate": 52.94117647058824,
+            "mae_mean": 1.4729866829205305,
+            "monthly_concentration_pct": 143.88047441035144
+          },
+          "short": {
+            "deduped_count": 68,
+            "net_mean": -0.29810786005572176,
+            "net_median": -0.23505957098858266,
+            "win_rate": 44.11764705882353,
+            "mae_mean": 1.2403086729669557,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 138,
+          "deduped_count_long": 53,
+          "deduped_count_short": 53,
+          "long": {
+            "deduped_count": 53,
+            "net_mean": -0.12658162926806793,
+            "net_median": -0.0531844895183097,
+            "win_rate": 49.056603773584904,
+            "mae_mean": 2.1356602066175623,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 53,
+            "net_mean": -0.07341837073193186,
+            "net_median": -0.1468155104816903,
+            "win_rate": 49.056603773584904,
+            "mae_mean": 1.7844896105536103,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 138,
+          "deduped_count_long": 43,
+          "deduped_count_short": 43,
+          "long": {
+            "deduped_count": 43,
+            "net_mean": -0.23704065200380503,
+            "net_median": -0.09397244637553417,
+            "win_rate": 44.18604651162791,
+            "mae_mean": 3.229526464824978,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 43,
+            "net_mean": 0.03704065200380516,
+            "net_median": -0.10602755362446584,
+            "win_rate": 48.837209302325576,
+            "mae_mean": 2.512176591999172,
+            "monthly_concentration_pct": 941.9121824280318
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 35,
+          "deduped_count_long": 21,
+          "deduped_count_short": 21,
+          "long": {
+            "deduped_count": 21,
+            "net_mean": 0.13371334346731428,
+            "net_median": 0.021502994271271975,
+            "win_rate": 52.38095238095239,
+            "mae_mean": 1.470104073815065,
+            "monthly_concentration_pct": 117.03044402012988
+          },
+          "short": {
+            "deduped_count": 21,
+            "net_mean": -0.3337133434673144,
+            "net_median": -0.22150299427127199,
+            "win_rate": 47.61904761904761,
+            "mae_mean": 1.4884125988307748,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 35,
+          "deduped_count_long": 21,
+          "deduped_count_short": 21,
+          "long": {
+            "deduped_count": 21,
+            "net_mean": 0.5679011222574891,
+            "net_median": 0.2531440222699134,
+            "win_rate": 52.38095238095239,
+            "mae_mean": 1.791885785228957,
+            "monthly_concentration_pct": 29.321284733810455
+          },
+          "short": {
+            "deduped_count": 21,
+            "net_mean": -0.7679011222574891,
+            "net_median": -0.45314402226991335,
+            "win_rate": 38.095238095238095,
+            "mae_mean": 2.1052479316130057,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 35,
+          "deduped_count_long": 20,
+          "deduped_count_short": 20,
+          "long": {
+            "deduped_count": 20,
+            "net_mean": 0.5956715484204114,
+            "net_median": 0.3944265557518257,
+            "win_rate": 60.0,
+            "mae_mean": 2.620145549317327,
+            "monthly_concentration_pct": 73.50865053697923
+          },
+          "short": {
+            "deduped_count": 20,
+            "net_mean": -0.7956715484204113,
+            "net_median": -0.5944265557518257,
+            "win_rate": 40.0,
+            "mae_mean": 3.0894158485181498,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 715,
+          "deduped_count_long": 264,
+          "deduped_count_short": 264,
+          "long": {
+            "deduped_count": 264,
+            "net_mean": -0.11128077739506796,
+            "net_median": -0.17551553679664425,
+            "win_rate": 40.909090909090914,
+            "mae_mean": 1.0826008816752986,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 264,
+            "net_mean": -0.0887192226049319,
+            "net_median": -0.02448446320335576,
+            "win_rate": 48.484848484848484,
+            "mae_mean": 0.9901047859644967,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 715,
+          "deduped_count_long": 193,
+          "deduped_count_short": 193,
+          "long": {
+            "deduped_count": 193,
+            "net_mean": -0.029431561634997182,
+            "net_median": -0.1679636840163478,
+            "win_rate": 44.04145077720207,
+            "mae_mean": 1.603136421992517,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 193,
+            "net_mean": -0.1705684383650027,
+            "net_median": -0.032036315983652225,
+            "win_rate": 47.66839378238342,
+            "mae_mean": 1.4853783700568133,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 715,
+          "deduped_count_long": 143,
+          "deduped_count_short": 143,
+          "long": {
+            "deduped_count": 143,
+            "net_mean": 0.36584735134624774,
+            "net_median": 0.11229201032100242,
+            "win_rate": 53.14685314685315,
+            "mae_mean": 2.1839314968098713,
+            "monthly_concentration_pct": 50.8915698406515
+          },
+          "short": {
+            "deduped_count": 143,
+            "net_mean": -0.5658473513462476,
+            "net_median": -0.3122920103210024,
+            "win_rate": 45.45454545454545,
+            "mae_mean": 2.4672370677172286,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 338,
+          "deduped_count_long": 139,
+          "deduped_count_short": 139,
+          "long": {
+            "deduped_count": 139,
+            "net_mean": -0.05774590750090716,
+            "net_median": -0.027552463948954303,
+            "win_rate": 48.92086330935252,
+            "mae_mean": 1.1728817052976444,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 139,
+            "net_mean": -0.142254092499093,
+            "net_median": -0.1724475360510457,
+            "win_rate": 44.60431654676259,
+            "mae_mean": 1.0531667313084239,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 338,
+          "deduped_count_long": 107,
+          "deduped_count_short": 107,
+          "long": {
+            "deduped_count": 107,
+            "net_mean": -0.09160856304630309,
+            "net_median": -0.21285172447902392,
+            "win_rate": 43.925233644859816,
+            "mae_mean": 1.702246119085948,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 107,
+            "net_mean": -0.10839143695369689,
+            "net_median": 0.012851724479023913,
+            "win_rate": 51.4018691588785,
+            "mae_mean": 1.6076642592661807,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 338,
+          "deduped_count_long": 81,
+          "deduped_count_short": 81,
+          "long": {
+            "deduped_count": 81,
+            "net_mean": 0.05014797376003688,
+            "net_median": 0.19478050796274413,
+            "win_rate": 51.85185185185185,
+            "mae_mean": 2.4304712178117347,
+            "monthly_concentration_pct": 560.7200838755681
+          },
+          "short": {
+            "deduped_count": 81,
+            "net_mean": -0.250147973760037,
+            "net_median": -0.3947805079627441,
+            "win_rate": 44.44444444444444,
+            "mae_mean": 2.477107891960484,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 159,
+          "deduped_count_long": 70,
+          "deduped_count_short": 70,
+          "long": {
+            "deduped_count": 70,
+            "net_mean": -0.02434340817871641,
+            "net_median": -0.12489549587674223,
+            "win_rate": 47.14285714285714,
+            "mae_mean": 1.1335226691969196,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 70,
+            "net_mean": -0.17565659182128354,
+            "net_median": -0.07510450412325778,
+            "win_rate": 47.14285714285714,
+            "mae_mean": 1.1724155924636404,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 159,
+          "deduped_count_long": 60,
+          "deduped_count_short": 60,
+          "long": {
+            "deduped_count": 60,
+            "net_mean": 0.10537882868014377,
+            "net_median": 0.002196450568015068,
+            "win_rate": 50.0,
+            "mae_mean": 1.6478830537256977,
+            "monthly_concentration_pct": 113.28294368385052
+          },
+          "short": {
+            "deduped_count": 60,
+            "net_mean": -0.3053788286801437,
+            "net_median": -0.20219645056801508,
+            "win_rate": 41.66666666666667,
+            "mae_mean": 1.6441218359836813,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 159,
+          "deduped_count_long": 49,
+          "deduped_count_short": 49,
+          "long": {
+            "deduped_count": 49,
+            "net_mean": -0.39353552098423294,
+            "net_median": -0.5890034907478302,
+            "win_rate": 40.816326530612244,
+            "mae_mean": 2.685794487090534,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 49,
+            "net_mean": 0.19353552098423304,
+            "net_median": 0.38900349074783025,
+            "win_rate": 55.10204081632652,
+            "mae_mean": 2.3670168914230896,
+            "monthly_concentration_pct": 120.86018587903966
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 41,
+          "deduped_count_long": 22,
+          "deduped_count_short": 22,
+          "long": {
+            "deduped_count": 22,
+            "net_mean": -0.030811852646637862,
+            "net_median": -0.0329048359201555,
+            "win_rate": 45.45454545454545,
+            "mae_mean": 1.1985466391993154,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 22,
+            "net_mean": -0.16918814735336218,
+            "net_median": -0.1670951640798445,
+            "win_rate": 45.45454545454545,
+            "mae_mean": 1.096489878444573,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 41,
+          "deduped_count_long": 19,
+          "deduped_count_short": 19,
+          "long": {
+            "deduped_count": 19,
+            "net_mean": -0.16528305565388346,
+            "net_median": -0.3560409312910572,
+            "win_rate": 42.10526315789473,
+            "mae_mean": 1.8347256802536107,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 19,
+            "net_mean": -0.034716944346116635,
+            "net_median": 0.1560409312910572,
+            "win_rate": 57.89473684210527,
+            "mae_mean": 1.6375434776436875,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 41,
+          "deduped_count_long": 18,
+          "deduped_count_short": 18,
+          "long": {
+            "deduped_count": 18,
+            "net_mean": -1.0788978939116805,
+            "net_median": -0.7881174358375764,
+            "win_rate": 38.88888888888889,
+            "mae_mean": 3.5783365301643304,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 18,
+            "net_mean": 0.8788978939116805,
+            "net_median": 0.5881174358375764,
+            "win_rate": 61.111111111111114,
+            "mae_mean": 2.25887963289887,
+            "monthly_concentration_pct": 83.738489988591
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1232,
+          "deduped_count_long": 627,
+          "deduped_count_short": 627,
+          "long": {
+            "deduped_count": 627,
+            "net_mean": -0.018893467248228463,
+            "net_median": -0.041165182603186606,
+            "win_rate": 48.006379585326954,
+            "mae_mean": 1.0816125497940912,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 627,
+            "net_mean": -0.18110653275177174,
+            "net_median": -0.1588348173968134,
+            "win_rate": 42.90271132376395,
+            "mae_mean": 1.013756198226687,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1232,
+          "deduped_count_long": 476,
+          "deduped_count_short": 476,
+          "long": {
+            "deduped_count": 476,
+            "net_mean": -0.06447189605147556,
+            "net_median": -0.08952260732589803,
+            "win_rate": 47.89915966386555,
+            "mae_mean": 1.4746735295162106,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 476,
+            "net_mean": -0.13552810394852471,
+            "net_median": -0.11047739267410198,
+            "win_rate": 47.05882352941176,
+            "mae_mean": 1.4245051259708765,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1232,
+          "deduped_count_long": 344,
+          "deduped_count_short": 344,
+          "long": {
+            "deduped_count": 344,
+            "net_mean": -0.09107195394154696,
+            "net_median": 0.04912184953974616,
+            "win_rate": 51.45348837209303,
+            "mae_mean": 2.164710490528097,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 344,
+            "net_mean": -0.10892804605845283,
+            "net_median": -0.24912184953974614,
+            "win_rate": 46.22093023255814,
+            "mae_mean": 2.005201885458179,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2313,
+          "deduped_count_long": 1027,
+          "deduped_count_short": 1027,
+          "long": {
+            "deduped_count": 1027,
+            "net_mean": 0.00030436834063118294,
+            "net_median": -0.04985451760602935,
+            "win_rate": 47.71178188899708,
+            "mae_mean": 0.9830669092120591,
+            "monthly_concentration_pct": 4272.674246894705
+          },
+          "short": {
+            "deduped_count": 1027,
+            "net_mean": -0.20030436834063095,
+            "net_median": -0.15014548239397066,
+            "win_rate": 43.816942551119766,
+            "mae_mean": 0.9947952015301431,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2313,
+          "deduped_count_long": 715,
+          "deduped_count_short": 715,
+          "long": {
+            "deduped_count": 715,
+            "net_mean": -0.011252674734106965,
+            "net_median": -0.07398986421699441,
+            "win_rate": 47.83216783216783,
+            "mae_mean": 1.4044238325538885,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 715,
+            "net_mean": -0.1887473252658931,
+            "net_median": -0.1260101357830056,
+            "win_rate": 46.01398601398601,
+            "mae_mean": 1.3805359425827948,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2313,
+          "deduped_count_long": 477,
+          "deduped_count_short": 477,
+          "long": {
+            "deduped_count": 477,
+            "net_mean": 0.04822310932919777,
+            "net_median": 0.10565166988335548,
+            "win_rate": 51.78197064989518,
+            "mae_mean": 1.9836181318424577,
+            "monthly_concentration_pct": 82.13053851241806
+          },
+          "short": {
+            "deduped_count": 477,
+            "net_mean": -0.2482231093291975,
+            "net_median": -0.30565166988335546,
+            "win_rate": 44.863731656184484,
+            "mae_mean": 1.9510141797924243,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1047,
+          "deduped_count_long": 465,
+          "deduped_count_short": 465,
+          "long": {
+            "deduped_count": 465,
+            "net_mean": -0.11704854890235429,
+            "net_median": -0.15690270527992647,
+            "win_rate": 41.72043010752688,
+            "mae_mean": 1.0388303810139283,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 465,
+            "net_mean": -0.08295145109764572,
+            "net_median": -0.04309729472007354,
+            "win_rate": 47.956989247311824,
+            "mae_mean": 0.9240141575835268,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1047,
+          "deduped_count_long": 357,
+          "deduped_count_short": 357,
+          "long": {
+            "deduped_count": 357,
+            "net_mean": -0.11943369268755503,
+            "net_median": -0.1460500404953934,
+            "win_rate": 44.537815126050425,
+            "mae_mean": 1.5019700865665513,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 357,
+            "net_mean": -0.08056630731244495,
+            "net_median": -0.0539499595046066,
+            "win_rate": 47.89915966386555,
+            "mae_mean": 1.3186650352436835,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1047,
+          "deduped_count_long": 263,
+          "deduped_count_short": 263,
+          "long": {
+            "deduped_count": 263,
+            "net_mean": -0.06277378526413922,
+            "net_median": -0.015130687150921501,
+            "win_rate": 48.669201520912544,
+            "mae_mean": 2.140823797087773,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 263,
+            "net_mean": -0.13722621473586097,
+            "net_median": -0.1848693128490785,
+            "win_rate": 47.90874524714829,
+            "mae_mean": 2.0309691716537994,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 1993,
+          "deduped_count_long": 836,
+          "deduped_count_short": 836,
+          "long": {
+            "deduped_count": 836,
+            "net_mean": -0.10065937782052198,
+            "net_median": -0.13806849886920927,
+            "win_rate": 43.66028708133971,
+            "mae_mean": 0.999454857831025,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 836,
+            "net_mean": -0.09934062217947803,
+            "net_median": -0.06193150113079074,
+            "win_rate": 45.8133971291866,
+            "mae_mean": 0.9085268356018555,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1993,
+          "deduped_count_long": 605,
+          "deduped_count_short": 605,
+          "long": {
+            "deduped_count": 605,
+            "net_mean": -0.04278720074530376,
+            "net_median": -0.10360942072428206,
+            "win_rate": 47.27272727272727,
+            "mae_mean": 1.3997051264835856,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 605,
+            "net_mean": -0.1572127992546962,
+            "net_median": -0.09639057927571795,
+            "win_rate": 47.27272727272727,
+            "mae_mean": 1.365039852912186,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1993,
+          "deduped_count_long": 413,
+          "deduped_count_short": 413,
+          "long": {
+            "deduped_count": 413,
+            "net_mean": 0.0245049140969622,
+            "net_median": 0.05415874712538801,
+            "win_rate": 51.08958837772397,
+            "mae_mean": 2.0027170141970254,
+            "monthly_concentration_pct": 286.9768801384395
+          },
+          "short": {
+            "deduped_count": 413,
+            "net_mean": -0.22450491409696205,
+            "net_median": -0.254158747125388,
+            "win_rate": 46.246973365617436,
+            "mae_mean": 2.000523337974535,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:normalization:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1021,
+          "deduped_count_long": 842,
+          "deduped_count_short": 842,
+          "long": {
+            "deduped_count": 842,
+            "net_mean": -0.07325468341119787,
+            "net_median": -0.12236206474577341,
+            "win_rate": 44.06175771971497,
+            "mae_mean": 1.035804531279507,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 842,
+            "net_mean": -0.12674531658880198,
+            "net_median": -0.0776379352542266,
+            "win_rate": 44.77434679334917,
+            "mae_mean": 0.9640433759475381,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1021,
+          "deduped_count_long": 648,
+          "deduped_count_short": 648,
+          "long": {
+            "deduped_count": 648,
+            "net_mean": -0.012946159811530777,
+            "net_median": -0.03230590852743012,
+            "win_rate": 48.76543209876543,
+            "mae_mean": 1.4125069613863621,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 648,
+            "net_mean": -0.1870538401884692,
+            "net_median": -0.1676940914725699,
+            "win_rate": 44.907407407407405,
+            "mae_mean": 1.3537104389948185,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1021,
+          "deduped_count_long": 466,
+          "deduped_count_short": 466,
+          "long": {
+            "deduped_count": 466,
+            "net_mean": 0.0005640000028880376,
+            "net_median": 0.0018733726795284456,
+            "win_rate": 50.0,
+            "mae_mean": 2.052348322376901,
+            "monthly_concentration_pct": 7989.269094439225
+          },
+          "short": {
+            "deduped_count": 466,
+            "net_mean": -0.2005640000028883,
+            "net_median": -0.20187337267952846,
+            "win_rate": 43.99141630901288,
+            "mae_mean": 1.941779628933848,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:normalization:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 1908,
+          "deduped_count_long": 1395,
+          "deduped_count_short": 1395,
+          "long": {
+            "deduped_count": 1395,
+            "net_mean": -0.06426787314927315,
+            "net_median": -0.10674945947375383,
+            "win_rate": 44.73118279569893,
+            "mae_mean": 0.9783278653083226,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1395,
+            "net_mean": -0.13573212685072686,
+            "net_median": -0.09325054052624618,
+            "win_rate": 45.30465949820788,
+            "mae_mean": 0.9385545234208993,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1908,
+          "deduped_count_long": 980,
+          "deduped_count_short": 980,
+          "long": {
+            "deduped_count": 980,
+            "net_mean": -0.04230389460525704,
+            "net_median": -0.050745424117015686,
+            "win_rate": 47.85714285714286,
+            "mae_mean": 1.3662720522720058,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 980,
+            "net_mean": -0.15769610539474316,
+            "net_median": -0.14925457588298432,
+            "win_rate": 44.89795918367347,
+            "mae_mean": 1.3205780625724794,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1908,
+          "deduped_count_long": 626,
+          "deduped_count_short": 626,
+          "long": {
+            "deduped_count": 626,
+            "net_mean": 0.05599280380601948,
+            "net_median": 0.046635308188347574,
+            "win_rate": 51.43769968051119,
+            "mae_mean": 1.9134004739668984,
+            "monthly_concentration_pct": 76.28013039572001
+          },
+          "short": {
+            "deduped_count": 626,
+            "net_mean": -0.25599280380601974,
+            "net_median": -0.24663530818834756,
+            "win_rate": 43.76996805111821,
+            "mae_mean": 1.9569626310092156,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1123,
+          "deduped_count_long": 628,
+          "deduped_count_short": 628,
+          "long": {
+            "deduped_count": 628,
+            "net_mean": -0.03338759280129389,
+            "net_median": -0.0007454400775651904,
+            "win_rate": 50.0,
+            "mae_mean": 1.1066158118459537,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 628,
+            "net_mean": -0.16661240719870604,
+            "net_median": -0.19925455992243482,
+            "win_rate": 44.10828025477707,
+            "mae_mean": 1.0458046486273245,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1123,
+          "deduped_count_long": 495,
+          "deduped_count_short": 495,
+          "long": {
+            "deduped_count": 495,
+            "net_mean": -0.0672588127895847,
+            "net_median": -0.06237145925614965,
+            "win_rate": 48.08080808080808,
+            "mae_mean": 1.4954553838297724,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 495,
+            "net_mean": -0.13274118721041542,
+            "net_median": -0.13762854074385036,
+            "win_rate": 46.86868686868687,
+            "mae_mean": 1.4185966421075265,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1123,
+          "deduped_count_long": 357,
+          "deduped_count_short": 357,
+          "long": {
+            "deduped_count": 357,
+            "net_mean": -0.009555171322611826,
+            "net_median": 0.09729580907947852,
+            "win_rate": 52.10084033613446,
+            "mae_mean": 2.084035525397593,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 357,
+            "net_mean": -0.19044482867738804,
+            "net_median": -0.2972958090794785,
+            "win_rate": 45.65826330532213,
+            "mae_mean": 1.995012797379987,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2253,
+          "deduped_count_long": 1086,
+          "deduped_count_short": 1086,
+          "long": {
+            "deduped_count": 1086,
+            "net_mean": -0.0713889463173361,
+            "net_median": -0.06347530379601221,
+            "win_rate": 47.32965009208103,
+            "mae_mean": 1.021483958009397,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1086,
+            "net_mean": -0.12861105368266368,
+            "net_median": -0.1365246962039878,
+            "win_rate": 43.83057090239411,
+            "mae_mean": 0.980468556912335,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2253,
+          "deduped_count_long": 772,
+          "deduped_count_short": 772,
+          "long": {
+            "deduped_count": 772,
+            "net_mean": -0.083655299673874,
+            "net_median": -0.07101674706315722,
+            "win_rate": 48.18652849740933,
+            "mae_mean": 1.432443864658578,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 772,
+            "net_mean": -0.11634470032612616,
+            "net_median": -0.1289832529368428,
+            "win_rate": 47.27979274611399,
+            "mae_mean": 1.350465317828007,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2253,
+          "deduped_count_long": 500,
+          "deduped_count_short": 500,
+          "long": {
+            "deduped_count": 500,
+            "net_mean": -0.0008950488588102798,
+            "net_median": 0.09529761887029373,
+            "win_rate": 53.0,
+            "mae_mean": 1.9964692476747297,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 500,
+            "net_mean": -0.19910495114118912,
+            "net_median": -0.2952976188702937,
+            "win_rate": 44.0,
+            "mae_mean": 1.9383826073930308,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1117,
+          "deduped_count_long": 568,
+          "deduped_count_short": 568,
+          "long": {
+            "deduped_count": 568,
+            "net_mean": -0.12241944899977918,
+            "net_median": -0.09106908850867726,
+            "win_rate": 45.07042253521127,
+            "mae_mean": 1.0857331855954986,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 568,
+            "net_mean": -0.07758055100022075,
+            "net_median": -0.10893091149132275,
+            "win_rate": 43.83802816901409,
+            "mae_mean": 1.0002935572318472,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1117,
+          "deduped_count_long": 438,
+          "deduped_count_short": 438,
+          "long": {
+            "deduped_count": 438,
+            "net_mean": -0.0742506529862701,
+            "net_median": -0.029341900519963465,
+            "win_rate": 49.31506849315068,
+            "mae_mean": 1.5067456781233761,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 438,
+            "net_mean": -0.1257493470137299,
+            "net_median": -0.17065809948003655,
+            "win_rate": 43.60730593607306,
+            "mae_mean": 1.4184859796932496,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1117,
+          "deduped_count_long": 317,
+          "deduped_count_short": 317,
+          "long": {
+            "deduped_count": 317,
+            "net_mean": -0.00790386903408028,
+            "net_median": -0.007833591403250045,
+            "win_rate": 49.8422712933754,
+            "mae_mean": 2.1372500915906407,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 317,
+            "net_mean": -0.19209613096591982,
+            "net_median": -0.19216640859674997,
+            "win_rate": 47.003154574132495,
+            "mae_mean": 2.012430536717493,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:extreme_negative:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2061,
+          "deduped_count_long": 985,
+          "deduped_count_short": 985,
+          "long": {
+            "deduped_count": 985,
+            "net_mean": -0.056816407921489905,
+            "net_median": -0.06329884407741951,
+            "win_rate": 47.10659898477157,
+            "mae_mean": 1.0052469952922243,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 985,
+            "net_mean": -0.14318359207850992,
+            "net_median": -0.1367011559225805,
+            "win_rate": 42.233502538071065,
+            "mae_mean": 0.9907776916947794,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2061,
+          "deduped_count_long": 702,
+          "deduped_count_short": 702,
+          "long": {
+            "deduped_count": 702,
+            "net_mean": -0.04624076061077756,
+            "net_median": -0.07451367930411115,
+            "win_rate": 47.72079772079772,
+            "mae_mean": 1.430405783376731,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 702,
+            "net_mean": -0.15375923938922237,
+            "net_median": -0.12548632069588886,
+            "win_rate": 45.2991452991453,
+            "mae_mean": 1.3710142925198325,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2061,
+          "deduped_count_long": 472,
+          "deduped_count_short": 472,
+          "long": {
+            "deduped_count": 472,
+            "net_mean": -0.03929291151414424,
+            "net_median": -0.06642419383744427,
+            "win_rate": 48.30508474576271,
+            "mae_mean": 2.00718867277602,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 472,
+            "net_mean": -0.16070708848585588,
+            "net_median": -0.13357580616255574,
+            "win_rate": 47.45762711864407,
+            "mae_mean": 1.9306703163243952,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:normalization:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1158,
+          "deduped_count_long": 939,
+          "deduped_count_short": 939,
+          "long": {
+            "deduped_count": 939,
+            "net_mean": -0.05292365199791534,
+            "net_median": -0.08291181724408006,
+            "win_rate": 46.00638977635783,
+            "mae_mean": 1.04247748827942,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 939,
+            "net_mean": -0.1470763480020848,
+            "net_median": -0.11708818275591995,
+            "win_rate": 44.515441959531415,
+            "mae_mean": 0.9863390403447689,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1158,
+          "deduped_count_long": 733,
+          "deduped_count_short": 733,
+          "long": {
+            "deduped_count": 733,
+            "net_mean": 0.0008783492370605921,
+            "net_median": -0.017389762130515157,
+            "win_rate": 49.65893587994543,
+            "mae_mean": 1.4305280159791716,
+            "monthly_concentration_pct": 4788.5331888348555
+          },
+          "short": {
+            "deduped_count": 733,
+            "net_mean": -0.20087834923706036,
+            "net_median": -0.18261023786948485,
+            "win_rate": 43.79263301500682,
+            "mae_mean": 1.4005300158010157,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1158,
+          "deduped_count_long": 508,
+          "deduped_count_short": 508,
+          "long": {
+            "deduped_count": 508,
+            "net_mean": 0.07357871136192727,
+            "net_median": 0.019618768700369132,
+            "win_rate": 50.98425196850393,
+            "mae_mean": 1.9583040561190492,
+            "monthly_concentration_pct": 90.96305826040773
+          },
+          "short": {
+            "deduped_count": 508,
+            "net_mean": -0.273578711361927,
+            "net_median": -0.21961876870036914,
+            "win_rate": 45.66929133858268,
+            "mae_mean": 2.0157559088694956,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "BTCUSDT|binance_usdm-bybit:normalization:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2184,
+          "deduped_count_long": 1541,
+          "deduped_count_short": 1541,
+          "long": {
+            "deduped_count": 1541,
+            "net_mean": -0.06065116657557768,
+            "net_median": -0.06931033021065894,
+            "win_rate": 46.52822842310188,
+            "mae_mean": 0.9784289030011439,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1541,
+            "net_mean": -0.13934883342442253,
+            "net_median": -0.13068966978934107,
+            "win_rate": 43.413367942894226,
+            "mae_mean": 0.9423929204645376,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2184,
+          "deduped_count_long": 1063,
+          "deduped_count_short": 1063,
+          "long": {
+            "deduped_count": 1063,
+            "net_mean": -0.07794942559919738,
+            "net_median": -0.07575348409837304,
+            "win_rate": 47.03668861712135,
+            "mae_mean": 1.4067644295280175,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1063,
+            "net_mean": -0.12205057440080266,
+            "net_median": -0.12424651590162697,
+            "win_rate": 46.09595484477893,
+            "mae_mean": 1.3325554451101054,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2184,
+          "deduped_count_long": 666,
+          "deduped_count_short": 666,
+          "long": {
+            "deduped_count": 666,
+            "net_mean": 0.08909914989407731,
+            "net_median": 0.031661941790683906,
+            "win_rate": 51.35135135135135,
+            "mae_mean": 1.9094125968607125,
+            "monthly_concentration_pct": 60.443953691856
+          },
+          "short": {
+            "deduped_count": 666,
+            "net_mean": -0.28909914989407764,
+            "net_median": -0.23166194179068392,
+            "win_rate": 43.54354354354354,
+            "mae_mean": 1.9492934995802367,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 427,
+          "deduped_count_long": 263,
+          "deduped_count_short": 263,
+          "long": {
+            "deduped_count": 263,
+            "net_mean": -0.05536691154524877,
+            "net_median": 0.024377027649980038,
+            "win_rate": 50.57034220532319,
+            "mae_mean": 1.8022427566001946,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 263,
+            "net_mean": -0.1446330884547512,
+            "net_median": -0.22437702764998005,
+            "win_rate": 43.72623574144487,
+            "mae_mean": 1.550326660213096,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 427,
+          "deduped_count_long": 221,
+          "deduped_count_short": 221,
+          "long": {
+            "deduped_count": 221,
+            "net_mean": -0.031522877396420464,
+            "net_median": 0.07798016024930252,
+            "win_rate": 51.58371040723983,
+            "mae_mean": 2.3831855365404833,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 221,
+            "net_mean": -0.16847712260357942,
+            "net_median": -0.2779801602493025,
+            "win_rate": 44.34389140271493,
+            "mae_mean": 2.0769769478409676,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 427,
+          "deduped_count_long": 183,
+          "deduped_count_short": 183,
+          "long": {
+            "deduped_count": 183,
+            "net_mean": -0.07925931543872566,
+            "net_median": 0.093206237801391,
+            "win_rate": 53.00546448087432,
+            "mae_mean": 3.3048467780555075,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 183,
+            "net_mean": -0.12074068456127422,
+            "net_median": -0.293206237801391,
+            "win_rate": 44.26229508196721,
+            "mae_mean": 2.9899865514446415,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 182,
+          "deduped_count_long": 127,
+          "deduped_count_short": 127,
+          "long": {
+            "deduped_count": 127,
+            "net_mean": -0.11926568805234589,
+            "net_median": 0.09339482296936161,
+            "win_rate": 51.96850393700787,
+            "mae_mean": 2.0064771483784147,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 127,
+            "net_mean": -0.08073431194765421,
+            "net_median": -0.2933948229693616,
+            "win_rate": 42.51968503937008,
+            "mae_mean": 1.669786928759424,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 182,
+          "deduped_count_long": 109,
+          "deduped_count_short": 109,
+          "long": {
+            "deduped_count": 109,
+            "net_mean": 0.02968809055004434,
+            "net_median": 0.006331132869619255,
+            "win_rate": 50.45871559633027,
+            "mae_mean": 2.614582901558194,
+            "monthly_concentration_pct": 479.89866852821734
+          },
+          "short": {
+            "deduped_count": 109,
+            "net_mean": -0.2296880905500444,
+            "net_median": -0.20633113286961927,
+            "win_rate": 44.03669724770643,
+            "mae_mean": 2.3556920071592042,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 182,
+          "deduped_count_long": 96,
+          "deduped_count_short": 96,
+          "long": {
+            "deduped_count": 96,
+            "net_mean": 0.20592592894599512,
+            "net_median": 0.191989167346407,
+            "win_rate": 52.083333333333336,
+            "mae_mean": 3.388887643811202,
+            "monthly_concentration_pct": 129.35570529103552
+          },
+          "short": {
+            "deduped_count": 96,
+            "net_mean": -0.4059259289459953,
+            "net_median": -0.391989167346407,
+            "win_rate": 43.75,
+            "mae_mean": 3.208122649178059,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 77,
+          "deduped_count_long": 61,
+          "deduped_count_short": 61,
+          "long": {
+            "deduped_count": 61,
+            "net_mean": -0.03355020064918765,
+            "net_median": 0.16119881915029896,
+            "win_rate": 52.459016393442624,
+            "mae_mean": 2.268575598792274,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 61,
+            "net_mean": -0.1664497993508122,
+            "net_median": -0.36119881915029894,
+            "win_rate": 44.26229508196721,
+            "mae_mean": 1.7873987198010721,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 77,
+          "deduped_count_long": 53,
+          "deduped_count_short": 53,
+          "long": {
+            "deduped_count": 53,
+            "net_mean": -0.004616767084692205,
+            "net_median": -0.01369429830012639,
+            "win_rate": 49.056603773584904,
+            "mae_mean": 2.9011566147876757,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 53,
+            "net_mean": -0.19538323291530782,
+            "net_median": -0.18630570169987362,
+            "win_rate": 43.39622641509434,
+            "mae_mean": 2.4262418895706204,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 77,
+          "deduped_count_long": 49,
+          "deduped_count_short": 49,
+          "long": {
+            "deduped_count": 49,
+            "net_mean": 0.9315616773096644,
+            "net_median": 0.7374741407408903,
+            "win_rate": 61.224489795918366,
+            "mae_mean": 3.696671344278061,
+            "monthly_concentration_pct": 30.67365200945175
+          },
+          "short": {
+            "deduped_count": 49,
+            "net_mean": -1.1315616773096646,
+            "net_median": -0.9374741407408903,
+            "win_rate": 32.6530612244898,
+            "mae_mean": 3.672040674441686,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 18,
+          "deduped_count_long": 17,
+          "deduped_count_short": 17,
+          "long": {
+            "deduped_count": 17,
+            "net_mean": -0.04723242041623011,
+            "net_median": -0.21068095137704015,
+            "win_rate": 47.05882352941176,
+            "mae_mean": 2.401999985330487,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 17,
+            "net_mean": -0.1527675795837698,
+            "net_median": 0.010680951377040143,
+            "win_rate": 52.94117647058824,
+            "mae_mean": 2.488559571844279,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 18,
+          "deduped_count_long": 17,
+          "deduped_count_short": 17,
+          "long": {
+            "deduped_count": 17,
+            "net_mean": -0.5258969199411476,
+            "net_median": -0.15173356882541836,
+            "win_rate": 41.17647058823529,
+            "mae_mean": 3.152272137039036,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 17,
+            "net_mean": 0.3258969199411478,
+            "net_median": -0.04826643117458165,
+            "win_rate": 47.05882352941176,
+            "mae_mean": 2.9554165655732536,
+            "monthly_concentration_pct": 76.8077710535921
+          }
+        },
+        "24": {
+          "raw_count": 18,
+          "deduped_count_long": 16,
+          "deduped_count_short": 16,
+          "long": {
+            "deduped_count": 16,
+            "net_mean": -0.033217276385447685,
+            "net_median": 0.6251722940752491,
+            "win_rate": 56.25,
+            "mae_mean": 3.9606622694234783,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 16,
+            "net_mean": -0.1667827236145523,
+            "net_median": -0.8251722940752493,
+            "win_rate": 43.75,
+            "mae_mean": 3.4523986933946436,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 708,
+          "deduped_count_long": 284,
+          "deduped_count_short": 284,
+          "long": {
+            "deduped_count": 284,
+            "net_mean": 0.09375266812957579,
+            "net_median": -0.04247288637858607,
+            "win_rate": 47.88732394366197,
+            "mae_mean": 1.4884150183803755,
+            "monthly_concentration_pct": 52.159414503237954
+          },
+          "short": {
+            "deduped_count": 284,
+            "net_mean": -0.29375266812957596,
+            "net_median": -0.15752711362141394,
+            "win_rate": 46.12676056338028,
+            "mae_mean": 1.4233220204507278,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 708,
+          "deduped_count_long": 217,
+          "deduped_count_short": 217,
+          "long": {
+            "deduped_count": 217,
+            "net_mean": 0.17338113330334395,
+            "net_median": 0.015066522833506818,
+            "win_rate": 50.69124423963134,
+            "mae_mean": 2.096444734779308,
+            "monthly_concentration_pct": 75.30888729003664
+          },
+          "short": {
+            "deduped_count": 217,
+            "net_mean": -0.37338113330334377,
+            "net_median": -0.21506652283350683,
+            "win_rate": 44.70046082949309,
+            "mae_mean": 2.0839388841108226,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 708,
+          "deduped_count_long": 158,
+          "deduped_count_short": 158,
+          "long": {
+            "deduped_count": 158,
+            "net_mean": 0.3383763625928021,
+            "net_median": 0.26311772808864664,
+            "win_rate": 51.89873417721519,
+            "mae_mean": 2.9050869499478957,
+            "monthly_concentration_pct": 69.19539050365121
+          },
+          "short": {
+            "deduped_count": 158,
+            "net_mean": -0.5383763625928022,
+            "net_median": -0.4631177280886466,
+            "win_rate": 44.303797468354425,
+            "mae_mean": 3.090450833100375,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 368,
+          "deduped_count_long": 150,
+          "deduped_count_short": 150,
+          "long": {
+            "deduped_count": 150,
+            "net_mean": 0.3517779521087894,
+            "net_median": 0.26702751463352226,
+            "win_rate": 56.00000000000001,
+            "mae_mean": 1.408861297082522,
+            "monthly_concentration_pct": 24.46122651779215
+          },
+          "short": {
+            "deduped_count": 150,
+            "net_mean": -0.5517779521087895,
+            "net_median": -0.4670275146335222,
+            "win_rate": 37.333333333333336,
+            "mae_mean": 1.6789300480675244,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 368,
+          "deduped_count_long": 113,
+          "deduped_count_short": 113,
+          "long": {
+            "deduped_count": 113,
+            "net_mean": 0.6486480089546388,
+            "net_median": 0.47611181702668104,
+            "win_rate": 58.4070796460177,
+            "mae_mean": 1.987648589258885,
+            "monthly_concentration_pct": 16.261538018574573
+          },
+          "short": {
+            "deduped_count": 113,
+            "net_mean": -0.8486480089546387,
+            "net_median": -0.676111817026681,
+            "win_rate": 39.823008849557525,
+            "mae_mean": 2.3855726224075005,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 368,
+          "deduped_count_long": 88,
+          "deduped_count_short": 88,
+          "long": {
+            "deduped_count": 88,
+            "net_mean": 0.670511814854959,
+            "net_median": 0.5868134318818053,
+            "win_rate": 55.68181818181818,
+            "mae_mean": 2.8515098986599465,
+            "monthly_concentration_pct": 39.379047169132356
+          },
+          "short": {
+            "deduped_count": 88,
+            "net_mean": -0.8705118148549591,
+            "net_median": -0.7868134318818053,
+            "win_rate": 40.909090909090914,
+            "mae_mean": 3.405592866838104,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 178,
+          "deduped_count_long": 86,
+          "deduped_count_short": 86,
+          "long": {
+            "deduped_count": 86,
+            "net_mean": 0.30804570522263,
+            "net_median": 0.1072819523397662,
+            "win_rate": 58.139534883720934,
+            "mae_mean": 1.3993217167328729,
+            "monthly_concentration_pct": 33.11226535493145
+          },
+          "short": {
+            "deduped_count": 86,
+            "net_mean": -0.5080457052226303,
+            "net_median": -0.3072819523397662,
+            "win_rate": 38.372093023255815,
+            "mae_mean": 1.6445501166221668,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 178,
+          "deduped_count_long": 69,
+          "deduped_count_short": 69,
+          "long": {
+            "deduped_count": 69,
+            "net_mean": 0.391477974985336,
+            "net_median": 0.16816581891104807,
+            "win_rate": 55.072463768115945,
+            "mae_mean": 1.9959330339594303,
+            "monthly_concentration_pct": 42.48253549303221
+          },
+          "short": {
+            "deduped_count": 69,
+            "net_mean": -0.591477974985336,
+            "net_median": -0.36816581891104805,
+            "win_rate": 43.47826086956522,
+            "mae_mean": 2.3509597284674553,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 178,
+          "deduped_count_long": 52,
+          "deduped_count_short": 52,
+          "long": {
+            "deduped_count": 52,
+            "net_mean": 0.47586268035236906,
+            "net_median": -0.1427987225745996,
+            "win_rate": 48.07692307692308,
+            "mae_mean": 3.224902061662621,
+            "monthly_concentration_pct": 65.82760746171698
+          },
+          "short": {
+            "deduped_count": 52,
+            "net_mean": -0.6758626803523692,
+            "net_median": -0.057201277425400404,
+            "win_rate": 48.07692307692308,
+            "mae_mean": 3.619745552248282,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 78,
+          "deduped_count_long": 35,
+          "deduped_count_short": 35,
+          "long": {
+            "deduped_count": 35,
+            "net_mean": 0.4092444969643619,
+            "net_median": 0.047120638923925456,
+            "win_rate": 51.42857142857142,
+            "mae_mean": 1.448324781034944,
+            "monthly_concentration_pct": 61.24231664695049
+          },
+          "short": {
+            "deduped_count": 35,
+            "net_mean": -0.6092444969643614,
+            "net_median": -0.24712063892392547,
+            "win_rate": 42.857142857142854,
+            "mae_mean": 1.9365798983618379,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 78,
+          "deduped_count_long": 29,
+          "deduped_count_short": 29,
+          "long": {
+            "deduped_count": 29,
+            "net_mean": 0.08436271987011924,
+            "net_median": -0.2120255073462806,
+            "win_rate": 41.37931034482759,
+            "mae_mean": 2.1340937096026202,
+            "monthly_concentration_pct": 193.77548532817795
+          },
+          "short": {
+            "deduped_count": 29,
+            "net_mean": -0.284362719870119,
+            "net_median": 0.012025507346280578,
+            "win_rate": 51.724137931034484,
+            "mae_mean": 2.343260762527084,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 78,
+          "deduped_count_long": 25,
+          "deduped_count_short": 25,
+          "long": {
+            "deduped_count": 25,
+            "net_mean": -0.30961607179640643,
+            "net_median": -0.7363135348414928,
+            "win_rate": 44.0,
+            "mae_mean": 4.084422992040675,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 25,
+            "net_mean": 0.10961607179640645,
+            "net_median": 0.5363135348414928,
+            "win_rate": 52.0,
+            "mae_mean": 3.434224314666668,
+            "monthly_concentration_pct": 381.2768254120155
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1145,
+          "deduped_count_long": 637,
+          "deduped_count_short": 637,
+          "long": {
+            "deduped_count": 637,
+            "net_mean": -0.14059150936396142,
+            "net_median": -0.010280768418835434,
+            "win_rate": 49.60753532182103,
+            "mae_mean": 1.6687003620748386,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 637,
+            "net_mean": -0.05940849063603864,
+            "net_median": -0.18971923158116458,
+            "win_rate": 44.42700156985872,
+            "mae_mean": 1.386437661387032,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1145,
+          "deduped_count_long": 484,
+          "deduped_count_short": 484,
+          "long": {
+            "deduped_count": 484,
+            "net_mean": -0.11814738446455247,
+            "net_median": 0.03250346027180448,
+            "win_rate": 50.413223140495866,
+            "mae_mean": 2.2807210843593815,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 484,
+            "net_mean": -0.08185261553544741,
+            "net_median": -0.2325034602718045,
+            "win_rate": 46.48760330578512,
+            "mae_mean": 1.9141962288699066,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1145,
+          "deduped_count_long": 352,
+          "deduped_count_short": 352,
+          "long": {
+            "deduped_count": 352,
+            "net_mean": -0.22193544005659735,
+            "net_median": -0.04331035392611807,
+            "win_rate": 49.715909090909086,
+            "mae_mean": 3.1169718195866136,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 352,
+            "net_mean": 0.021935440056597505,
+            "net_median": -0.15668964607388194,
+            "win_rate": 48.57954545454545,
+            "mae_mean": 2.6750179517567205,
+            "monthly_concentration_pct": 458.4059428413104
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2180,
+          "deduped_count_long": 1037,
+          "deduped_count_short": 1037,
+          "long": {
+            "deduped_count": 1037,
+            "net_mean": -0.13487953731113758,
+            "net_median": -0.04016758418606817,
+            "win_rate": 48.5053037608486,
+            "mae_mean": 1.5248133196256926,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1037,
+            "net_mean": -0.06512046268886258,
+            "net_median": -0.15983241581393184,
+            "win_rate": 45.998071359691416,
+            "mae_mean": 1.3095159450196974,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2180,
+          "deduped_count_long": 743,
+          "deduped_count_short": 743,
+          "long": {
+            "deduped_count": 743,
+            "net_mean": -0.11962950239396677,
+            "net_median": 0.12044481006719962,
+            "win_rate": 52.086137281292054,
+            "mae_mean": 2.0982324902001444,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 743,
+            "net_mean": -0.08037049760603325,
+            "net_median": -0.3204448100671996,
+            "win_rate": 44.01076716016151,
+            "mae_mean": 1.8340196207073758,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2180,
+          "deduped_count_long": 504,
+          "deduped_count_short": 504,
+          "long": {
+            "deduped_count": 504,
+            "net_mean": -0.17126931016275712,
+            "net_median": 0.032766264194106304,
+            "win_rate": 50.99206349206349,
+            "mae_mean": 2.948827642785675,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 504,
+            "net_mean": -0.028730689837242786,
+            "net_median": -0.23276626419410631,
+            "win_rate": 46.03174603174603,
+            "mae_mean": 2.6368680230894403,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1100,
+          "deduped_count_long": 511,
+          "deduped_count_short": 511,
+          "long": {
+            "deduped_count": 511,
+            "net_mean": 0.001616623470972826,
+            "net_median": -0.029198755185399966,
+            "win_rate": 48.14090019569471,
+            "mae_mean": 1.3961390665126632,
+            "monthly_concentration_pct": 1687.2223826282684
+          },
+          "short": {
+            "deduped_count": 511,
+            "net_mean": -0.20161662347097278,
+            "net_median": -0.17080124481460005,
+            "win_rate": 43.24853228962818,
+            "mae_mean": 1.3261265970308789,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1100,
+          "deduped_count_long": 388,
+          "deduped_count_short": 388,
+          "long": {
+            "deduped_count": 388,
+            "net_mean": 0.1820521585401535,
+            "net_median": -0.04619796517788535,
+            "win_rate": 48.45360824742268,
+            "mae_mean": 1.858402721737513,
+            "monthly_concentration_pct": 32.294231397798676
+          },
+          "short": {
+            "deduped_count": 388,
+            "net_mean": -0.38205215854015295,
+            "net_median": -0.15380203482211466,
+            "win_rate": 45.36082474226804,
+            "mae_mean": 1.9708706992894525,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1100,
+          "deduped_count_long": 283,
+          "deduped_count_short": 283,
+          "long": {
+            "deduped_count": 283,
+            "net_mean": 0.15150128549586483,
+            "net_median": -0.10168926337980047,
+            "win_rate": 48.409893992932865,
+            "mae_mean": 2.6225810711440016,
+            "monthly_concentration_pct": 86.03251440544575
+          },
+          "short": {
+            "deduped_count": 283,
+            "net_mean": -0.3515012854958641,
+            "net_median": -0.09831073662019954,
+            "win_rate": 48.409893992932865,
+            "mae_mean": 2.757105265029419,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2100,
+          "deduped_count_long": 893,
+          "deduped_count_short": 893,
+          "long": {
+            "deduped_count": 893,
+            "net_mean": -0.08382293939435637,
+            "net_median": -0.12296856870175335,
+            "win_rate": 46.13661814109742,
+            "mae_mean": 1.429489117578663,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 893,
+            "net_mean": -0.11617706060564366,
+            "net_median": -0.07703143129824666,
+            "win_rate": 46.02463605823068,
+            "mae_mean": 1.3022849594703283,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2100,
+          "deduped_count_long": 636,
+          "deduped_count_short": 636,
+          "long": {
+            "deduped_count": 636,
+            "net_mean": 0.054693254053641185,
+            "net_median": -0.04167277643445369,
+            "win_rate": 48.270440251572325,
+            "mae_mean": 1.9364141272011173,
+            "monthly_concentration_pct": 102.65471632548339
+          },
+          "short": {
+            "deduped_count": 636,
+            "net_mean": -0.25469325405364124,
+            "net_median": -0.15832722356554632,
+            "win_rate": 46.38364779874214,
+            "mae_mean": 1.9397606392006042,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2100,
+          "deduped_count_long": 426,
+          "deduped_count_short": 426,
+          "long": {
+            "deduped_count": 426,
+            "net_mean": 0.08397969929984334,
+            "net_median": 0.05009447077523052,
+            "win_rate": 50.70422535211267,
+            "mae_mean": 2.7079846790477853,
+            "monthly_concentration_pct": 109.44354160995486
+          },
+          "short": {
+            "deduped_count": 426,
+            "net_mean": -0.2839796992998435,
+            "net_median": -0.2500944707752305,
+            "win_rate": 46.948356807511736,
+            "mae_mean": 2.7586346403767856,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:normalization:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1085,
+          "deduped_count_long": 901,
+          "deduped_count_short": 901,
+          "long": {
+            "deduped_count": 901,
+            "net_mean": -0.055445116922122506,
+            "net_median": -0.06568216471692914,
+            "win_rate": 47.28079911209767,
+            "mae_mean": 1.4335903293873395,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 901,
+            "net_mean": -0.14455488307787748,
+            "net_median": -0.13431783528307087,
+            "win_rate": 45.28301886792453,
+            "mae_mean": 1.277549591689231,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1085,
+          "deduped_count_long": 685,
+          "deduped_count_short": 685,
+          "long": {
+            "deduped_count": 685,
+            "net_mean": -0.012420706165930237,
+            "net_median": -0.0026236389110255998,
+            "win_rate": 49.78102189781022,
+            "mae_mean": 1.99704367382132,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 685,
+            "net_mean": -0.1875792938340693,
+            "net_median": -0.1973763610889744,
+            "win_rate": 45.98540145985402,
+            "mae_mean": 1.8658333535329856,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1085,
+          "deduped_count_long": 483,
+          "deduped_count_short": 483,
+          "long": {
+            "deduped_count": 483,
+            "net_mean": -0.0810062917109446,
+            "net_median": -0.23502851692370755,
+            "win_rate": 45.75569358178054,
+            "mae_mean": 2.9120761079374256,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 483,
+            "net_mean": -0.11899370828905544,
+            "net_median": 0.03502851692370754,
+            "win_rate": 50.31055900621118,
+            "mae_mean": 2.624588010254747,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:normalization:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2027,
+          "deduped_count_long": 1467,
+          "deduped_count_short": 1467,
+          "long": {
+            "deduped_count": 1467,
+            "net_mean": -0.09381243392311026,
+            "net_median": -0.08023757260927625,
+            "win_rate": 46.216768916155424,
+            "mae_mean": 1.378816765923322,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1467,
+            "net_mean": -0.10618756607688953,
+            "net_median": -0.11976242739072376,
+            "win_rate": 45.194274028629856,
+            "mae_mean": 1.2666418633892256,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2027,
+          "deduped_count_long": 1024,
+          "deduped_count_short": 1024,
+          "long": {
+            "deduped_count": 1024,
+            "net_mean": -0.09238565171375493,
+            "net_median": -0.041083266665997625,
+            "win_rate": 49.0234375,
+            "mae_mean": 1.9748263266418364,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1024,
+            "net_mean": -0.10761434828624492,
+            "net_median": -0.15891673333400239,
+            "win_rate": 46.09375,
+            "mae_mean": 1.8201120144169787,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2027,
+          "deduped_count_long": 632,
+          "deduped_count_short": 632,
+          "long": {
+            "deduped_count": 632,
+            "net_mean": 0.008726721484495381,
+            "net_median": -0.02896961135482315,
+            "win_rate": 49.36708860759494,
+            "mae_mean": 2.863209604703893,
+            "monthly_concentration_pct": 706.2880925214777
+          },
+          "short": {
+            "deduped_count": 632,
+            "net_mean": -0.2087267214844953,
+            "net_median": -0.17103038864517686,
+            "win_rate": 47.310126582278485,
+            "mae_mean": 2.6862182213599484,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1075,
+          "deduped_count_long": 683,
+          "deduped_count_short": 683,
+          "long": {
+            "deduped_count": 683,
+            "net_mean": -0.024448204365100614,
+            "net_median": 0.06820690642445068,
+            "win_rate": 51.68374816983895,
+            "mae_mean": 1.6081435534213697,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 683,
+            "net_mean": -0.17555179563489937,
+            "net_median": -0.26820690642445066,
+            "win_rate": 42.4597364568082,
+            "mae_mean": 1.4981909799531683,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1075,
+          "deduped_count_long": 530,
+          "deduped_count_short": 530,
+          "long": {
+            "deduped_count": 530,
+            "net_mean": 0.00821745212913613,
+            "net_median": 0.1629801328707937,
+            "win_rate": 54.90566037735849,
+            "mae_mean": 2.1820131294354264,
+            "monthly_concentration_pct": 509.2649183250674
+          },
+          "short": {
+            "deduped_count": 530,
+            "net_mean": -0.2082174521291362,
+            "net_median": -0.36298013287079367,
+            "win_rate": 41.320754716981135,
+            "mae_mean": 2.016779376671545,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1075,
+          "deduped_count_long": 397,
+          "deduped_count_short": 397,
+          "long": {
+            "deduped_count": 397,
+            "net_mean": 0.07017849256311712,
+            "net_median": 0.09824905391025993,
+            "win_rate": 52.896725440806044,
+            "mae_mean": 3.00425766642476,
+            "monthly_concentration_pct": 100.52044035614351
+          },
+          "short": {
+            "deduped_count": 397,
+            "net_mean": -0.2701784925631171,
+            "net_median": -0.2982490539102599,
+            "win_rate": 44.83627204030227,
+            "mae_mean": 2.8284827286340533,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2131,
+          "deduped_count_long": 1143,
+          "deduped_count_short": 1143,
+          "long": {
+            "deduped_count": 1143,
+            "net_mean": -0.08960815004865648,
+            "net_median": -0.027592825769662183,
+            "win_rate": 48.38145231846019,
+            "mae_mean": 1.5275615311643258,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1143,
+            "net_mean": -0.11039184995134342,
+            "net_median": -0.17240717423033783,
+            "win_rate": 44.70691163604549,
+            "mae_mean": 1.3697760572035351,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2131,
+          "deduped_count_long": 817,
+          "deduped_count_short": 817,
+          "long": {
+            "deduped_count": 817,
+            "net_mean": -0.03489205292744139,
+            "net_median": 0.016606022701071227,
+            "win_rate": 50.79559363525091,
+            "mae_mean": 2.07311945709766,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 817,
+            "net_mean": -0.16510794707255877,
+            "net_median": -0.21660602270107124,
+            "win_rate": 44.798041615667074,
+            "mae_mean": 1.8756790335407516,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2131,
+          "deduped_count_long": 549,
+          "deduped_count_short": 549,
+          "long": {
+            "deduped_count": 549,
+            "net_mean": 0.028438997728094953,
+            "net_median": 0.13048550951587642,
+            "win_rate": 51.54826958105647,
+            "mae_mean": 2.864067286998481,
+            "monthly_concentration_pct": 278.90559597852734
+          },
+          "short": {
+            "deduped_count": 549,
+            "net_mean": -0.22843899772809487,
+            "net_median": -0.3304855095158764,
+            "win_rate": 45.537340619307834,
+            "mae_mean": 2.7644311984894814,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1117,
+          "deduped_count_long": 610,
+          "deduped_count_short": 610,
+          "long": {
+            "deduped_count": 610,
+            "net_mean": -0.1303022643448112,
+            "net_median": -0.03629408934054937,
+            "win_rate": 49.34426229508197,
+            "mae_mean": 1.6422234547994727,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 610,
+            "net_mean": -0.06969773565518868,
+            "net_median": -0.16370591065945064,
+            "win_rate": 44.91803278688525,
+            "mae_mean": 1.3782264082757505,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1117,
+          "deduped_count_long": 474,
+          "deduped_count_short": 474,
+          "long": {
+            "deduped_count": 474,
+            "net_mean": 0.06971387564630113,
+            "net_median": 0.07528649620691671,
+            "win_rate": 51.89873417721519,
+            "mae_mean": 2.0950212519700506,
+            "monthly_concentration_pct": 96.36333247381769
+          },
+          "short": {
+            "deduped_count": 474,
+            "net_mean": -0.2697138756463011,
+            "net_median": -0.2752864962069167,
+            "win_rate": 44.51476793248945,
+            "mae_mean": 2.0321859777133695,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1117,
+          "deduped_count_long": 336,
+          "deduped_count_short": 336,
+          "long": {
+            "deduped_count": 336,
+            "net_mean": 0.08896652420838021,
+            "net_median": -0.02707842532444485,
+            "win_rate": 49.702380952380956,
+            "mae_mean": 2.993002209358763,
+            "monthly_concentration_pct": 121.0946140048327
+          },
+          "short": {
+            "deduped_count": 336,
+            "net_mean": -0.2889665242083799,
+            "net_median": -0.17292157467555516,
+            "win_rate": 48.51190476190476,
+            "mae_mean": 2.8206650988251925,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:extreme_negative:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2151,
+          "deduped_count_long": 1058,
+          "deduped_count_short": 1058,
+          "long": {
+            "deduped_count": 1058,
+            "net_mean": -0.11167115726808952,
+            "net_median": -0.09545292978651024,
+            "win_rate": 46.31379962192816,
+            "mae_mean": 1.4946763000114793,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1058,
+            "net_mean": -0.08832884273191048,
+            "net_median": -0.10454707021348977,
+            "win_rate": 45.55765595463138,
+            "mae_mean": 1.346830618830939,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2151,
+          "deduped_count_long": 748,
+          "deduped_count_short": 748,
+          "long": {
+            "deduped_count": 748,
+            "net_mean": 0.028395024159360863,
+            "net_median": 0.07481228769979928,
+            "win_rate": 51.20320855614974,
+            "mae_mean": 2.0312560810019265,
+            "monthly_concentration_pct": 118.9429967241554
+          },
+          "short": {
+            "deduped_count": 748,
+            "net_mean": -0.22839502415936094,
+            "net_median": -0.27481228769979926,
+            "win_rate": 45.855614973262036,
+            "mae_mean": 1.9537217508207652,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2151,
+          "deduped_count_long": 497,
+          "deduped_count_short": 497,
+          "long": {
+            "deduped_count": 497,
+            "net_mean": -0.04791193779854981,
+            "net_median": 0.05318426094912407,
+            "win_rate": 51.10663983903421,
+            "mae_mean": 2.842270558505806,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 497,
+            "net_mean": -0.1520880622014501,
+            "net_median": -0.25318426094912405,
+            "win_rate": 46.478873239436616,
+            "mae_mean": 2.651581051461353,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:normalization:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1268,
+          "deduped_count_long": 1022,
+          "deduped_count_short": 1022,
+          "long": {
+            "deduped_count": 1022,
+            "net_mean": -0.1172055986331585,
+            "net_median": -0.09123417655044755,
+            "win_rate": 47.064579256360076,
+            "mae_mean": 1.4851750973720204,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1022,
+            "net_mean": -0.08279440136684166,
+            "net_median": -0.10876582344955246,
+            "win_rate": 46.477495107632095,
+            "mae_mean": 1.334741446865939,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1268,
+          "deduped_count_long": 773,
+          "deduped_count_short": 773,
+          "long": {
+            "deduped_count": 773,
+            "net_mean": -0.06681218169763799,
+            "net_median": 0.016733264490620486,
+            "win_rate": 50.19404915912031,
+            "mae_mean": 2.0277066274763786,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 773,
+            "net_mean": -0.13318781830236204,
+            "net_median": -0.2167332644906205,
+            "win_rate": 46.05433376455368,
+            "mae_mean": 1.8859497231211817,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1268,
+          "deduped_count_long": 528,
+          "deduped_count_short": 528,
+          "long": {
+            "deduped_count": 528,
+            "net_mean": -0.012086756534140455,
+            "net_median": -0.06325247894571887,
+            "win_rate": 48.29545454545455,
+            "mae_mean": 2.940013464311009,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 528,
+            "net_mean": -0.18791324346585964,
+            "net_median": -0.13674752105428115,
+            "win_rate": 48.29545454545455,
+            "mae_mean": 2.6686924575580293,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "ETHUSDT|binance_usdm-bybit:normalization:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2309,
+          "deduped_count_long": 1633,
+          "deduped_count_short": 1633,
+          "long": {
+            "deduped_count": 1633,
+            "net_mean": -0.09352029833871531,
+            "net_median": -0.08852893099194895,
+            "win_rate": 47.21371708511941,
+            "mae_mean": 1.4035128057310344,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1633,
+            "net_mean": -0.10647970166128488,
+            "net_median": -0.11147106900805107,
+            "win_rate": 46.11145131659523,
+            "mae_mean": 1.2746410963007182,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2309,
+          "deduped_count_long": 1092,
+          "deduped_count_short": 1092,
+          "long": {
+            "deduped_count": 1092,
+            "net_mean": -0.025752374414976763,
+            "net_median": 0.015991361593004155,
+            "win_rate": 50.45787545787546,
+            "mae_mean": 1.9230096649686692,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1092,
+            "net_mean": -0.1742476255850232,
+            "net_median": -0.21599136159300417,
+            "win_rate": 45.604395604395606,
+            "mae_mean": 1.8390820311865104,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2309,
+          "deduped_count_long": 666,
+          "deduped_count_short": 666,
+          "long": {
+            "deduped_count": 666,
+            "net_mean": -0.06340973276640366,
+            "net_median": -0.05978605434808762,
+            "win_rate": 48.7987987987988,
+            "mae_mean": 2.8248327138126905,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 666,
+            "net_mean": -0.13659026723359613,
+            "net_median": -0.1402139456519124,
+            "win_rate": 46.996996996997,
+            "mae_mean": 2.5450443203725084,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 648,
+          "deduped_count_long": 410,
+          "deduped_count_short": 410,
+          "long": {
+            "deduped_count": 410,
+            "net_mean": 0.08061027278288825,
+            "net_median": -0.01816606529329015,
+            "win_rate": 48.78048780487805,
+            "mae_mean": 2.121544138041391,
+            "monthly_concentration_pct": 65.39352490868751
+          },
+          "short": {
+            "deduped_count": 410,
+            "net_mean": -0.28061027278288814,
+            "net_median": -0.18183393470670986,
+            "win_rate": 46.82926829268293,
+            "mae_mean": 2.04888813602732,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 648,
+          "deduped_count_long": 334,
+          "deduped_count_short": 334,
+          "long": {
+            "deduped_count": 334,
+            "net_mean": 0.16712855213724567,
+            "net_median": 0.03385558261219676,
+            "win_rate": 50.59880239520959,
+            "mae_mean": 2.853411821366801,
+            "monthly_concentration_pct": 74.85376534956944
+          },
+          "short": {
+            "deduped_count": 334,
+            "net_mean": -0.36712855213724616,
+            "net_median": -0.23385558261219677,
+            "win_rate": 45.50898203592814,
+            "mae_mean": 2.7603502980857937,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 648,
+          "deduped_count_long": 262,
+          "deduped_count_short": 262,
+          "long": {
+            "deduped_count": 262,
+            "net_mean": 0.35991966148343996,
+            "net_median": 0.417300711265567,
+            "win_rate": 54.19847328244275,
+            "mae_mean": 3.872373703344616,
+            "monthly_concentration_pct": 52.531618661496225
+          },
+          "short": {
+            "deduped_count": 262,
+            "net_mean": -0.5599196614834397,
+            "net_median": -0.617300711265567,
+            "win_rate": 43.51145038167939,
+            "mae_mean": 3.8704499262935714,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 301,
+          "deduped_count_long": 211,
+          "deduped_count_short": 211,
+          "long": {
+            "deduped_count": 211,
+            "net_mean": 0.1446013865402886,
+            "net_median": 0.1302379125095788,
+            "win_rate": 52.13270142180095,
+            "mae_mean": 2.467225077777973,
+            "monthly_concentration_pct": 87.8903957651818
+          },
+          "short": {
+            "deduped_count": 211,
+            "net_mean": -0.3446013865402884,
+            "net_median": -0.3302379125095788,
+            "win_rate": 45.97156398104265,
+            "mae_mean": 2.3520234727007194,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 301,
+          "deduped_count_long": 174,
+          "deduped_count_short": 174,
+          "long": {
+            "deduped_count": 174,
+            "net_mean": 0.4050245715734217,
+            "net_median": 0.19459909536974082,
+            "win_rate": 54.59770114942529,
+            "mae_mean": 3.1927940493889397,
+            "monthly_concentration_pct": 45.13813812376734
+          },
+          "short": {
+            "deduped_count": 174,
+            "net_mean": -0.6050245715734218,
+            "net_median": -0.3945990953697408,
+            "win_rate": 41.37931034482759,
+            "mae_mean": 3.151882896475272,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 301,
+          "deduped_count_long": 146,
+          "deduped_count_short": 146,
+          "long": {
+            "deduped_count": 146,
+            "net_mean": 0.6296927921250806,
+            "net_median": 0.6577391189129812,
+            "win_rate": 58.9041095890411,
+            "mae_mean": 4.1529074223988545,
+            "monthly_concentration_pct": 41.050028913618334
+          },
+          "short": {
+            "deduped_count": 146,
+            "net_mean": -0.8296927921250794,
+            "net_median": -0.8577391189129812,
+            "win_rate": 39.726027397260275,
+            "mae_mean": 4.236375728601479,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 158,
+          "deduped_count_long": 121,
+          "deduped_count_short": 121,
+          "long": {
+            "deduped_count": 121,
+            "net_mean": 0.253467641920471,
+            "net_median": 0.20452248283010518,
+            "win_rate": 54.54545454545454,
+            "mae_mean": 2.735410055258331,
+            "monthly_concentration_pct": 59.42279520631675
+          },
+          "short": {
+            "deduped_count": 121,
+            "net_mean": -0.45346764192047084,
+            "net_median": -0.40452248283010517,
+            "win_rate": 42.14876033057851,
+            "mae_mean": 2.5571843488000603,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 158,
+          "deduped_count_long": 104,
+          "deduped_count_short": 104,
+          "long": {
+            "deduped_count": 104,
+            "net_mean": 0.729350537184753,
+            "net_median": 0.25176537135122035,
+            "win_rate": 54.807692307692314,
+            "mae_mean": 3.3011371334286777,
+            "monthly_concentration_pct": 45.86690468679632
+          },
+          "short": {
+            "deduped_count": 104,
+            "net_mean": -0.9293505371847528,
+            "net_median": -0.4517653713512203,
+            "win_rate": 40.38461538461539,
+            "mae_mean": 3.5452196503139146,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 158,
+          "deduped_count_long": 88,
+          "deduped_count_short": 88,
+          "long": {
+            "deduped_count": 88,
+            "net_mean": 1.0468730220668772,
+            "net_median": 0.5870070845662602,
+            "win_rate": 57.95454545454546,
+            "mae_mean": 4.274697892110374,
+            "monthly_concentration_pct": 41.148792952782756
+          },
+          "short": {
+            "deduped_count": 88,
+            "net_mean": -1.246873022066876,
+            "net_median": -0.7870070845662601,
+            "win_rate": 39.77272727272727,
+            "mae_mean": 4.8511585172655405,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 59,
+          "deduped_count_long": 49,
+          "deduped_count_short": 49,
+          "long": {
+            "deduped_count": 49,
+            "net_mean": 0.26625905142118783,
+            "net_median": 0.081956027293384,
+            "win_rate": 51.02040816326531,
+            "mae_mean": 3.365612930149907,
+            "monthly_concentration_pct": 109.71994768849977
+          },
+          "short": {
+            "deduped_count": 49,
+            "net_mean": -0.46625905142118773,
+            "net_median": -0.281956027293384,
+            "win_rate": 44.89795918367347,
+            "mae_mean": 2.5840192192002327,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 59,
+          "deduped_count_long": 46,
+          "deduped_count_short": 46,
+          "long": {
+            "deduped_count": 46,
+            "net_mean": 1.2100768630144867,
+            "net_median": 1.253122368904147,
+            "win_rate": 63.04347826086957,
+            "mae_mean": 3.8761658129355965,
+            "monthly_concentration_pct": 50.14546949507203
+          },
+          "short": {
+            "deduped_count": 46,
+            "net_mean": -1.410076863014487,
+            "net_median": -1.4531223689041473,
+            "win_rate": 34.78260869565217,
+            "mae_mean": 4.319660418079318,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 59,
+          "deduped_count_long": 42,
+          "deduped_count_short": 42,
+          "long": {
+            "deduped_count": 42,
+            "net_mean": 1.7896332491414488,
+            "net_median": 2.145032853414053,
+            "win_rate": 61.904761904761905,
+            "mae_mean": 4.996540100314122,
+            "monthly_concentration_pct": 34.13352632277455
+          },
+          "short": {
+            "deduped_count": 42,
+            "net_mean": -1.9896332491414495,
+            "net_median": -2.345032853414053,
+            "win_rate": 35.714285714285715,
+            "mae_mean": 5.790966389535713,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 1405,
+          "deduped_count_long": 588,
+          "deduped_count_short": 588,
+          "long": {
+            "deduped_count": 588,
+            "net_mean": -0.17109163607611144,
+            "net_median": -0.1307206109957825,
+            "win_rate": 46.25850340136054,
+            "mae_mean": 2.0146026563172903,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 588,
+            "net_mean": -0.0289083639238887,
+            "net_median": -0.06927938900421751,
+            "win_rate": 48.29931972789115,
+            "mae_mean": 1.821357296735838,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1405,
+          "deduped_count_long": 433,
+          "deduped_count_short": 433,
+          "long": {
+            "deduped_count": 433,
+            "net_mean": -0.08263394147723802,
+            "net_median": -0.3135149171908379,
+            "win_rate": 45.72748267898383,
+            "mae_mean": 2.8063288430451285,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 433,
+            "net_mean": -0.11736605852276183,
+            "net_median": 0.11351491719083792,
+            "win_rate": 50.80831408775982,
+            "mae_mean": 2.5887630457327955,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1405,
+          "deduped_count_long": 313,
+          "deduped_count_short": 313,
+          "long": {
+            "deduped_count": 313,
+            "net_mean": -0.22346512310394584,
+            "net_median": -0.5153378328265233,
+            "win_rate": 44.72843450479233,
+            "mae_mean": 3.8730899393566625,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 313,
+            "net_mean": 0.023465123103945745,
+            "net_median": 0.3153378328265234,
+            "win_rate": 53.03514376996805,
+            "mae_mean": 3.5100180362416538,
+            "monthly_concentration_pct": 452.2889358828427
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 762,
+          "deduped_count_long": 334,
+          "deduped_count_short": 334,
+          "long": {
+            "deduped_count": 334,
+            "net_mean": -0.14691825508687023,
+            "net_median": -0.11964729900920115,
+            "win_rate": 47.30538922155689,
+            "mae_mean": 2.2073031071916414,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 334,
+            "net_mean": -0.053081744913129766,
+            "net_median": -0.08035270099079886,
+            "win_rate": 48.20359281437126,
+            "mae_mean": 1.940105746013514,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 762,
+          "deduped_count_long": 252,
+          "deduped_count_short": 252,
+          "long": {
+            "deduped_count": 252,
+            "net_mean": -0.08575062222845595,
+            "net_median": -0.29922312150104646,
+            "win_rate": 44.84126984126984,
+            "mae_mean": 3.032573603440961,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 252,
+            "net_mean": -0.11424937777154393,
+            "net_median": 0.09922312150104648,
+            "win_rate": 51.19047619047619,
+            "mae_mean": 2.8527544611231397,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 762,
+          "deduped_count_long": 182,
+          "deduped_count_short": 182,
+          "long": {
+            "deduped_count": 182,
+            "net_mean": -0.1972725209736174,
+            "net_median": -0.4996094457648369,
+            "win_rate": 46.7032967032967,
+            "mae_mean": 4.177446398100506,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 182,
+            "net_mean": -0.002727479026382565,
+            "net_median": 0.29960944576483695,
+            "win_rate": 53.2967032967033,
+            "mae_mean": 3.935132809959959,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 410,
+          "deduped_count_long": 199,
+          "deduped_count_short": 199,
+          "long": {
+            "deduped_count": 199,
+            "net_mean": 0.07697079379187426,
+            "net_median": -0.12332270854388253,
+            "win_rate": 45.22613065326633,
+            "mae_mean": 2.263587539399616,
+            "monthly_concentration_pct": 91.18731743559219
+          },
+          "short": {
+            "deduped_count": 199,
+            "net_mean": -0.27697079379187417,
+            "net_median": -0.07667729145611749,
+            "win_rate": 48.24120603015075,
+            "mae_mean": 2.191421018907215,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 410,
+          "deduped_count_long": 154,
+          "deduped_count_short": 154,
+          "long": {
+            "deduped_count": 154,
+            "net_mean": -0.1634435144091025,
+            "net_median": -0.4384302396155281,
+            "win_rate": 43.506493506493506,
+            "mae_mean": 3.213849975502359,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 154,
+            "net_mean": -0.036556485590897386,
+            "net_median": 0.23843023961552812,
+            "win_rate": 52.5974025974026,
+            "mae_mean": 3.0246664491036777,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 410,
+          "deduped_count_long": 116,
+          "deduped_count_short": 116,
+          "long": {
+            "deduped_count": 116,
+            "net_mean": 0.14325539771641535,
+            "net_median": -0.5851754296660682,
+            "win_rate": 44.827586206896555,
+            "mae_mean": 4.043833320483811,
+            "monthly_concentration_pct": 143.66882058118026
+          },
+          "short": {
+            "deduped_count": 116,
+            "net_mean": -0.34325539771641533,
+            "net_median": 0.3851754296660682,
+            "win_rate": 55.172413793103445,
+            "mae_mean": 4.39188775910377,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 163,
+          "deduped_count_long": 87,
+          "deduped_count_short": 87,
+          "long": {
+            "deduped_count": 87,
+            "net_mean": 0.23467839159349294,
+            "net_median": 0.14300649901103366,
+            "win_rate": 54.02298850574713,
+            "mae_mean": 2.1018218403137117,
+            "monthly_concentration_pct": 63.36467621643279
+          },
+          "short": {
+            "deduped_count": 87,
+            "net_mean": -0.4346783915934928,
+            "net_median": -0.34300649901103364,
+            "win_rate": 43.67816091954023,
+            "mae_mean": 2.470892779239168,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 163,
+          "deduped_count_long": 74,
+          "deduped_count_short": 74,
+          "long": {
+            "deduped_count": 74,
+            "net_mean": 0.5461659742205441,
+            "net_median": 0.12661834292946325,
+            "win_rate": 52.702702702702695,
+            "mae_mean": 3.3273384781604216,
+            "monthly_concentration_pct": 46.88700021611086
+          },
+          "short": {
+            "deduped_count": 74,
+            "net_mean": -0.7461659742205443,
+            "net_median": -0.32661834292946323,
+            "win_rate": 45.94594594594595,
+            "mae_mean": 3.6287795802023175,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 163,
+          "deduped_count_long": 60,
+          "deduped_count_short": 60,
+          "long": {
+            "deduped_count": 60,
+            "net_mean": 0.17345059050543524,
+            "net_median": -0.6416378880114647,
+            "win_rate": 48.333333333333336,
+            "mae_mean": 4.373058016898066,
+            "monthly_concentration_pct": 193.00669511793336
+          },
+          "short": {
+            "deduped_count": 60,
+            "net_mean": -0.373450590505435,
+            "net_median": 0.44163788801146475,
+            "win_rate": 51.66666666666667,
+            "mae_mean": 4.792148222738371,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs3.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs3.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs4.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs4.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs5.5": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs5.5",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:premium_index:fixed:abs7.0": {
+      "threshold_mode": "fixed",
+      "spec_label": "abs7.0",
+      "horizons": {
+        "6": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 0,
+          "deduped_count_long": 0,
+          "deduped_count_short": 0,
+          "long": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 0,
+            "net_mean": 0.0,
+            "net_median": 0.0,
+            "win_rate": 0.0,
+            "mae_mean": 0.0,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1047,
+          "deduped_count_long": 661,
+          "deduped_count_short": 661,
+          "long": {
+            "deduped_count": 661,
+            "net_mean": 0.07243112885475371,
+            "net_median": -0.03681882798925998,
+            "win_rate": 48.41149773071105,
+            "mae_mean": 1.9075291236216003,
+            "monthly_concentration_pct": 55.825170338135564
+          },
+          "short": {
+            "deduped_count": 661,
+            "net_mean": -0.27243112885475385,
+            "net_median": -0.16318117201074003,
+            "win_rate": 46.74735249621785,
+            "mae_mean": 1.936825235563534,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1047,
+          "deduped_count_long": 528,
+          "deduped_count_short": 528,
+          "long": {
+            "deduped_count": 528,
+            "net_mean": 0.16335967717870403,
+            "net_median": 0.11836370151576689,
+            "win_rate": 51.13636363636363,
+            "mae_mean": 2.5713574497700686,
+            "monthly_concentration_pct": 48.62340592229572
+          },
+          "short": {
+            "deduped_count": 528,
+            "net_mean": -0.36335967717870354,
+            "net_median": -0.3183637015157669,
+            "win_rate": 44.696969696969695,
+            "mae_mean": 2.6239735554747337,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1047,
+          "deduped_count_long": 392,
+          "deduped_count_short": 392,
+          "long": {
+            "deduped_count": 392,
+            "net_mean": 0.21850865079472154,
+            "net_median": 0.02508661298923362,
+            "win_rate": 50.0,
+            "mae_mean": 3.4364461802340887,
+            "monthly_concentration_pct": 52.72837137897746
+          },
+          "short": {
+            "deduped_count": 392,
+            "net_mean": -0.4185086507947208,
+            "net_median": -0.2250866129892336,
+            "win_rate": 47.19387755102041,
+            "mae_mean": 3.6345786067987373,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2150,
+          "deduped_count_long": 1082,
+          "deduped_count_short": 1082,
+          "long": {
+            "deduped_count": 1082,
+            "net_mean": 0.021109766109301677,
+            "net_median": -0.018557290834175705,
+            "win_rate": 48.98336414048059,
+            "mae_mean": 1.8696181051336982,
+            "monthly_concentration_pct": 113.7869992294708
+          },
+          "short": {
+            "deduped_count": 1082,
+            "net_mean": -0.2211097661093019,
+            "net_median": -0.1814427091658243,
+            "win_rate": 46.6728280961183,
+            "mae_mean": 1.8108510454450923,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2150,
+          "deduped_count_long": 794,
+          "deduped_count_short": 794,
+          "long": {
+            "deduped_count": 794,
+            "net_mean": 0.08236778050018574,
+            "net_median": -0.042755465431776246,
+            "win_rate": 49.37027707808564,
+            "mae_mean": 2.559793134325769,
+            "monthly_concentration_pct": 60.01391374531547
+          },
+          "short": {
+            "deduped_count": 794,
+            "net_mean": -0.28236778050018563,
+            "net_median": -0.15724453456822376,
+            "win_rate": 46.59949622166247,
+            "mae_mean": 2.5270796521641805,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2150,
+          "deduped_count_long": 533,
+          "deduped_count_short": 533,
+          "long": {
+            "deduped_count": 533,
+            "net_mean": 0.14710338995809535,
+            "net_median": 0.03126491646777704,
+            "win_rate": 50.093808630394,
+            "mae_mean": 3.497975514211585,
+            "monthly_concentration_pct": 60.15539033554297
+          },
+          "short": {
+            "deduped_count": 533,
+            "net_mean": -0.3471033899580949,
+            "net_median": -0.23126491646777705,
+            "win_rate": 47.27954971857411,
+            "mae_mean": 3.466552117144336,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 995,
+          "deduped_count_long": 484,
+          "deduped_count_short": 484,
+          "long": {
+            "deduped_count": 484,
+            "net_mean": -0.12267935681253685,
+            "net_median": -0.13477544184971038,
+            "win_rate": 46.48760330578512,
+            "mae_mean": 1.8142835594957207,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 484,
+            "net_mean": -0.07732064318746319,
+            "net_median": -0.06522455815028963,
+            "win_rate": 47.72727272727273,
+            "mae_mean": 1.697538933255678,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 995,
+          "deduped_count_long": 375,
+          "deduped_count_short": 375,
+          "long": {
+            "deduped_count": 375,
+            "net_mean": -0.12397475252892046,
+            "net_median": -0.15076142131978934,
+            "win_rate": 46.400000000000006,
+            "mae_mean": 2.510379839493441,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 375,
+            "net_mean": -0.07602524747107936,
+            "net_median": -0.04923857868021067,
+            "win_rate": 49.86666666666667,
+            "mae_mean": 2.4274083448771115,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 995,
+          "deduped_count_long": 278,
+          "deduped_count_short": 278,
+          "long": {
+            "deduped_count": 278,
+            "net_mean": -0.08321266022949028,
+            "net_median": -0.35810652263957843,
+            "win_rate": 45.32374100719424,
+            "mae_mean": 3.475024172180465,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 278,
+            "net_mean": -0.11678733977050997,
+            "net_median": 0.15810652263957845,
+            "win_rate": 52.51798561151079,
+            "mae_mean": 3.3912346961983117,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 1984,
+          "deduped_count_long": 872,
+          "deduped_count_short": 872,
+          "long": {
+            "deduped_count": 872,
+            "net_mean": -0.18077473550796913,
+            "net_median": -0.08596710173024427,
+            "win_rate": 48.05045871559633,
+            "mae_mean": 1.8007257609515592,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 872,
+            "net_mean": -0.0192252644920309,
+            "net_median": -0.11403289826975574,
+            "win_rate": 47.018348623853214,
+            "mae_mean": 1.5648858996409096,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1984,
+          "deduped_count_long": 636,
+          "deduped_count_short": 636,
+          "long": {
+            "deduped_count": 636,
+            "net_mean": -0.09243755862011437,
+            "net_median": -0.126559885499039,
+            "win_rate": 47.64150943396226,
+            "mae_mean": 2.5072416106769015,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 636,
+            "net_mean": -0.1075624413798855,
+            "net_median": -0.07344011450096102,
+            "win_rate": 47.48427672955975,
+            "mae_mean": 2.3157783111646144,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1984,
+          "deduped_count_long": 440,
+          "deduped_count_short": 440,
+          "long": {
+            "deduped_count": 440,
+            "net_mean": -0.18628835622484194,
+            "net_median": -0.08921031607009847,
+            "win_rate": 48.63636363636364,
+            "mae_mean": 3.5441385874854983,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 440,
+            "net_mean": -0.013711643775157894,
+            "net_median": -0.11078968392990154,
+            "win_rate": 48.40909090909091,
+            "mae_mean": 3.179800541140407,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:normalization:basis_bps:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1173,
+          "deduped_count_long": 955,
+          "deduped_count_short": 955,
+          "long": {
+            "deduped_count": 955,
+            "net_mean": -0.058517210174871805,
+            "net_median": -0.10987654320988574,
+            "win_rate": 46.80628272251309,
+            "mae_mean": 1.8003569090129545,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 955,
+            "net_mean": -0.14148278982512819,
+            "net_median": -0.09012345679011427,
+            "win_rate": 48.06282722513089,
+            "mae_mean": 1.6987356485580731,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1173,
+          "deduped_count_long": 759,
+          "deduped_count_short": 759,
+          "long": {
+            "deduped_count": 759,
+            "net_mean": 0.014454094397738593,
+            "net_median": 0.011532455944662873,
+            "win_rate": 50.19762845849802,
+            "mae_mean": 2.514668655530101,
+            "monthly_concentration_pct": 350.24003497710265
+          },
+          "short": {
+            "deduped_count": 759,
+            "net_mean": -0.21445409439773847,
+            "net_median": -0.21153245594466288,
+            "win_rate": 47.03557312252965,
+            "mae_mean": 2.3492458769860645,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1173,
+          "deduped_count_long": 521,
+          "deduped_count_short": 521,
+          "long": {
+            "deduped_count": 521,
+            "net_mean": 0.032704764621477374,
+            "net_median": -0.06070726915520233,
+            "win_rate": 49.520153550863725,
+            "mae_mean": 3.507245736707343,
+            "monthly_concentration_pct": 216.17995429618472
+          },
+          "short": {
+            "deduped_count": 521,
+            "net_mean": -0.23270476462147746,
+            "net_median": -0.13929273084479768,
+            "win_rate": 48.17658349328215,
+            "mae_mean": 3.4204877760579584,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:normalization:basis_bps:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2170,
+          "deduped_count_long": 1557,
+          "deduped_count_short": 1557,
+          "long": {
+            "deduped_count": 1557,
+            "net_mean": -0.09596123285429761,
+            "net_median": -0.10770416024654664,
+            "win_rate": 47.07771355170199,
+            "mae_mean": 1.7533040870863037,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1557,
+            "net_mean": -0.10403876714570247,
+            "net_median": -0.09229583975345337,
+            "win_rate": 47.591522157996145,
+            "mae_mean": 1.6318475809112962,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2170,
+          "deduped_count_long": 1077,
+          "deduped_count_short": 1077,
+          "long": {
+            "deduped_count": 1077,
+            "net_mean": -0.06392229276202405,
+            "net_median": -0.13612281757977565,
+            "win_rate": 48.09656453110492,
+            "mae_mean": 2.4782303974985225,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1077,
+            "net_mean": -0.13607770723797608,
+            "net_median": -0.06387718242022436,
+            "win_rate": 48.83936861652739,
+            "mae_mean": 2.355261851860729,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2170,
+          "deduped_count_long": 668,
+          "deduped_count_short": 668,
+          "long": {
+            "deduped_count": 668,
+            "net_mean": 0.05913191441143969,
+            "net_median": -0.02421260953738838,
+            "win_rate": 49.700598802395206,
+            "mae_mean": 3.3855050082683964,
+            "monthly_concentration_pct": 96.1926764744705
+          },
+          "short": {
+            "deduped_count": 668,
+            "net_mean": -0.25913191441143973,
+            "net_median": -0.17578739046261163,
+            "win_rate": 47.30538922155689,
+            "mae_mean": 3.361870861664028,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1052,
+          "deduped_count_long": 705,
+          "deduped_count_short": 705,
+          "long": {
+            "deduped_count": 705,
+            "net_mean": 0.15472070791523426,
+            "net_median": 0.03371537726838411,
+            "win_rate": 50.78014184397163,
+            "mae_mean": 1.8286552022558487,
+            "monthly_concentration_pct": 43.36663382638955
+          },
+          "short": {
+            "deduped_count": 705,
+            "net_mean": -0.35472070791523497,
+            "net_median": -0.23371537726838412,
+            "win_rate": 44.680851063829785,
+            "mae_mean": 1.9034953143499669,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1052,
+          "deduped_count_long": 556,
+          "deduped_count_short": 556,
+          "long": {
+            "deduped_count": 556,
+            "net_mean": 0.18876053415985553,
+            "net_median": -0.05223499626870734,
+            "win_rate": 49.280575539568346,
+            "mae_mean": 2.5555090789836887,
+            "monthly_concentration_pct": 52.25625963256469
+          },
+          "short": {
+            "deduped_count": 556,
+            "net_mean": -0.38876053415985434,
+            "net_median": -0.14776500373129267,
+            "win_rate": 46.223021582733814,
+            "mae_mean": 2.610281749668999,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1052,
+          "deduped_count_long": 408,
+          "deduped_count_short": 408,
+          "long": {
+            "deduped_count": 408,
+            "net_mean": 0.3480873632412969,
+            "net_median": 0.12278143403777761,
+            "win_rate": 52.94117647058824,
+            "mae_mean": 3.524020852146434,
+            "monthly_concentration_pct": 28.578328699126708
+          },
+          "short": {
+            "deduped_count": 408,
+            "net_mean": -0.5480873632412968,
+            "net_median": -0.3227814340377776,
+            "win_rate": 44.36274509803921,
+            "mae_mean": 3.6418029991792125,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_positive:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2078,
+          "deduped_count_long": 1163,
+          "deduped_count_short": 1163,
+          "long": {
+            "deduped_count": 1163,
+            "net_mean": 0.03521163598790521,
+            "net_median": -0.025295704503014355,
+            "win_rate": 48.83920894239037,
+            "mae_mean": 1.8150993520866225,
+            "monthly_concentration_pct": 101.17656567204804
+          },
+          "short": {
+            "deduped_count": 1163,
+            "net_mean": -0.2352116359879049,
+            "net_median": -0.17470429549698566,
+            "win_rate": 45.915735167669816,
+            "mae_mean": 1.7584105827306717,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2078,
+          "deduped_count_long": 838,
+          "deduped_count_short": 838,
+          "long": {
+            "deduped_count": 838,
+            "net_mean": 0.1272333637522115,
+            "net_median": 0.039719740647370466,
+            "win_rate": 50.83532219570406,
+            "mae_mean": 2.5053700624829705,
+            "monthly_concentration_pct": 39.886480890293036
+          },
+          "short": {
+            "deduped_count": 838,
+            "net_mean": -0.327233363752211,
+            "net_median": -0.23971974064737048,
+            "win_rate": 45.346062052505964,
+            "mae_mean": 2.4785260376814393,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2078,
+          "deduped_count_long": 549,
+          "deduped_count_short": 549,
+          "long": {
+            "deduped_count": 549,
+            "net_mean": 0.20452855572025075,
+            "net_median": 0.1136135327059696,
+            "win_rate": 51.54826958105647,
+            "mae_mean": 3.442804276154549,
+            "monthly_concentration_pct": 38.02377248477101
+          },
+          "short": {
+            "deduped_count": 549,
+            "net_mean": -0.40452855572025104,
+            "net_median": -0.3136135327059696,
+            "win_rate": 45.537340619307834,
+            "mae_mean": 3.3883309605934135,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1031,
+          "deduped_count_long": 595,
+          "deduped_count_short": 595,
+          "long": {
+            "deduped_count": 595,
+            "net_mean": -0.1671440630885686,
+            "net_median": -0.15548619780829656,
+            "win_rate": 45.714285714285715,
+            "mae_mean": 2.068672624568188,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 595,
+            "net_mean": -0.03285593691143119,
+            "net_median": -0.04451380219170345,
+            "win_rate": 49.57983193277311,
+            "mae_mean": 1.78270723322383,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1031,
+          "deduped_count_long": 464,
+          "deduped_count_short": 464,
+          "long": {
+            "deduped_count": 464,
+            "net_mean": -0.24459038484958895,
+            "net_median": -0.3093732762900757,
+            "win_rate": 45.258620689655174,
+            "mae_mean": 2.924758466436478,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 464,
+            "net_mean": 0.04459038484958914,
+            "net_median": 0.10937327629007573,
+            "win_rate": 52.1551724137931,
+            "mae_mean": 2.3752174948943,
+            "monthly_concentration_pct": 151.25030107161382
+          }
+        },
+        "24": {
+          "raw_count": 1031,
+          "deduped_count_long": 340,
+          "deduped_count_short": 340,
+          "long": {
+            "deduped_count": 340,
+            "net_mean": -0.19428872689460253,
+            "net_median": -0.1807967961518441,
+            "win_rate": 47.94117647058824,
+            "mae_mean": 3.916691198766945,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 340,
+            "net_mean": -0.005711273105397087,
+            "net_median": -0.01920320384815591,
+            "win_rate": 49.705882352941174,
+            "mae_mean": 3.395934459764962,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:extreme_negative:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2059,
+          "deduped_count_long": 1037,
+          "deduped_count_short": 1037,
+          "long": {
+            "deduped_count": 1037,
+            "net_mean": -0.1068465836960553,
+            "net_median": -0.08778103616814406,
+            "win_rate": 47.73384763741562,
+            "mae_mean": 1.882166137071421,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1037,
+            "net_mean": -0.09315341630394451,
+            "net_median": -0.11221896383185595,
+            "win_rate": 47.6374156219865,
+            "mae_mean": 1.6955705112738968,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2059,
+          "deduped_count_long": 758,
+          "deduped_count_short": 758,
+          "long": {
+            "deduped_count": 758,
+            "net_mean": -0.12945421047155642,
+            "net_median": -0.22967240385963197,
+            "win_rate": 46.437994722955146,
+            "mae_mean": 2.6207223141124643,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 758,
+            "net_mean": -0.07054578952844347,
+            "net_median": 0.029672403859631963,
+            "win_rate": 50.3957783641161,
+            "mae_mean": 2.3214733725527847,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2059,
+          "deduped_count_long": 513,
+          "deduped_count_short": 513,
+          "long": {
+            "deduped_count": 513,
+            "net_mean": -0.004440687841497032,
+            "net_median": -0.1289620018535608,
+            "win_rate": 49.122807017543856,
+            "mae_mean": 3.6632872755422983,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 513,
+            "net_mean": -0.1955593121585028,
+            "net_median": -0.07103799814643921,
+            "win_rate": 49.317738791423,
+            "mae_mean": 3.355007468639491,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:normalization:premium_index:rolling:tail5": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail5",
+      "horizons": {
+        "6": {
+          "raw_count": 1323,
+          "deduped_count_long": 1074,
+          "deduped_count_short": 1074,
+          "long": {
+            "deduped_count": 1074,
+            "net_mean": -0.13115701124463913,
+            "net_median": -0.14559336884934485,
+            "win_rate": 46.18249534450652,
+            "mae_mean": 1.8631182537437438,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1074,
+            "net_mean": -0.06884298875536095,
+            "net_median": -0.054406631150655166,
+            "win_rate": 48.78957169459962,
+            "mae_mean": 1.6885134715246772,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 1323,
+          "deduped_count_long": 813,
+          "deduped_count_short": 813,
+          "long": {
+            "deduped_count": 813,
+            "net_mean": 0.03410273860878968,
+            "net_median": -0.16083518011558154,
+            "win_rate": 48.33948339483395,
+            "mae_mean": 2.5606634196397193,
+            "monthly_concentration_pct": 123.34113416936978
+          },
+          "short": {
+            "deduped_count": 813,
+            "net_mean": -0.2341027386087895,
+            "net_median": -0.03916481988441847,
+            "win_rate": 49.32349323493235,
+            "mae_mean": 2.379339496576379,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 1323,
+          "deduped_count_long": 554,
+          "deduped_count_short": 554,
+          "long": {
+            "deduped_count": 554,
+            "net_mean": 0.11034062120778677,
+            "net_median": -0.09041353607147631,
+            "win_rate": 49.09747292418773,
+            "mae_mean": 3.587655764253793,
+            "monthly_concentration_pct": 61.94947482418366
+          },
+          "short": {
+            "deduped_count": 554,
+            "net_mean": -0.310340621207787,
+            "net_median": -0.1095864639285237,
+            "win_rate": 48.194945848375454,
+            "mae_mean": 3.4825742369600543,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    },
+    "SOLUSDT|binance_usdm-bybit:normalization:premium_index:rolling:tail10": {
+      "threshold_mode": "rolling",
+      "spec_label": "tail10",
+      "horizons": {
+        "6": {
+          "raw_count": 2399,
+          "deduped_count_long": 1700,
+          "deduped_count_short": 1700,
+          "long": {
+            "deduped_count": 1700,
+            "net_mean": -0.12267257047226003,
+            "net_median": -0.10899435673731298,
+            "win_rate": 46.82352941176471,
+            "mae_mean": 1.7753030706113118,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1700,
+            "net_mean": -0.07732742952774016,
+            "net_median": -0.09100564326268704,
+            "win_rate": 47.529411764705884,
+            "mae_mean": 1.6125125065895667,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "12": {
+          "raw_count": 2399,
+          "deduped_count_long": 1132,
+          "deduped_count_short": 1132,
+          "long": {
+            "deduped_count": 1132,
+            "net_mean": -0.02907494211179195,
+            "net_median": -0.07220867426871438,
+            "win_rate": 48.67491166077739,
+            "mae_mean": 2.517552025445294,
+            "monthly_concentration_pct": 0.0
+          },
+          "short": {
+            "deduped_count": 1132,
+            "net_mean": -0.17092505788820817,
+            "net_median": -0.12779132573128563,
+            "win_rate": 48.23321554770318,
+            "mae_mean": 2.2831225160720994,
+            "monthly_concentration_pct": 0.0
+          }
+        },
+        "24": {
+          "raw_count": 2399,
+          "deduped_count_long": 682,
+          "deduped_count_short": 682,
+          "long": {
+            "deduped_count": 682,
+            "net_mean": 0.05121747844000108,
+            "net_median": 0.09999381277626682,
+            "win_rate": 51.17302052785924,
+            "mae_mean": 3.45439600042081,
+            "monthly_concentration_pct": 95.01710153083683
+          },
+          "short": {
+            "deduped_count": 682,
+            "net_mean": -0.25121747844000136,
+            "net_median": -0.2999938127762668,
+            "win_rate": 46.18768328445748,
+            "mae_mean": 3.3238726552848523,
+            "monthly_concentration_pct": 0.0
+          }
+        }
+      }
+    }
+  },
+  "generated_at": "2026-06-12T17:27:21.027934+00:00",
+  "config": {
+    "venues": [
+      "binance_usdm",
+      "bybit"
+    ],
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "timeframe": "1h",
+    "start": "2024-01-01",
+    "end": "2026-06-12",
+    "fee_pct": 0.08,
+    "slippage_pct": 0.02,
+    "horizons": [
+      6,
+      12,
+      24
+    ],
+    "cooldown_mode": "horizon",
+    "threshold_mode": "both",
+    "rolling_days": 90,
+    "abs_bps_grid": [
+      3.5,
+      4.5,
+      5.5,
+      7.0
+    ],
+    "tail_pcts": [
+      5,
+      10
+    ]
+  }
+}
