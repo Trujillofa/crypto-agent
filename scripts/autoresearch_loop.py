@@ -44,6 +44,7 @@ DEFAULT_FAMILIES = (
 CV_FAMILIES = (
     "cross_venue_dislocation",
     "venue_basis_filter",
+    "dislocation_event_entry",
 )
 ALL_FAMILIES = DEFAULT_FAMILIES + CV_FAMILIES
 
@@ -1172,6 +1173,42 @@ def generate_candidate(
             f"funding-norm entry={entry_thresh:.5f} exit={exit_thresh:.5f} "
             f"time_stop={time_stop_min:.0f}m"
         )
+    elif family == "dislocation_event_entry":
+        # Gate 2: standalone dislocation event entry family (long-only positive spread).
+        # Per probe evidence (SOL positive fixed-abs, shorts never passed, ETH opposite).
+        # <=5 free params (we use 3): min_spread (sampled), horizon (sampled), cooldown==horizon (tied).
+        # Fixed wide SL/TP + time stop exit (probe MAE 3.2-5%, tight stops kill edge).
+        # Mirror funding_*_standalone pattern for aggregator/per-symbol so single BUY passes.
+        horizon_bars = int(rng.choice([12, 24]))
+        min_bps = _round(rng.uniform(4.5, 7.0), 2)
+        cooldown_bars = horizon_bars  # tied, not a free parameter
+        overlay, _ = _standalone_strategy_overlay(
+            trading_symbol=trading_symbol,
+            rng=rng,
+            strategy_entry={
+                "name": "dislocation_event",
+                "config": {
+                    "min_spread_bps": min_bps,
+                    "cooldown_bars": cooldown_bars,
+                },
+            },
+            buy_low=0.42,
+            buy_high=0.68,
+            sl_atr=4.0,
+            tp_atr=8.0,
+        )
+        # Force the design's fixed wide values (helper would have sampled trail; we neutralize trailing)
+        overlay["trading_execution"]["sl_atr_multiplier"] = 4.0
+        overlay["trading_execution"]["tp_atr_multiplier"] = 8.0
+        overlay["trading_execution"]["trailing_activate_atr"] = _round(rng.uniform(8.0, 12.0), 1)
+        overlay["trading_execution"]["trailing_offset_atr"] = 0.5
+        # Time stop exactly at horizon (bars), mirror exact pattern from volatility/funding time-stop families
+        time_stop_min = float(horizon_bars * 60)
+        overlay["trading_execution"]["exit_rules"] = {
+            "backtest_use_executor_exit_model": True,
+            "time_stop_minutes": time_stop_min,
+        }
+        desc = f"dislocation-event-entry min_bps={min_bps:.2f} horizon={horizon_bars}"
     elif family == "volatility_squeeze_bounded":
         max_hold_bars = int(rng.choice([10, 12, 14]))
         time_stop_min = float(max_hold_bars * 60)
