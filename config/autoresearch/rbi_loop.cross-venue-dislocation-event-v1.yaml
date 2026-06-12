@@ -1,0 +1,72 @@
+# RBI lane manifest: cross-venue dislocation event strategy v1 (rolling variant)
+#
+# Successor to cross-venue-dislocation-event-v0 (closed 2026-06-12: fixed-threshold
+# shape failed 0/30 on structural WFO sparsity, see
+# docs/reports/cross-venue-dislocation-event-v0-sweep-2026-06-12.md). This lane tests
+# the five rolling-threshold probe scenarios v0 never implemented (28-57 events per
+# 2-month WFO window; the sparsity jaw does not bind). Terminal lane: 0/30 closes the
+# cross-venue dislocation primitive entirely.
+#
+# probe_verdict: HAS_PULSE carried from the v0 Gate 1 probe run (real DB, 2026-06-12,
+# rc=0) whose verdict JSON contains the rolling passing scenarios verbatim. No new
+# probe run is required or permitted (re-probing the same data = selection bias).
+# Evidence: research/rbi_loop/cross-venue-dislocation-event-v0/probe-verdict.json and
+# docs/reports/cross-venue-dislocation-event-v0-probe-2026-06-12.md
+#
+# Drive with:
+#   uv run python scripts/rbi_loop_from_manifest.py --manifest config/autoresearch/rbi_loop.cross-venue-dislocation-event-v1.yaml
+# (dry by default; --execute only after human review of the guard decision)
+
+lane_name: cross-venue-dislocation-event-v1
+lane_brief: docs/specs/cross-venue-dislocation-event-strategy-v1.md
+probe_verdict: HAS_PULSE
+
+last_result:
+overlap_report:
+
+decision_output: research/rbi_loop/cross-venue-dislocation-event-v1/decision.json
+report_output: docs/reports/rbi-loop-cross-venue-dislocation-event-v1.md
+timeout_seconds: 3600
+
+commands:
+  # Gate 1 already satisfied by the v0 probe run; this command exists only for
+  # manifest completeness and must not be re-executed for this lane.
+  RUN_CHEAP_PROBE: >-
+    uv run python scripts/probe_dislocation_event_strategy.py
+    --venues binance_usdm,bybit
+    --symbols SOLUSDT
+    --timeframe 1h
+    --start 2024-01-01
+    --fee-pct 0.08
+    --slippage-pct 0.02
+    --verdict-output research/rbi_loop/cross-venue-dislocation-event-v1/probe-verdict.json
+
+  # Bounded sweep of the rolling-threshold family. The dislocation_event_rolling_entry
+  # family requires the rolling-mode strategy extension (own reviewed plan) before this
+  # can execute.
+  RUN_AUTORESEARCH: >-
+    uv run python scripts/autoresearch_loop.py
+    --config config/settings.autoresearch.yaml
+    --symbol SOLUSDT
+    --timeframe 1h
+    --train-months 3
+    --test-months 2
+    --gate-profile standard
+    --families dislocation_event_rolling_entry
+    --max-runs 30
+
+  RUN_BOOTSTRAP_1000: >-
+    uv run python scripts/run_autoresearch.py
+    --config config/settings.autoresearch.yaml
+    --symbol SOLUSDT
+    --timeframe 1h
+    --train-months 3
+    --test-months 2
+    --bootstrap 1000
+    --gate-profile standard
+    --description cross-venue-dislocation-event-v1-b1000
+
+  CHECK_OVERLAP: >-
+    uv run python scripts/analyze_entry_overlap.py
+    --output docs/reports/rbi-loop-cross-venue-dislocation-event-v1-overlap.json
+    --against sol-1h-trend-pullback-overlay-live,sentiment-macro
