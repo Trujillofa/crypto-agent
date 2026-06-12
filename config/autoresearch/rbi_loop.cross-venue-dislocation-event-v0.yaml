@@ -16,7 +16,18 @@
 
 lane_name: cross-venue-dislocation-event-v0
 lane_brief: docs/specs/cross-venue-dislocation-event-strategy-v0.md
-probe_verdict:
+# 2026-06-12 human review: probe run on real data (3 symbols x 2 venues, 1h,
+# 2024-01-01 -> 2026-06-12, net of 0.10% fee+slip, no-lookahead thresholds,
+# dedup+cooldown) -> HAS_PULSE with 17 passing scenarios (SOL 11, ETH 6, BTC 0),
+# all long. Pass list independently re-derived from per_scenario_stats (exact
+# match); unconditional long baseline is NEGATIVE net of costs at all
+# symbols/horizons (-0.06%..-0.10%) vs event nets +0.13%..+1.79%, so the lift is
+# conditional, not drift. No kill criterion met. Caveats for Gate 2: shorts never
+# pass (two-sided premise not confirmed); 4 SOL scenarios within 5pp of the 50%
+# monthly-concentration gate. Evidence:
+# research/rbi_loop/cross-venue-dislocation-event-v0/probe-verdict.json and
+# docs/reports/cross-venue-dislocation-event-v0-probe-2026-06-12.md
+probe_verdict: HAS_PULSE
 
 last_result:
 overlap_report:
