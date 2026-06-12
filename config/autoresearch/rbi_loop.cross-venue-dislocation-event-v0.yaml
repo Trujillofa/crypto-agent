@@ -29,7 +29,15 @@ lane_brief: docs/specs/cross-venue-dislocation-event-strategy-v0.md
 # docs/reports/cross-venue-dislocation-event-v0-probe-2026-06-12.md
 probe_verdict: HAS_PULSE
 
-last_result:
+# 2026-06-12 human review: RUN_AUTORESEARCH executed (30-run bounded sweep, all rc=0,
+# 366s). 0/30 passed the standard gate: full-period in-engine returns positive in 26/30
+# (best +43.7% / sharpe 0.96 at min_bps~6.5 h24) but WFO test-window returns negative
+# across the entire grid (-7.4%..-45.6%). Structural conflict: edge-bearing thresholds
+# yield ~1 event/month -> 7-16 WFO trades (min 20 unreachable); trade-sufficient low
+# thresholds carry no edge (-30%+ OOS). Profit concentration 66.5-100% (episodic).
+# Guard now returns ITERATE_OR_CLOSE. Recommendation: close (see report). Evidence:
+# research/rbi_loop/cross-venue-dislocation-event-v0/last_autoresearch_result.json
+last_result: research/rbi_loop/cross-venue-dislocation-event-v0/last_autoresearch_result.json
 overlap_report:
 
 decision_output: research/rbi_loop/cross-venue-dislocation-event-v0/decision.json
