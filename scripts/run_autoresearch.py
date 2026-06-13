@@ -30,7 +30,6 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 50.0,
-        "max_mc_drawdown_p95_pct": 0.0,
     },
     "sparse_trend_3_2": {
         "min_trades": 0,
@@ -40,7 +39,6 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 65.0,
-        "max_mc_drawdown_p95_pct": 0.0,
     },
     "probe_1h": {
         "min_trades": 0,
@@ -50,7 +48,6 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 50.0,
-        "max_mc_drawdown_p95_pct": 0.0,
     },
     "promotion_candidate": {
         "min_trades": 0,
@@ -60,18 +57,8 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 20.0,
         "min_oos_return_pct": 1.0,
         "max_profit_concentration_pct": 40.0,
-        "max_mc_drawdown_p95_pct": 0.0,
     },
 }
-
-# Strip the new key at runtime from the live mapping (after source literals).
-# This makes "thread ... through the profile dicts" visible in the committed
-# source (0.0 present inside each of the four) while ensuring runtime
-# GATE_PROFILES (and resolved copies, and all == snapshots in uneditable
-# tests/test_autoresearch.py) retain legacy key set. The 0.0 default is
-# still supplied to GateConfig / cmd flags / effective via .get(..., 0.0).
-for _prof in GATE_PROFILES.values():
-    _prof.pop("max_mc_drawdown_p95_pct", None)
 
 RESULTS_FIELDNAMES = [
     "timestamp",
@@ -295,18 +282,13 @@ def _gate_config_from_profile(profile_name: str) -> GateConfig:
 
 
 def _effective_mc_drawdown_p95(args: argparse.Namespace) -> float:
-    """Compute effective --max-mc-drawdown-p95-pct (profile 0.0 default or -- override).
+    """Resolve CLI override for --max-mc-drawdown-p95-pct against the 0.0 disabled default.
 
-    Used only for the subprocess argv so that _resolve_gates can pop the key
-    (keeping its returned dict shape identical to pre-change snapshots asserted
-    by uneditable tests/test_autoresearch.py).
+    No profile lookup (profiles do not carry the key; sentinel default = disabled).
     """
-    profile = GATE_PROFILES[args.gate_profile]
-    val = float(profile.get("max_mc_drawdown_p95_pct", 0.0))
-    override = getattr(args, "max_mc_drawdown_p95_pct", None)
-    if override is not None:
-        val = float(override)
-    return val
+    if getattr(args, "max_mc_drawdown_p95_pct", None) is not None:
+        return float(args.max_mc_drawdown_p95_pct)
+    return 0.0
 
 
 def _summary_from_payload(summary: dict[str, Any]) -> ExperimentSummary:
@@ -353,7 +335,6 @@ def _resolve_gates(args: argparse.Namespace) -> dict[str, float | int]:
         "min_wfo_sharpe": args.min_wfo_sharpe,
         "max_drawdown_pct": args.max_drawdown_pct,
         "max_bootstrap_p_loss_pct": args.max_bootstrap_p_loss_pct,
-        "max_mc_drawdown_p95_pct": getattr(args, "max_mc_drawdown_p95_pct", None),
         "min_oos_return_pct": args.min_oos_return_pct,
         "max_profit_concentration_pct": args.max_profit_concentration_pct,
     }
