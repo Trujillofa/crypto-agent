@@ -21,7 +21,18 @@ lane_name: cross-venue-dislocation-event-v1
 lane_brief: docs/specs/cross-venue-dislocation-event-strategy-v1.md
 probe_verdict: HAS_PULSE
 
-last_result:
+# 2026-06-12 human review: RUN_AUTORESEARCH executed (30-run bounded sweep, all rc=0,
+# 350s). 0/30 passed the standard gate. The rolling variant ELIMINATED v0's sparsity
+# failure (trades 134-289, WFO trade counts ~66 vs min 20) but the thin per-event edge
+# collapses under engine realism: full-period in-engine return negative in 30/30
+# (-74.7%..-16.3%), WFO -15.3%..-54.8%, bootstrap P(loss) 67-99%. Probe net medians
+# (+0.03..+0.12%) did not survive ATR sizing + executor exits + real fees; win ~51%
+# matches probe (event detection fine, edge magnitude insufficient). Both primitive
+# shapes have now failed bounded OOS (v0 fixed: sparsity; v1 rolling: edge too thin).
+# Guard returns ITERATE_OR_CLOSE. Recommendation: CLOSE the cross-venue dislocation
+# primitive entirely (terminal lane). Evidence:
+# research/rbi_loop/cross-venue-dislocation-event-v1/last_autoresearch_result.json
+last_result: research/rbi_loop/cross-venue-dislocation-event-v1/last_autoresearch_result.json
 overlap_report:
 
 decision_output: research/rbi_loop/cross-venue-dislocation-event-v1/decision.json
