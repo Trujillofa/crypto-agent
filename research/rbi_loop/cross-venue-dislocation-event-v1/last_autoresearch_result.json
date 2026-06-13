@@ -1,0 +1,31 @@
+{
+  "status": "discard_all",
+  "gate_profile": "standard",
+  "command": [
+    "uv", "run", "python", "scripts/autoresearch_loop.py",
+    "--config", "config/settings.autoresearch.yaml",
+    "--symbol", "SOLUSDT",
+    "--timeframe", "1h",
+    "--train-months", "3",
+    "--test-months", "2",
+    "--gate-profile", "standard",
+    "--families", "dislocation_event_rolling_entry",
+    "--max-runs", "30"
+  ],
+  "summary": {
+    "passes_gates": false,
+    "note": "Bounded 30-run sweep 2026-06-12 (22:41-22:47 UTC, 350.2s, all 30 rc=0, no crashes/tracebacks in this run's log segment; the InvalidPasswordError strings a grep surfaced from autoresearch_loop.log are stale entries from the 2026-06-11 cross-venue-basis-v1 crashed sweep at commit c1525eb, lines 73-2335, all preceding this run which starts at line 12147 and loaded real data 1417-1489 pts/window). 30 dislocation_event_rolling_entry candidates (rolling-threshold variant: metric basis/premium, tail 5/10, horizon 12/24, rolling_days 90, cooldown==horizon, time-stop exit). 0/30 passed the standard gate. The rolling variant ELIMINATED the v0 sparsity failure: trade counts 134-289 and WFO trade counts ~66 (vs v0's 7-20 and the min-20 gate). But with adequate frequency the thin per-event edge collapses under engine realism: full-period in-engine return is NEGATIVE in 30/30 (range -74.7% to -16.3%; best basis_spread tail5 h24: -16.3%, win 51%, sharpe -0.05), and WFO returns are -15.3% to -54.8% with bootstrap P(loss) 67-99%. The probe's net medians (+0.03 to +0.12% at 51-53% win, flat 0.10% cost, clean horizon exit) did not survive ATR sizing + the executor exit model (SL/TP/trailing/time-stop) + real fees. Anti-inertness verified: returns/trades/gates vary monotonically with tail and horizon. Win rates ~51% match the probe (50.8-52.9%), confirming the strategy fires on the correct events; the edge magnitude, not the event detection, is the failure."
+  },
+  "eligible_for_bootstrap_1000": false,
+  "promotion_candidate_failures": [
+    "full_period_in_engine_return_negative_across_entire_grid",
+    "thin_per_event_edge_does_not_survive_atr_sizing_and_executor_exits",
+    "bootstrap_p_loss_67_to_99_pct_far_above_gate"
+  ],
+  "runs": 30,
+  "runs_passed": 0,
+  "session": "research/autoresearch_session.json (untracked, sweep 2026-06-12T22:41:14Z)",
+  "results_rows": "research/results.tsv run_ids 20260612-2241* through 20260612-2247*",
+  "archives": "research/archive/experiment-autopilot-20260612-22*.json (30 files, untracked)",
+  "description": "cross-venue-dislocation-event-v1 RUN_AUTORESEARCH 30-run bounded sweep (rolling variant): all candidates discarded; terminal lane -> close cross-venue dislocation primitive"
+}
