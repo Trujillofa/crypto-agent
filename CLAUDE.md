@@ -518,7 +518,6 @@ loss_limits:
 |--------|---------|
 | `scripts/run_backtest.py` | Run single backtest |
 | `scripts/run_full_backtest.py` | Full parameter backtest |
-| `scripts/run_monte_carlo.py` | Monte Carlo analysis |
 | `scripts/run_wfo.py` | Walk-forward optimization |
 | `scripts/smoke_test.py` | Quick connectivity check |
 | `scripts/migrate.py` | Apply database migrations |
