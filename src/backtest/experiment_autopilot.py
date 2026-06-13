@@ -7,7 +7,12 @@ from datetime import datetime
 
 @dataclass(frozen=True)
 class GateConfig:
-    """Validation gates for experiment acceptance."""
+    """Validation gates for experiment acceptance.
+
+    The sentinel value 0.0 for max_mc_drawdown_p95_pct means the equity-path
+    drawdown Monte Carlo gate is disabled (default). Non-zero enables the check
+    against summary.mc_drawdown_p95_pct.
+    """
 
     min_trades: int = 0
     min_wfo_trades: int = 20
@@ -16,6 +21,7 @@ class GateConfig:
     max_bootstrap_p_loss_pct: float = 25.0
     min_oos_return_pct: float = 0.0
     max_profit_concentration_pct: float = 50.0
+    max_mc_drawdown_p95_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -62,8 +68,10 @@ class ExperimentSummary:
     wfo_mean_sharpe: float
     wfo_total_return_pct: float
     bootstrap_p_loss_pct: float
-    profit_concentration_pct: float
-    passes_gates: bool
+    mc_drawdown_p95_pct: float = 0.0
+    mc_drawdown_p50_pct: float = 0.0
+    profit_concentration_pct: float = 0.0
+    passes_gates: bool = False
     failure_reasons: list[str] = field(default_factory=list)
     blocked_buy_count: int = 0
     basis_blocked_buy_count: int = 0
@@ -140,28 +148,98 @@ def compound_returns_pct(returns_pct: list[float]) -> float:
     return (capital - 1.0) * 100.0
 
 
-def bootstrap_loss_probability_pct(
+def max_drawdown_from_returns(returns_pct: list[float]) -> float:
+    """Compute max peak-to-trough drawdown as positive percent from pct returns.
+
+    Compounds an equity curve starting at 1.0. Returns 0.0 for empty input.
+    """
+    if not returns_pct:
+        return 0.0
+
+    equity = 1.0
+    peak = 1.0
+    max_dd = 0.0
+    for r in returns_pct:
+        equity *= 1.0 + (r / 100.0)
+        if equity > peak:
+            peak = equity
+        dd = (peak - equity) / peak * 100.0
+        if dd > max_dd:
+            max_dd = dd
+    return max_dd
+
+
+def _percentile(values: list[float], p: float) -> float:
+    """Return approximate p-th percentile (p in [0,1]) of sorted values.
+
+    Uses simple index scaling (conservative for upper tail risk metrics).
+    Empty input yields 0.0. This is the single shared implementation in the module.
+    """
+    if not values:
+        return 0.0
+    n = len(values)
+    # Index for e.g. p=0.95 on 1000 samples -> idx=950 (95th percentile point)
+    idx = min(n - 1, max(0, int(p * n)))
+    return values[idx]
+
+
+def bootstrap_trade_path_metrics(
     trade_returns_pct: list[float],
     iterations: int,
     seed: int = 42,
-) -> float:
-    """Estimate probability of total loss via bootstrap resampling."""
+) -> dict[str, float]:
+    """Single-pass bootstrap: resample trade returns (with replacement) and compute
+    both P(loss) on compound total and the distribution of max drawdowns on paths.
+
+    Returns: p_loss_pct, drawdown_p50_pct, drawdown_p95_pct, drawdown_p99_pct,
+    drawdown_mean_pct. Reuses the exact rng.choices scheme as prior bootstrap.
+    """
     if iterations <= 0:
         raise ValueError("iterations must be > 0")
 
     trade_count = len(trade_returns_pct)
     if trade_count == 0:
-        return 100.0
+        return {
+            "p_loss_pct": 100.0,
+            "drawdown_p50_pct": 0.0,
+            "drawdown_p95_pct": 0.0,
+            "drawdown_p99_pct": 0.0,
+            "drawdown_mean_pct": 0.0,
+        }
 
     rng = random.Random(seed)
-    losses = 0
+    loss_count = 0
+    drawdowns: list[float] = []
     for _ in range(iterations):
         sample = rng.choices(trade_returns_pct, k=trade_count)
         total_return = compound_returns_pct(sample)
         if total_return < 0:
-            losses += 1
+            loss_count += 1
+        dd = max_drawdown_from_returns(sample)
+        drawdowns.append(dd)
 
-    return (losses / iterations) * 100.0
+    drawdowns_sorted = sorted(drawdowns)
+    p_loss = (loss_count / iterations) * 100.0
+    return {
+        "p_loss_pct": p_loss,
+        "drawdown_p50_pct": _percentile(drawdowns_sorted, 0.50),
+        "drawdown_p95_pct": _percentile(drawdowns_sorted, 0.95),
+        "drawdown_p99_pct": _percentile(drawdowns_sorted, 0.99),
+        "drawdown_mean_pct": sum(drawdowns) / len(drawdowns) if drawdowns else 0.0,
+    }
+
+
+def bootstrap_loss_probability_pct(
+    trade_returns_pct: list[float],
+    iterations: int,
+    seed: int = 42,
+) -> float:
+    """Estimate probability of total loss via bootstrap resampling.
+
+    Delegates to bootstrap_trade_path_metrics (single resampling model for
+    both P(loss) and drawdown path metrics).
+    """
+    return bootstrap_trade_path_metrics(trade_returns_pct, iterations, seed)["p_loss_pct"]
 
 
 def profit_concentration_pct(window_returns_pct: list[float]) -> float:
@@ -208,6 +286,13 @@ def evaluate_gates(summary: ExperimentSummary, gates: GateConfig) -> list[str]:
             "max_bootstrap_p_loss_pct failed "
             f"({summary.bootstrap_p_loss_pct:.2f}% > {gates.max_bootstrap_p_loss_pct:.2f}%)"
         )
+
+    if gates.max_mc_drawdown_p95_pct > 0:
+        if summary.mc_drawdown_p95_pct > gates.max_mc_drawdown_p95_pct:
+            failures.append(
+                "max_mc_drawdown_p95_pct failed "
+                f"({summary.mc_drawdown_p95_pct:.2f}% > {gates.max_mc_drawdown_p95_pct:.2f}%)"
+            )
 
     if summary.wfo_total_return_pct < gates.min_oos_return_pct:
         failures.append(

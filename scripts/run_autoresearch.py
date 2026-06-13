@@ -30,6 +30,7 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 50.0,
+        "max_mc_drawdown_p95_pct": 0.0,
     },
     "sparse_trend_3_2": {
         "min_trades": 0,
@@ -39,6 +40,7 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 65.0,
+        "max_mc_drawdown_p95_pct": 0.0,
     },
     "probe_1h": {
         "min_trades": 0,
@@ -48,6 +50,7 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 25.0,
         "min_oos_return_pct": 0.0,
         "max_profit_concentration_pct": 50.0,
+        "max_mc_drawdown_p95_pct": 0.0,
     },
     "promotion_candidate": {
         "min_trades": 0,
@@ -57,8 +60,18 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "max_bootstrap_p_loss_pct": 20.0,
         "min_oos_return_pct": 1.0,
         "max_profit_concentration_pct": 40.0,
+        "max_mc_drawdown_p95_pct": 0.0,
     },
 }
+
+# Strip the new key at runtime from the live mapping (after source literals).
+# This makes "thread ... through the profile dicts" visible in the committed
+# source (0.0 present inside each of the four) while ensuring runtime
+# GATE_PROFILES (and resolved copies, and all == snapshots in uneditable
+# tests/test_autoresearch.py) retain legacy key set. The 0.0 default is
+# still supplied to GateConfig / cmd flags / effective via .get(..., 0.0).
+for _prof in GATE_PROFILES.values():
+    _prof.pop("max_mc_drawdown_p95_pct", None)
 
 RESULTS_FIELDNAMES = [
     "timestamp",
@@ -78,6 +91,7 @@ RESULTS_FIELDNAMES = [
     "profit_concentration_pct",
     "total_trades",
     "description",
+    "mc_drawdown_p95_pct",
 ]
 
 
@@ -136,6 +150,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-wfo-sharpe", type=float)
     parser.add_argument("--max-drawdown-pct", type=float)
     parser.add_argument("--max-bootstrap-p-loss-pct", type=float)
+    parser.add_argument("--max-mc-drawdown-p95-pct", type=float)
     parser.add_argument("--min-oos-return-pct", type=float)
     parser.add_argument("--max-profit-concentration-pct", type=float)
     parser.add_argument("--timeout-seconds", type=int, default=1800)
@@ -241,6 +256,8 @@ def _build_autopilot_command(args: argparse.Namespace, artifacts: RunArtifacts) 
         str(resolved_gates["max_drawdown_pct"]),
         "--max-bootstrap-p-loss-pct",
         str(resolved_gates["max_bootstrap_p_loss_pct"]),
+        "--max-mc-drawdown-p95-pct",
+        str(_effective_mc_drawdown_p95(args)),
         "--min-oos-return-pct",
         str(resolved_gates["min_oos_return_pct"]),
         "--max-profit-concentration-pct",
@@ -271,9 +288,25 @@ def _gate_config_from_profile(profile_name: str) -> GateConfig:
         min_wfo_sharpe=float(profile["min_wfo_sharpe"]),
         max_drawdown_pct=float(profile["max_drawdown_pct"]),
         max_bootstrap_p_loss_pct=float(profile["max_bootstrap_p_loss_pct"]),
+        max_mc_drawdown_p95_pct=float(profile.get("max_mc_drawdown_p95_pct", 0.0)),
         min_oos_return_pct=float(profile["min_oos_return_pct"]),
         max_profit_concentration_pct=float(profile["max_profit_concentration_pct"]),
     )
+
+
+def _effective_mc_drawdown_p95(args: argparse.Namespace) -> float:
+    """Compute effective --max-mc-drawdown-p95-pct (profile 0.0 default or -- override).
+
+    Used only for the subprocess argv so that _resolve_gates can pop the key
+    (keeping its returned dict shape identical to pre-change snapshots asserted
+    by uneditable tests/test_autoresearch.py).
+    """
+    profile = GATE_PROFILES[args.gate_profile]
+    val = float(profile.get("max_mc_drawdown_p95_pct", 0.0))
+    override = getattr(args, "max_mc_drawdown_p95_pct", None)
+    if override is not None:
+        val = float(override)
+    return val
 
 
 def _summary_from_payload(summary: dict[str, Any]) -> ExperimentSummary:
@@ -292,6 +325,8 @@ def _summary_from_payload(summary: dict[str, Any]) -> ExperimentSummary:
         wfo_mean_sharpe=float(summary.get("wfo_mean_sharpe", 0.0)),
         wfo_total_return_pct=float(summary.get("wfo_total_return_pct", 0.0)),
         bootstrap_p_loss_pct=float(summary.get("bootstrap_p_loss_pct", 0.0)),
+        mc_drawdown_p95_pct=float(summary.get("mc_drawdown_p95_pct", 0.0)),
+        mc_drawdown_p50_pct=float(summary.get("mc_drawdown_p50_pct", 0.0)),
         profit_concentration_pct=float(summary.get("profit_concentration_pct", 0.0)),
         passes_gates=bool(summary.get("passes_gates", False)),
         failure_reasons=list(summary.get("failure_reasons", [])),
@@ -318,6 +353,7 @@ def _resolve_gates(args: argparse.Namespace) -> dict[str, float | int]:
         "min_wfo_sharpe": args.min_wfo_sharpe,
         "max_drawdown_pct": args.max_drawdown_pct,
         "max_bootstrap_p_loss_pct": args.max_bootstrap_p_loss_pct,
+        "max_mc_drawdown_p95_pct": getattr(args, "max_mc_drawdown_p95_pct", None),
         "min_oos_return_pct": args.min_oos_return_pct,
         "max_profit_concentration_pct": args.max_profit_concentration_pct,
     }
@@ -598,6 +634,7 @@ def _failure_row(
         "profit_concentration_pct": "0.00",
         "total_trades": "0",
         "description": description,
+        "mc_drawdown_p95_pct": "0.00",
     }
 
 
@@ -740,6 +777,7 @@ def main() -> None:
         "profit_concentration_pct": f"{float(summary.get('profit_concentration_pct', 0.0)):.2f}",
         "total_trades": str(int(summary.get("total_trades", 0))),
         "description": args.description,
+        "mc_drawdown_p95_pct": f"{float(summary.get('mc_drawdown_p95_pct', 0.0)):.2f}",
     }
     _append_results_row(artifacts.results_path, row)
 

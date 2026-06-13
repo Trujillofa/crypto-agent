@@ -110,7 +110,6 @@ python scripts/run_backtest.py           # single config backtest
 python scripts/run_full_backtest.py      # full parameter backtest
 python scripts/run_wfo.py               # walk-forward optimization
 python scripts/run_wfo_sweep.py          # WFO across param grid
-python scripts/run_monte_carlo.py        # Monte Carlo analysis
 ```
 
 ### Required tests (in order)
@@ -145,17 +144,21 @@ A trend-following strategy that only works on one symbol is suspicious.
 
 #### 3e. Monte Carlo stress test
 
-```bash
-python scripts/run_monte_carlo.py \
-  --config configs/strategies/<strategy>.yaml \
-  --symbol <symbol> \
-  --timeframe <timeframe> \
-  --start <YYYY-MM-DD> \
-  --end <YYYY-MM-DD>
-```
+Monte Carlo now runs inside the autoresearch pipeline (via experiment_autopilot
+and run_autoresearch). A single bootstrap resampling pass (with replacement via
+rng.choices on trade returns, same scheme as the prior bootstrap) produces both:
 
-Acceptable result: 5th-percentile outcome still positive. Max drawdown at 95th
-percentile within tolerable risk limits.
+- bootstrap_p_loss_pct: probability a resampled path compounds to negative total
+  return (existing gate under max_bootstrap_p_loss_pct / profile equivalents).
+- The equity-path drawdown distribution: mc_drawdown_p95_pct (and p50, reported
+  on ExperimentSummary), max peak-to-trough % computed by compounding each
+  resampled path and tracking running peak drawdown.
+
+mc_drawdown_p95_pct is always reported; the gate is optional and disabled by
+default (GateConfig.max_mc_drawdown_p95_pct = 0.0 means do not enforce). A
+threshold may be supplied later via --max-mc-drawdown-p95-pct once real
+distributions have been observed on production-like runs. No hard pass/fail on
+drawdown MC percentiles is applied until explicitly enabled.
 
 ### Validation scorecard
 
@@ -165,7 +168,7 @@ percentile within tolerable risk limits.
 | Parameter stability | ≥ 6/9 profitable | Critical |
 | OOS period test | Sharpe ≥ 0.6× IS | Critical |
 | Multi-symbol | ≥ 2/3 profitable | High |
-| Monte Carlo P5 | Positive return | High |
+| Monte Carlo P5 | pipeline bootstrap_p_loss_pct (P(loss) gate) + reported mc_drawdown_p95_pct (optional gate) | High |
 | Trade count | ≥ 30 per period | Medium |
 | Max drawdown | < 20% | Medium |
 

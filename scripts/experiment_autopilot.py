@@ -23,7 +23,7 @@ from src.backtest.experiment_autopilot import (  # noqa: E402
     ExperimentSummary,
     GateConfig,
     WfoWindowResult,
-    bootstrap_loss_probability_pct,
+    bootstrap_trade_path_metrics,
     build_wfo_windows,
     compound_returns_pct,
     evaluate_gates,
@@ -74,6 +74,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-wfo-sharpe", type=float, default=0.5)
     parser.add_argument("--max-drawdown-pct", type=float, default=10.0)
     parser.add_argument("--max-bootstrap-p-loss-pct", type=float, default=25.0)
+    parser.add_argument("--max-mc-drawdown-p95-pct", type=float, default=0.0)
     parser.add_argument("--min-oos-return-pct", type=float, default=0.0)
     parser.add_argument("--max-profit-concentration-pct", type=float, default=50.0)
 
@@ -302,6 +303,7 @@ def _render_markdown(
     lines.append(f"- min_wfo_sharpe: {gates.min_wfo_sharpe}")
     lines.append(f"- max_drawdown_pct: {gates.max_drawdown_pct}")
     lines.append(f"- max_bootstrap_p_loss_pct: {gates.max_bootstrap_p_loss_pct}")
+    lines.append(f"- max_mc_drawdown_p95_pct: {gates.max_mc_drawdown_p95_pct}")
     lines.append(f"- min_oos_return_pct: {gates.min_oos_return_pct}")
     lines.append(f"- max_profit_concentration_pct: {gates.max_profit_concentration_pct}")
     lines.append("")
@@ -437,11 +439,12 @@ async def main() -> None:
                 )
 
         trade_returns = [trade.return_pct for trade in baseline.trades]
-        bootstrap_p_loss_pct = bootstrap_loss_probability_pct(
+        path_metrics = bootstrap_trade_path_metrics(
             trade_returns_pct=trade_returns,
             iterations=args.bootstrap,
             seed=args.seed,
         )
+        bootstrap_p_loss_pct = path_metrics["p_loss_pct"]
 
         oos_returns = [window.total_return_pct for window in window_results]
         oos_sharpes = [window.sharpe_ratio for window in window_results]
@@ -462,6 +465,8 @@ async def main() -> None:
             wfo_mean_sharpe=mean(oos_sharpes) if oos_sharpes else 0.0,
             wfo_total_return_pct=compound_returns_pct(oos_returns),
             bootstrap_p_loss_pct=bootstrap_p_loss_pct,
+            mc_drawdown_p95_pct=path_metrics["drawdown_p95_pct"],
+            mc_drawdown_p50_pct=path_metrics["drawdown_p50_pct"],
             profit_concentration_pct=profit_concentration_pct(oos_returns),
             blocked_buy_count=baseline.blocked_buy_count,
             basis_blocked_buy_count=baseline.basis_blocked_buy_count,
@@ -476,6 +481,7 @@ async def main() -> None:
             min_wfo_sharpe=args.min_wfo_sharpe,
             max_drawdown_pct=args.max_drawdown_pct,
             max_bootstrap_p_loss_pct=args.max_bootstrap_p_loss_pct,
+            max_mc_drawdown_p95_pct=args.max_mc_drawdown_p95_pct,
             min_oos_return_pct=args.min_oos_return_pct,
             max_profit_concentration_pct=args.max_profit_concentration_pct,
         )
