@@ -57,6 +57,8 @@ Monitor: `ssh crypto-agent 'tail -f /opt/crypto-agent/research/<lane>/campaign.l
 |-------|--------|-----|-------|
 | agent_sol_1h_trend_pullback_overlay_live | SOLUSDT | 1h | Standard-gate technical stack + trend_pullback |
 | agent_sentiment_macro | SOLUSDT | 1h | Sentiment/macro — overlap risk for second SOL 1h technical |
+| agent_sol_sparse | SOLUSDT | 4h | trend_pullback sparse paper |
+| agent_sol_panic_block_paper | SOLUSDT | 4h | panic block paper |
 
 ## RBI Loop Records (post 2026-06-09)
 
@@ -65,10 +67,11 @@ Lanes are now processed through the supervised RBI guard + manifest system (see 
 | Lane | Probe Verdict | Validation Outcome | RBI Decision | Artifacts |
 |------|---------------|--------------------|--------------|-----------|
 | basis-premium-filter-v0 | HAS_PULSE (2026-06-05 probe) | Phase 2 WFO A/B: only 1 block, no DD/P(loss)/concentration improvement vs baseline (31 vs 36 trades). Surface v0 spec marked CLOSED. | ITERATE_OR_CLOSE (standard gate fail) | `research/rbi_loop/basis-premium-filter-v0/decision.json`, `docs/reports/rbi-loop-basis-premium-filter-v0.md` (generated via `rbi_loop_from_manifest.py` + batch) |
+| cross-venue-basis-v1 | HAS_PULSE | Standard gate fail: require-mode trade starvation, block-mode no risk improvement, bootstrap P(loss) far above gate. | ITERATE_OR_CLOSE (standard gate fail) | `research/rbi_loop/cross-venue-basis-v1/decision.json`, `docs/reports/rbi-loop-cross-venue-basis-v1.md`, brief `docs/specs/cross-venue-basis-dislocation-brief-v0.md` |
+| cross-venue-dislocation-event-v0 | HAS_PULSE (17 scenarios across symbols/horizons/modes) | 30-run sweep 0/30 pass. WFO OOS negative across entire grid; event sparsity vs min-WFO-trades structural conflict; profits concentrated outside OOS coverage. | ITERATE_OR_CLOSE (standard gate fail) | `research/rbi_loop/cross-venue-dislocation-event-v0/decision.json`, `docs/reports/rbi-loop-cross-venue-dislocation-event-v0.md`, brief `docs/specs/cross-venue-dislocation-event-strategy-v0.md` |
+| cross-venue-dislocation-event-v1 (rolling) | HAS_PULSE | 30-run sweep 0/30 pass (rc=0, ~350s). Full-period in-engine return negative across entire grid; thin per-event edge does not survive ATR sizing + executor exits; bootstrap P(loss) 67–99%. | ITERATE_OR_CLOSE (standard gate fail) | `research/rbi_loop/cross-venue-dislocation-event-v1/decision.json`, `docs/reports/rbi-loop-cross-venue-dislocation-event-v1.md`, brief `docs/specs/cross-venue-dislocation-event-strategy-v1.md` |
 
-This lane is closed per prior WFO evidence. New work must target a different primitive (cross-venue basis dislocation ranked highest in research-reset-2026-06-06).
-| agent_sol_sparse | SOLUSDT | 4h | trend_pullback sparse paper |
-| agent_sol_panic_block_paper | SOLUSDT | 4h | panic block paper |
+Cross-venue basis/dislocation was the #1 post-reset recommended surface (research-reset-2026-06-06). It was executed to closure through the RBI loop: both the fixed-threshold (v0) and rolling-threshold (v1) dislocation-event variants returned **0/30** under the standard gate, and the basis-premium filter showed no risk improvement. The probe machinery is reusable, but no edge is harvestable under house gates. The negative result is preserved here rather than drifting into more gate-shopping. Next data-first lane should target a different primitive (higher-timeframe portfolio regime allocator now leads — see `docs/RBI_AUTORESEARCH_LOOP.md` "Current Best Next Loop").
 
 ## Wave 2 — New signal families (code landed 2026-06-03)
 

@@ -366,12 +366,18 @@ Given the 2026-06 research reset, the next profitable-agent loop should not be a
 SOL 1h threshold/filter campaign or another single-symbol 1h OHLCV structure probe.
 The liquidity-sweep and range-break families are closed unless new evidence appears.
 
+Cross-venue basis / dislocation (the prior #1) has now been **executed to closure** through
+the RBI loop: basis-premium-filter-v0, cross-venue-basis-v1, and both the fixed (v0) and
+rolling (v1) dislocation-event variants all returned `ITERATE_OR_CLOSE` (dislocation 0/30
+under the standard gate). Probe machinery is reusable; no edge survives house gates. See
+`docs/reports/autoresearch-candidate-ledger.md` "RBI Loop Records" for per-lane evidence.
+
 The next lane should be data-first:
 
-1. Cross-venue basis / dislocation.
-2. Higher-timeframe portfolio regime allocator.
-3. News/event calendar risk filter.
-4. Order book or liquidation data.
+1. Higher-timeframe portfolio regime allocator.
+2. News/event calendar risk filter.
+3. Order book or liquidation data.
+4. (closed) Cross-venue basis / dislocation — see ledger; reopen only with new data.
 
 For the next run:
 
