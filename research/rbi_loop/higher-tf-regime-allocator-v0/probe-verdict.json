@@ -1,0 +1,211 @@
+{
+  "verdict": "NO_PULSE",
+  "note": "No (symbol, regime_tf) met the full Gate 1 numeric thresholds (sample + separation).",
+  "passing_scenarios": [],
+  "per_bucket_stats": {
+    "SOLUSDT:4h": {
+      "symbol": "SOLUSDT",
+      "regime_tf": "4h",
+      "labeled_bars": 2500,
+      "bucket": {
+        "favorable": {
+          "count": 894.0,
+          "mean": -0.045934792619862726,
+          "median": -0.04665006880488756,
+          "sharpe": -12.199682999128258,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "unfavorable": {
+          "count": 1600.0,
+          "mean": -0.04670640318580181,
+          "median": -0.04689610444541517,
+          "sharpe": -14.486996647107887,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "delta_mean_net": 0.0007716105659390862,
+        "favorable_count": 894.0,
+        "unfavorable_count": 1600.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 0.07716105659390862
+    },
+    "SOLUSDT:1d": {
+      "symbol": "SOLUSDT",
+      "regime_tf": "1d",
+      "labeled_bars": 2500,
+      "bucket": {
+        "favorable": {
+          "count": 894.0,
+          "mean": -0.045934792619862726,
+          "median": -0.04665006880488756,
+          "sharpe": -12.199682999128258,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "unfavorable": {
+          "count": 1600.0,
+          "mean": -0.04670640318580181,
+          "median": -0.04689610444541517,
+          "sharpe": -14.486996647107887,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "delta_mean_net": 0.0007716105659390862,
+        "favorable_count": 894.0,
+        "unfavorable_count": 1600.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 0.07716105659390862
+    },
+    "BTCUSDT:4h": {
+      "symbol": "BTCUSDT",
+      "regime_tf": "4h",
+      "labeled_bars": 2500,
+      "bucket": {
+        "favorable": {
+          "count": 894.0,
+          "mean": -0.045934792619862726,
+          "median": -0.04665006880488756,
+          "sharpe": -12.199682999128258,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "unfavorable": {
+          "count": 1600.0,
+          "mean": -0.04670640318580181,
+          "median": -0.04689610444541517,
+          "sharpe": -14.486996647107887,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "delta_mean_net": 0.0007716105659390862,
+        "favorable_count": 894.0,
+        "unfavorable_count": 1600.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 0.07716105659390862
+    },
+    "BTCUSDT:1d": {
+      "symbol": "BTCUSDT",
+      "regime_tf": "1d",
+      "labeled_bars": 2500,
+      "bucket": {
+        "favorable": {
+          "count": 894.0,
+          "mean": -0.045934792619862726,
+          "median": -0.04665006880488756,
+          "sharpe": -12.199682999128258,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "unfavorable": {
+          "count": 1600.0,
+          "mean": -0.04670640318580181,
+          "median": -0.04689610444541517,
+          "sharpe": -14.486996647107887,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "delta_mean_net": 0.0007716105659390862,
+        "favorable_count": 894.0,
+        "unfavorable_count": 1600.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 0.07716105659390862
+    },
+    "ETHUSDT:4h": {
+      "symbol": "ETHUSDT",
+      "regime_tf": "4h",
+      "labeled_bars": 2500,
+      "bucket": {
+        "favorable": {
+          "count": 894.0,
+          "mean": -0.045934792619862726,
+          "median": -0.04665006880488756,
+          "sharpe": -12.199682999128258,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "unfavorable": {
+          "count": 1600.0,
+          "mean": -0.04670640318580181,
+          "median": -0.04689610444541517,
+          "sharpe": -14.486996647107887,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "delta_mean_net": 0.0007716105659390862,
+        "favorable_count": 894.0,
+        "unfavorable_count": 1600.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 0.07716105659390862
+    },
+    "ETHUSDT:1d": {
+      "symbol": "ETHUSDT",
+      "regime_tf": "1d",
+      "labeled_bars": 2500,
+      "bucket": {
+        "favorable": {
+          "count": 894.0,
+          "mean": -0.045934792619862726,
+          "median": -0.04665006880488756,
+          "sharpe": -12.199682999128258,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "unfavorable": {
+          "count": 1600.0,
+          "mean": -0.04670640318580181,
+          "median": -0.04689610444541517,
+          "sharpe": -14.486996647107887,
+          "p_loss": 100.0,
+          "win_rate": 0.0
+        },
+        "delta_mean_net": 0.0007716105659390862,
+        "favorable_count": 894.0,
+        "unfavorable_count": 1600.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 0.07716105659390862
+    }
+  },
+  "thresholds": {
+    "min_bucket_bars": 200,
+    "min_mean_delta_pct": 0.15,
+    "min_p_loss_diff_pp": 8.0,
+    "horizon_bars": 6
+  },
+  "generated_at": "2026-06-15T03:30:33.415755+00:00",
+  "config": {
+    "symbols": [
+      "SOLUSDT",
+      "BTCUSDT",
+      "ETHUSDT"
+    ],
+    "base_timeframe": "1h",
+    "regime_timeframes": [
+      "4h",
+      "1d"
+    ],
+    "start": "2024-01-01",
+    "end": "2026-06-15",
+    "fee_pct": 0.08,
+    "slippage_pct": 0.02,
+    "horizon_bars": 6
+  }
+}
