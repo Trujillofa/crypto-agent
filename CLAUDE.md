@@ -76,7 +76,7 @@ git add <specific-files>  # Stage only your changes
 | `src/utils/` | Logging, rate limiting, diagnostics | `logger.py`, `rate_limiter.py`, `config_doctor.py`, `production_drift_sentinel.py` |
 | `config/` | Settings, risk params, infra config | `settings.yaml`, `risk.yaml` |
 | `tests/` | Pytest suite (asyncio auto mode, 60 test files) | `conftest.py`, `test_*.py` |
-| `scripts/` | CLI tools, backtests, research, diagnostics | `run_backtest.py`, `smoke_test.py`, `migrate.py`, etc. |
+| `scripts/` | CLI tools, backtests, research, diagnostics | `run_backtest.py`, `smoke_test.py`, `migrate.py`, etc. (RBI loop: rbi_loop_guard/runner/from_manifest/batch/report + run_rbi_loop_batch.sh; see docs/RBI_AUTORESEARCH_LOOP.md) |
 | `migrations/` | TimescaleDB schema migrations | `001_initial_schema.sql` through `007_add_regime_features.sql` |
 
 ## 5-Step Engineering Framework (MANDATORY)
@@ -320,6 +320,24 @@ pytest -v                       # Verbose output
 ### Add a New Strategy
 
 1. Create `src/strategy/my_strategy.py` (strategies live directly in `src/strategy/`)
+
+### Research with the RBI Autoresearch Loop (supervised control plane)
+
+The RBI loop (Research → Backtest → Implement) is the enforced operating system for new signal discovery:
+- Start with a lane brief (Gate 0) + cheap probe script (Gate 1) that must return `HAS_PULSE`.
+- Use a manifest in `config/autoresearch/rbi_loop.<lane>.yaml` (copy from the example).
+- Drive with `scripts/rbi_loop_from_manifest.py` (or batch) — **dry by default**; only add `--execute` after reviewing the guard decision.
+- Persist `research/rbi_loop/<lane>/decision.json`; render reviewable reports with `rbi_loop_report.py`.
+- Update `docs/reports/autoresearch-candidate-ledger.md` only for final promotion/reject decisions.
+- See full runbook: `docs/RBI_AUTORESEARCH_LOOP.md`, current stop rules in `docs/reports/research-reset-2026-06-06.md`, and lane artifacts under `research/rbi_loop/`.
+
+Hard rules: cheap-probe `HAS_PULSE` before any autoresearch or strategy code; `--execute` is an explicit human gate; no production deploys or live risk via automation.
+
+1. Read the reset + ledger.
+2. Write brief + implement/run cheap probe (read-only).
+3. Create manifest, run guard dry, then `rbi_loop_from_manifest.py` (review output first).
+4. Only `--execute` the allowed step; re-run guard after each artifact.
+5. Produce report + (if final) fold into ledger.
 2. Inherit from `BaseStrategy` (from `src/strategy/base.py`)
 3. Implement `evaluate()` returning `Signal | None`
 4. Export in `src/strategy/__init__.py`
@@ -389,7 +407,7 @@ ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20
 |------|------|
 | **Entry Points** | |
 | Main app | `src/main.py` |
-| CLI scripts | `scripts/run_backtest.py`, `scripts/smoke_test.py` |
+| CLI scripts | `scripts/run_backtest.py`, `scripts/smoke_test.py`, `scripts/rbi_loop_from_manifest.py`, `scripts/rbi_loop_batch.py`, `scripts/run_rbi_loop_batch.sh` |
 | DB migrations | `scripts/migrate.py` |
 | **Configuration** | |
 | Trading settings | `config/settings.yaml` |
@@ -527,6 +545,11 @@ loss_limits:
 | `scripts/profit_report.py` | Generate PnL reports |
 | `scripts/production_drift_sentinel.py` | Monitor production agent |
 | `scripts/autoresearch.py` | Automated strategy research |
+| `scripts/rbi_loop_guard.py` | Deterministic next-action gate (reads lane brief + probe verdict + last_result + overlap; returns RUN_*/CHECK_*/READY_FOR_PAPER_REVIEW/ITERATE_OR_CLOSE) |
+| `scripts/rbi_loop_runner.py` | One-step wrapper that writes decision.json (and optionally executes the guarded next step with `--execute`) |
+| `scripts/rbi_loop_from_manifest.py` | Preferred single-lane entrypoint using `config/autoresearch/rbi_loop.<lane>.yaml` (dry by default) |
+| `scripts/rbi_loop_batch.py` + `run_rbi_loop_batch.sh` | Multi-lane supervisor + dry systemd timer path for daily oversight of manifests |
+| `scripts/rbi_loop_report.py` | Renders decision.json to reviewable `docs/reports/rbi-loop-<lane>.md` |
 | `scripts/backup_db.sh` | Database backup |
 
 ## Related Files
