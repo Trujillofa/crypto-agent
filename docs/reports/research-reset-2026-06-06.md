@@ -150,10 +150,10 @@ Must satisfy **all**:
 **Best next direction (toward original goal of candidate #2):** Move away from single-symbol 1h OHLCV structure. The next primitive should require **new information** or a **different horizon**.
 
 Recommended ranking for next work:
-1. **Cross-venue basis / dislocation** — Best next surface if data can be added. Genuinely different from single-exchange premium. May capture arbitrage stress or venue imbalance. (Data-first: `feat/cross-venue-basis-ingestion` worktree.)
-2. **Higher timeframe portfolio regime** — 1d/4h regime classification that decides when agents should be active/inactive (portfolio-level risk allocator, not a 1h entry signal).
-3. **News/event calendar filter** — Macro/event-aware risk gating (if data source available).
-4. **Order book / liquidation data** — Potentially useful, but requires new ingestion + careful validation.
+1. **Higher timeframe portfolio regime** — 1d/4h regime classification that decides when agents should be active/inactive (portfolio-level risk allocator, not a 1h entry signal).
+2. **News/event calendar filter** — Macro/event-aware risk gating (if data source available).
+3. **Order book / liquidation data** — Potentially useful, but requires new ingestion + careful validation.
+4. ~~**Cross-venue basis / dislocation**~~ — **CLOSED (2026-06-14).** Executed to closure through the RBI loop: basis-premium-filter-v0, cross-venue-basis-v1, and both the fixed (v0) and rolling (v1) dislocation-event variants all returned `ITERATE_OR_CLOSE` (dislocation 0/30 under the standard gate). Probe machinery is reusable; no edge survives house gates. See `docs/reports/autoresearch-candidate-ledger.md` "RBI Loop Records" and `docs/reports/rbi-loop-cross-venue-*.md`. Reopen only with new data.
 
 Immediate: Merge + prune this probe branch. Keep Phase 0 weekly. Next worktree data-first, not another OHLCV probe. Continuing BTC/ETH/SOL 1h OHLCV probes is unlikely to produce a gate-passing independent agent.
 
@@ -182,7 +182,7 @@ The goal remains candidate #2, but the path now needs a new data primitive.
 1. **No new 1h price-action-only OHLCV probes** (sweep/break family on majors now both WEAK_EDGE/CLOSED with clear failure: dense events, no net forward edge after fees, no MAE control). Pause such lanes.
 2. **Phase 0 weekly** — non-negotiable (still the only real validation of the promoted technical agent).
 3. **Main branch** — production hotfixes + Phase 0 ops only.
-4. **Next worktree must be data-first** — e.g. `feat/cross-venue-basis-ingestion` (or higher-TF regime / event calendar). Not another single-symbol 1h OHLCV probe.
+4. **Next worktree must be data-first** — e.g. higher-TF regime or event calendar. Not another single-symbol 1h OHLCV probe. (Cross-venue basis/dislocation is now CLOSED — see ranking above.)
 5. **Merge negative results to main** (as done here) + prune worktree; they are useful only if canonical in the ledger.
 6. **Do not reshape this probe** (or the liquidity sweep). Failure mode is clear and broad. A reshape would be parameter fishing unless genuinely new data/variable is added.
-7. **Allowed next hypothesis family** rules still apply (different primitive, cheap probe first, standalone, WFO-realistic count, independent directionality). Prefer surfaces requiring new information (cross-venue basis > higher-TF regime > news filter > orderbook/liquidations).
+7. **Allowed next hypothesis family** rules still apply (different primitive, cheap probe first, standalone, WFO-realistic count, independent directionality). Prefer surfaces requiring new information (higher-TF regime > news filter > orderbook/liquidations; cross-venue basis CLOSED).
