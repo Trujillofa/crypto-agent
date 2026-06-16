@@ -34,7 +34,9 @@ class StoredIndicator:
     ema_50: float | None
     ema_200: float | None
     sma_20: float | None
+    sma_40: float | None
     sma_50: float | None
+    sma_60: float | None
     sma_200: float | None
     vwap: float | None
     stoch_k: float | None
@@ -117,7 +119,9 @@ class IndicatorWriter:
                     ema_50 DOUBLE PRECISION,
                     ema_200 DOUBLE PRECISION,
                     sma_20 DOUBLE PRECISION,
+                    sma_40 DOUBLE PRECISION,
                     sma_50 DOUBLE PRECISION,
+                    sma_60 DOUBLE PRECISION,
                     sma_200 DOUBLE PRECISION,
                     vwap DOUBLE PRECISION,
                     stoch_k DOUBLE PRECISION,
@@ -166,7 +170,9 @@ class IndicatorWriter:
             indicator.ema_50,
             indicator.ema_200,
             indicator.sma_20,
+            indicator.sma_40,
             indicator.sma_50,
+            indicator.sma_60,
             indicator.sma_200,
             indicator.vwap,
             indicator.stoch_k,
@@ -193,7 +199,7 @@ class IndicatorWriter:
                     bb_upper_dist, bb_lower_dist, atr_14, atr_pct,
                     ema_8, ema_10, ema_12, ema_14, ema_21, ema_24,
                     ema_26, ema_30, ema_50, ema_200,
-                    sma_20, sma_50, sma_200,
+                    sma_20, sma_40, sma_50, sma_60, sma_200,
                     vwap, stoch_k, stoch_d, cci,
                     -- Regime Features (NEW)
                     ema_slope_50, volatility_percentile, atr_percentile,
@@ -202,8 +208,8 @@ class IndicatorWriter:
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
                     $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
-                    $23, $24, $25, $26, $27, $28, $29,
-                    $30, $31, $32, $33, $34, $35, $36, $37
+                    $23, $24, $25, $26, $27, $28, $29, $30, $31,
+                    $32, $33, $34, $35, $36, $37, $38, $39
                 )
                 ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
                     rsi_14 = EXCLUDED.rsi_14,
@@ -226,7 +232,9 @@ class IndicatorWriter:
                     ema_50 = EXCLUDED.ema_50,
                     ema_200 = EXCLUDED.ema_200,
                     sma_20 = EXCLUDED.sma_20,
+                    sma_40 = EXCLUDED.sma_40,
                     sma_50 = EXCLUDED.sma_50,
+                    sma_60 = EXCLUDED.sma_60,
                     sma_200 = EXCLUDED.sma_200,
                     vwap = EXCLUDED.vwap,
                     stoch_k = EXCLUDED.stoch_k,

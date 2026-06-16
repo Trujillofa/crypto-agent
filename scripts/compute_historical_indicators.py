@@ -26,7 +26,7 @@ UPSERT_SQL = """
         time, symbol, timeframe,
         ema_8, ema_10, ema_12, ema_14, ema_21, ema_24,
         ema_26, ema_30, ema_50, ema_200,
-        sma_20, sma_50, sma_200,
+        sma_20, sma_40, sma_50, sma_60, sma_200,
         rsi_14, rsi_7,
         macd, macd_signal, macd_hist,
         bb_upper_dist, bb_lower_dist,
@@ -36,7 +36,7 @@ UPSERT_SQL = """
         ema_slope_50, volatility_percentile, atr_percentile,
         volume_regime, price_vs_weekly, price_vs_monthly,
         rsi_slope, trend_consistency
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)
     ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
         ema_8 = EXCLUDED.ema_8,
         ema_10 = EXCLUDED.ema_10,
@@ -49,7 +49,9 @@ UPSERT_SQL = """
         ema_50 = EXCLUDED.ema_50,
         ema_200 = EXCLUDED.ema_200,
         sma_20 = EXCLUDED.sma_20,
+        sma_40 = EXCLUDED.sma_40,
         sma_50 = EXCLUDED.sma_50,
+        sma_60 = EXCLUDED.sma_60,
         sma_200 = EXCLUDED.sma_200,
         rsi_14 = EXCLUDED.rsi_14,
         rsi_7 = EXCLUDED.rsi_7,
@@ -224,7 +226,9 @@ async def compute_and_store_indicators(
                         indicators.ema_50,
                         indicators.ema_200,
                         indicators.sma_20,
+                        indicators.sma_40,
                         indicators.sma_50,
+                        indicators.sma_60,
                         indicators.sma_200,
                         indicators.rsi_14,
                         indicators.rsi_7,

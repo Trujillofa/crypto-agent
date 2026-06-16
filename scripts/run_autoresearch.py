@@ -58,6 +58,15 @@ GATE_PROFILES: dict[str, dict[str, float | int]] = {
         "min_oos_return_pct": 1.0,
         "max_profit_concentration_pct": 40.0,
     },
+    "daily_trend": {
+        "min_trades": 0,
+        "min_wfo_trades": 20,
+        "min_wfo_sharpe": 0.5,
+        "max_drawdown_pct": 25.0,
+        "max_bootstrap_p_loss_pct": 25.0,
+        "min_oos_return_pct": 0.0,
+        "max_profit_concentration_pct": 50.0,
+    },
 }
 
 RESULTS_FIELDNAMES = [

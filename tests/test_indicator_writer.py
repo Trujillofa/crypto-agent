@@ -48,7 +48,9 @@ async def test_insert_row_uses_single_values_block_with_expected_placeholders(mo
         ema_50=995.0,
         ema_200=900.0,
         sma_20=998.0,
+        sma_40=992.0,
         sma_50=990.0,
+        sma_60=988.0,
         sma_200=880.0,
         vwap=997.0,
         stoch_k=60.0,
@@ -70,6 +72,6 @@ async def test_insert_row_uses_single_values_block_with_expected_placeholders(mo
     values = connection.execute.await_args.args[1:]
 
     assert query.count(") VALUES (") == 1
-    assert "$37" in query
-    assert "$38" not in query
-    assert len(values) == 37
+    assert "$39" in query
+    assert "$40" not in query
+    assert len(values) == 39
