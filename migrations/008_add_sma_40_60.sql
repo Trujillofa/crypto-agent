@@ -1,0 +1,3 @@
+-- Add SMA(40) and SMA(60) columns for daily trend Gate 2 surface {40,50,60}.
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS sma_40 DOUBLE PRECISION;
+ALTER TABLE indicators ADD COLUMN IF NOT EXISTS sma_60 DOUBLE PRECISION;

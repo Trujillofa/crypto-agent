@@ -1,0 +1,5 @@
+strategy:
+  strategies:
+    - name: daily_trend_long
+      config:
+        sma_window: 60

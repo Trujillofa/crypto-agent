@@ -4,6 +4,7 @@ from src.strategy.base import BaseStrategy
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
 from src.strategy.breakout_retest import BreakoutRetestStrategy
 from src.strategy.cci_strategy import CCIBreakoutStrategy
+from src.strategy.daily_trend_long import DailyTrendLong
 from src.strategy.dislocation_event import DislocationEventStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine
 from src.strategy.funding_normalization import FundingNormalizationStrategy
@@ -39,6 +40,7 @@ __all__ = [
     "MomentumStrategy",
     "PanicBlockMACrossoverStrategy",
     "CCIBreakoutStrategy",
+    "DailyTrendLong",
     "FundingRateStrategy",
     "FundingNormalizationStrategy",
     "VWAPReversionStrategy",

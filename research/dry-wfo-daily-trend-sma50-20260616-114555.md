@@ -1,0 +1,57 @@
+# Experiment Autopilot: BTCUSDT 1d
+
+- Config: `config/settings.daily_trend_long.yaml`
+- Range: 2024-01-01 → 2026-06-01
+- Gate result: FAIL
+
+## Baseline
+
+| Metric | Value |
+|---|---:|
+| Total trades | 22 |
+| Win rate | 22.73% |
+| Total return | 40.94% |
+| Max drawdown | 26.94% |
+| Sharpe ratio | 0.82 |
+
+## OOS Validation
+
+| Metric | Value |
+|---|---:|
+| WFO windows | 4 |
+| Aggregate WFO trades | 13 |
+| Mean OOS Sharpe | -0.96 |
+| Compound OOS return | -18.32% |
+| Bootstrap P(loss) | 21.80% |
+| Profit concentration | 100.00% |
+| Blocked BUY (session router) | 0 |
+| Blocked BUY (basis filter) | 0 |
+| Blocked BUY (cross-venue dislocation) | 0 |
+
+## WFO Windows
+
+| # | Test Start | Test End | Trades | Return | Sharpe | Max DD |
+|---:|---|---|---:|---:|---:|---:|
+| 1 | 2024-07-01 | 2024-10-01 | 2 | -2.05% | -0.94 | 7.67% |
+| 2 | 2025-01-01 | 2025-04-01 | 3 | -7.35% | -1.17 | 11.93% |
+| 3 | 2025-07-01 | 2025-10-01 | 4 | 2.16% | 0.52 | 13.10% |
+| 4 | 2026-01-01 | 2026-04-01 | 4 | -11.90% | -2.27 | 18.06% |
+
+## Gate Thresholds
+
+- min_trades: 0
+- min_wfo_trades: 20
+- min_wfo_sharpe: 0.5
+- max_drawdown_pct: 10.0
+- max_bootstrap_p_loss_pct: 25.0
+- max_mc_drawdown_p95_pct: 0.0
+- min_oos_return_pct: 0.0
+- max_profit_concentration_pct: 50.0
+
+## Failures
+
+- min_wfo_trades failed (13 < 20)
+- min_wfo_sharpe failed (-0.96 < 0.50)
+- max_drawdown_pct failed (26.94% > 10.00%)
+- min_oos_return_pct failed (-18.32% < 0.00%)
+- max_profit_concentration_pct failed (100.00% > 50.00%)

@@ -1,0 +1,93 @@
+{
+  "summary": {
+    "symbol": "SOLUSDT",
+    "timeframe": "1d",
+    "start": "2024-01-01",
+    "end": "2026-06-01",
+    "total_trades": 26,
+    "win_rate": 26.923076923076923,
+    "total_return_pct": 13.06399183277541,
+    "max_drawdown_pct": 33.532136032355716,
+    "sharpe_ratio": 0.383569582722876,
+    "wfo_windows": 4,
+    "wfo_total_trades": 13,
+    "wfo_mean_sharpe": 0.1958693313093487,
+    "wfo_total_return_pct": -0.8753576431552057,
+    "bootstrap_p_loss_pct": 42.199999999999996,
+    "mc_drawdown_p95_pct": 49.96359578447919,
+    "mc_drawdown_p50_pct": 30.801207185814572,
+    "profit_concentration_pct": 92.77668501528869,
+    "passes_gates": false,
+    "failure_reasons": [
+      "min_wfo_trades failed (13 < 20)",
+      "min_wfo_sharpe failed (0.20 < 0.50)",
+      "max_drawdown_pct failed (33.53% > 25.00%)",
+      "max_bootstrap_p_loss_pct failed (42.20% > 25.00%)",
+      "min_oos_return_pct failed (-0.88% < 0.00%)",
+      "max_profit_concentration_pct failed (92.78% > 50.00%)"
+    ],
+    "blocked_buy_count": 0,
+    "basis_blocked_buy_count": 0,
+    "dislocation_blocked_buy_count": 0
+  },
+  "gates": {
+    "min_trades": 0,
+    "min_wfo_trades": 20,
+    "min_wfo_sharpe": 0.5,
+    "max_drawdown_pct": 25.0,
+    "max_bootstrap_p_loss_pct": 25.0,
+    "min_oos_return_pct": 0.0,
+    "max_profit_concentration_pct": 50.0,
+    "max_mc_drawdown_p95_pct": 0.0
+  },
+  "windows": [
+    {
+      "window_index": 1,
+      "train_start": "2024-01-01T00:00:00",
+      "train_end": "2024-07-01T00:00:00",
+      "test_start": "2024-07-01T00:00:00",
+      "test_end": "2024-10-01T00:00:00",
+      "total_trades": 1,
+      "win_rate": 100.0,
+      "total_return_pct": 1.3648070963888312,
+      "max_drawdown_pct": 8.412209993518028,
+      "sharpe_ratio": 0.7027164895861803
+    },
+    {
+      "window_index": 2,
+      "train_start": "2024-07-01T00:00:00",
+      "train_end": "2025-01-01T00:00:00",
+      "test_start": "2025-01-01T00:00:00",
+      "test_end": "2025-04-01T00:00:00",
+      "total_trades": 4,
+      "win_rate": 25.0,
+      "total_return_pct": -11.749225024049393,
+      "max_drawdown_pct": 22.770870622123088,
+      "sharpe_ratio": -0.7177064660935318
+    },
+    {
+      "window_index": 3,
+      "train_start": "2025-01-01T00:00:00",
+      "train_end": "2025-07-01T00:00:00",
+      "test_start": "2025-07-01T00:00:00",
+      "test_end": "2025-10-01T00:00:00",
+      "total_trades": 6,
+      "win_rate": 50.0,
+      "total_return_pct": 17.529663091849507,
+      "max_drawdown_pct": 24.056602921546176,
+      "sharpe_ratio": 1.3057387269979013
+    },
+    {
+      "window_index": 4,
+      "train_start": "2025-07-01T00:00:00",
+      "train_end": "2026-01-01T00:00:00",
+      "test_start": "2026-01-01T00:00:00",
+      "test_end": "2026-04-01T00:00:00",
+      "total_trades": 2,
+      "win_rate": 0.0,
+      "total_return_pct": -5.718080435592747,
+      "max_drawdown_pct": 14.958148435561247,
+      "sharpe_ratio": -0.5072714252531549
+    }
+  ]
+}

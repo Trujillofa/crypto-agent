@@ -37,7 +37,9 @@ class TechnicalIndicators:
 
     # SMA (Simple Moving Average) - multiple periods
     sma_20: float | None
+    sma_40: float | None
     sma_50: float | None
+    sma_60: float | None
     sma_200: float | None
 
     # VWAP (Volume Weighted Average Price)
@@ -97,7 +99,9 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
 
     # SMA (multiple periods)
     sma_20 = _sma(close, 20) if len(close) >= 20 else None
+    sma_40 = _sma(close, 40) if len(close) >= 40 else None
     sma_50 = _sma(close, 50) if len(close) >= 50 else None
+    sma_60 = _sma(close, 60) if len(close) >= 60 else None
     sma_200 = _sma(close, 200) if len(close) >= 200 else None
 
     # VWAP
@@ -144,7 +148,9 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
         ema_50=ema_50,
         ema_200=ema_200,
         sma_20=sma_20,
+        sma_40=sma_40,
         sma_50=sma_50,
+        sma_60=sma_60,
         sma_200=sma_200,
         vwap=vwap,
         stoch_k=stoch_k,

@@ -1,0 +1,38 @@
+agent_id: daily-trend-long-gate2
+display_name: daily-trend-long-gate2
+mode: paper
+trading:
+  pairs:
+  - BTCUSDT
+  - ETHUSDT
+  - SOLUSDT
+  timeframe: 1d
+database:
+  host: 127.0.0.1
+  port: 15432
+ingest:
+  use_websocket: false
+telegram:
+  enabled: false
+trading_execution:
+  enabled: false
+  test_mode: true
+  use_atr_sizing: false
+  stop_loss_pct: 0.0
+  take_profit_pct: 0.0
+  exit_rules:
+    backtest_use_executor_exit_model: false
+    backtest_ignore_signal_sells: false
+futures:
+  enabled: false
+strategy:
+  global_trend_filter_enabled: false
+  strategies:
+  - name: daily_trend_long
+    config:
+      sma_window: 60
+  aggregator:
+    min_agreement: 1
+    buy_threshold: 0.5
+    sell_threshold: -0.5
+    btc_regime_filter_enabled: false
