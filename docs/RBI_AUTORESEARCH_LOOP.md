@@ -372,11 +372,17 @@ rolling (v1) dislocation-event variants all returned `ITERATE_OR_CLOSE` (disloca
 under the standard gate). Probe machinery is reusable; no edge survives house gates. See
 `docs/reports/autoresearch-candidate-ledger.md` "RBI Loop Records" for per-lane evidence.
 
+Higher-timeframe portfolio regime allocator (the next #1) has also been probed to
+closure: the real-DB cheap probe (SOL/BTC/ETH 1h, 4h+1d trending/high-vol regime,
+~21.5k bars/scenario) returned `NO_PULSE` — favorable-vs-unfavorable forward-return
+Δ ≤ 0.096% (bar 0.15%), signs inconsistent across symbols. Closed at the probe gate.
+See `docs/reports/higher-tf-regime-probe-2026-06-14.md`.
+
 The next lane should be data-first:
 
-1. Higher-timeframe portfolio regime allocator.
-2. News/event calendar risk filter.
-3. Order book or liquidation data.
+1. News/event calendar risk filter.
+2. Order book or liquidation data.
+3. (closed) Higher-TF portfolio regime allocator — NO_PULSE, see ledger.
 4. (closed) Cross-venue basis / dislocation — see ledger; reopen only with new data.
 
 For the next run:

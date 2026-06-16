@@ -1,0 +1,211 @@
+{
+  "verdict": "NO_PULSE",
+  "note": "No (symbol, regime_tf) met the full Gate 1 numeric thresholds (sample + separation).",
+  "passing_scenarios": [],
+  "per_bucket_stats": {
+    "SOLUSDT:4h": {
+      "symbol": "SOLUSDT",
+      "regime_tf": "4h",
+      "labeled_bars": 21518,
+      "bucket": {
+        "favorable": {
+          "count": 1493.0,
+          "mean": -0.005742736822303766,
+          "median": -0.08840041758496611,
+          "sharpe": -0.0021034958750838963,
+          "p_loss": 51.77494976557268,
+          "win_rate": 48.22505023442733
+        },
+        "unfavorable": {
+          "count": 20019.0,
+          "mean": -0.09134940999412068,
+          "median": -0.09239312338354946,
+          "sharpe": -0.04308849256293651,
+          "p_loss": 52.56506318996953,
+          "win_rate": 47.43493681003047
+        },
+        "delta_mean_net": 0.08560667317181692,
+        "favorable_count": 1493.0,
+        "unfavorable_count": 20019.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 8.560667317181691
+    },
+    "SOLUSDT:1d": {
+      "symbol": "SOLUSDT",
+      "regime_tf": "1d",
+      "labeled_bars": 21499,
+      "bucket": {
+        "favorable": {
+          "count": 1944.0,
+          "mean": -0.1742069971164892,
+          "median": -0.1180566858119402,
+          "sharpe": -0.06930514575524475,
+          "p_loss": 52.36625514403293,
+          "win_rate": 47.63374485596708
+        },
+        "unfavorable": {
+          "count": 19549.0,
+          "mean": -0.07912098077572555,
+          "median": -0.09201915403033159,
+          "sharpe": -0.037149188709395375,
+          "p_loss": 52.575579313519874,
+          "win_rate": 47.424420686480126
+        },
+        "delta_mean_net": -0.09508601634076366,
+        "favorable_count": 1944.0,
+        "unfavorable_count": 19549.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": -9.508601634076367
+    },
+    "BTCUSDT:4h": {
+      "symbol": "BTCUSDT",
+      "regime_tf": "4h",
+      "labeled_bars": 21519,
+      "bucket": {
+        "favorable": {
+          "count": 1464.0,
+          "mean": -0.08540065037965061,
+          "median": -0.129125389148138,
+          "sharpe": -0.06130640327333659,
+          "p_loss": 56.69398907103825,
+          "win_rate": 43.30601092896175
+        },
+        "unfavorable": {
+          "count": 20049.0,
+          "mean": -0.0791929039290189,
+          "median": -0.07322797856982302,
+          "sharpe": -0.06425918246941645,
+          "p_loss": 54.09746122001098,
+          "win_rate": 45.90253877998903
+        },
+        "delta_mean_net": -0.006207746450631713,
+        "favorable_count": 1464.0,
+        "unfavorable_count": 20049.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": -0.6207746450631713
+    },
+    "BTCUSDT:1d": {
+      "symbol": "BTCUSDT",
+      "regime_tf": "1d",
+      "labeled_bars": 21500,
+      "bucket": {
+        "favorable": {
+          "count": 2592.0,
+          "mean": -0.031336564799400134,
+          "median": -0.054084997852510336,
+          "sharpe": -0.02215546174446433,
+          "p_loss": 52.70061728395061,
+          "win_rate": 47.29938271604938
+        },
+        "unfavorable": {
+          "count": 18902.0,
+          "mean": -0.08818018970053845,
+          "median": -0.08155322157364911,
+          "sharpe": -0.07246600731018346,
+          "p_loss": 54.53920220082531,
+          "win_rate": 45.46079779917469
+        },
+        "delta_mean_net": 0.05684362490113832,
+        "favorable_count": 2592.0,
+        "unfavorable_count": 18902.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 5.684362490113832
+    },
+    "ETHUSDT:4h": {
+      "symbol": "ETHUSDT",
+      "regime_tf": "4h",
+      "labeled_bars": 21521,
+      "bucket": {
+        "favorable": {
+          "count": 1968.0,
+          "mean": -0.027832125286907396,
+          "median": -0.061069957972215066,
+          "sharpe": -0.016273242477856133,
+          "p_loss": 52.489837398373986,
+          "win_rate": 47.510162601626014
+        },
+        "unfavorable": {
+          "count": 19547.0,
+          "mean": -0.09685633463259619,
+          "median": -0.08099612644448798,
+          "sharpe": -0.05446817487459323,
+          "p_loss": 53.092546170767896,
+          "win_rate": 46.90745382923211
+        },
+        "delta_mean_net": 0.06902420934568879,
+        "favorable_count": 1968.0,
+        "unfavorable_count": 19547.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": 6.9024209345688785
+    },
+    "ETHUSDT:1d": {
+      "symbol": "ETHUSDT",
+      "regime_tf": "1d",
+      "labeled_bars": 21502,
+      "bucket": {
+        "favorable": {
+          "count": 3840.0,
+          "mean": -0.13247689373653782,
+          "median": -0.10919041343321326,
+          "sharpe": -0.07690367424649278,
+          "p_loss": 54.140625,
+          "win_rate": 45.859375
+        },
+        "unfavorable": {
+          "count": 17656.0,
+          "mean": -0.0828028204138941,
+          "median": -0.07370155579059504,
+          "sharpe": -0.04643912916889603,
+          "p_loss": 52.85455369279565,
+          "win_rate": 47.145446307204345
+        },
+        "delta_mean_net": -0.049674073322643716,
+        "favorable_count": 3840.0,
+        "unfavorable_count": 17656.0
+      },
+      "meets_sample": true,
+      "meets_separation": false,
+      "passing": false,
+      "delta_bps_like": -4.967407332264371
+    }
+  },
+  "thresholds": {
+    "min_bucket_bars": 200,
+    "min_mean_delta_pct": 0.15,
+    "min_p_loss_diff_pp": 8.0,
+    "horizon_bars": 6
+  },
+  "generated_at": "2026-06-16T00:10:07.978749+00:00",
+  "config": {
+    "symbols": [
+      "SOLUSDT",
+      "BTCUSDT",
+      "ETHUSDT"
+    ],
+    "base_timeframe": "1h",
+    "regime_timeframes": [
+      "4h",
+      "1d"
+    ],
+    "start": "2024-01-01",
+    "end": "2026-06-16",
+    "fee_pct": 0.08,
+    "slippage_pct": 0.02,
+    "horizon_bars": 6
+  }
+}
