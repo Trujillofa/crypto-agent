@@ -51,7 +51,9 @@ htmlcov/
 .nox/
 
 # Data (local only, not committed)
-data/
+data/*
+!data/macro_events/
+!data/macro_events/**
 research/run.log
 research/last_result.json
 research/archive/
