@@ -33,27 +33,31 @@ def _trend_prices(n: int, drift: float, crash_at: int | None = None) -> list[flo
     return prices
 
 
+def _coverage_row(
+    symbol: str,
+    *,
+    timeframe: str = "1h",
+    quote_volume: float,
+) -> dict[str, object]:
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "bars": 2000,
+        "first_ts": datetime(2023, 1, 1, tzinfo=UTC),
+        "last_ts": datetime(2026, 6, 1, tzinfo=UTC),
+        "quote_volume": quote_volume,
+    }
+
+
 def test_build_coverage_audit_blocks_thin_universe() -> None:
     rows = [
-        {
-            "symbol": "BTCUSDT",
-            "bars": 1000,
-            "first_ts": datetime(2024, 1, 1, tzinfo=UTC),
-            "last_ts": datetime(2026, 6, 1, tzinfo=UTC),
-            "quote_volume": 1e12,
-        },
-        {
-            "symbol": "ETHUSDT",
-            "bars": 1000,
-            "first_ts": datetime(2024, 1, 1, tzinfo=UTC),
-            "last_ts": datetime(2026, 6, 1, tzinfo=UTC),
-            "quote_volume": 5e11,
-        },
+        _coverage_row("BTCUSDT", quote_volume=1e12),
+        _coverage_row("ETHUSDT", quote_volume=5e11),
     ]
     audit = build_coverage_audit(
         rows,
         min_history_days=700,
-        min_universe_symbols=15,
+        min_universe_symbols=8,
         target_universe_symbols=20,
     )
     assert audit.blocked is True
@@ -61,28 +65,32 @@ def test_build_coverage_audit_blocks_thin_universe() -> None:
     assert "only 2" in audit.blocked_reason
 
 
+def test_build_coverage_audit_prefers_1h_over_4h() -> None:
+    from scripts.probe_daily_trend_breadth import select_finest_tf_rows
+
+    rows = [
+        _coverage_row("SOLUSDT", timeframe="4h", quote_volume=1e9),
+        _coverage_row("SOLUSDT", timeframe="1h", quote_volume=5e11),
+    ]
+    finest = select_finest_tf_rows(rows)
+    assert len(finest) == 1
+    assert finest[0]["timeframe"] == "1h"
+
+
 def test_build_coverage_audit_selects_top_liquid_universe() -> None:
-    rows = []
-    for index in range(18):
-        symbol = f"SYM{index:02d}USDT"
-        rows.append(
-            {
-                "symbol": symbol,
-                "bars": 2000,
-                "first_ts": datetime(2023, 1, 1, tzinfo=UTC),
-                "last_ts": datetime(2026, 6, 1, tzinfo=UTC),
-                "quote_volume": float(index + 1),
-            }
-        )
+    rows = [
+        _coverage_row(f"SYM{index:02d}USDT", quote_volume=float(index + 1)) for index in range(18)
+    ]
     audit = build_coverage_audit(
         rows,
         min_history_days=700,
-        min_universe_symbols=15,
+        min_universe_symbols=8,
         target_universe_symbols=20,
     )
     assert audit.blocked is False
     assert len(audit.universe) == 18
     assert audit.universe[0] == "SYM17USDT"
+    assert audit.symbol_timeframes[0] == ("SYM17USDT", "1h")
 
 
 def test_symbol_positions_are_long_only() -> None:

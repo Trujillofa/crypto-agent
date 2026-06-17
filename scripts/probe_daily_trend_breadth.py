@@ -51,32 +51,33 @@ PROBE_QUERY = """
 COVERAGE_QUERY = """
     SELECT
         symbol,
+        timeframe,
         COUNT(*) AS bars,
         MIN(time) AS first_ts,
         MAX(time) AS last_ts,
         SUM(volume * close_price) AS quote_volume
     FROM ohlcv
-    WHERE timeframe = $1
-      AND symbol LIKE '%USDT'
-    GROUP BY symbol
-    ORDER BY quote_volume DESC NULLS LAST
+    WHERE symbol LIKE '%USDT'
+      AND symbol NOT LIKE 'TEST%'
+      AND timeframe = ANY($1::text[])
+    GROUP BY symbol, timeframe
 """
 
 TRADING_DAYS_PER_YEAR = 365
+INTRADAY_TIMEFRAMES = ("1h", "4h")
 SMA_WINDOW = 50
-MIN_UNIVERSE_SYMBOLS = 15
+MIN_UNIVERSE_SYMBOLS = 8
 TARGET_UNIVERSE_SYMBOLS = 20
 MIN_HISTORY_DAYS = 700
 WFO_OOS_MONTHS = 2
 MIN_STATE_CHANGES_PER_OOS = 20
 MAX_CONCENTRATION_PCT = 50.0
-MAJORS_ONLY = frozenset({"BTCUSDT", "ETHUSDT", "SOLUSDT"})
 BLOCKED_STATUS = "BLOCKED_ON_INGESTION"
 
 
 @dataclass(frozen=True)
 class ProbeConfig:
-    source_timeframe: str
+    intraday_timeframes: tuple[str, ...]
     start: str
     end: str
     sma_window: int
@@ -93,6 +94,7 @@ class ProbeConfig:
 @dataclass(frozen=True)
 class CoverageRow:
     symbol: str
+    source_timeframe: str
     bars: int
     first_ts: datetime
     last_ts: datetime
@@ -105,6 +107,7 @@ class CoverageAudit:
     rows: tuple[CoverageRow, ...]
     eligible: tuple[CoverageRow, ...]
     universe: tuple[str, ...]
+    symbol_timeframes: tuple[tuple[str, str], ...]
     blocked: bool
     blocked_reason: str | None
 
@@ -233,6 +236,19 @@ def _mean_pairwise_signal_correlation(signals: Mapping[str, Sequence[int]]) -> f
     return _mean(correlations) if correlations else 0.0
 
 
+def select_finest_tf_rows(
+    rows: Sequence[Mapping[str, object]],
+) -> list[Mapping[str, object]]:
+    """Pick finest intraday TF per symbol (prefer 1h, else 4h)."""
+    finest: dict[str, Mapping[str, object]] = {}
+    for row in rows:
+        symbol = str(row["symbol"])
+        timeframe = str(row["timeframe"])
+        if symbol not in finest or timeframe == "1h":
+            finest[symbol] = row
+    return list(finest.values())
+
+
 def build_coverage_audit(
     rows: Sequence[Mapping[str, object]],
     *,
@@ -241,7 +257,7 @@ def build_coverage_audit(
     target_universe_symbols: int,
 ) -> CoverageAudit:
     materialized: list[CoverageRow] = []
-    for row in rows:
+    for row in select_finest_tf_rows(rows):
         first_ts = row["first_ts"]
         last_ts = row["last_ts"]
         if not isinstance(first_ts, datetime) or not isinstance(last_ts, datetime):
@@ -250,6 +266,7 @@ def build_coverage_audit(
         materialized.append(
             CoverageRow(
                 symbol=str(row["symbol"]),
+                source_timeframe=str(row["timeframe"]),
                 bars=int(row["bars"]),
                 first_ts=first_ts,
                 last_ts=last_ts,
@@ -267,25 +284,22 @@ def build_coverage_audit(
     )
     universe_rows = eligible[:target_universe_symbols]
     universe = tuple(row.symbol for row in universe_rows)
+    symbol_timeframes = tuple((row.symbol, row.source_timeframe) for row in universe_rows)
 
     blocked = False
     blocked_reason: str | None = None
     if len(eligible) < min_universe_symbols:
         blocked = True
         blocked_reason = (
-            f"only {len(eligible)} USDT pairs have >={min_history_days}d of 1h history; "
-            f"need >={min_universe_symbols}"
-        )
-    elif universe and set(universe).issubset(MAJORS_ONLY):
-        blocked = True
-        blocked_reason = (
-            "universe collapses to BTC/ETH/SOL only — insufficient breadth in prod ohlcv"
+            f"only {len(eligible)} USDT pairs have >={min_history_days}d intraday history "
+            f"(finest 1h/4h); need >={min_universe_symbols}"
         )
 
     return CoverageAudit(
         rows=tuple(materialized),
         eligible=eligible,
         universe=universe,
+        symbol_timeframes=symbol_timeframes,
         blocked=blocked,
         blocked_reason=blocked_reason,
     )
@@ -549,7 +563,7 @@ def decide_verdict(
 
 def default_config() -> ProbeConfig:
     return ProbeConfig(
-        source_timeframe="1h",
+        intraday_timeframes=INTRADAY_TIMEFRAMES,
         start="2024-01-01T00:00:00",
         end="2026-06-01T00:00:00",
         sma_window=SMA_WINDOW,
@@ -568,7 +582,7 @@ async def run_coverage_audit(config: ProbeConfig) -> CoverageAudit:
     pool = await init_pool(build_db_config())
     try:
         async with pool.acquire() as conn:
-            rows = await conn.fetch(COVERAGE_QUERY, config.source_timeframe)
+            rows = await conn.fetch(COVERAGE_QUERY, list(config.intraday_timeframes))
         return build_coverage_audit(
             rows,
             min_history_days=config.min_history_days,
@@ -580,18 +594,18 @@ async def run_coverage_audit(config: ProbeConfig) -> CoverageAudit:
 
 
 async def load_symbol_bars(
-    symbols: Sequence[str],
+    symbol_timeframes: Sequence[tuple[str, str]],
     config: ProbeConfig,
 ) -> dict[str, list[DailyBar]]:
     pool = await init_pool(build_db_config())
     bars_by_symbol: dict[str, list[DailyBar]] = {}
     try:
-        for symbol in symbols:
+        for symbol, timeframe in symbol_timeframes:
             async with pool.acquire() as conn:
                 rows = await conn.fetch(
                     PROBE_QUERY,
                     symbol,
-                    config.source_timeframe,
+                    timeframe,
                     datetime.fromisoformat(config.start),
                     datetime.fromisoformat(config.end),
                 )
@@ -626,7 +640,7 @@ async def run_probe(config: ProbeConfig) -> ProbeReport:
             reasons=reasons,
         )
 
-    bars_by_symbol = await load_symbol_bars(coverage.universe, config)
+    bars_by_symbol = await load_symbol_bars(coverage.symbol_timeframes, config)
     metrics = evaluate_portfolio_breadth(
         bars_by_symbol,
         sma_window=config.sma_window,
@@ -674,7 +688,7 @@ def render_report(report: ProbeReport) -> str:
     lines.append("")
     lines.append("## Coverage audit")
     lines.append(
-        f"- USDT pairs with 1h rows: **{len(report.coverage.rows)}** "
+        f"- USDT pairs (finest 1h/4h per symbol): **{len(report.coverage.rows)}** "
         f"(eligible >={report.config.min_history_days}d: **{len(report.coverage.eligible)}**)"
     )
     lines.append(
@@ -685,11 +699,11 @@ def render_report(report: ProbeReport) -> str:
         lines.append(f"- **Blocked:** {report.coverage.blocked_reason}")
     lines.append("")
     if report.coverage.eligible:
-        lines.append("| Symbol | Bars | Span (d) | First | Quote vol |")
-        lines.append("|--------|------|----------|-------|-----------|")
+        lines.append("| Symbol | TF | Bars | Span (d) | First | Quote vol |")
+        lines.append("|--------|----|------|----------|-------|-----------|")
         for row in report.coverage.eligible:
             lines.append(
-                f"| {row.symbol} | {row.bars} | {row.span_days} | "
+                f"| {row.symbol} | {row.source_timeframe} | {row.bars} | {row.span_days} | "
                 f"{row.first_ts.date()} | {row.quote_volume:.2e} |"
             )
         lines.append("")
@@ -770,9 +784,11 @@ def report_to_json(report: ProbeReport) -> dict[str, object]:
             "blocked_reason": report.coverage.blocked_reason,
             "eligible_count": len(report.coverage.eligible),
             "universe": list(report.coverage.universe),
+            "symbol_timeframes": list(report.coverage.symbol_timeframes),
             "eligible": [
                 {
                     "symbol": row.symbol,
+                    "source_timeframe": row.source_timeframe,
                     "bars": row.bars,
                     "span_days": row.span_days,
                     "first_ts": row.first_ts.isoformat(),

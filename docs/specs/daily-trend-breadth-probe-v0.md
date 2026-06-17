@@ -62,7 +62,11 @@ from existing long agents, news/event ranks higher. Flagging for the decision-ma
 
 ## Signal definition (frozen from Gate 1 — no new knobs)
 
-- Daily bars (resampled from 1h, UTC buckets), per symbol.
+- Daily bars (UTC buckets), per symbol, **resampled from the finest intraday timeframe available
+  for that symbol in prod `ohlcv` — prefer 1h, else 4h.** This is a *daily* strategy: a daily SMA50
+  only needs daily closes, so 4h→daily is just as valid as 1h→daily. Do **not** gate the universe on
+  1h availability (correction to v0: the 1h-only requirement over-specified the data and wrongly
+  blocked the lane — see PR #84 review).
 - Per-symbol state: `close[t] > SMA50[t]` → long for day *t+1*, else flat. **SMA50 only** (the
   Gate-1 winner). No MA-length search — that fragility is exactly what closed Gate 2's grid.
 - Portfolio: equal weight across all currently-long symbols (report a vol-target variant as a
@@ -71,10 +75,17 @@ from existing long agents, news/event ranks higher. Flagging for the decision-ma
 
 ## Universe & data (builder to confirm against prod DB first)
 
-- Target: top **~15–20** USDT pairs by liquidity that have ≥ ~2y of 1h history in prod `ohlcv`.
-- **Feasibility gate:** if prod only holds BTC/ETH/SOL at daily depth, this lane is **blocked on
-  data ingestion** — record that and stop (do not run on a thin universe). The probe's first step
-  is a coverage audit.
+- Target: top **~15–20** USDT pairs by liquidity with ≥ ~2y of history at **any** intraday
+  timeframe (1h or 4h) — measured in **daily bars after resampling**, not in 1h rows.
+- **Minimum to run: ~8 symbols.** The probe's job is to measure whether breadth cuts concentration;
+  ~10 symbols answers that directionally and is far better than the 3-symbol book that failed Gate 2.
+  Only **< ~8** eligible symbols is a true **blocked-on-ingestion** stop. (Correction to v0: the
+  original 15-symbol floor + 1h gate parked the lane behind an ingestion task that — given BTC/ETH/
+  SOL/BNB @1h plus ADA/AVAX/DOGE/DOT/LINK/XRP @4h — is likely unnecessary.)
+- **Coverage audit is step 1** and must report, per symbol, the finest available TF and the
+  resulting daily-bar depth. Universe is liquidity-defined and **fixed before** the metric run.
+- If ~8 symbols *are* reachable, **run the probe** and report all four pulse metrics. If a real
+  pulse appears, *that* justifies ingesting more pairs to reach 15–20 — not the reverse.
 - Window: 2024-01-01 → 2026-06-01 (same as Gate 1).
 
 ## Pulse criteria (encode in the probe)
@@ -107,7 +118,8 @@ uv run python scripts/rbi_loop_guard.py \
 2. **No symbol cherry-picking** to manufacture a pass — universe is liquidity-defined and fixed before the run.
 3. **Measure correlation/concentration; do not assume diversification.**
 4. **Long-only**, portfolio equal-weight (vol-target is a reported variant, not a tuned knob).
-5. If data coverage is thin, the lane is **blocked on ingestion** — record and stop, don't run thin.
+5. Build daily bars from the **finest available** intraday TF per symbol (1h else 4h) — do not gate
+   on 1h. Only **< ~8** eligible symbols is a true blocked-on-ingestion stop; at ~8+ symbols, run.
 
 ## Reviewer (Claude) checkpoints
 
