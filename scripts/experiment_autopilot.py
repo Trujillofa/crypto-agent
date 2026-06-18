@@ -18,6 +18,7 @@ import yaml
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.backtest.cost_overrides import CostProfile
 from src.backtest.engine import BacktestConfig, BacktestEngine, BacktestResult
 from src.backtest.experiment_autopilot import (  # noqa: E402
     ExperimentSummary,
@@ -122,6 +123,13 @@ async def _resolve_data_range(symbol: str, timeframe: str) -> tuple[str, str]:
     return row["start_time"].isoformat(), row["end_time"].isoformat()
 
 
+def _futures_mode_from_raw(raw_config: dict[str, object]) -> bool:
+    futures = raw_config.get("futures", {})
+    if not isinstance(futures, dict):
+        return False
+    return bool(futures.get("enabled", False))
+
+
 def _build_backtest_config(
     *,
     settings: object,
@@ -139,6 +147,7 @@ def _build_backtest_config(
     replay_sentiment_max_age_hours: float | None,
     basis_calibrated_threshold: float | None = None,
     cross_venue_dislocation: CrossVenueDislocationConfig | None = None,
+    cost_profile: CostProfile | None = None,
 ) -> BacktestConfig:
     trading_exec = raw_config.get("trading_execution", {})
     if not isinstance(trading_exec, dict):
@@ -148,24 +157,38 @@ def _build_backtest_config(
     if not isinstance(exit_rules, dict):
         exit_rules = {}
 
+    fee_rate = cost_profile.fee_rate if cost_profile is not None else 0.001
+    slippage_pct = cost_profile.slippage_pct if cost_profile is not None else 0.001
+    if cost_profile is not None:
+        apply_global_trend_filter = cost_profile.apply_global_trend_filter
+    else:
+        apply_global_trend_filter = not disable_trend_filter
+
+    futures_mode = _futures_mode_from_raw(raw_config)
+    futures_settings = getattr(settings, "futures", None)
+    futures_leverage = int(getattr(futures_settings, "default_leverage", 5))
+    futures_funding_rate = 0.0001
+    if cost_profile is not None:
+        futures_funding_rate = cost_profile.effective_futures_funding_rate(timeframe)
+
     return BacktestConfig(
         symbol=symbol,
         timeframe=timeframe,
         start_date=start,
         end_date=end,
         initial_capital=initial_capital,
-        fee_rate=0.001,
+        fee_rate=fee_rate,
         stop_loss_pct=settings.trading_execution.stop_loss_pct,
         take_profit_pct=settings.trading_execution.take_profit_pct,
         sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
         tp_atr_multiplier=float(trading_exec.get("tp_atr_multiplier", 4.5)),
         trailing_activate_atr=float(trading_exec.get("trailing_activate_atr", 1.5)),
         trailing_offset_atr=float(trading_exec.get("trailing_offset_atr", 1.0)),
-        slippage_pct=0.001,
+        slippage_pct=slippage_pct,
         use_atr_sizing=settings.trading_execution.use_atr_sizing,
         atr_multiplier=settings.trading_execution.atr_multiplier,
         risk_per_trade=settings.trading_execution.risk_per_trade_pct,
-        apply_global_trend_filter=not disable_trend_filter,
+        apply_global_trend_filter=apply_global_trend_filter,
         global_trend_filter_buffer_pct=float(
             raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.0)
         ),
@@ -187,6 +210,9 @@ def _build_backtest_config(
             if replay_sentiment_max_age_hours is not None
             else None
         ),
+        futures_mode=futures_mode,
+        futures_leverage=futures_leverage,
+        futures_funding_rate=futures_funding_rate,
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
@@ -320,11 +346,27 @@ def _render_markdown(
     return "\n".join(lines)
 
 
-async def main() -> None:
-    args = parse_args()
-    configure_logger("INFO")
-
-    settings_path = Path(args.config)
+async def run_experiment_evaluation(
+    *,
+    settings_path: Path,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    train_months: int = 6,
+    test_months: int = 3,
+    bootstrap: int = 500,
+    seed: int = 42,
+    initial_capital: float = 10000.0,
+    gates: GateConfig,
+    disable_trend_filter: bool = False,
+    replay_sentiment_path: str | None = None,
+    replay_sentiment_max_age_hours: float | None = None,
+    cost_profile: CostProfile | None = None,
+    db_config: dict[str, object] | None = None,
+    manage_pool: bool = True,
+) -> tuple[ExperimentSummary, GateConfig, list[WfoWindowResult], BacktestConfig, dict[str, object]]:
+    """Run baseline + WFO + bootstrap gates; return summary and resolved baseline config."""
     settings = load_settings(settings_path)
 
     result = _resolve_strategy_config(settings.strategy)
@@ -337,16 +379,17 @@ async def main() -> None:
     if not isinstance(raw_config, dict):
         raise RuntimeError("Root config must be a mapping")
 
-    symbol = args.symbol or settings.trading_pairs[0]
-    timeframe = args.timeframe or settings.timeframe
+    resolved_symbol = symbol or settings.trading_pairs[0]
+    resolved_timeframe = timeframe or settings.timeframe
+    resolved_db = db_config or _db_config_from_settings(settings)
 
-    db_config = _db_config_from_settings(settings)
-    await init_pool(db_config)
+    if manage_pool:
+        await init_pool(resolved_db)
+
     try:
-        range_start, range_end = await _resolve_data_range(symbol, timeframe)
-
-        start = args.start or range_start
-        end = args.end or range_end
+        range_start, range_end = await _resolve_data_range(resolved_symbol, resolved_timeframe)
+        resolved_start = start or range_start
+        resolved_end = end or range_end
 
         basis_filter = parse_basis_premium_filter(
             raw_config.get("strategy", {}).get("basis_premium_filter")
@@ -356,17 +399,17 @@ async def main() -> None:
         )
 
         windows = build_wfo_windows(
-            start=start,
-            end=end,
-            train_months=args.train_months,
-            test_months=args.test_months,
+            start=resolved_start,
+            end=resolved_end,
+            train_months=train_months,
+            test_months=test_months,
         )
 
         baseline_threshold: float | None = None
         if basis_filter.enabled and windows:
             baseline_threshold = await _calibrate_basis_threshold(
-                symbol=symbol,
-                timeframe=timeframe,
+                symbol=resolved_symbol,
+                timeframe=resolved_timeframe,
                 filter_config=basis_filter,
                 train_start=windows[0].train_start,
                 train_end=windows[0].train_end,
@@ -375,22 +418,23 @@ async def main() -> None:
         base_config = _build_backtest_config(
             settings=settings,
             raw_config=raw_config,
-            symbol=symbol,
-            timeframe=timeframe,
-            start=start,
-            end=end,
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            start=resolved_start,
+            end=resolved_end,
             strategy_classes=strategy_classes,
             strategy_configs=strategy_configs,
             aggregator_config=aggregator_config,
-            initial_capital=args.initial_capital,
-            disable_trend_filter=args.disable_trend_filter,
-            replay_sentiment_path=args.replay_sentiment_log,
-            replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+            initial_capital=initial_capital,
+            disable_trend_filter=disable_trend_filter,
+            replay_sentiment_path=replay_sentiment_path,
+            replay_sentiment_max_age_hours=replay_sentiment_max_age_hours,
             basis_calibrated_threshold=baseline_threshold,
             cross_venue_dislocation=cross_venue_disloc,
+            cost_profile=cost_profile,
         )
 
-        reader = IndicatorReader(db_config)
+        reader = IndicatorReader(resolved_db)
         async with reader:
             baseline = await _run_backtest(reader, base_config)
 
@@ -399,8 +443,8 @@ async def main() -> None:
                 window_threshold: float | None = None
                 if basis_filter.enabled:
                     window_threshold = await _calibrate_basis_threshold(
-                        symbol=symbol,
-                        timeframe=timeframe,
+                        symbol=resolved_symbol,
+                        timeframe=resolved_timeframe,
                         filter_config=basis_filter,
                         train_start=window.train_start,
                         train_end=window.train_end,
@@ -408,19 +452,20 @@ async def main() -> None:
                 window_config = _build_backtest_config(
                     settings=settings,
                     raw_config=raw_config,
-                    symbol=symbol,
-                    timeframe=timeframe,
+                    symbol=resolved_symbol,
+                    timeframe=resolved_timeframe,
                     start=window.test_start,
                     end=window.test_end,
                     strategy_classes=strategy_classes,
                     strategy_configs=strategy_configs,
                     aggregator_config=aggregator_config,
-                    initial_capital=args.initial_capital,
-                    disable_trend_filter=args.disable_trend_filter,
-                    replay_sentiment_path=args.replay_sentiment_log,
-                    replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+                    initial_capital=initial_capital,
+                    disable_trend_filter=disable_trend_filter,
+                    replay_sentiment_path=replay_sentiment_path,
+                    replay_sentiment_max_age_hours=replay_sentiment_max_age_hours,
                     basis_calibrated_threshold=window_threshold,
                     cross_venue_dislocation=cross_venue_disloc,
+                    cost_profile=cost_profile,
                 )
                 window_backtest = await _run_backtest(reader, window_config)
                 window_results.append(
@@ -441,20 +486,19 @@ async def main() -> None:
         trade_returns = [trade.return_pct for trade in baseline.trades]
         path_metrics = bootstrap_trade_path_metrics(
             trade_returns_pct=trade_returns,
-            iterations=args.bootstrap,
-            seed=args.seed,
+            iterations=bootstrap,
+            seed=seed,
         )
-        bootstrap_p_loss_pct = path_metrics["p_loss_pct"]
 
         oos_returns = [window.total_return_pct for window in window_results]
         oos_sharpes = [window.sharpe_ratio for window in window_results]
         wfo_total_trades = sum(window.total_trades for window in window_results)
 
         summary_seed = ExperimentSummary(
-            symbol=symbol,
-            timeframe=timeframe,
-            start=start,
-            end=end,
+            symbol=resolved_symbol,
+            timeframe=resolved_timeframe,
+            start=resolved_start,
+            end=resolved_end,
             total_trades=baseline.total_trades,
             win_rate=baseline.win_rate,
             total_return_pct=baseline.total_return_pct,
@@ -464,7 +508,7 @@ async def main() -> None:
             wfo_total_trades=wfo_total_trades,
             wfo_mean_sharpe=mean(oos_sharpes) if oos_sharpes else 0.0,
             wfo_total_return_pct=compound_returns_pct(oos_returns),
-            bootstrap_p_loss_pct=bootstrap_p_loss_pct,
+            bootstrap_p_loss_pct=path_metrics["p_loss_pct"],
             mc_drawdown_p95_pct=path_metrics["drawdown_p95_pct"],
             mc_drawdown_p50_pct=path_metrics["drawdown_p50_pct"],
             profit_concentration_pct=profit_concentration_pct(oos_returns),
@@ -475,48 +519,87 @@ async def main() -> None:
             failure_reasons=[],
         )
 
-        gates = GateConfig(
-            min_trades=args.min_trades,
-            min_wfo_trades=args.min_wfo_trades,
-            min_wfo_sharpe=args.min_wfo_sharpe,
-            max_drawdown_pct=args.max_drawdown_pct,
-            max_bootstrap_p_loss_pct=args.max_bootstrap_p_loss_pct,
-            max_mc_drawdown_p95_pct=args.max_mc_drawdown_p95_pct,
-            min_oos_return_pct=args.min_oos_return_pct,
-            max_profit_concentration_pct=args.max_profit_concentration_pct,
-        )
-
         failures = evaluate_gates(summary_seed, gates)
         summary_payload = asdict(summary_seed)
         summary_payload["passes_gates"] = not failures
         summary_payload["failure_reasons"] = failures
         summary = ExperimentSummary(**summary_payload)
 
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        prefix = Path(args.output_prefix)
-        prefix.parent.mkdir(parents=True, exist_ok=True)
-        json_path = prefix.parent / f"{prefix.name}-{timestamp}.json"
-        markdown_path = prefix.parent / f"{prefix.name}-{timestamp}.md"
+        config_snapshot = asdict(base_config)
+        config_snapshot.pop("strategy_classes", None)
 
-        payload = {
-            "summary": asdict(summary),
-            "gates": asdict(gates),
-            "windows": [asdict(window) for window in window_results],
+        audit_payload = {
+            "backtest_config": config_snapshot,
+            "cost_profile": (
+                cost_profile.to_audit_dict(
+                    timeframe=resolved_timeframe,
+                    futures_mode=base_config.futures_mode,
+                )
+                if cost_profile is not None
+                else None
+            ),
         }
-        with json_path.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2)
-
-        markdown = _render_markdown(
-            summary=summary,
-            windows=window_results,
-            gates=gates,
-            config_path=settings_path,
-        )
-        with markdown_path.open("w", encoding="utf-8") as handle:
-            handle.write(markdown)
-
+        return summary, gates, window_results, base_config, audit_payload
     finally:
-        await close_pool()
+        if manage_pool:
+            await close_pool()
+
+
+async def main() -> None:
+    args = parse_args()
+    configure_logger("INFO")
+
+    settings_path = Path(args.config)
+    gates = GateConfig(
+        min_trades=args.min_trades,
+        min_wfo_trades=args.min_wfo_trades,
+        min_wfo_sharpe=args.min_wfo_sharpe,
+        max_drawdown_pct=args.max_drawdown_pct,
+        max_bootstrap_p_loss_pct=args.max_bootstrap_p_loss_pct,
+        max_mc_drawdown_p95_pct=args.max_mc_drawdown_p95_pct,
+        min_oos_return_pct=args.min_oos_return_pct,
+        max_profit_concentration_pct=args.max_profit_concentration_pct,
+    )
+
+    summary, gates, window_results, _, _ = await run_experiment_evaluation(
+        settings_path=settings_path,
+        symbol=args.symbol,
+        timeframe=args.timeframe,
+        start=args.start,
+        end=args.end,
+        train_months=args.train_months,
+        test_months=args.test_months,
+        bootstrap=args.bootstrap,
+        seed=args.seed,
+        initial_capital=args.initial_capital,
+        gates=gates,
+        disable_trend_filter=args.disable_trend_filter,
+        replay_sentiment_path=args.replay_sentiment_log,
+        replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+    )
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    prefix = Path(args.output_prefix)
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    json_path = prefix.parent / f"{prefix.name}-{timestamp}.json"
+    markdown_path = prefix.parent / f"{prefix.name}-{timestamp}.md"
+
+    payload = {
+        "summary": asdict(summary),
+        "gates": asdict(gates),
+        "windows": [asdict(window) for window in window_results],
+    }
+    with json_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+
+    markdown = _render_markdown(
+        summary=summary,
+        windows=window_results,
+        gates=gates,
+        config_path=settings_path,
+    )
+    with markdown_path.open("w", encoding="utf-8") as handle:
+        handle.write(markdown)
 
     print("Experiment Autopilot complete")
     print(f"Symbol/Timeframe: {summary.symbol} {summary.timeframe}")

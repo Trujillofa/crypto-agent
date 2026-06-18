@@ -1,0 +1,36 @@
+# Frozen best-shape overlay for cross-venue-dislocation-event-v1 (fee-marginal lane).
+# basis_spread tail5 horizon24 was least-negative in the 30-run sweep (-16.3% full period).
+trading:
+  pairs:
+    - SOLUSDT
+  timeframe: 1h
+
+trading_execution:
+  sl_atr_multiplier: 4.0
+  tp_atr_multiplier: 8.0
+  trailing_activate_atr: 10.0
+  trailing_offset_atr: 0.5
+  exit_rules:
+    backtest_use_executor_exit_model: true
+    time_stop_minutes: 1440
+
+strategy:
+  strategies:
+    - name: dislocation_event
+      config:
+        threshold_mode: rolling
+        metric: basis_spread
+        tail_pct: 5
+        rolling_days: 90
+        cooldown_bars: 24
+  aggregator:
+    buy_threshold: 0.55
+    buy_threshold_uptrend: 0.50
+    sell_threshold: -0.60
+    min_confidence: 0.10
+  per_symbol_aggregator_config:
+    SOLUSDT:
+      min_agreement: 1
+      buy_threshold: 0.55
+      sell_threshold: -0.60
+      sell_min_agreement: 1
