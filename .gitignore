@@ -54,6 +54,8 @@ htmlcov/
 data/*
 !data/macro_events/
 !data/macro_events/**
+!data/tradfi/
+!data/tradfi/**
 research/run.log
 research/last_result.json
 research/archive/
