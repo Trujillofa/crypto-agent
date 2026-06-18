@@ -56,6 +56,19 @@ class CostProfile:
             cadence=self.funding_cadence,
         )
 
+    def to_audit_dict(self, *, timeframe: str, futures_mode: bool) -> dict[str, object]:
+        payload = asdict(self)
+        payload["round_trip_cost_pct"] = self.round_trip_cost_pct
+        payload["funding_method"] = (
+            "scale per-bar rate by tf_hours/8 (equivalent to 8h settlement cadence)"
+            if self.funding_cadence == "scaled_8h"
+            else "charge base rate every bar (legacy engine behavior)"
+        )
+        payload["effective_futures_funding_rate"] = (
+            self.effective_futures_funding_rate(timeframe) if futures_mode else 0.0
+        )
+        return payload
+
 
 def effective_futures_funding_rate_per_bar(
     base_rate: float,
@@ -74,19 +87,6 @@ def effective_futures_funding_rate_per_bar(
     if tf_hours is None:
         raise ValueError(f"Unsupported timeframe for funding scale: {timeframe}")
     return base_rate * (tf_hours / 8.0)
-
-    def to_audit_dict(self, *, timeframe: str, futures_mode: bool) -> dict[str, object]:
-        payload = asdict(self)
-        payload["round_trip_cost_pct"] = self.round_trip_cost_pct
-        payload["funding_method"] = (
-            "scale per-bar rate by tf_hours/8 (equivalent to 8h settlement cadence)"
-            if self.funding_cadence == "scaled_8h"
-            else "charge base rate every bar (legacy engine behavior)"
-        )
-        payload["effective_futures_funding_rate"] = (
-            self.effective_futures_funding_rate(timeframe) if futures_mode else 0.0
-        )
-        return payload
 
 
 def legacy_cost_profile(*, apply_global_trend_filter: bool = True) -> CostProfile:

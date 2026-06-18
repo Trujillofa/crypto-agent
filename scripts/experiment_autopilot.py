@@ -136,6 +136,29 @@ def _futures_mode_from_raw(raw_config: dict[str, object]) -> bool:
     return bool(futures.get("enabled", False))
 
 
+def _config_explicit_trend_filter(raw_config: dict[str, object]) -> bool | None:
+    strategy = raw_config.get("strategy", {})
+    if not isinstance(strategy, dict):
+        return None
+    if "global_trend_filter_enabled" not in strategy:
+        return None
+    return bool(strategy["global_trend_filter_enabled"])
+
+
+def _resolve_global_trend_filter(
+    *,
+    raw_config: dict[str, object],
+    disable_trend_filter: bool,
+    cost_profile: CostProfile | None,
+) -> tuple[bool, str, bool | None]:
+    config_explicit = _config_explicit_trend_filter(raw_config)
+    if cost_profile is not None:
+        return cost_profile.apply_global_trend_filter, "cost_profile_override", config_explicit
+    if disable_trend_filter:
+        return False, "cli_override", config_explicit
+    return True, "engine_default", config_explicit
+
+
 def _build_backtest_config(
     *,
     settings: object,
@@ -165,10 +188,13 @@ def _build_backtest_config(
 
     fee_rate = cost_profile.fee_rate if cost_profile is not None else REALISTIC_FEE_RATE
     slippage_pct = cost_profile.slippage_pct if cost_profile is not None else REALISTIC_SLIPPAGE_PCT
-    if cost_profile is not None:
-        apply_global_trend_filter = cost_profile.apply_global_trend_filter
-    else:
-        apply_global_trend_filter = not disable_trend_filter
+    apply_global_trend_filter, trend_filter_source, config_trend_filter = (
+        _resolve_global_trend_filter(
+            raw_config=raw_config,
+            disable_trend_filter=disable_trend_filter,
+            cost_profile=cost_profile,
+        )
+    )
 
     futures_mode = _futures_mode_from_raw(raw_config)
     futures_settings = getattr(settings, "futures", None)
@@ -200,6 +226,8 @@ def _build_backtest_config(
         global_trend_filter_buffer_pct=float(
             raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.0)
         ),
+        global_trend_filter_source=trend_filter_source,
+        config_global_trend_filter_enabled=config_trend_filter,
         session_liquidity_router=parse_session_liquidity_router(
             raw_config.get("strategy", {}).get("session_liquidity_router")
         ),
@@ -547,6 +575,12 @@ async def run_experiment_evaluation(
                 if cost_profile is not None
                 else None
             ),
+            "global_trend_filter": {
+                "active": base_config.apply_global_trend_filter,
+                "buffer_pct": base_config.global_trend_filter_buffer_pct,
+                "source": base_config.global_trend_filter_source,
+                "config_explicit": base_config.config_global_trend_filter_enabled,
+            },
         }
         return summary, gates, window_results, base_config, audit_payload
     finally:

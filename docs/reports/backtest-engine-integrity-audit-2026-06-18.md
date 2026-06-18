@@ -10,6 +10,13 @@ applied by the gate/WFO path. **No code changed.**
 **Update (2026-06-18):** Engine defaults corrected in `feat/backtest-cost-funding-fix` — fee
 0.04%/side, slippage 0.02%/side, 8h-scaled futures funding (`scaled_8h` cadence).
 
+**Update (2026-06-18, Task 3):** Global trend filter is now **audited at backtest start**
+(`BacktestEngine._resolved_cost_audit()` logs `global_trend_filter_active`, `buffer_pct`,
+`source`, and any explicit `config_global_trend_filter_enabled` from YAML). Mechanism and
+defaults unchanged (`base.yaml` stays `true`). RBI Gate 0 briefs and autoresearch overlays
+must set `strategy.global_trend_filter_enabled` explicitly — see
+[trend-filter-opt-in-brief-v0.md](../specs/trend-filter-opt-in-brief-v0.md).
+
 ---
 
 ## TL;DR

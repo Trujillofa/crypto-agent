@@ -90,6 +90,10 @@ Before code or sweeps, create or update a short brief in `docs/specs/` or `docs/
 - target trade density
 - independence expectation vs live agents
 - validation command plan
+- **`strategy.global_trend_filter_enabled` explicit choice** (`true` or `false`) —
+  state why the lane wants the global EMA200 BUY filter on or off; do not inherit
+  silently from `base.yaml`. The backtest audit logs the resolved filter state, buffer,
+  and source at run start.
 
 Kill immediately if the brief is just "try parameters".
 
@@ -119,6 +123,10 @@ No `HAS_PULSE`, no autoresearch.
 ### Gate 2: Bounded Autoresearch
 
 Autoresearch is config-only unless the lane brief explicitly requires a new strategy class.
+
+Every autoresearch overlay under `config/autoresearch/overlays/` must set
+`strategy.global_trend_filter_enabled: true` or `false` explicitly (not inherited from
+`base.yaml`). The experiment autopilot audit dump records the resolved filter state at run start.
 
 Primary tools:
 

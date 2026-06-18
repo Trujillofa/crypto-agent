@@ -90,6 +90,8 @@ def test_resolved_cost_audit_logs_new_defaults() -> None:
     assert audit["round_trip_cost_pct"] == pytest.approx(0.12)
     assert audit["funding_cadence"] == "scaled_8h"
     assert audit["effective_futures_funding_rate_per_bar"] == pytest.approx(0.0001 / 8.0)
+    assert audit["apply_global_trend_filter"] is True
+    assert audit["global_trend_filter_source"] == "engine_default"
 
 
 @pytest.mark.asyncio
