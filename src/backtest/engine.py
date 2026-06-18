@@ -5,6 +5,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from src.backtest.cost_overrides import (
+    DEFAULT_FUTURES_FUNDING_RATE,
+    REALISTIC_FEE_RATE,
+    REALISTIC_SLIPPAGE_PCT,
+    FundingCadence,
+    effective_futures_funding_rate_per_bar,
+)
 from src.backtest.sentiment_replay import ReplaySentimentScorer
 from src.features.reader import IndicatorReader
 from src.strategy.aggregator import SignalAggregator
@@ -35,14 +42,14 @@ class BacktestConfig:
     start_date: str  # ISO 8601
     end_date: str  # ISO 8601
     initial_capital: float = 10000.0
-    fee_rate: float = 0.001  # 0.1%
+    fee_rate: float = REALISTIC_FEE_RATE  # 0.04% per side (Binance USDT-perp taker)
     stop_loss_pct: float = 0.0  # 0.0 = disabled
     take_profit_pct: float = 0.0  # 0.0 = disabled
     sl_atr_multiplier: float = 2.0
     tp_atr_multiplier: float = 4.5
     trailing_activate_atr: float = 1.5
     trailing_offset_atr: float = 1.0
-    slippage_pct: float = 0.001  # 0.1% slippage per trade
+    slippage_pct: float = REALISTIC_SLIPPAGE_PCT  # 0.02% per side
     risk_per_trade: float = 0.02  # 2% risk of equity per trade (used if use_atr_sizing=True)
     use_atr_sizing: bool = False
     atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
@@ -66,7 +73,8 @@ class BacktestConfig:
     replay_sentiment_max_age_seconds: float | None = None
     futures_mode: bool = False
     futures_leverage: int = 5
-    futures_funding_rate: float = 0.0001
+    futures_funding_rate: float = DEFAULT_FUTURES_FUNDING_RATE
+    funding_cadence: FundingCadence = "scaled_8h"
     fixed_notional_usdt: float = 0.0  # 0 = size from available capital
     quantity_step_size: float = 0.0  # 0 = ideal fractional quantity
     min_notional_usdt: float = 0.0  # 0 = disabled
@@ -165,9 +173,31 @@ class BacktestEngine:
 
         return first
 
+    def _resolved_cost_audit(self) -> dict[str, object]:
+        round_trip_cost_pct = 2.0 * (self._config.fee_rate + self._config.slippage_pct) * 100.0
+        effective_funding = (
+            effective_futures_funding_rate_per_bar(
+                self._config.futures_funding_rate,
+                self._config.timeframe,
+                cadence=self._config.funding_cadence,
+            )
+            if self._config.futures_mode
+            else 0.0
+        )
+        return {
+            "fee_rate": self._config.fee_rate,
+            "slippage_pct": self._config.slippage_pct,
+            "round_trip_cost_pct": round_trip_cost_pct,
+            "funding_cadence": self._config.funding_cadence,
+            "futures_funding_rate_base": self._config.futures_funding_rate,
+            "effective_futures_funding_rate_per_bar": effective_funding,
+            "futures_mode": self._config.futures_mode,
+        }
+
     async def run(self) -> BacktestResult:
         """Execute the backtest."""
         self._logger.info(f"Starting backtest for {self._config.symbol}...")
+        self._logger.info("Resolved backtest cost config: %s", self._resolved_cost_audit())
 
         # Instantiate strategies first to check if any require MTF
         strategies = []
@@ -630,7 +660,12 @@ class BacktestEngine:
         if not self._config.futures_mode or self._position_qty == 0:
             return
 
-        funding_cost = abs(self._position_qty) * current_price * self._config.futures_funding_rate
+        per_bar_rate = effective_futures_funding_rate_per_bar(
+            self._config.futures_funding_rate,
+            self._config.timeframe,
+            cadence=self._config.funding_cadence,
+        )
+        funding_cost = abs(self._position_qty) * current_price * per_bar_rate
         self._cash -= funding_cost
         self._position_funding_paid += funding_cost
         self._logger.debug(

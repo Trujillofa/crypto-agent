@@ -7,6 +7,9 @@ tooling?" After ~1,500 autoresearch runs and ~12 probe lanes all closed, while t
 **Scope:** read-only audit of `src/backtest/engine.py` (789 lines) + the cost settings actually
 applied by the gate/WFO path. **No code changed.**
 
+**Update (2026-06-18):** Engine defaults corrected in `feat/backtest-cost-funding-fix` — fee
+0.04%/side, slippage 0.02%/side, 8h-scaled futures funding (`scaled_8h` cadence).
+
 ---
 
 ## TL;DR

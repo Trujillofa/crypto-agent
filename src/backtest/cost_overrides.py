@@ -50,12 +50,30 @@ class CostProfile:
         return 2.0 * (self.fee_rate + self.slippage_pct) * 100.0
 
     def effective_futures_funding_rate(self, timeframe: str) -> float:
-        if self.funding_cadence == "per_bar":
-            return self.base_futures_funding_rate
-        tf_hours = TIMEFRAME_HOURS.get(timeframe)
-        if tf_hours is None:
-            raise ValueError(f"Unsupported timeframe for funding scale: {timeframe}")
-        return self.base_futures_funding_rate * (tf_hours / 8.0)
+        return effective_futures_funding_rate_per_bar(
+            self.base_futures_funding_rate,
+            timeframe,
+            cadence=self.funding_cadence,
+        )
+
+
+def effective_futures_funding_rate_per_bar(
+    base_rate: float,
+    timeframe: str,
+    *,
+    cadence: FundingCadence = "scaled_8h",
+) -> float:
+    """Per-bar futures funding charge for the given cadence.
+
+    ``scaled_8h`` scales the 8h settlement rate by ``timeframe_hours / 8`` so sub-8h
+    backtests do not overcharge funding every bar.
+    """
+    if cadence == "per_bar":
+        return base_rate
+    tf_hours = TIMEFRAME_HOURS.get(timeframe)
+    if tf_hours is None:
+        raise ValueError(f"Unsupported timeframe for funding scale: {timeframe}")
+    return base_rate * (tf_hours / 8.0)
 
     def to_audit_dict(self, *, timeframe: str, futures_mode: bool) -> dict[str, object]:
         payload = asdict(self)
