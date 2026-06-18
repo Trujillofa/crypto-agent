@@ -31,6 +31,7 @@ Event types are fixed before any return measurement. No ECB/PCE/jobless-claims.
 - FOMC: **14:00 ET** → **19:00 UTC** (EST) or **18:00 UTC** (EDT).
 - Precision: **minute-level** (sufficient for 1h OHLCV alignment and +6h windows).
 
-## File
+## Files
 
 - `us_macro_releases.csv` — columns: `event_type`, `release_date_et`, `release_ts_utc`, `source`
+- `us_macro_surprises.csv` — CPI/NFP actual, consensus, surprise, z (see `README_SURPRISES.md`)
