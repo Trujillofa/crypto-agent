@@ -1,0 +1,242 @@
+{
+  "lane_id": "sol-1h-dislocation-event",
+  "cell_id": "cell1",
+  "label": "legacy cost + filter ON",
+  "summary": {
+    "symbol": "SOLUSDT",
+    "timeframe": "1h",
+    "start": "2024-01-01",
+    "end": "2026-06-01",
+    "total_trades": 144,
+    "win_rate": 50.69444444444444,
+    "total_return_pct": -17.35588177638125,
+    "max_drawdown_pct": 45.794001920016356,
+    "sharpe_ratio": -0.06275145601635096,
+    "wfo_windows": 9,
+    "wfo_total_trades": 91,
+    "wfo_mean_sharpe": -0.7264273357505712,
+    "wfo_total_return_pct": -23.75893679024481,
+    "bootstrap_p_loss_pct": 64.0,
+    "mc_drawdown_p95_pct": 72.40496174597345,
+    "mc_drawdown_p50_pct": 44.261113266737574,
+    "profit_concentration_pct": 100.0,
+    "passes_gates": false,
+    "failure_reasons": [
+      "min_wfo_sharpe failed (-0.73 < 0.50)",
+      "max_drawdown_pct failed (45.79% > 10.00%)",
+      "max_bootstrap_p_loss_pct failed (64.00% > 25.00%)",
+      "min_oos_return_pct failed (-23.76% < 0.00%)",
+      "max_profit_concentration_pct failed (100.00% > 50.00%)"
+    ],
+    "blocked_buy_count": 0,
+    "basis_blocked_buy_count": 0,
+    "dislocation_blocked_buy_count": 0
+  },
+  "gates": {
+    "min_trades": 0,
+    "min_wfo_trades": 20,
+    "min_wfo_sharpe": 0.5,
+    "max_drawdown_pct": 10.0,
+    "max_bootstrap_p_loss_pct": 25.0,
+    "min_oos_return_pct": 0.0,
+    "max_profit_concentration_pct": 50.0,
+    "max_mc_drawdown_p95_pct": 0.0
+  },
+  "windows": [
+    {
+      "window_index": 1,
+      "train_start": "2024-01-01T00:00:00",
+      "train_end": "2024-04-01T00:00:00",
+      "test_start": "2024-04-01T00:00:00",
+      "test_end": "2024-06-01T00:00:00",
+      "total_trades": 5,
+      "win_rate": 40.0,
+      "total_return_pct": -9.004539683493949,
+      "max_drawdown_pct": 14.43903443263829,
+      "sharpe_ratio": -2.113328485272658
+    },
+    {
+      "window_index": 2,
+      "train_start": "2024-04-01T00:00:00",
+      "train_end": "2024-07-01T00:00:00",
+      "test_start": "2024-07-01T00:00:00",
+      "test_end": "2024-09-01T00:00:00",
+      "total_trades": 7,
+      "win_rate": 42.857142857142854,
+      "total_return_pct": -2.273593284771341,
+      "max_drawdown_pct": 12.386097576379473,
+      "sharpe_ratio": -0.3958594598981342
+    },
+    {
+      "window_index": 3,
+      "train_start": "2024-07-01T00:00:00",
+      "train_end": "2024-10-01T00:00:00",
+      "test_start": "2024-10-01T00:00:00",
+      "test_end": "2024-12-01T00:00:00",
+      "total_trades": 16,
+      "win_rate": 50.0,
+      "total_return_pct": -3.9581890014269807,
+      "max_drawdown_pct": 13.82173985332119,
+      "sharpe_ratio": -0.3703192255236676
+    },
+    {
+      "window_index": 4,
+      "train_start": "2024-10-01T00:00:00",
+      "train_end": "2025-01-01T00:00:00",
+      "test_start": "2025-01-01T00:00:00",
+      "test_end": "2025-03-01T00:00:00",
+      "total_trades": 10,
+      "win_rate": 50.0,
+      "total_return_pct": -2.946516838466887,
+      "max_drawdown_pct": 25.065798565228153,
+      "sharpe_ratio": -0.03281989444170621
+    },
+    {
+      "window_index": 5,
+      "train_start": "2025-01-01T00:00:00",
+      "train_end": "2025-04-01T00:00:00",
+      "test_start": "2025-04-01T00:00:00",
+      "test_end": "2025-06-01T00:00:00",
+      "total_trades": 16,
+      "win_rate": 56.25,
+      "total_return_pct": 17.65480076185733,
+      "max_drawdown_pct": 6.638783272398823,
+      "sharpe_ratio": 2.8033323303876614
+    },
+    {
+      "window_index": 6,
+      "train_start": "2025-04-01T00:00:00",
+      "train_end": "2025-07-01T00:00:00",
+      "test_start": "2025-07-01T00:00:00",
+      "test_end": "2025-09-01T00:00:00",
+      "total_trades": 20,
+      "win_rate": 50.0,
+      "total_return_pct": -4.71568514448747,
+      "max_drawdown_pct": 16.83002501262126,
+      "sharpe_ratio": -0.46978994174657207
+    },
+    {
+      "window_index": 7,
+      "train_start": "2025-07-01T00:00:00",
+      "train_end": "2025-10-01T00:00:00",
+      "test_start": "2025-10-01T00:00:00",
+      "test_end": "2025-12-01T00:00:00",
+      "total_trades": 5,
+      "win_rate": 60.0,
+      "total_return_pct": -7.444549367855234,
+      "max_drawdown_pct": 13.122076562906967,
+      "sharpe_ratio": -3.2118801738231246
+    },
+    {
+      "window_index": 8,
+      "train_start": "2025-10-01T00:00:00",
+      "train_end": "2026-01-01T00:00:00",
+      "test_start": "2026-01-01T00:00:00",
+      "test_end": "2026-03-01T00:00:00",
+      "total_trades": 12,
+      "win_rate": 50.0,
+      "total_return_pct": -11.355304564726175,
+      "max_drawdown_pct": 14.44732466860628,
+      "sharpe_ratio": -2.7471811714369387
+    },
+    {
+      "window_index": 9,
+      "train_start": "2026-01-01T00:00:00",
+      "train_end": "2026-04-01T00:00:00",
+      "test_start": "2026-04-01T00:00:00",
+      "test_end": "2026-06-01T00:00:00",
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "total_return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "sharpe_ratio": 0.0
+    }
+  ],
+  "resolved_backtest_config": {
+    "symbol": "SOLUSDT",
+    "timeframe": "1h",
+    "start_date": "2024-01-01",
+    "end_date": "2026-06-01",
+    "initial_capital": 10000.0,
+    "fee_rate": 0.001,
+    "stop_loss_pct": 0.01,
+    "take_profit_pct": 0.03,
+    "sl_atr_multiplier": 4.0,
+    "tp_atr_multiplier": 8.0,
+    "trailing_activate_atr": 10.0,
+    "trailing_offset_atr": 0.5,
+    "slippage_pct": 0.001,
+    "risk_per_trade": 0.02,
+    "use_atr_sizing": false,
+    "atr_multiplier": 1.0,
+    "apply_global_trend_filter": true,
+    "global_trend_filter_buffer_pct": 0.0,
+    "session_liquidity_router": {
+      "enabled": false,
+      "allowed_windows": [
+        "americas"
+      ],
+      "block_entries_outside_windows": true
+    },
+    "basis_premium_filter": {
+      "enabled": false,
+      "exchange": "binance_usdm",
+      "tail_metric": "basis_bps",
+      "positive_tail_pct": 0.05,
+      "block_positive_tail_longs": true,
+      "missing_data_policy": "allow",
+      "calibrated_positive_threshold": null
+    },
+    "cross_venue_dislocation": {
+      "enabled": false,
+      "metric": "basis_spread",
+      "mode": "require",
+      "min_spread_bps": 5.0,
+      "side": "both",
+      "missing_data_policy": "allow"
+    },
+    "allow_short": false,
+    "use_executor_exit_model": true,
+    "ignore_signal_sells": false,
+    "strategy_configs": [
+      {
+        "threshold_mode": "rolling",
+        "metric": "basis_spread",
+        "tail_pct": 5,
+        "rolling_days": 90,
+        "cooldown_bars": 24
+      }
+    ],
+    "aggregator_config": {
+      "buy_threshold": 0.55,
+      "buy_threshold_uptrend": 0.5,
+      "sell_threshold": -0.6,
+      "btc_regime_filter_enabled": true,
+      "btc_reference_symbol": "BTCUSDT",
+      "btc_dump_threshold_pct": -1.0,
+      "btc_dump_require_below_ema200": true,
+      "min_confidence": 0.1
+    },
+    "time_stop_minutes": 1440.0,
+    "replay_sentiment_path": null,
+    "replay_sentiment_max_age_seconds": null,
+    "futures_mode": false,
+    "futures_leverage": 5,
+    "futures_funding_rate": 0.0001,
+    "funding_cadence": "per_bar",
+    "fixed_notional_usdt": 0.0,
+    "quantity_step_size": 0.0,
+    "min_notional_usdt": 0.0
+  },
+  "cost_audit": {
+    "name": "legacy",
+    "fee_rate": 0.001,
+    "slippage_pct": 0.001,
+    "apply_global_trend_filter": true,
+    "funding_cadence": "per_bar",
+    "base_futures_funding_rate": 0.0001,
+    "round_trip_cost_pct": 0.4,
+    "funding_method": "charge base rate every bar (legacy engine behavior)",
+    "effective_futures_funding_rate": 0.0
+  }
+}
