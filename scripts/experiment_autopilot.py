@@ -18,7 +18,13 @@ import yaml
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.cost_overrides import CostProfile
+from src.backtest.cost_overrides import (
+    DEFAULT_FUTURES_FUNDING_RATE,
+    REALISTIC_FEE_RATE,
+    REALISTIC_SLIPPAGE_PCT,
+    CostProfile,
+    FundingCadence,
+)
 from src.backtest.engine import BacktestConfig, BacktestEngine, BacktestResult
 from src.backtest.experiment_autopilot import (  # noqa: E402
     ExperimentSummary,
@@ -157,8 +163,8 @@ def _build_backtest_config(
     if not isinstance(exit_rules, dict):
         exit_rules = {}
 
-    fee_rate = cost_profile.fee_rate if cost_profile is not None else 0.001
-    slippage_pct = cost_profile.slippage_pct if cost_profile is not None else 0.001
+    fee_rate = cost_profile.fee_rate if cost_profile is not None else REALISTIC_FEE_RATE
+    slippage_pct = cost_profile.slippage_pct if cost_profile is not None else REALISTIC_SLIPPAGE_PCT
     if cost_profile is not None:
         apply_global_trend_filter = cost_profile.apply_global_trend_filter
     else:
@@ -167,9 +173,11 @@ def _build_backtest_config(
     futures_mode = _futures_mode_from_raw(raw_config)
     futures_settings = getattr(settings, "futures", None)
     futures_leverage = int(getattr(futures_settings, "default_leverage", 5))
-    futures_funding_rate = 0.0001
+    futures_funding_rate = DEFAULT_FUTURES_FUNDING_RATE
+    funding_cadence: FundingCadence = "scaled_8h"
     if cost_profile is not None:
-        futures_funding_rate = cost_profile.effective_futures_funding_rate(timeframe)
+        futures_funding_rate = cost_profile.base_futures_funding_rate
+        funding_cadence = cost_profile.funding_cadence
 
     return BacktestConfig(
         symbol=symbol,
@@ -213,6 +221,7 @@ def _build_backtest_config(
         futures_mode=futures_mode,
         futures_leverage=futures_leverage,
         futures_funding_rate=futures_funding_rate,
+        funding_cadence=funding_cadence,
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,

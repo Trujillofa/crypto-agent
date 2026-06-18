@@ -115,6 +115,7 @@ def test_margin_is_reserved_on_open_and_returned_on_close():
 
 @pytest.mark.asyncio
 async def test_funding_is_deducted_per_open_candle():
+    """Legacy per-bar funding cadence remains opt-in via funding_cadence='per_bar'."""
     data = [
         {"time": "2023-01-01T00:00:00", "close_price": 100.0, "atr_14": 10.0},
         {"time": "2023-01-01T00:01:00", "close_price": 100.0, "atr_14": 10.0},
@@ -134,6 +135,7 @@ async def test_funding_is_deducted_per_open_candle():
         futures_mode=True,
         futures_leverage=5,
         futures_funding_rate=0.01,
+        funding_cadence="per_bar",
         apply_global_trend_filter=False,
         strategy_classes=[BuyOnceStrategy],
         aggregator_config={"min_agreement": 1, "buy_threshold": 0.5},
