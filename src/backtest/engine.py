@@ -55,6 +55,8 @@ class BacktestConfig:
     atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
     apply_global_trend_filter: bool = True
     global_trend_filter_buffer_pct: float = 0.0
+    global_trend_filter_source: str = "engine_default"
+    config_global_trend_filter_enabled: bool | None = None
     session_liquidity_router: SessionLiquidityRouterConfig = field(
         default_factory=SessionLiquidityRouterConfig
     )
@@ -192,12 +194,17 @@ class BacktestEngine:
             "futures_funding_rate_base": self._config.futures_funding_rate,
             "effective_futures_funding_rate_per_bar": effective_funding,
             "futures_mode": self._config.futures_mode,
+            "apply_global_trend_filter": self._config.apply_global_trend_filter,
+            "global_trend_filter_active": self._config.apply_global_trend_filter,
+            "global_trend_filter_buffer_pct": self._config.global_trend_filter_buffer_pct,
+            "global_trend_filter_source": self._config.global_trend_filter_source,
+            "config_global_trend_filter_enabled": self._config.config_global_trend_filter_enabled,
         }
 
     async def run(self) -> BacktestResult:
         """Execute the backtest."""
         self._logger.info(f"Starting backtest for {self._config.symbol}...")
-        self._logger.info("Resolved backtest cost config: %s", self._resolved_cost_audit())
+        self._logger.info("Resolved backtest config audit: %s", self._resolved_cost_audit())
 
         # Instantiate strategies first to check if any require MTF
         strategies = []

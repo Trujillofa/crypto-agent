@@ -115,6 +115,16 @@ async def main():
         args.min_notional if args.min_notional is not None else (20.0 if futures_mode else 0.0)
     )
 
+    strategy_section = raw_config.get("strategy", {})
+    if not isinstance(strategy_section, dict):
+        strategy_section = {}
+    config_trend_filter = (
+        bool(strategy_section["global_trend_filter_enabled"])
+        if "global_trend_filter_enabled" in strategy_section
+        else None
+    )
+    trend_filter_source = "cli_override" if args.disable_trend_filter else "engine_default"
+
     config = BacktestConfig(
         symbol=args.symbol,
         timeframe=args.timeframe,
@@ -133,8 +143,10 @@ async def main():
         risk_per_trade=settings.trading_execution.risk_per_trade_pct,
         apply_global_trend_filter=not args.disable_trend_filter,
         global_trend_filter_buffer_pct=float(
-            raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.05)
+            strategy_section.get("global_trend_filter_buffer_pct", 0.05)
         ),
+        global_trend_filter_source=trend_filter_source,
+        config_global_trend_filter_enabled=config_trend_filter,
         session_liquidity_router=parse_session_liquidity_router(
             raw_config.get("strategy", {}).get("session_liquidity_router")
         ),
@@ -182,7 +194,13 @@ async def main():
         f"trail_activate={config.trailing_activate_atr:.2f}, "
         f"trail_offset={config.trailing_offset_atr:.2f}"
     )
-    print(f"Trend Filter: {not args.disable_trend_filter}")
+    print(
+        "Trend Filter: "
+        f"active={config.apply_global_trend_filter}, "
+        f"buffer={config.global_trend_filter_buffer_pct:.4f}, "
+        f"source={config.global_trend_filter_source}, "
+        f"config_explicit={config.config_global_trend_filter_enabled}"
+    )
     print(
         "Session Router: "
         f"enabled={config.session_liquidity_router.enabled}, "
