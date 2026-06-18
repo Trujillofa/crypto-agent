@@ -1,0 +1,46 @@
+agent_id: autoresearch
+trading:
+  pairs:
+  - SOLUSDT
+  timeframe: 4h
+ingest:
+  use_websocket: false
+database:
+  host: 127.0.0.1
+  port: 15432
+telegram:
+  enabled: false
+trading_execution:
+  enabled: false
+  sl_atr_multiplier: 2.0
+  tp_atr_multiplier: 3.0
+  trailing_activate_atr: 1.5
+  trailing_offset_atr: 0.8
+futures:
+  enabled: false
+strategy:
+  strategies:
+  - name: rsi_reversal
+    config:
+      rsi_period: 7
+      oversold_threshold: 35
+      overbought_threshold: 65
+  aggregator:
+    buy_threshold: 0.55
+    buy_threshold_uptrend: 0.5
+    sell_threshold: -0.55
+    btc_regime_filter_enabled: true
+    btc_reference_symbol: BTCUSDT
+    btc_dump_threshold_pct: -1.0
+    btc_dump_require_below_ema200: true
+    min_confidence: 0.1
+  per_symbol_aggregator_config:
+    SOLUSDT:
+      min_agreement: 1
+      buy_threshold: 0.55
+      sell_threshold: -0.55
+      sell_min_agreement: 1
+    BNBUSDT:
+      min_agreement: 1
+      buy_threshold: 1.1
+      sell_threshold: -0.5

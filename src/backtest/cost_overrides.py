@@ -25,7 +25,7 @@ TIMEFRAME_HOURS: dict[str, float] = {
 }
 
 FundingCadence = Literal["per_bar", "scaled_8h"]
-CostPassName = Literal["legacy", "realistic"]
+CostPassName = Literal["legacy", "realistic", "corrected"]
 
 LEGACY_FEE_RATE = 0.001
 LEGACY_SLIPPAGE_PCT = 0.001
@@ -102,6 +102,17 @@ def legacy_cost_profile(*, apply_global_trend_filter: bool = True) -> CostProfil
 def realistic_cost_profile(*, apply_global_trend_filter: bool = False) -> CostProfile:
     return CostProfile(
         name="realistic",
+        fee_rate=REALISTIC_FEE_RATE,
+        slippage_pct=REALISTIC_SLIPPAGE_PCT,
+        apply_global_trend_filter=apply_global_trend_filter,
+        funding_cadence="scaled_8h",
+    )
+
+
+def corrected_main_cost_profile(*, apply_global_trend_filter: bool) -> CostProfile:
+    """Main-branch defaults post #94 — only trend filter is swept."""
+    return CostProfile(
+        name="corrected",
         fee_rate=REALISTIC_FEE_RATE,
         slippage_pct=REALISTIC_SLIPPAGE_PCT,
         apply_global_trend_filter=apply_global_trend_filter,
