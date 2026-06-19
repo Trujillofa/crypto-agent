@@ -1,0 +1,56 @@
+agent_id: sentiment-macro-bot
+reconciliation:
+  on_divergence: auto_fix
+  periodic_interval_seconds: 300
+display_name: sentiment-macro-1h-multiasset
+mode: live
+trading:
+  pairs:
+  - SOLUSDT
+  timeframe: 1h
+telegram:
+  daily_summary_enabled: true
+ai:
+  enabled: true
+  polling_interval: 60.0
+  fallback_model: deepseek-v4-pro
+trading_execution:
+  test_mode: false
+  use_atr_sizing: false
+  order_size_usdt: 22.0
+  sl_atr_multiplier: 2.0
+  tp_atr_multiplier: 3.5
+  exit_rules:
+    time_stop_minutes: 1440
+    backtest_use_executor_exit_model: true
+futures:
+  enabled: true
+  test_mode: false
+  default_leverage: 3
+  max_leverage: 10
+  margin_mode: isolated
+  position_mode: one-way
+  liquidation_buffer_pct: 5.0
+  max_concurrent_longs: 1
+  sl_cooldown_minutes: 240
+  symbols:
+  - SOLUSDT
+strategy:
+  default_trading_mode: futures
+  evaluation_interval_seconds: 3600
+  strategies:
+  - name: sentiment_mean_reversion
+    config:
+      rsi_oversold: 35.0
+      rsi_overbought: 65.0
+      bb_distance_threshold: 0.005
+      sentiment_gate_threshold: 35.0
+      sentiment_panic_threshold: 20.0
+      sentiment_boost_threshold: 65.0
+      volatility_regime_filter: false
+      atr_pct_threshold: 0.005
+  global_trend_filter_buffer_pct: 0.0
+  aggregator:
+    buy_threshold: 0.6
+    sell_threshold: -0.6
+    btc_regime_filter_enabled: false
