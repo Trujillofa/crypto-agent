@@ -34,8 +34,10 @@ viable forward-validation vehicle in the technical-crypto program.**
 
 3. **The only agent that has ever traded is idle — root cause found** (live diagnosis,
    2026-06-18/19). `sentiment-macro` (94 closed trades, last 2026-06-01) calls the xAI LLM
-   hourly (200 OK, source `xai_live` → feed **not** degraded) but emits **zero votes**. The
-   blocker is a **miscalibrated volatility filter**, not a dead feed or genuine calm: the
+   hourly but emits **zero votes**. The recorded sentiment log (5144 obs, 2026-03-26 → 06-19)
+   is **99.9% `xai_live`**, scores min 38 / median 72 / max 95, **never below the 35 FUD gate**
+   — so the feed is healthy and the sentiment gate has never bound. The blocker is a
+   **miscalibrated volatility filter**, not a dead feed or genuine calm: the
    BUY entry requires `atr_pct ≤ 0.005`, a threshold the config comment notes was set from
    BTC/ETH norms (~0.004–0.007), but it runs on **SOLUSDT**, whose `atr_pct` median is
    0.00844 (p10 0.00518 — above the threshold). Only 8.4% of SOL bars clear it. The
