@@ -1,0 +1,225 @@
+{
+  "buy_threshold": 0.5,
+  "summary": {
+    "symbol": "SOLUSDT",
+    "timeframe": "1h",
+    "start": "2024-01-09",
+    "end": "2026-02-23",
+    "total_trades": 464,
+    "win_rate": 56.46551724137932,
+    "total_return_pct": -99.72689810426918,
+    "max_drawdown_pct": 99.74167922677329,
+    "sharpe_ratio": -1.8927126288478515,
+    "wfo_windows": 3,
+    "wfo_total_trades": 158,
+    "wfo_mean_sharpe": -0.8977460242336993,
+    "wfo_total_return_pct": -75.36785867148623,
+    "bootstrap_p_loss_pct": 100.0,
+    "mc_drawdown_p95_pct": 99.9851601422858,
+    "mc_drawdown_p50_pct": 99.81797617003407,
+    "profit_concentration_pct": 100.0,
+    "passes_gates": false,
+    "failure_reasons": [
+      "min_wfo_sharpe failed (-0.90 < 0.50)",
+      "max_drawdown_pct failed (99.74% > 10.00%)",
+      "max_bootstrap_p_loss_pct failed (100.00% > 25.00%)",
+      "min_oos_return_pct failed (-75.37% < 0.00%)",
+      "max_profit_concentration_pct failed (100.00% > 50.00%)"
+    ],
+    "blocked_buy_count": 0,
+    "basis_blocked_buy_count": 0,
+    "dislocation_blocked_buy_count": 0
+  },
+  "gates": {
+    "min_trades": 0,
+    "min_wfo_trades": 20,
+    "min_wfo_sharpe": 0.5,
+    "max_drawdown_pct": 10.0,
+    "max_bootstrap_p_loss_pct": 25.0,
+    "min_oos_return_pct": 0.0,
+    "max_profit_concentration_pct": 50.0,
+    "max_mc_drawdown_p95_pct": 0.0
+  },
+  "windows": [
+    {
+      "window_index": 1,
+      "train_start": "2024-01-09T00:00:00",
+      "train_end": "2024-07-09T00:00:00",
+      "test_start": "2024-07-09T00:00:00",
+      "test_end": "2024-10-09T00:00:00",
+      "total_trades": 56,
+      "win_rate": 67.85714285714286,
+      "total_return_pct": 1.8785133099579254,
+      "max_drawdown_pct": 42.83619817383422,
+      "sharpe_ratio": 0.5070132160711389
+    },
+    {
+      "window_index": 2,
+      "train_start": "2024-07-09T00:00:00",
+      "train_end": "2025-01-09T00:00:00",
+      "test_start": "2025-01-09T00:00:00",
+      "test_end": "2025-04-09T00:00:00",
+      "total_trades": 34,
+      "win_rate": 50.0,
+      "total_return_pct": -56.03330675474027,
+      "max_drawdown_pct": 63.20872647294477,
+      "sharpe_ratio": -1.3948823828774772
+    },
+    {
+      "window_index": 3,
+      "train_start": "2025-01-09T00:00:00",
+      "train_end": "2025-07-09T00:00:00",
+      "test_start": "2025-07-09T00:00:00",
+      "test_end": "2025-10-09T00:00:00",
+      "total_trades": 68,
+      "win_rate": 60.29411764705882,
+      "total_return_pct": -45.00847474080374,
+      "max_drawdown_pct": 54.96183131886999,
+      "sharpe_ratio": -1.8053689058947597
+    }
+  ],
+  "resolved_backtest_config": {
+    "symbol": "SOLUSDT",
+    "timeframe": "1h",
+    "start_date": "2024-01-09",
+    "end_date": "2026-02-23",
+    "initial_capital": 10000.0,
+    "fee_rate": 0.0004,
+    "stop_loss_pct": 0.01,
+    "take_profit_pct": 0.03,
+    "sl_atr_multiplier": 2.38,
+    "tp_atr_multiplier": 4.23,
+    "trailing_activate_atr": 1.82,
+    "trailing_offset_atr": 1.07,
+    "slippage_pct": 0.0002,
+    "risk_per_trade": 0.02,
+    "use_atr_sizing": false,
+    "atr_multiplier": 1.0,
+    "apply_global_trend_filter": true,
+    "global_trend_filter_buffer_pct": 0.0,
+    "global_trend_filter_source": "cost_profile_override",
+    "config_global_trend_filter_enabled": null,
+    "session_liquidity_router": {
+      "enabled": false,
+      "allowed_windows": [
+        "americas"
+      ],
+      "block_entries_outside_windows": true
+    },
+    "basis_premium_filter": {
+      "enabled": false,
+      "exchange": "binance_usdm",
+      "tail_metric": "basis_bps",
+      "positive_tail_pct": 0.05,
+      "block_positive_tail_longs": true,
+      "missing_data_policy": "allow",
+      "calibrated_positive_threshold": null
+    },
+    "cross_venue_dislocation": {
+      "enabled": false,
+      "metric": "basis_spread",
+      "mode": "require",
+      "min_spread_bps": 5.0,
+      "side": "both",
+      "missing_data_policy": "allow"
+    },
+    "allow_short": false,
+    "use_executor_exit_model": true,
+    "ignore_signal_sells": false,
+    "strategy_configs": [
+      {
+        "rsi_period": 7,
+        "oversold_threshold": 35,
+        "overbought_threshold": 65
+      },
+      {
+        "min_histogram_threshold": 0.0,
+        "use_atr_filter": true,
+        "atr_min_pct": 0.0078
+      },
+      {
+        "band_distance_threshold": 0.0049,
+        "rsi_oversold": 35,
+        "rsi_overbought": 70
+      },
+      {
+        "cci_buy_threshold": 100,
+        "cci_sell_threshold": -100,
+        "atr_min_pct": 0.0114
+      },
+      {
+        "vwap_atr_multiplier": 2.02,
+        "rsi_oversold": 40,
+        "rsi_overbought": 60
+      },
+      {
+        "rsi_reclaim_level": 50,
+        "min_trend_strength_pct": 0.0089,
+        "max_pullback_distance_pct": 0.0291,
+        "vwap_pullback_distance_pct": 0.0151,
+        "min_atr_pct": 0.0064,
+        "min_macd_hist": -0.0084,
+        "strong_trend_strength_pct": 0.0153,
+        "continuation_rsi_level": 52,
+        "continuation_max_vwap_distance_pct": 0.0434,
+        "continuation_max_ema50_extension_pct": 0.0361,
+        "continuation_min_macd_hist": -0.0054
+      }
+    ],
+    "aggregator_config": {
+      "buy_threshold": 0.5,
+      "buy_threshold_uptrend": 0.5,
+      "sell_threshold": -0.79,
+      "btc_regime_filter_enabled": true,
+      "btc_reference_symbol": "BTCUSDT",
+      "btc_dump_threshold_pct": -1.0,
+      "btc_dump_require_below_ema200": true,
+      "min_confidence": 0.04
+    },
+    "time_stop_minutes": 0.0,
+    "replay_sentiment_path": null,
+    "replay_sentiment_max_age_seconds": null,
+    "futures_mode": true,
+    "futures_leverage": 3,
+    "futures_funding_rate": 0.0001,
+    "funding_cadence": "scaled_8h",
+    "fixed_notional_usdt": 0.0,
+    "quantity_step_size": 0.0,
+    "min_notional_usdt": 0.0
+  },
+  "cost_audit": {
+    "name": "corrected",
+    "fee_rate": 0.0004,
+    "slippage_pct": 0.0002,
+    "apply_global_trend_filter": true,
+    "funding_cadence": "scaled_8h",
+    "base_futures_funding_rate": 0.0001,
+    "round_trip_cost_pct": 0.12000000000000001,
+    "funding_method": "scale per-bar rate by tf_hours/8 (equivalent to 8h settlement cadence)",
+    "effective_futures_funding_rate": 1.25e-05
+  },
+  "global_trend_filter_audit": {
+    "active": true,
+    "buffer_pct": 0.0,
+    "source": "cost_profile_override",
+    "config_explicit": null
+  },
+  "buy_threshold_binding_audit": {
+    "aggregator.buy_threshold": 0.5,
+    "aggregator.buy_threshold_uptrend": 0.5,
+    "per_symbol_aggregator_config.SOLUSDT.buy_threshold": 0.5,
+    "per_symbol_aggregator_config.SOLUSDT.buy_threshold_uptrend": 0.5
+  },
+  "effective_start": "2024-01-09",
+  "effective_end": "2026-02-23",
+  "coverage": {
+    "requested_start": "2024-01-01",
+    "requested_end": "2026-06-01",
+    "data_start": "2024-01-09T07:00:00+00:00",
+    "data_end": "2026-02-23T19:00:00+00:00",
+    "effective_start": "2024-01-09",
+    "effective_end": "2026-02-23",
+    "clamped_start": true,
+    "clamped_end": true
+  }
+}

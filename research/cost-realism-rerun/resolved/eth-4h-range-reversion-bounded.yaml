@@ -1,0 +1,55 @@
+agent_id: autoresearch
+trading:
+  pairs:
+  - ETHUSDT
+  timeframe: 4h
+ingest:
+  use_websocket: false
+database:
+  host: 127.0.0.1
+  port: 15432
+telegram:
+  enabled: false
+trading_execution:
+  enabled: false
+  sl_atr_multiplier: 2.1
+  tp_atr_multiplier: 3.0
+  trailing_activate_atr: 1.6
+  trailing_offset_atr: 0.8
+  exit_rules:
+    backtest_use_executor_exit_model: true
+    time_stop_minutes: 4320
+futures:
+  enabled: false
+strategy:
+  strategies:
+  - name: bollinger_bounce
+    config:
+      band_distance_threshold: 0.0045
+      rsi_oversold: 38
+      rsi_overbought: 62
+  aggregator:
+    buy_threshold: 0.6
+    buy_threshold_uptrend: 0.55
+    sell_threshold: -0.58
+    btc_regime_filter_enabled: true
+    btc_reference_symbol: BTCUSDT
+    btc_dump_threshold_pct: -1.0
+    btc_dump_require_below_ema200: true
+    min_confidence: 0.1
+  per_symbol_aggregator_config:
+    SOLUSDT:
+      min_agreement: 1
+      buy_threshold: 0.8
+      sell_threshold: -0.6
+      sell_min_agreement: 2
+    BNBUSDT:
+      min_agreement: 1
+      buy_threshold: 1.1
+      sell_threshold: -0.5
+    ETHUSDT:
+      min_agreement: 1
+      buy_threshold: 0.6
+      sell_threshold: -0.58
+      sell_min_agreement: 1
+  global_trend_filter_buffer_pct: 0.0025
