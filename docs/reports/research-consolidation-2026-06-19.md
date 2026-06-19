@@ -32,10 +32,17 @@ viable forward-validation vehicle in the technical-crypto program.**
    gate — see table below. Tradeable frequency and a surviving edge are mutually exclusive
    on this lane.
 
-3. **The only agent that has ever traded is idle** (live diagnosis, 2026-06-18).
-   `sentiment-macro` (94 closed trades, last 2026-06-01) calls the xAI LLM hourly (200 OK)
-   but emits **zero votes** — its sentiment trigger has not fired in weeks. Cause unresolved
-   (genuine calm vs degraded feed). System-wide, nothing has traded since 2026-06-01.
+3. **The only agent that has ever traded is idle — root cause found** (live diagnosis,
+   2026-06-18/19). `sentiment-macro` (94 closed trades, last 2026-06-01) calls the xAI LLM
+   hourly (200 OK, source `xai_live` → feed **not** degraded) but emits **zero votes**. The
+   blocker is a **miscalibrated volatility filter**, not a dead feed or genuine calm: the
+   BUY entry requires `atr_pct ≤ 0.005`, a threshold the config comment notes was set from
+   BTC/ETH norms (~0.004–0.007), but it runs on **SOLUSDT**, whose `atr_pct` median is
+   0.00844 (p10 0.00518 — above the threshold). Only 8.4% of SOL bars clear it. The
+   RSI<35 + lower-band dip setup fires ~10% of bars (239/120d, 81/30d), but the low-vol gate
+   culls it to **19/120d and 6/30d** — and the cull is structural (oversold dips spike ATR,
+   so the strategy's own setups trip its own filter). System-wide, nothing has traded since
+   2026-06-01.
 
 **The binding constraint of the whole program is forward-validation trade frequency, and it
 has no solution in the explored space (majors, 1h/4h, OHLCV-derived structure).**
@@ -73,12 +80,18 @@ trades/mo at 0.50), so the limiter is the frequency/edge tradeoff, not an upstre
 
 In priority order:
 
-1. **Diagnose the sentiment-macro feed first (cheap, could restore a vehicle).** It is the
-   only agent that has ever traded. Determine whether the zero-votes state is a degraded
-   sentiment feed (fixable) or genuine market calm (no action). This is maintenance on a
-   live asset, not new research, and is the only path that could restore a forward-validation
-   vehicle without opening a net-new campaign. If the feed is healthy and the market is
-   simply quiet, accept it and wait.
+1. **Recalibrate + re-validate the sentiment-macro volatility filter (diagnosis done,
+   fixable).** The feed is healthy; the blocker is the `atr_pct ≤ 0.005` gate borrowed from
+   BTC/ETH and applied to SOL (see finding 3). This is the only path to restore a live
+   forward-validation vehicle without a net-new campaign. The principled fix is a
+   **percentile-based** vol gate (the `atr_percentile` column already exists) so it
+   self-calibrates per asset, rather than a hand-set absolute. **Do not blind-flip the
+   config:** the filter exists to avoid buying falling knives, so relaxing it must be a
+   backtest — sweep `atr_pct_threshold` (or percentile) on SOL at corrected costs and find
+   whether a setting both trades *and* keeps an edge (directly analogous to the overlay
+   threshold sweep). Caveat: the 94 historical trades were under the cost bug, so a restored
+   config needs fresh validation regardless. If no setting trades *and* holds an edge, the
+   vehicle is dead and we fall to rec. #2.
 
 2. **Accept the terminal state of the technical-crypto probe program.** No closed lane
    revives at correct costs; the overlay cannot validate forward; the structural-probe
@@ -103,7 +116,7 @@ costs empirically (`derive_sm_pair_costs.py`). The cost-realism saga here is the
 |------|-------|
 | Structural-probe campaigns (OHLCV structure on majors) | **Stopped** — exhausted, no edge at correct costs |
 | SOL overlay Phase 0 forward validation | **Not viable** — untradeable gate, no edge beneath it; keep service as monitor only |
-| Sentiment-macro | **Live but idle** — diagnose feed (rec. #1) |
+| Sentiment-macro | **Live but idle — root cause found** — `atr_pct ≤ 0.005` vol gate miscalibrated for SOL; recalibrate + re-validate (rec. #1) |
 | Corrected cost/funding defaults (#94) | **Kept** — correctness fix, applies to all future backtests |
 | RBI loop tooling + hard rules (cheap-probe HAS_PULSE, `--execute` human gate) | **Kept** — reusable for any future data-first primitive |
 | Backtest harnesses (closed-family / overlay sweep) | **Kept** — reusable evaluation tooling |
