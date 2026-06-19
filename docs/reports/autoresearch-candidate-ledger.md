@@ -381,9 +381,10 @@ Three investigations converge:
 |---------|----------|--------|
 | Tooling overcharged costs but hid no edge | Cost-corrected re-screen (#94–#98) | No closed lane revives at correct costs |
 | SOL overlay cannot forward-validate | Threshold sweep (#99), [`overlay-threshold-sweep-2026-06-18.md`](./overlay-threshold-sweep-2026-06-18.md) | Frequency and edge mutually exclusive; "good Sharpe" rows are 1–2 trade concentration |
-| Sentiment-macro idle | Live log diagnosis 2026-06-18 | LLM healthy (200 OK) but zero votes since 2026-06-01 |
+| Sentiment-macro not viable | Vol-filter sweep (#101), [`sentiment-vol-filter-sweep-2026-06-19.md`](./sentiment-vol-filter-sweep-2026-06-19.md) | Feed healthy (5144 obs, median 72, never <35); blocker was a SOL-miscalibrated `atr_pct≤0.005` gate, but recalibration is monotonically loss-making (−2.80% → −46.24% as the gate loosens) — the filter protected the strategy, no edge beneath it |
 
 **Binding constraint** (forward-validation trade frequency on majors / OHLCV structure) has no
-solution in the explored space. **Next step is not another probe** — it is (1) diagnose the
-sentiment-macro feed, then (2) accept the terminal state, and only deliberately (3) open a
-new data-first primitive (news/event calendar) gated by a cheap-probe HAS_PULSE.
+solution in the explored space. **Both candidate vehicles (overlay #99, sentiment-macro #101)
+are now swept to a dead verdict at corrected costs.** Next step is not another probe — it is
+(1) accept the terminal state, keep live services as idle monitors, and only deliberately
+(2) open a new data-first primitive (news/event calendar) gated by a cheap-probe HAS_PULSE.

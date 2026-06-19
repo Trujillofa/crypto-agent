@@ -8,6 +8,7 @@ the ledger and the 2026-06-06 reset doc point here.
 [research-reset-2026-06-06.md](./research-reset-2026-06-06.md),
 [closed-family-cost-corrected-rescreen-2026-06-18.md](./closed-family-cost-corrected-rescreen-2026-06-18.md),
 [overlay-threshold-sweep-2026-06-18.md](./overlay-threshold-sweep-2026-06-18.md),
+[sentiment-vol-filter-sweep-2026-06-19.md](./sentiment-vol-filter-sweep-2026-06-19.md),
 [autoresearch-candidate-ledger.md](./autoresearch-candidate-ledger.md).
 
 ---
@@ -34,18 +35,23 @@ viable forward-validation vehicle in the technical-crypto program.**
 
 3. **The only agent that has ever traded is idle — root cause found** (live diagnosis,
    2026-06-18/19). `sentiment-macro` (94 closed trades, last 2026-06-01) calls the xAI LLM
-   hourly (200 OK, source `xai_live` → feed **not** degraded) but emits **zero votes**. The
-   blocker is a **miscalibrated volatility filter**, not a dead feed or genuine calm: the
+   hourly but emits **zero votes**. The recorded sentiment log (5144 obs, 2026-03-26 → 06-19)
+   is **99.9% `xai_live`**, scores min 38 / median 72 / max 95, **never below the 35 FUD gate**
+   — so the feed is healthy and the sentiment gate has never bound. The blocker is a
+   **miscalibrated volatility filter**, not a dead feed or genuine calm: the
    BUY entry requires `atr_pct ≤ 0.005`, a threshold the config comment notes was set from
    BTC/ETH norms (~0.004–0.007), but it runs on **SOLUSDT**, whose `atr_pct` median is
    0.00844 (p10 0.00518 — above the threshold). Only 8.4% of SOL bars clear it. The
    RSI<35 + lower-band dip setup fires ~10% of bars (239/120d, 81/30d), but the low-vol gate
    culls it to **19/120d and 6/30d** — and the cull is structural (oversold dips spike ATR,
    so the strategy's own setups trip its own filter). System-wide, nothing has traded since
-   2026-06-01.
+   2026-06-01. **Recalibration was then tested (PR #101) and the strategy has no edge at any
+   tradeable frequency — the vol filter was protecting it, not hiding it (see second sweep
+   below).**
 
 **The binding constraint of the whole program is forward-validation trade frequency, and it
-has no solution in the explored space (majors, 1h/4h, OHLCV-derived structure).**
+has no solution in the explored space (majors, 1h/4h, OHLCV-derived structure). Both
+candidate vehicles have now been swept empirically to a dead verdict at corrected costs.**
 
 ---
 
@@ -76,27 +82,52 @@ trades/mo at 0.50), so the limiter is the frequency/edge tradeoff, not an upstre
 
 ---
 
+## Sentiment-macro vol-filter sweep — the second decisive result
+
+SOLUSDT 1h, corrected costs (#94), sentiment held at a constant bullish 72 (synthetic
+replay, 100% hit-rate), standard gate. Effective span 2024-01-09 → 2026-02-23. Swept the
+`atr_pct_threshold` (the miscalibrated gate from finding 3) plus a filter-off arm (PR #101).
+
+| arm | trades/mo | wfo_return% | Sharpe | passes |
+|---|---:|---:|---:|---:|
+| 0.005 (current) | 0.11 | -2.80 | -0.60 | FAIL |
+| 0.0065 | 0.44 | -5.25 | -0.64 | FAIL |
+| 0.0080 | 1.44 | -11.80 | -0.80 | FAIL |
+| 0.0085 (≈SOL median) | 1.67 | -16.41 | -1.43 | FAIL |
+| 0.0100 | 2.22 | -27.25 | -1.83 | FAIL |
+| 0.0125 (≈SOL p90) | 3.44 | -36.91 | -1.94 | FAIL |
+| filter_off | 5.11 | -46.24 | -0.97 | FAIL |
+
+**Reading:** perfectly monotonic — every step that loosens the vol gate buys more trades and
+*more* loss (−2.80% → −46.24%). The `atr_pct ≤ 0.005` gate was not blocking a good strategy;
+it was the only thing keeping the strategy near-flat, by trading almost never. This is the
+same root cause as the rest of the program: the strategy is a sentiment-gated mean-reversion
+*dip-buyer*, and on these trending assets buying more dips loses more. Not an upstream
+starvation case (filter_off reaches 5.11 trades/mo). **Verdict: no setting trades AND keeps
+an edge → sentiment-macro is not a viable forward vehicle either.** The recalibration hope
+(rec. #1) is resolved negative; the "94 historical trades" were a cost-bug artifact, exactly
+like the overlay's superseded DEPLOY_LIVE row.
+
+---
+
 ## Recommendation
 
 In priority order:
 
-1. **Recalibrate + re-validate the sentiment-macro volatility filter (diagnosis done,
-   fixable).** The feed is healthy; the blocker is the `atr_pct ≤ 0.005` gate borrowed from
-   BTC/ETH and applied to SOL (see finding 3). This is the only path to restore a live
-   forward-validation vehicle without a net-new campaign. The principled fix is a
-   **percentile-based** vol gate (the `atr_percentile` column already exists) so it
-   self-calibrates per asset, rather than a hand-set absolute. **Do not blind-flip the
-   config:** the filter exists to avoid buying falling knives, so relaxing it must be a
-   backtest — sweep `atr_pct_threshold` (or percentile) on SOL at corrected costs and find
-   whether a setting both trades *and* keeps an edge (directly analogous to the overlay
-   threshold sweep). Caveat: the 94 historical trades were under the cost bug, so a restored
-   config needs fresh validation regardless. If no setting trades *and* holds an edge, the
-   vehicle is dead and we fall to rec. #2.
+1. ~~**Recalibrate + re-validate the sentiment-macro volatility filter.**~~ **RESOLVED
+   NEGATIVE (PR #101).** The recalibration sweep is done: there is no `atr_pct_threshold`
+   (nor filter-off) at which the strategy reaches ≥2 trades/month *and* keeps an edge at
+   corrected costs — loosening the gate is monotonically loss-making (see the second sweep
+   above). Sentiment-macro is **not** a viable forward vehicle. Do not pursue a percentile
+   gate or any further tuning of this strategy. Leave the live service running idle as a
+   monitor; do not expect trades.
 
-2. **Accept the terminal state of the technical-crypto probe program.** No closed lane
-   revives at correct costs; the overlay cannot validate forward; the structural-probe
-   surface is exhausted. Stop spending cycles re-screening or reshaping OHLCV-structure lanes
-   on majors. Keep Phase 0 weekly as a *monitor* (not an expectation) on whatever is live.
+2. **Accept the terminal state of the technical-crypto probe program — now operative.** No
+   closed lane revives at correct costs; *neither* candidate vehicle (overlay #99,
+   sentiment-macro #101) survives at any tradeable frequency; the structural-probe surface is
+   exhausted. Stop spending cycles re-screening, reshaping, or recalibrating OHLCV-structure
+   lanes on majors. Keep Phase 0 weekly as a *monitor* (not an expectation) on whatever is
+   live.
 
 3. **Net-new research requires a new data primitive** (out of consolidation scope). The
    reset doc's #1-ranked direction — a news/event-calendar filter requiring *new
@@ -116,7 +147,7 @@ costs empirically (`derive_sm_pair_costs.py`). The cost-realism saga here is the
 |------|-------|
 | Structural-probe campaigns (OHLCV structure on majors) | **Stopped** — exhausted, no edge at correct costs |
 | SOL overlay Phase 0 forward validation | **Not viable** — untradeable gate, no edge beneath it; keep service as monitor only |
-| Sentiment-macro | **Live but idle — root cause found** — `atr_pct ≤ 0.005` vol gate miscalibrated for SOL; recalibrate + re-validate (rec. #1) |
+| Sentiment-macro | **Not viable** — vol-filter recalibration swept (#101); no setting trades AND holds an edge; keep service as idle monitor |
 | Corrected cost/funding defaults (#94) | **Kept** — correctness fix, applies to all future backtests |
 | RBI loop tooling + hard rules (cheap-probe HAS_PULSE, `--execute` human gate) | **Kept** — reusable for any future data-first primitive |
-| Backtest harnesses (closed-family / overlay sweep) | **Kept** — reusable evaluation tooling |
+| Backtest harnesses (closed-family / overlay / sentiment vol-filter sweeps) | **Kept** — reusable evaluation tooling |
