@@ -1,0 +1,171 @@
+{
+  "lane_id": "daily-trend-long-eth",
+  "pass_name": "realistic",
+  "summary": {
+    "symbol": "ETHUSDT",
+    "timeframe": "1d",
+    "start": "2024-01-01",
+    "end": "2026-06-01",
+    "total_trades": 14,
+    "win_rate": 35.714285714285715,
+    "total_return_pct": 89.51823636146717,
+    "max_drawdown_pct": 29.286183736942096,
+    "sharpe_ratio": 1.0250669651183513,
+    "wfo_windows": 4,
+    "wfo_total_trades": 7,
+    "wfo_mean_sharpe": -0.41246935845229266,
+    "wfo_total_return_pct": 23.878603052404944,
+    "bootstrap_p_loss_pct": 10.8,
+    "mc_drawdown_p95_pct": 35.18751768764176,
+    "mc_drawdown_p50_pct": 18.969014435641306,
+    "profit_concentration_pct": 100.0,
+    "passes_gates": false,
+    "failure_reasons": [
+      "min_wfo_trades failed (7 < 20)",
+      "min_wfo_sharpe failed (-0.41 < 0.50)",
+      "max_drawdown_pct failed (29.29% > 25.00%)",
+      "max_profit_concentration_pct failed (100.00% > 50.00%)"
+    ],
+    "blocked_buy_count": 0,
+    "basis_blocked_buy_count": 0,
+    "dislocation_blocked_buy_count": 0
+  },
+  "gates": {
+    "min_trades": 0,
+    "min_wfo_trades": 20,
+    "min_wfo_sharpe": 0.5,
+    "max_drawdown_pct": 25.0,
+    "max_bootstrap_p_loss_pct": 25.0,
+    "min_oos_return_pct": 0.0,
+    "max_profit_concentration_pct": 50.0,
+    "max_mc_drawdown_p95_pct": 0.0
+  },
+  "windows": [
+    {
+      "window_index": 1,
+      "train_start": "2024-01-01T00:00:00",
+      "train_end": "2024-07-01T00:00:00",
+      "test_start": "2024-07-01T00:00:00",
+      "test_end": "2024-10-01T00:00:00",
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "total_return_pct": -4.550072919731829,
+      "max_drawdown_pct": 9.208197667660476,
+      "sharpe_ratio": -2.05062897237179
+    },
+    {
+      "window_index": 2,
+      "train_start": "2024-07-01T00:00:00",
+      "train_end": "2025-01-01T00:00:00",
+      "test_start": "2025-01-01T00:00:00",
+      "test_end": "2025-04-01T00:00:00",
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "total_return_pct": -6.421569946096352,
+      "max_drawdown_pct": 8.357224293431615,
+      "sharpe_ratio": -1.4756065134059408
+    },
+    {
+      "window_index": 3,
+      "train_start": "2025-01-01T00:00:00",
+      "train_end": "2025-07-01T00:00:00",
+      "test_start": "2025-07-01T00:00:00",
+      "test_end": "2025-10-01T00:00:00",
+      "total_trades": 2,
+      "win_rate": 50.0,
+      "total_return_pct": 59.01994867985486,
+      "max_drawdown_pct": 14.185457680635821,
+      "sharpe_ratio": 3.2023710985140172
+    },
+    {
+      "window_index": 4,
+      "train_start": "2025-07-01T00:00:00",
+      "train_end": "2026-01-01T00:00:00",
+      "test_start": "2026-01-01T00:00:00",
+      "test_end": "2026-04-01T00:00:00",
+      "total_trades": 3,
+      "win_rate": 33.33333333333333,
+      "total_return_pct": -12.784568356866949,
+      "max_drawdown_pct": 20.027574055410298,
+      "sharpe_ratio": -1.3260130465454572
+    }
+  ],
+  "resolved_backtest_config": {
+    "symbol": "ETHUSDT",
+    "timeframe": "1d",
+    "start_date": "2024-01-01",
+    "end_date": "2026-06-01",
+    "initial_capital": 10000.0,
+    "fee_rate": 0.0004,
+    "stop_loss_pct": 0.0,
+    "take_profit_pct": 0.0,
+    "sl_atr_multiplier": 2.0,
+    "tp_atr_multiplier": 4.5,
+    "trailing_activate_atr": 1.5,
+    "trailing_offset_atr": 1.0,
+    "slippage_pct": 0.0002,
+    "risk_per_trade": 0.02,
+    "use_atr_sizing": false,
+    "atr_multiplier": 1.0,
+    "apply_global_trend_filter": false,
+    "global_trend_filter_buffer_pct": 0.0,
+    "session_liquidity_router": {
+      "enabled": false,
+      "allowed_windows": [
+        "americas"
+      ],
+      "block_entries_outside_windows": true
+    },
+    "basis_premium_filter": {
+      "enabled": false,
+      "exchange": "binance_usdm",
+      "tail_metric": "basis_bps",
+      "positive_tail_pct": 0.05,
+      "block_positive_tail_longs": true,
+      "missing_data_policy": "allow",
+      "calibrated_positive_threshold": null
+    },
+    "cross_venue_dislocation": {
+      "enabled": false,
+      "metric": "basis_spread",
+      "mode": "require",
+      "min_spread_bps": 5.0,
+      "side": "both",
+      "missing_data_policy": "allow"
+    },
+    "allow_short": false,
+    "use_executor_exit_model": false,
+    "ignore_signal_sells": false,
+    "strategy_configs": [
+      {
+        "sma_window": 50
+      }
+    ],
+    "aggregator_config": {
+      "min_agreement": 1,
+      "buy_threshold": 0.5,
+      "sell_threshold": -0.5,
+      "btc_regime_filter_enabled": false
+    },
+    "time_stop_minutes": 0.0,
+    "replay_sentiment_path": null,
+    "replay_sentiment_max_age_seconds": null,
+    "futures_mode": false,
+    "futures_leverage": 5,
+    "futures_funding_rate": 0.00030000000000000003,
+    "fixed_notional_usdt": 0.0,
+    "quantity_step_size": 0.0,
+    "min_notional_usdt": 0.0
+  },
+  "cost_audit": {
+    "name": "realistic",
+    "fee_rate": 0.0004,
+    "slippage_pct": 0.0002,
+    "apply_global_trend_filter": false,
+    "funding_cadence": "scaled_8h",
+    "base_futures_funding_rate": 0.0001,
+    "round_trip_cost_pct": 0.12000000000000001,
+    "funding_method": "scale per-bar rate by tf_hours/8 (equivalent to 8h settlement cadence)",
+    "effective_futures_funding_rate": 0.0
+  }
+}
