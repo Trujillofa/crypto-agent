@@ -23,6 +23,13 @@ Count is secondary to gates.
 
 Live service: `agent_sol_1h_trend_pullback_overlay_live` (`AGENT_ID=sol-1h-trend-pullback-overlay-live`).
 
+> **SUPERSEDED (2026-06-19).** This DEPLOY_LIVE row was measured under the pre-#94 cost bug
+> (~0.4% RT, ~8× funding). At corrected costs the overlay neither reproduces the edge nor
+> can fill live: it has 0 fills ever because `buy_threshold` (1.07/1.27) exceeds the
+> single-vote cap of 1.0, and the threshold sweep shows no setting delivers both tradeable
+> frequency and a surviving edge. See the terminal entry below and
+> [research-consolidation-2026-06-19.md](./research-consolidation-2026-06-19.md).
+
 ## Campaign Log
 
 | Date | Symbol | TF | Families | Runs | Passes | Near-miss | Output dir | Decision |
@@ -361,3 +368,22 @@ autoresearch. Next surface must be a **different primitive** (see research-reset
 | 2026-06-03 | BNBUSDT | 1h | funding_extreme_overlay | 50 | 0 | 0 | `research/bnbusdt-1h-w3-funding` | REJECT |
 
 Wave 3 best: ETH breakout-bridge +3.96% OOS, 16 WFO trades, Sharpe 0.44 (still under 20 WFO trades). AVAX regime-bridge 19 trades, Sharpe -0.35. BNB funding 28 trades but Sharpe -0.16, DD 13.9%.
+
+## Program consolidation (2026-06-19, TERMINAL)
+
+**Status:** structural-probe program CLOSED; no viable forward-validation vehicle.
+
+Canonical artifact: [`research-consolidation-2026-06-19.md`](./research-consolidation-2026-06-19.md).
+
+Three investigations converge:
+
+| Finding | Evidence | Result |
+|---------|----------|--------|
+| Tooling overcharged costs but hid no edge | Cost-corrected re-screen (#94–#98) | No closed lane revives at correct costs |
+| SOL overlay cannot forward-validate | Threshold sweep (#99), [`overlay-threshold-sweep-2026-06-18.md`](./overlay-threshold-sweep-2026-06-18.md) | Frequency and edge mutually exclusive; "good Sharpe" rows are 1–2 trade concentration |
+| Sentiment-macro idle | Live log diagnosis 2026-06-18 | LLM healthy (200 OK) but zero votes since 2026-06-01 |
+
+**Binding constraint** (forward-validation trade frequency on majors / OHLCV structure) has no
+solution in the explored space. **Next step is not another probe** — it is (1) diagnose the
+sentiment-macro feed, then (2) accept the terminal state, and only deliberately (3) open a
+new data-first primitive (news/event calendar) gated by a cheap-probe HAS_PULSE.

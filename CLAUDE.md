@@ -323,13 +323,20 @@ pytest -v                       # Verbose output
 
 ### Research with the RBI Autoresearch Loop (supervised control plane)
 
+> **Status 2026-06-19: program consolidated — structural-probe surface CLOSED.** No closed
+> lane revives at corrected costs; the SOL overlay cannot forward-validate; no current
+> vehicle accumulates trades. Do not open another OHLCV-structure probe on majors. The RBI
+> tooling below stays valid for a future **data-first** primitive (news/event calendar),
+> but only open one deliberately after a cheap-probe `HAS_PULSE`. See
+> `docs/reports/research-consolidation-2026-06-19.md`.
+
 The RBI loop (Research → Backtest → Implement) is the enforced operating system for new signal discovery:
 - Start with a lane brief (Gate 0) + cheap probe script (Gate 1) that must return `HAS_PULSE`.
 - Use a manifest in `config/autoresearch/rbi_loop.<lane>.yaml` (copy from the example).
 - Drive with `scripts/rbi_loop_from_manifest.py` (or batch) — **dry by default**; only add `--execute` after reviewing the guard decision.
 - Persist `research/rbi_loop/<lane>/decision.json`; render reviewable reports with `rbi_loop_report.py`.
 - Update `docs/reports/autoresearch-candidate-ledger.md` only for final promotion/reject decisions.
-- See full runbook: `docs/RBI_AUTORESEARCH_LOOP.md`, current stop rules in `docs/reports/research-reset-2026-06-06.md`, and lane artifacts under `research/rbi_loop/`.
+- See full runbook: `docs/RBI_AUTORESEARCH_LOOP.md`; terminal program state in `docs/reports/research-consolidation-2026-06-19.md`; prior stop rules in `docs/reports/research-reset-2026-06-06.md`; lane artifacts under `research/rbi_loop/`.
 
 Hard rules: cheap-probe `HAS_PULSE` before any autoresearch or strategy code; `--execute` is an explicit human gate; no production deploys or live risk via automation.
 

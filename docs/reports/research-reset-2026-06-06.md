@@ -163,10 +163,16 @@ The goal remains candidate #2, but the path now needs a new data primitive.
 
 ## Current lane map
 
+> **Update 2026-06-19:** consolidation complete — see
+> [research-consolidation-2026-06-19.md](./research-consolidation-2026-06-19.md). The SOL
+> overlay is **not a viable forward vehicle** (untradeable aggregator gate, no edge beneath
+> it at corrected costs — threshold sweep #99); sentiment-macro is **live but idle** (zero
+> votes since 2026-06-01). No viable forward-validation vehicle currently exists.
+
 | Lane | Status |
 |------|--------|
-| SOL overlay live | **Phase 0** — keep running |
-| Sentiment macro | **Live** — independent |
+| SOL overlay live | **Phase 0 not viable** — 0 fills (gate `buy_threshold` > single-vote cap); keep service as monitor only |
+| Sentiment macro | **Live but idle** — zero votes since 2026-06-01; diagnose feed |
 | SOL overlay filters/routers | **Closed** |
 | Basis long filter | **Closed** (data infra kept) |
 | Short crowding entry | **Closed** |
@@ -176,6 +182,15 @@ The goal remains candidate #2, but the path now needs a new data primitive.
 | New autoresearch campaigns | **Paused** — need new primitive (data-first) outside banned family |
 
 ---
+
+## Operating rules (post consolidation, 2026-06-19)
+
+0. **Program consolidated — structural-probe surface is CLOSED.** No closed lane revives at
+   corrected costs; the overlay cannot forward-validate; no current vehicle accumulates
+   trades. Do **not** open another OHLCV-structure probe on majors. Order of next actions:
+   (1) diagnose sentiment-macro feed, (2) accept terminal state + keep Phase 0 as monitor,
+   (3) only deliberately open a new data-first primitive (news/event calendar) gated by a
+   cheap-probe HAS_PULSE. See [research-consolidation-2026-06-19.md](./research-consolidation-2026-06-19.md).
 
 ## Operating rules (post range-break-continuation close, 2026-06-06)
 
