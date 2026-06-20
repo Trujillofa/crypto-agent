@@ -28,7 +28,7 @@ import re
 import sys
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiohttp
@@ -42,11 +42,12 @@ CLOB_BASE = "https://clob.polymarket.com"
 PRICES_HISTORY_URL = f"{CLOB_BASE}/prices-history"
 
 BLOCKED_ON_DATA = "BLOCKED_ON_DATA"
+PULL_INCOMPLETE = "PULL_INCOMPLETE"
 HAS_PULSE = "HAS_PULSE"
 WEAK_EDGE = "WEAK_EDGE"
 NO_PULSE = "NO_PULSE"
 
-DEFAULT_START = "2024-12-20T00:00:00Z"
+DEFAULT_START = "2024-01-01T00:00:00Z"
 DEFAULT_END = "2026-06-20T00:00:00Z"
 DEFAULT_LEAD_HOURS = (24, 72)
 DEFAULT_BUCKETS = 10
@@ -58,6 +59,10 @@ ALPHA = 0.05
 # Resolved/closed markets only return sub-12h granularity from prices-history (fidelity ≥ 720 min).
 CLOB_MIN_FIDELITY_MINUTES = 720
 PRICE_FETCH_CONCURRENCY = 8
+GAMMA_PAGE_SIZE = 100
+GAMMA_OFFSET_SOFT_CAP = 2000
+GAMMA_MAX_RETRIES = 5
+GAMMA_RETRY_BASE_SEC = 0.5
 
 DISPUTED_PATTERNS = re.compile(
     r"\b(iran\b|disputed|oracle.?contest|resolution.?contest|integrity.?committee|"
@@ -90,6 +95,7 @@ class ProbeConfig:
     min_liquidity: float
     cache_file: Path | None
     max_price_fetch: int | None
+    refresh_cache: bool
 
 
 @dataclass(frozen=True)
@@ -134,6 +140,8 @@ class CalibrationBucket:
 class LeadTimeResult:
     lead_hours: int
     observations: int
+    data_sufficient: bool
+    insufficient_note: str | None
     buckets: tuple[CalibrationBucket, ...]
     qualifying_bucket_indices: tuple[int, ...]
     h1_pass: bool
@@ -145,6 +153,17 @@ class LeadTimeResult:
 
 
 @dataclass(frozen=True)
+class PullCompleteness:
+    pages_fetched: int
+    pagination_mode: str
+    termination: str
+    error_detail: str | None
+    earliest_end_date: str | None
+    latest_end_date: str | None
+    incomplete: bool
+
+
+@dataclass(frozen=True)
 class DataAudit:
     total_pulled: int
     exclusions: dict[str, int]
@@ -152,6 +171,7 @@ class DataAudit:
     with_price_by_lead: dict[str, int]
     usable_for_edge: int
     category_mix: dict[str, int]
+    pull_completeness: PullCompleteness
     blocked: bool
     blocked_reason: str | None
 
@@ -270,12 +290,36 @@ def filter_for_liquidity(market: ResolvedMarket, min_liquidity: float) -> str | 
     return None
 
 
-def _binom_pmf(k: int, n: int, p: float) -> float:
+def _binom_pmf_log(n: int, k: int, p: float) -> float:
+    if k < 0 or k > n:
+        return float("-inf")
     if p <= 0.0:
-        return 1.0 if k == 0 else 0.0
+        return 0.0 if k == 0 else float("-inf")
     if p >= 1.0:
-        return 1.0 if k == n else 0.0
-    return math.comb(n, k) * (p**k) * ((1.0 - p) ** (n - k))
+        return 0.0 if k == n else float("-inf")
+    return (
+        math.lgamma(n + 1)
+        - math.lgamma(k + 1)
+        - math.lgamma(n - k + 1)
+        + k * math.log(p)
+        + (n - k) * math.log(1.0 - p)
+    )
+
+
+def _log_sum_exp(values: Sequence[float]) -> float:
+    finite = [v for v in values if v > float("-inf")]
+    if not finite:
+        return float("-inf")
+    peak = max(finite)
+    return peak + math.log(sum(math.exp(v - peak) for v in finite))
+
+
+def _exact_two_sided_binom_pvalue(successes: int, n: int, p0: float) -> float:
+    lower_logs = [_binom_pmf_log(n, k, p0) for k in range(successes + 1)]
+    upper_logs = [_binom_pmf_log(n, k, p0) for k in range(successes, n + 1)]
+    lower = math.exp(_log_sum_exp(lower_logs))
+    upper = math.exp(_log_sum_exp(upper_logs))
+    return min(1.0, 2.0 * min(lower, upper))
 
 
 def two_sided_binom_pvalue(successes: int, n: int, p0: float) -> float:
@@ -283,10 +327,14 @@ def two_sided_binom_pvalue(successes: int, n: int, p0: float) -> float:
     if n <= 0:
         return 1.0
     p0 = min(max(p0, 1e-9), 1.0 - 1e-9)
-    obs = sum(_binom_pmf(k, n, p0) for k in range(successes + 1))
-    # Mirror tail for two-sided
-    tail = min(obs, sum(_binom_pmf(k, n, p0) for k in range(successes, n + 1)))
-    return min(1.0, 2.0 * tail)
+    if n >= 100:
+        mu = n * p0
+        var = n * p0 * (1.0 - p0)
+        if var <= 0.0:
+            return 1.0 if successes == round(mu) else 0.0
+        z = abs(successes - mu) / math.sqrt(var)
+        return math.erfc(z / math.sqrt(2.0))
+    return _exact_two_sided_binom_pvalue(successes, n, p0)
 
 
 def assign_bucket(price: float, buckets: int) -> int:
@@ -468,6 +516,8 @@ def analyze_lead_time(
     return LeadTimeResult(
         lead_hours=lead_hours,
         observations=len(observations),
+        data_sufficient=True,
+        insufficient_note=None,
         buckets=buckets,
         qualifying_bucket_indices=qualifying,
         h1_pass=h1,
@@ -479,20 +529,41 @@ def analyze_lead_time(
     )
 
 
+def insufficient_lead_result(lead_hours: int, count: int, min_markets: int) -> LeadTimeResult:
+    return LeadTimeResult(
+        lead_hours=lead_hours,
+        observations=count,
+        data_sufficient=False,
+        insufficient_note=(
+            f"only {count} markets with price at τ (need >= {min_markets}) — insufficient for this τ"
+        ),
+        buckets=(),
+        qualifying_bucket_indices=(),
+        h1_pass=False,
+        h2_time_split_pass=False,
+        h2_category_exclusion_pass=False,
+        h2_pass=False,
+        single_category_only=False,
+        dominant_category=None,
+    )
+
+
 def decide_verdict(
     audit: DataAudit, lead_results: Sequence[LeadTimeResult]
 ) -> tuple[str, str, tuple[str, ...]]:
-    if audit.blocked:
-        return (BLOCKED_ON_DATA, BLOCKED_ON_DATA, (audit.blocked_reason or "data gate failed",))
+    if audit.pull_completeness.incomplete:
+        detail = audit.pull_completeness.error_detail or audit.pull_completeness.termination
+        return (
+            PULL_INCOMPLETE,
+            PULL_INCOMPLETE,
+            (f"Gamma pull did not complete cleanly: {detail}",),
+        )
 
     reasons: list[str] = []
-    any_h1 = any(r.h1_pass for r in lead_results)
-    all_has_pulse = all(
-        r.h1_pass and r.h2_pass and not r.single_category_only for r in lead_results
-    )
-    any_weak = any(r.h1_pass and (not r.h2_pass or r.single_category_only) for r in lead_results)
-
     for result in lead_results:
+        if not result.data_sufficient:
+            reasons.append(f"τ={result.lead_hours}h: {result.insufficient_note}")
+            continue
         reasons.append(
             f"τ={result.lead_hours}h: n={result.observations}, H1={'Y' if result.h1_pass else 'n'}, "
             f"H2_time={'Y' if result.h2_time_split_pass else 'n'}, "
@@ -505,11 +576,19 @@ def decide_verdict(
                 f"({result.dominant_category}) — cannot be HAS_PULSE"
             )
 
-    if all_has_pulse and lead_results:
+    if audit.blocked:
+        return (BLOCKED_ON_DATA, BLOCKED_ON_DATA, (audit.blocked_reason or "data gate failed",))
+
+    sufficient = [r for r in lead_results if r.data_sufficient]
+    any_h1 = any(r.h1_pass for r in sufficient)
+    all_has_pulse = all(r.h1_pass and r.h2_pass and not r.single_category_only for r in sufficient)
+    any_weak = any(r.h1_pass and (not r.h2_pass or r.single_category_only) for r in sufficient)
+
+    if all_has_pulse and sufficient:
         return (
             "OK",
             HAS_PULSE,
-            tuple(reasons + ["H1 and H2 pass for all lead times; multi-category"]),
+            tuple(reasons + ["H1 and H2 pass for all sufficient lead times; multi-category"]),
         )
     if any_h1 or any_weak:
         return (
@@ -526,7 +605,7 @@ async def fetch_gamma_markets_page(
     start: datetime,
     end: datetime,
     offset: int,
-    limit: int = 100,
+    limit: int = GAMMA_PAGE_SIZE,
 ) -> list[dict[str, object]]:
     params = {
         "closed": "true",
@@ -549,6 +628,147 @@ async def fetch_gamma_markets_page(
     return []
 
 
+async def fetch_gamma_markets_page_with_retry(
+    session: aiohttp.ClientSession,
+    *,
+    start: datetime,
+    end: datetime,
+    offset: int,
+) -> list[dict[str, object]]:
+    last_exc: Exception | None = None
+    for attempt in range(GAMMA_MAX_RETRIES):
+        try:
+            return await fetch_gamma_markets_page(session, start=start, end=end, offset=offset)
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            last_exc = exc
+            if attempt < GAMMA_MAX_RETRIES - 1:
+                await asyncio.sleep(GAMMA_RETRY_BASE_SEC * (2**attempt))
+    if last_exc is not None:
+        raise last_exc
+    return []
+
+
+def _market_end_date(raw: dict[str, object]) -> datetime | None:
+    for key in ("closedTime", "endDate", "endDateIso"):
+        value = raw.get(key)
+        if not value:
+            continue
+        try:
+            return _parse_dt(str(value))
+        except ValueError:
+            continue
+    return None
+
+
+def _ingest_raw_market(
+    raw: dict[str, object],
+    *,
+    min_liquidity: float,
+    exclusions: dict[str, int],
+    disputed_flagged: int,
+    kept: list[ResolvedMarket],
+    seen_ids: set[str],
+) -> int:
+    """Process one Gamma market row. Returns updated disputed_flagged count."""
+    market_id = str(raw.get("id") or "")
+    if market_id and market_id in seen_ids:
+        return disputed_flagged
+    if market_id:
+        seen_ids.add(market_id)
+
+    question = str(raw.get("question") or "")
+    description = str(raw.get("description") or "")
+    if is_disputed_market(question, description):
+        disputed_flagged += 1
+        exclusions["disputed_resolution"] = exclusions.get("disputed_resolution", 0) + 1
+        return disputed_flagged
+
+    market, reason = classify_raw_market(raw)
+    if market is None:
+        exclusions[reason] = exclusions.get(reason, 0) + 1
+        return disputed_flagged
+
+    liq_reason = filter_for_liquidity(market, min_liquidity)
+    if liq_reason:
+        exclusions[liq_reason] = exclusions.get(liq_reason, 0) + 1
+        return disputed_flagged
+
+    kept.append(market)
+    return disputed_flagged
+
+
+async def _fetch_offset_pages(
+    session: aiohttp.ClientSession,
+    *,
+    start: datetime,
+    window_end: datetime,
+    min_liquidity: float,
+    logger,
+    exclusions: dict[str, int],
+    disputed_flagged: int,
+    kept: list[ResolvedMarket],
+    seen_ids: set[str],
+    end_dates_seen: list[datetime],
+    pages: int,
+    total: int,
+    offset_label: str,
+) -> tuple[int, int, int, int, datetime | None, str | None]:
+    """Fetch offset pages within [start, window_end]."""
+    offset = 0
+    window_oldest: datetime | None = None
+    error_detail: str | None = None
+
+    while True:
+        try:
+            batch = await fetch_gamma_markets_page_with_retry(
+                session, start=start, end=window_end, offset=offset
+            )
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            if offset >= GAMMA_OFFSET_SOFT_CAP:
+                return pages, disputed_flagged, total, offset, window_oldest, None
+            error_detail = f"{offset_label} offset={offset}: {type(exc).__name__}: {exc}"
+            return pages, disputed_flagged, total, offset, window_oldest, error_detail
+
+        pages += 1
+        if not batch:
+            break
+
+        for raw in batch:
+            if not isinstance(raw, dict):
+                continue
+            total += 1
+            end_dt = _market_end_date(raw)
+            if end_dt is not None:
+                end_dates_seen.append(end_dt)
+                if window_oldest is None or end_dt < window_oldest:
+                    window_oldest = end_dt
+            disputed_flagged = _ingest_raw_market(
+                raw,
+                min_liquidity=min_liquidity,
+                exclusions=exclusions,
+                disputed_flagged=disputed_flagged,
+                kept=kept,
+                seen_ids=seen_ids,
+            )
+
+        logger.info(
+            "%s offset %d: batch=%d kept=%d",
+            offset_label,
+            offset,
+            len(batch),
+            len(kept),
+        )
+
+        if len(batch) < GAMMA_PAGE_SIZE:
+            break
+        offset += GAMMA_PAGE_SIZE
+        if offset >= GAMMA_OFFSET_SOFT_CAP:
+            return pages, disputed_flagged, total, offset, window_oldest, None
+        await asyncio.sleep(0.12)
+
+    return pages, disputed_flagged, total, offset, window_oldest, error_detail
+
+
 async def pull_resolved_markets(
     session: aiohttp.ClientSession,
     config: ProbeConfig,
@@ -559,45 +779,99 @@ async def pull_resolved_markets(
     exclusions: dict[str, int] = {}
     disputed_flagged = 0
     kept: list[ResolvedMarket] = []
+    seen_ids: set[str] = set()
+    end_dates_seen: list[datetime] = []
     total = 0
-    offset = 0
+    pages = 0
+    termination = "complete"
+    error_detail: str | None = None
+    pagination_mode = "offset"
 
-    while True:
-        try:
-            batch = await fetch_gamma_markets_page(session, start=start, end=end, offset=offset)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("gamma fetch failed at offset %d (%s)", offset, type(exc).__name__)
-            break
-        if not batch:
-            break
-        for raw in batch:
-            if not isinstance(raw, dict):
-                continue
-            total += 1
-            question = str(raw.get("question") or "")
-            description = str(raw.get("description") or "")
-            if is_disputed_market(question, description):
-                disputed_flagged += 1
-                exclusions["disputed_resolution"] = exclusions.get("disputed_resolution", 0) + 1
-                continue
-            market, reason = classify_raw_market(raw)
-            if market is None:
-                exclusions[reason] = exclusions.get(reason, 0) + 1
-                continue
-            liq_reason = filter_for_liquidity(market, config.min_liquidity)
-            if liq_reason:
-                exclusions[liq_reason] = exclusions.get(liq_reason, 0) + 1
-                continue
-            kept.append(market)
-        logger.info("gamma offset %d: batch=%d kept=%d", offset, len(batch), len(kept))
-        if len(batch) < 100:
-            break
-        offset += 100
-        await asyncio.sleep(0.12)
+    pages, disputed_flagged, total, offset, oldest, err = await _fetch_offset_pages(
+        session,
+        start=start,
+        window_end=end,
+        min_liquidity=config.min_liquidity,
+        logger=logger,
+        exclusions=exclusions,
+        disputed_flagged=disputed_flagged,
+        kept=kept,
+        seen_ids=seen_ids,
+        end_dates_seen=end_dates_seen,
+        pages=pages,
+        total=total,
+        offset_label="gamma",
+    )
+
+    if err:
+        termination = "error"
+        error_detail = err
+    elif offset >= GAMMA_OFFSET_SOFT_CAP and oldest is not None and oldest > start:
+        pagination_mode = "offset+date_window"
+        window_end = oldest - timedelta(seconds=1)
+        logger.info(
+            "offset soft-cap at %d; continuing with date-window cursor end=%s",
+            offset,
+            window_end.isoformat(),
+        )
+        while window_end > start and termination == "complete":
+            pages, disputed_flagged, total, offset, oldest, err = await _fetch_offset_pages(
+                session,
+                start=start,
+                window_end=window_end,
+                min_liquidity=config.min_liquidity,
+                logger=logger,
+                exclusions=exclusions,
+                disputed_flagged=disputed_flagged,
+                kept=kept,
+                seen_ids=seen_ids,
+                end_dates_seen=end_dates_seen,
+                pages=pages,
+                total=total,
+                offset_label=f"gamma-window<{window_end.date()}>",
+            )
+            if err:
+                termination = "error"
+                error_detail = err
+                break
+            if oldest is None or oldest <= start:
+                break
+            next_end = oldest - timedelta(seconds=1)
+            if next_end >= window_end:
+                break
+            window_end = next_end
+
+    earliest = min(end_dates_seen) if end_dates_seen else None
+    latest = max(end_dates_seen) if end_dates_seen else None
+    coverage_gap = earliest is not None and earliest > start + timedelta(hours=1)
+    incomplete = termination == "error" or (
+        coverage_gap and pagination_mode == "offset" and offset < GAMMA_OFFSET_SOFT_CAP
+    )
+
+    pull = PullCompleteness(
+        pages_fetched=pages,
+        pagination_mode=pagination_mode,
+        termination=termination,
+        error_detail=error_detail,
+        earliest_end_date=earliest.isoformat() if earliest else None,
+        latest_end_date=latest.isoformat() if latest else None,
+        incomplete=incomplete,
+    )
 
     category_mix: dict[str, int] = {}
     for market in kept:
         category_mix[market.category_group] = category_mix.get(market.category_group, 0) + 1
+
+    logger.info(
+        "pull done: raw=%d kept=%d pages=%d mode=%s termination=%s earliest=%s latest=%s",
+        total,
+        len(kept),
+        pages,
+        pagination_mode,
+        termination,
+        pull.earliest_end_date,
+        pull.latest_end_date,
+    )
 
     audit = DataAudit(
         total_pulled=total,
@@ -606,19 +880,65 @@ async def pull_resolved_markets(
         with_price_by_lead={},
         usable_for_edge=0,
         category_mix=category_mix,
+        pull_completeness=pull,
         blocked=False,
         blocked_reason=None,
     )
     return kept, audit
 
 
-def write_market_cache(path: Path, markets: Sequence[ResolvedMarket]) -> None:
+def pull_metadata_path(cache_path: Path) -> Path:
+    return cache_path.with_name(cache_path.stem + "_pull.json")
+
+
+def write_market_cache(path: Path, markets: Sequence[ResolvedMarket], audit: DataAudit) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for market in markets:
             payload = asdict(market)
             payload["closed_time"] = market.closed_time.isoformat()
             handle.write(json.dumps(payload) + "\n")
+    meta_path = pull_metadata_path(path)
+    meta_path.write_text(
+        json.dumps(
+            {
+                "total_pulled": audit.total_pulled,
+                "exclusions": audit.exclusions,
+                "disputed_flagged": audit.disputed_flagged,
+                "category_mix": audit.category_mix,
+                "pull_completeness": asdict(audit.pull_completeness),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def load_pull_metadata(path: Path) -> DataAudit | None:
+    meta_path = pull_metadata_path(path)
+    if not meta_path.is_file():
+        return None
+    raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    pull_raw = raw.get("pull_completeness") or {}
+    return DataAudit(
+        total_pulled=int(raw.get("total_pulled") or 0),
+        exclusions=dict(raw.get("exclusions") or {}),
+        disputed_flagged=int(raw.get("disputed_flagged") or 0),
+        with_price_by_lead={},
+        usable_for_edge=0,
+        category_mix=dict(raw.get("category_mix") or {}),
+        pull_completeness=PullCompleteness(
+            pages_fetched=int(pull_raw.get("pages_fetched") or 0),
+            pagination_mode=str(pull_raw.get("pagination_mode") or "cache"),
+            termination=str(pull_raw.get("termination") or "cache"),
+            error_detail=pull_raw.get("error_detail"),
+            earliest_end_date=pull_raw.get("earliest_end_date"),
+            latest_end_date=pull_raw.get("latest_end_date"),
+            incomplete=bool(pull_raw.get("incomplete")),
+        ),
+        blocked=False,
+        blocked_reason=None,
+    )
 
 
 def load_market_cache(path: Path) -> list[ResolvedMarket]:
@@ -734,26 +1054,38 @@ async def run_probe(config: ProbeConfig) -> ProbeReport:
         timeout=aiohttp.ClientTimeout(total=60, connect=15),
         headers={"Accept": "application/json", "User-Agent": "crypto-agent-probe/1.0"},
     ) as session:
-        if cache_path.is_file():
+        if cache_path.is_file() and not config.refresh_cache:
             logger.info("loading cached markets from %s", cache_path)
             markets = load_market_cache(cache_path)
-            audit_partial = DataAudit(
-                total_pulled=len(markets),
-                exclusions={},
-                disputed_flagged=0,
-                with_price_by_lead={},
-                usable_for_edge=0,
-                category_mix={},
-                blocked=False,
-                blocked_reason=None,
-            )
-            for market in markets:
-                audit_partial.category_mix[market.category_group] = (
-                    audit_partial.category_mix.get(market.category_group, 0) + 1
+            audit_partial = load_pull_metadata(cache_path)
+            if audit_partial is None:
+                category_mix: dict[str, int] = {}
+                for market in markets:
+                    category_mix[market.category_group] = (
+                        category_mix.get(market.category_group, 0) + 1
+                    )
+                audit_partial = DataAudit(
+                    total_pulled=len(markets),
+                    exclusions={"loaded_from_cache": len(markets)},
+                    disputed_flagged=0,
+                    with_price_by_lead={},
+                    usable_for_edge=0,
+                    category_mix=category_mix,
+                    pull_completeness=PullCompleteness(
+                        pages_fetched=0,
+                        pagination_mode="cache",
+                        termination="cache",
+                        error_detail=None,
+                        earliest_end_date=None,
+                        latest_end_date=None,
+                        incomplete=False,
+                    ),
+                    blocked=False,
+                    blocked_reason=None,
                 )
         else:
             markets, audit_partial = await pull_resolved_markets(session, config)
-            write_market_cache(cache_path, markets)
+            write_market_cache(cache_path, markets, audit_partial)
 
         prices, price_skips = await enrich_prices(
             session,
@@ -768,12 +1100,11 @@ async def run_probe(config: ProbeConfig) -> ProbeReport:
         with_price_by_lead[f"{lead}h"] = count
 
     counts_per_lead = list(with_price_by_lead.values())
-    min_with_price = min(counts_per_lead) if counts_per_lead else 0
-    blocked = min_with_price < config.min_markets
+    max_with_price = max(counts_per_lead) if counts_per_lead else 0
+    blocked = max_with_price < config.min_markets
     blocked_reason = (
-        f"only {min_with_price} markets have price at all lead times "
-        f"(need >= {config.min_markets}; per-τ counts={with_price_by_lead}); "
-        f"price_skips={price_skips}"
+        f"no lead time reached {config.min_markets} markets with price at τ "
+        f"(per-τ counts={with_price_by_lead}); price_skips={price_skips}"
         if blocked
         else None
     )
@@ -787,16 +1118,21 @@ async def run_probe(config: ProbeConfig) -> ProbeReport:
         exclusions=exclusions,
         disputed_flagged=audit_partial.disputed_flagged,
         with_price_by_lead=with_price_by_lead,
-        usable_for_edge=min_with_price,
+        usable_for_edge=max_with_price,
         category_mix=audit_partial.category_mix,
+        pull_completeness=audit_partial.pull_completeness,
         blocked=blocked,
         blocked_reason=blocked_reason,
     )
 
     lead_results: list[LeadTimeResult] = []
-    for lead in config.lead_hours:
-        observations = build_observations(markets, prices, lead)
-        if observations:
+    if not audit_partial.pull_completeness.incomplete:
+        for lead in config.lead_hours:
+            observations = build_observations(markets, prices, lead)
+            count = len(observations)
+            if count < config.min_markets:
+                lead_results.append(insufficient_lead_result(lead, count, config.min_markets))
+                continue
             lead_results.append(analyze_lead_time(observations, lead, config))
 
     status, verdict, reasons = decide_verdict(data_audit, lead_results)
@@ -833,16 +1169,30 @@ def render_report(report: ProbeReport) -> str:
     lines.append("## STEP 0 — Data feasibility")
     lines.append(f"- Total pulled / cached: {a.total_pulled}")
     lines.append(f"- With price by lead time: {a.with_price_by_lead}")
-    lines.append(f"- Usable for edge (min across τ): {a.usable_for_edge}")
+    lines.append(f"- Usable for edge (max across τ): {a.usable_for_edge}")
     lines.append(f"- Exclusions: {a.exclusions}")
     lines.append(f"- Disputed/oracle-flagged (excluded): {a.disputed_flagged}")
     lines.append(f"- Category mix: {a.category_mix}")
+    p = a.pull_completeness
+    lines.append(
+        f"- Pull completeness: pages={p.pages_fetched}, mode={p.pagination_mode}, "
+        f"termination={p.termination}, incomplete={p.incomplete}"
+    )
+    lines.append(
+        f"- Pull date coverage: earliest={p.earliest_end_date}, latest={p.latest_end_date}"
+    )
+    if p.error_detail:
+        lines.append(f"- Pull error: {p.error_detail}")
     lines.append(f"- Blocked: {a.blocked}{f' — {a.blocked_reason}' if a.blocked_reason else ''}")
     lines.append("")
 
     for result in report.lead_results:
         lines.append(f"## STEP 1 — Calibration at τ = {result.lead_hours}h")
         lines.append(f"- Observations: {result.observations}")
+        if not result.data_sufficient:
+            lines.append(f"- **Insufficient data:** {result.insufficient_note}")
+            lines.append("")
+            continue
         lines.append(
             f"- H1: {'PASS' if result.h1_pass else 'FAIL'} | H2 time: "
             f"{'PASS' if result.h2_time_split_pass else 'FAIL'} | H2 category: "
@@ -891,6 +1241,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=0,
         help="Cap markets for price-history fetch (0 = all). Useful for smoke runs.",
     )
+    parser.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help="Ignore cache and re-pull resolved markets from Gamma.",
+    )
     return parser.parse_args(argv)
 
 
@@ -907,6 +1262,7 @@ async def main(argv: Sequence[str] | None = None) -> int:
         min_liquidity=args.min_liquidity,
         cache_file=cache,
         max_price_fetch=args.max_price_fetch if args.max_price_fetch > 0 else None,
+        refresh_cache=bool(args.refresh_cache),
     )
     report = await run_probe(config)
 

@@ -1,6 +1,6 @@
 # Polymarket Calibration / Favorite-Longshot Probe — Report
 
-**Verdict:** **BLOCKED_ON_DATA**
+**Verdict:** **WEAK_EDGE**
 **Script:** `scripts/probe_polymarket_calibration.py`
 **Framing:** probability mispricing on resolved binary markets (read-only).
 
@@ -9,49 +9,53 @@
 - Applied round-trip cost: **2.5%**
 
 ## STEP 0 — Data feasibility
-- Total pulled / cached: 2100
-- With price by lead time: {'24h': 350, '72h': 221}
-- Usable for edge (min across τ): 221
-- Exclusions: {'zero_volume': 242, 'low_liquidity': 1143, 'disputed_resolution': 1, 'invalid_refunded': 18, 'no_price_at_72h': 466, 'no_price_at_24h': 337, 'no_price_history': 9}
-- Disputed/oracle-flagged (excluded): 1
-- Category mix: {'other': 317, 'crypto': 211, 'sports': 166, 'politics': 2}
-- Blocked: True — only 221 markets have price at all lead times (need >= 300; per-τ counts={'24h': 350, '72h': 221}); price_skips={'no_price_at_72h': 466, 'no_price_at_24h': 337, 'no_price_history': 9}
+- Total pulled / cached: 20999
+- With price by lead time: {'24h': 7238, '72h': 5210}
+- Usable for edge (max across τ): 7238
+- Exclusions: {'zero_volume': 6012, 'low_liquidity': 3871, 'disputed_resolution': 26, 'invalid_refunded': 184, 'invalid_outcome': 1, 'no_price_at_72h': 4842, 'no_price_at_24h': 2814, 'no_price_history': 853}
+- Disputed/oracle-flagged (excluded): 26
+- Category mix: {'other': 4658, 'crypto': 3263, 'sports': 2046, 'politics': 938}
+- Pull completeness: pages=210, mode=offset+date_window, termination=complete, incomplete=False
+- Pull date coverage: earliest=2023-11-03T00:19:05+00:00, latest=2026-06-20T18:02:22+00:00
+- Blocked: False
 
 ## STEP 1 — Calibration at τ = 24h
-- Observations: 350
+- Observations: 7238
 - H1: FAIL | H2 time: FAIL | H2 category: FAIL
 - Qualifying buckets: []
 
 | Bucket | n | mean(p) | freq | edge | net_edge | p_raw | p_adj | sig | trade |
 |--------|---|---------|------|------|----------|-------|-------|-----|-------|
-| [0.0,0.1) | 127 | 0.030 | 0.000 | +0.030 | +0.005 | 0.0426 | 0.4264 | n | n |
-| [0.1,0.2) | 27 | 0.145 | 0.222 | -0.077 | +0.052 | 0.3767 | 1.0000 | n | n |
-| [0.2,0.3) | 26 | 0.258 | 0.192 | +0.065 | +0.040 | 0.6099 | 1.0000 | n | n |
-| [0.3,0.4) | 25 | 0.353 | 0.320 | +0.033 | +0.008 | 0.9098 | 1.0000 | n | n |
-| [0.4,0.5) | 46 | 0.464 | 0.261 | +0.203 | +0.178 | 0.0077 | 0.0768 | n | n |
-| [0.5,0.6) | 62 | 0.517 | 0.516 | +0.001 | -0.024 | 1.0000 | 1.0000 | n | n |
-| [0.6,0.7) | 14 | 0.647 | 0.571 | +0.076 | +0.051 | 0.7341 | 1.0000 | n | n |
-| [0.7,0.8) | 9 | 0.752 | 0.667 | +0.086 | +0.061 | 0.7862 | 1.0000 | n | n |
-| [0.8,0.9) | 5 | 0.824 | 1.000 | -0.176 | +0.151 | 0.7620 | 1.0000 | n | n |
-| [0.9,1.0) | 9 | 0.967 | 1.000 | -0.033 | +0.008 | 1.0000 | 1.0000 | n | n |
+| [0.0,0.1) | 2668 | 0.020 | 0.009 | +0.011 | -0.014 | 0.0001 | 0.0007 | Y | n |
+| [0.1,0.2) | 574 | 0.146 | 0.143 | +0.003 | -0.022 | 0.8244 | 1.0000 | n | n |
+| [0.2,0.3) | 593 | 0.250 | 0.219 | +0.031 | +0.006 | 0.0814 | 0.8144 | n | n |
+| [0.3,0.4) | 462 | 0.348 | 0.329 | +0.019 | -0.006 | 0.3999 | 1.0000 | n | n |
+| [0.4,0.5) | 550 | 0.453 | 0.435 | +0.018 | -0.007 | 0.3851 | 1.0000 | n | n |
+| [0.5,0.6) | 1300 | 0.515 | 0.521 | -0.006 | -0.019 | 0.6623 | 1.0000 | n | n |
+| [0.6,0.7) | 273 | 0.646 | 0.670 | -0.024 | -0.001 | 0.4087 | 1.0000 | n | n |
+| [0.7,0.8) | 222 | 0.748 | 0.784 | -0.036 | +0.011 | 0.2153 | 1.0000 | n | n |
+| [0.8,0.9) | 164 | 0.846 | 0.860 | -0.014 | -0.011 | 0.6253 | 1.0000 | n | n |
+| [0.9,1.0) | 432 | 0.975 | 0.995 | -0.021 | -0.004 | 0.0064 | 0.0644 | n | n |
 
 ## STEP 1 — Calibration at τ = 72h
-- Observations: 221
-- H1: FAIL | H2 time: FAIL | H2 category: FAIL
-- Qualifying buckets: []
+- Observations: 5210
+- H1: PASS | H2 time: PASS | H2 category: FAIL
+- Qualifying buckets: [9]
 
 | Bucket | n | mean(p) | freq | edge | net_edge | p_raw | p_adj | sig | trade |
 |--------|---|---------|------|------|----------|-------|-------|-----|-------|
-| [0.0,0.1) | 91 | 0.032 | 0.000 | +0.032 | +0.007 | 0.1021 | 1.0000 | n | n |
-| [0.1,0.2) | 27 | 0.145 | 0.148 | -0.003 | -0.022 | 1.0000 | 1.0000 | n | n |
-| [0.2,0.3) | 24 | 0.253 | 0.167 | +0.086 | +0.061 | 0.4751 | 1.0000 | n | n |
-| [0.3,0.4) | 15 | 0.359 | 0.267 | +0.092 | +0.067 | 0.6495 | 1.0000 | n | n |
-| [0.4,0.5) | 19 | 0.457 | 0.263 | +0.194 | +0.169 | 0.1388 | 1.0000 | n | n |
-| [0.5,0.6) | 23 | 0.522 | 0.435 | +0.088 | +0.063 | 0.5268 | 1.0000 | n | n |
-| [0.6,0.7) | 10 | 0.652 | 0.500 | +0.152 | +0.127 | 0.4883 | 1.0000 | n | n |
-| [0.7,0.8) | 4 | 0.763 | 0.500 | +0.263 | +0.238 | 0.4800 | 1.0000 | n | n |
-| [0.8,0.9) | 4 | 0.814 | 1.000 | -0.186 | +0.161 | 0.8797 | 1.0000 | n | n |
-| [0.9,1.0) | 4 | 0.947 | 1.000 | -0.053 | +0.028 | 1.0000 | 1.0000 | n | n |
+| [0.0,0.1) | 2108 | 0.022 | 0.015 | +0.007 | -0.018 | 0.0344 | 0.3438 | n | n |
+| [0.1,0.2) | 497 | 0.150 | 0.123 | +0.027 | +0.002 | 0.0913 | 0.9131 | n | n |
+| [0.2,0.3) | 508 | 0.250 | 0.248 | +0.002 | -0.023 | 0.9306 | 1.0000 | n | n |
+| [0.3,0.4) | 275 | 0.344 | 0.335 | +0.009 | -0.016 | 0.7513 | 1.0000 | n | n |
+| [0.4,0.5) | 389 | 0.456 | 0.404 | +0.052 | +0.027 | 0.0380 | 0.3803 | n | n |
+| [0.5,0.6) | 623 | 0.521 | 0.472 | +0.049 | +0.024 | 0.0152 | 0.1516 | n | n |
+| [0.6,0.7) | 199 | 0.643 | 0.648 | -0.005 | -0.020 | 0.8860 | 1.0000 | n | n |
+| [0.7,0.8) | 158 | 0.749 | 0.778 | -0.029 | +0.004 | 0.3968 | 1.0000 | n | n |
+| [0.8,0.9) | 128 | 0.848 | 0.875 | -0.027 | +0.002 | 0.3965 | 1.0000 | n | n |
+| [0.9,1.0) | 325 | 0.969 | 0.997 | -0.028 | +0.003 | 0.0037 | 0.0367 | Y | Y |
 
 ## Reasons
-- only 221 markets have price at all lead times (need >= 300; per-τ counts={'24h': 350, '72h': 221}); price_skips={'no_price_at_72h': 466, 'no_price_at_24h': 337, 'no_price_history': 9}
+- τ=24h: n=7238, H1=n, H2_time=n, H2_cat=n, qualifying_buckets=[]
+- τ=72h: n=5210, H1=Y, H2_time=Y, H2_cat=n, qualifying_buckets=[9]
+- H1 passed but H2 and/or category breadth failed
