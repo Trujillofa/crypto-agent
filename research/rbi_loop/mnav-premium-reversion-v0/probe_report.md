@@ -1,6 +1,6 @@
 # mNAV Premium-Reversion Probe — Report
 
-**Verdict:** **HAS_PULSE**
+**Verdict:** **WEAK_EDGE**
 **Script:** `scripts/probe_mnav_premium_reversion.py`
 **Framing:** relative value (equity mNAV vs crypto NAV), not price forecast.
 
@@ -14,12 +14,12 @@
 
 ## STEP 1 — Per-name mean-reversion
 
-| Ticker | Days | H1 | H=10 edge | H=21 edge | Events (10/21) |
-|--------|------|----|-----------|-----------|----------------|
-| 3350.T | 465 | Y | +8.0570 | +66.5608 | 275/264 |
-| DFDV | 264 | Y | +0.0089 | -0.0053 | 74/63 |
-| MSTR | 604 | n | -0.0212 | -0.0359 | 414/403 |
-| SBET | 241 | Y | +0.0495 | +0.0738 | 51/40 |
+| Ticker | Days | H1 | H=10 edge (p) | H=21 edge (p) | Events (10/21) | Event % |
+|--------|------|----|---------------|---------------|----------------|---------|
+| 3350.T | 465 | n | +0.5264 (0.205) | +0.1260 (0.423) | 121/118 | 44/45 |
+| DFDV | 264 | n | +0.6933 (0.339) | +0.4004 (0.200) | 5/5 | 7/8 |
+| MSTR | 604 | n | -1.4397 (0.630) | +1.2310 (0.439) | 181/181 | 44/45 |
+| SBET | 241 | Y | +0.9324 (0.000) | +1.6616 (0.000) | 15/14 | 29/35 |
 
 ## Reasons
-- mNAV mean-reversion clears random baseline on 3 names (3350.T, DFDV, SBET)
+- H1 passes on 1 name(s) (SBET) but needs >= 3 for H2

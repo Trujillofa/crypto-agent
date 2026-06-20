@@ -69,22 +69,32 @@
       "horizon_results": [
         {
           "horizon": 10,
-          "event_count": 275,
-          "event_mean_convergence": 8.057000690133437,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": 8.057000690133437,
-          "h1_pass": true
+          "event_count": 121,
+          "eligible_days": 275,
+          "event_fraction": 0.44,
+          "event_mean_convergence": 0.07178975592093292,
+          "baseline_mean_convergence": -0.45456906858390084,
+          "edge_vs_baseline": 0.5263588245048337,
+          "p_value": 0.2055,
+          "max_single_event_share": 0.060321608895930884,
+          "concentration_ok": true,
+          "h1_pass": false
         },
         {
           "horizon": 21,
-          "event_count": 264,
-          "event_mean_convergence": 66.56075278407751,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": 66.56075278407751,
-          "h1_pass": true
+          "event_count": 118,
+          "eligible_days": 264,
+          "event_fraction": 0.44696969696969696,
+          "event_mean_convergence": 0.19246721712777187,
+          "baseline_mean_convergence": 0.06642476784345355,
+          "edge_vs_baseline": 0.12604244928431832,
+          "p_value": 0.423,
+          "max_single_event_share": 0.04037741038419597,
+          "concentration_ok": true,
+          "h1_pass": false
         }
       ],
-      "h1_pass": true
+      "h1_pass": false
     },
     {
       "ticker": "DFDV",
@@ -92,22 +102,32 @@
       "horizon_results": [
         {
           "horizon": 10,
-          "event_count": 74,
-          "event_mean_convergence": 0.008888826431557329,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": 0.008888826431557329,
-          "h1_pass": true
+          "event_count": 5,
+          "eligible_days": 74,
+          "event_fraction": 0.06756756756756757,
+          "event_mean_convergence": 0.7417604424148062,
+          "baseline_mean_convergence": 0.04850532651344138,
+          "edge_vs_baseline": 0.6932551159013648,
+          "p_value": 0.3385,
+          "max_single_event_share": 0.3065611704745262,
+          "concentration_ok": false,
+          "h1_pass": false
         },
         {
           "horizon": 21,
-          "event_count": 63,
-          "event_mean_convergence": -0.005284826682016076,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": -0.005284826682016076,
+          "event_count": 5,
+          "eligible_days": 63,
+          "event_fraction": 0.07936507936507936,
+          "event_mean_convergence": 0.9002047746218408,
+          "baseline_mean_convergence": 0.4998377857711129,
+          "edge_vs_baseline": 0.4003669888507279,
+          "p_value": 0.1995,
+          "max_single_event_share": 0.2698693691669733,
+          "concentration_ok": false,
           "h1_pass": false
         }
       ],
-      "h1_pass": true
+      "h1_pass": false
     },
     {
       "ticker": "MSTR",
@@ -115,18 +135,28 @@
       "horizon_results": [
         {
           "horizon": 10,
-          "event_count": 414,
-          "event_mean_convergence": -0.021223893995556797,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": -0.021223893995556797,
+          "event_count": 181,
+          "eligible_days": 414,
+          "event_fraction": 0.43719806763285024,
+          "event_mean_convergence": -0.08639604458425591,
+          "baseline_mean_convergence": 1.3533235044956125,
+          "edge_vs_baseline": -1.4397195490798684,
+          "p_value": 0.63,
+          "max_single_event_share": 0.03611665603891896,
+          "concentration_ok": true,
           "h1_pass": false
         },
         {
           "horizon": 21,
-          "event_count": 403,
-          "event_mean_convergence": -0.03594650593744954,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": -0.03594650593744954,
+          "event_count": 181,
+          "eligible_days": 403,
+          "event_fraction": 0.4491315136476427,
+          "event_mean_convergence": -0.1683036684240924,
+          "baseline_mean_convergence": -1.3993069459322793,
+          "edge_vs_baseline": 1.231003277508187,
+          "p_value": 0.439,
+          "max_single_event_share": 0.03704615192204972,
+          "concentration_ok": true,
           "h1_pass": false
         }
       ],
@@ -138,18 +168,28 @@
       "horizon_results": [
         {
           "horizon": 10,
-          "event_count": 51,
-          "event_mean_convergence": 0.04948359863261288,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": 0.04948359863261288,
+          "event_count": 15,
+          "eligible_days": 51,
+          "event_fraction": 0.29411764705882354,
+          "event_mean_convergence": 0.15601637021528297,
+          "baseline_mean_convergence": -0.7764093331139555,
+          "edge_vs_baseline": 0.9324257033292385,
+          "p_value": 0.0,
+          "max_single_event_share": 0.10979687606790277,
+          "concentration_ok": true,
           "h1_pass": true
         },
         {
           "horizon": 21,
-          "event_count": 40,
-          "event_mean_convergence": 0.07376378647357072,
-          "baseline_mean_convergence": 0.0,
-          "edge_vs_baseline": 0.07376378647357072,
+          "event_count": 14,
+          "eligible_days": 40,
+          "event_fraction": 0.35,
+          "event_mean_convergence": 0.21728400740471224,
+          "baseline_mean_convergence": -1.4443223868100659,
+          "edge_vs_baseline": 1.661606394214778,
+          "p_value": 0.0,
+          "max_single_event_share": 0.14242293942555764,
+          "concentration_ok": true,
           "h1_pass": true
         }
       ],
@@ -157,9 +197,9 @@
     }
   ],
   "status": "OK",
-  "verdict": "HAS_PULSE",
+  "verdict": "WEAK_EDGE",
   "reasons": [
-    "mNAV mean-reversion clears random baseline on 3 names (3350.T, DFDV, SBET)"
+    "H1 passes on 1 name(s) (SBET) but needs >= 3 for H2"
   ],
-  "generated_at": "2026-06-20T16:58:21.013545+00:00"
+  "generated_at": "2026-06-20T17:10:08.172766+00:00"
 }

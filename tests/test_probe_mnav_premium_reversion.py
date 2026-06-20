@@ -96,24 +96,31 @@ def test_compute_mnav_matches_hand_calculation():
 
 
 def test_detect_extreme_percentile_events():
-    values = [1.0 + 0.01 * i for i in range(60)]
+    values = [1.0 + 0.05 * math.sin(i * 0.5) for i in range(60)]
     values[40] = 3.0  # spike in trailing window
     series = [(T0, value) for value in values]
-    top, bottom = detect_extreme_events(series, trailing_window=20, extreme_pct=10, horizon=5)
+    top, bottom, eligible = detect_extreme_events(
+        series, trailing_window=20, extreme_pct=10, horizon=5
+    )
     assert 40 in top
-    assert bottom == []
+    assert 0 < (len(top) + len(bottom)) / eligible <= 0.30
 
 
 def test_analyze_has_pulse_on_synthetic_mean_reversion():
-    """Oscillating baseline with a reverting spike should beat random baseline -> H1 pass."""
-    values = [1.0 + 0.1 * math.sin(i * 0.5) for i in range(80)]
-    values[45] = 2.5
-    for offset in range(1, 6):
-        values[45 + offset] = 2.5 - 0.28 * offset
+    """Isolated top-extreme spikes that revert should clear significance + concentration gates."""
+    values = [1.0] * 120
+    for spike_idx in (40, 55, 70, 85):
+        values[spike_idx] = 3.0
+        for offset in range(1, 6):
+            values[spike_idx + offset] = 3.0 - 0.5 * offset
     series = [(T0, value) for value in values]
-    results = analyze_mean_reversion(series, _gate_config(trailing_window_days=20, horizons=(5,)))
+    results = analyze_mean_reversion(
+        series, _gate_config(trailing_window_days=20, horizons=(5,), rng_seed=0)
+    )
     assert results[0].h1_pass is True
-    assert results[0].edge_vs_baseline > 0
+    assert results[0].edge_vs_baseline >= 0.02
+    assert results[0].p_value < 0.05
+    assert results[0].concentration_ok is True
 
 
 def test_analyze_no_pulse_on_flat_series():
