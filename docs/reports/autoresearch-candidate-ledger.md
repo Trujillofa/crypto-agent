@@ -464,3 +464,38 @@ capital* does not survive forward. The execution-feasibility audit is **not** ru
 read-only probe work avoided a large engineering build on a compressed trade. Keep live services as
 idle monitors; carry probes remain reusable infra to re-check if a sustained high-funding regime
 returns. **Program terminal state holds — even the one non-directional pulse does not clear the bar.**
+
+## Polymarket calibration / favorite-longshot — candidate #2 (2026-06-20, WEAK_EDGE → CLOSED)
+
+Second "different universe": prediction-market probability mispricing — flips venue (Polymarket/
+on-chain), asset (binary event contracts), data (price + realized resolution), objective
+(calibration edge). Built by Grok (PR #109), reviewed by Claude.
+
+Spec: [`polymarket-calibration-probe-v0.md`](../specs/polymarket-calibration-probe-v0.md).
+Script: `scripts/probe_polymarket_calibration.py`. Cache + sources: `data/polymarket/`. Artifacts:
+`research/rbi_loop/polymarket-calibration-v0/`.
+
+**Review arc:** v0 reported BLOCKED_ON_DATA — **Claude rejected it as an artifact** of (1) a
+silently-swallowed pagination crash at offset 2100 (truncated pull), (2) a per-τ mis-gate (τ=24h was
+feasible), (3) an election-excluding window. Grok fixed all three (commit `09cfbf8`): complete
+date-windowed pull (**20,999** markets, `termination=complete`, politics 938 vs 2), per-τ independent
+gating, window → full history.
+
+Corrected result on the representative sample:
+
+| τ | Obs | H1 | Finding |
+|---|-----|----|---------|
+| 24h | 7,238 | FAIL | well-calibrated; longshots only marginally overpriced (net_edge −0.014, inside 2.5% cost) |
+| 72h | 5,210 | PASS (1 bucket) | high-favorites [0.9,1.0) underpriced 0.969→0.997, but single-category (H2_cat FAIL), net_edge +0.003 |
+
+**Decision: WEAK_EDGE → CLOSED.** The favorite-longshot thesis is effectively rejected — the retail
+prediction market is well-calibrated, and the lone significant beyond-cost signal is a tiny
+single-category favorite-underpricing at 72h with brutal risk/reward (risk ~97¢ to net ~0.3¢). Probe
++ market cache retained as reusable infra.
+
+**Different-universe program status:** two genuinely-different universes now tested — **mNAV
+WEAK_EDGE, Polymarket WEAK_EDGE** — both closed. Combined with the four directional nulls and the
+carry BANK, the pattern is structural: a small operator with public data and no differentiated
+advantage finds no durable edge. Next decision is bank-the-program (capstone) vs pursue a
+*differentiated advantage* (proprietary data / latency / scale / privileged access), not another
+market. (Note: mNAV ledger entry lives on `feat/mnav-probe-impl`; reconcile on merge.)
