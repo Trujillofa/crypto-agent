@@ -419,17 +419,48 @@ This is the **fourth independent null** across families that all share one objec
 crypto price direction (OHLCV structure, higher-TF trend, macro calendar, token unlock). Next
 deliberate bet deliberately changes the **objective**, not the lane — see the carry brief below.
 
-## Delta-neutral funding carry — next deliberate lane (2026-06-20, Gate 0 brief)
+## Delta-neutral funding carry — first non-null (2026-06-20, HAS_PULSE at Gate 1)
 
-**Status:** Gate 0 brief written; cheap probe not yet built. The one structurally-different
-primitive never actually tested: all three prior funding/basis probes measured forward *price*
-returns (directional). Carry-as-yield (long spot + short perp, collect funding, market-neutral)
-tests a **different objective function** and dissolves the trade-frequency constraint that killed
-both live vehicles.
+**Status:** Gate 1 RUN — **HAS_PULSE**. The one structurally-different primitive never previously
+tested: all three prior funding/basis probes measured forward *price* returns (directional).
+Carry-as-yield (long spot + short perp, collect funding, market-neutral) tests a **different
+objective function** and dissolves the trade-frequency constraint that killed both live vehicles.
 
 Brief: [`funding-carry-neutral-probe-v0.md`](../specs/funding-carry-neutral-probe-v0.md).
-Data: `migrations/008_add_funding_rates_table.sql` (funding history in prod).
+Script: `scripts/probe_funding_carry_neutral.py` (read-only, public Binance futures funding API).
+Artifacts: `research/rbi_loop/funding-carry-neutral-v0/`.
 
-**Pre-committed stop rule:** if the carry probe also nulls (net funding < holding costs, or
-negative-funding frequency erases the carry), that is the **fifth** null across **two** objectives
-— bank the terminal state with conviction. This is the final deliberate bet, not a new campaign.
+| Symbol | Net ann carry % (−2% drag) | Neg-funding % | Cum net % | Gates |
+|--------|----------------------------|---------------|-----------|-------|
+| BTCUSDT | +5.22 | 15.8 | +12.45 | H1+H2 ✅ |
+| ETHUSDT | +5.49 | 15.6 | +13.10 | H1+H2 ✅ |
+| SOLUSDT | +3.25 | 30.0 | +7.70 | H1+H2 ✅ |
+
+**Read (do not oversell):** this is the **known crypto carry premium** re-confirmed on independent
+data (2.4y of 8h funding), *not* discovered alpha. Value = first lane to survive Gate 1, and it did
+so by being market-neutral yield not a forecast. ~5% net delta-neutral APY on deployed capital —
+must be judged against the **opportunity cost of capital** (stablecoin/T-bill yield is comparable),
+not against zero. The probe measured only the funding stream; it did **not** model leg
+mark-to-market, rebalancing, liquidation/margin risk, or capital efficiency.
+
+**v1 durability refinement (2026-06-20) — BANK.** Before any build, a cheap read-only refinement
+(`scripts/probe_funding_carry_durability.py`) re-asked v0 as the decision number — yield on
+**capital** not notional, **excess over 4.5% risk-free**, a **forward/OOS split**, and **margin
+stress**:
+
+| Symbol | Net/capital % | Excess vs RF % | Fwd excess % | Train→Fwd carry | Worst +72h |
+|--------|---------------|----------------|--------------|-----------------|------------|
+| BTC | +4.17 | −0.33 | −3.27 | +7.81% → +1.54% | 23.2% |
+| ETH | +3.85 | −0.65 | −3.69 | +8.54% → +1.16% | 42.6% |
+| SOL | +2.29 | −2.21 | −6.39 | +7.44% → −2.68% | 41.9% |
+
+Three cuts each kill it: on capital the ~5% → ~4%; **excess over risk-free is negative on all
+three**; and carry **compressed ~80% forward** (negative for SOL) — it is being arbitraged away in
+real time. Margin stress (40%+ buffer needed on ETH/SOL) makes it worse.
+
+**Decision: BANK — the build is NOT justified.** v0's "5% market-neutral" was the known carry
+premium on notional in a bull-funding window; its *tradeable excess over the opportunity cost of
+capital* does not survive forward. The execution-feasibility audit is **not** run. A few hours of
+read-only probe work avoided a large engineering build on a compressed trade. Keep live services as
+idle monitors; carry probes remain reusable infra to re-check if a sustained high-funding regime
+returns. **Program terminal state holds — even the one non-directional pulse does not clear the bar.**

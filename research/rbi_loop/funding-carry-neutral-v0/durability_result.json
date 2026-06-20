@@ -1,0 +1,163 @@
+{
+  "config": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "start": "2024-01-01T00:00:00",
+    "split": "2025-06-01T00:00:00",
+    "end": "2026-06-01T00:00:00",
+    "risk_free_pct": 4.5,
+    "annual_cost_drag_pct": 2.0,
+    "base_margin_buffer_frac": 0.25,
+    "min_excess_pct": 1.0,
+    "max_carry_drawdown_pct": 6.0
+  },
+  "data_audit": {
+    "total_symbols": 3,
+    "usable_symbols": 3,
+    "per_symbol_ticks": {
+      "BTCUSDT": 2646,
+      "ETHUSDT": 2646,
+      "SOLUSDT": 2646
+    },
+    "blocked": false,
+    "blocked_reason": null
+  },
+  "symbol_results": [
+    {
+      "symbol": "BTCUSDT",
+      "full": {
+        "label": "full",
+        "ticks": 2646,
+        "span_days": 881.6666667129629,
+        "gross_annualized_pct": 7.21689049319728,
+        "net_annualized_pct": 5.21689049319728,
+        "neg_fraction_pct": 15.835222978080122,
+        "max_consecutive_negative": 18,
+        "max_carry_drawdown_pct": 0.9370988173515968
+      },
+      "train": {
+        "label": "train",
+        "ticks": 1551,
+        "span_days": 516.6666666666666,
+        "gross_annualized_pct": 9.812547040618956,
+        "net_annualized_pct": 7.812547040618956,
+        "neg_fraction_pct": 10.31592520954223,
+        "max_consecutive_negative": 18,
+        "max_carry_drawdown_pct": 0.2819400502283127
+      },
+      "forward": {
+        "label": "forward",
+        "ticks": 1095,
+        "span_days": 364.66666670138886,
+        "gross_annualized_pct": 3.540303,
+        "net_annualized_pct": 1.5403030000000002,
+        "neg_fraction_pct": 23.652968036529682,
+        "max_consecutive_negative": 14,
+        "max_carry_drawdown_pct": 0.9370988173515999
+      },
+      "worst_adverse_up_pct": 23.186548603141777,
+      "implied_buffer_frac": 0.25,
+      "capital_factor": 1.25,
+      "net_yield_on_capital_pct": 4.173512394557823,
+      "excess_over_risk_free_pct": -0.3264876054421766,
+      "forward_excess_over_risk_free_pct": -3.2677576,
+      "g1_excess_pass": false,
+      "g2_forward_durable_pass": false,
+      "g3_drawdown_pass": true
+    },
+    {
+      "symbol": "ETHUSDT",
+      "full": {
+        "label": "full",
+        "ticks": 2646,
+        "span_days": 881.6666667129629,
+        "gross_annualized_pct": 7.485651746031746,
+        "net_annualized_pct": 5.485651746031746,
+        "neg_fraction_pct": 15.570672713529857,
+        "max_consecutive_negative": 16,
+        "max_carry_drawdown_pct": 1.1417892374429268
+      },
+      "train": {
+        "label": "train",
+        "ticks": 1551,
+        "span_days": 516.6666666666666,
+        "gross_annualized_pct": 10.53902764990329,
+        "net_annualized_pct": 8.53902764990329,
+        "neg_fraction_pct": 8.961960025789812,
+        "max_consecutive_negative": 12,
+        "max_carry_drawdown_pct": 0.1082865251141536
+      },
+      "forward": {
+        "label": "forward",
+        "ticks": 1095,
+        "span_days": 364.66666670138886,
+        "gross_annualized_pct": 3.1607330000000005,
+        "net_annualized_pct": 1.1607330000000005,
+        "neg_fraction_pct": 24.93150684931507,
+        "max_consecutive_negative": 16,
+        "max_carry_drawdown_pct": 1.1417892374429237
+      },
+      "worst_adverse_up_pct": 42.63241879289497,
+      "implied_buffer_frac": 0.42632418792894966,
+      "capital_factor": 1.4263241879289497,
+      "net_yield_on_capital_pct": 3.8460062533167996,
+      "excess_over_risk_free_pct": -0.6539937466832004,
+      "forward_excess_over_risk_free_pct": -3.6862067475099,
+      "g1_excess_pass": false,
+      "g2_forward_durable_pass": false,
+      "g3_drawdown_pass": true
+    },
+    {
+      "symbol": "SOLUSDT",
+      "full": {
+        "label": "full",
+        "ticks": 2646,
+        "span_days": 881.6666667129629,
+        "gross_annualized_pct": 5.252290408163265,
+        "net_annualized_pct": 3.2522904081632653,
+        "neg_fraction_pct": 30.007558578987148,
+        "max_consecutive_negative": 21,
+        "max_carry_drawdown_pct": 3.9091462648402366
+      },
+      "train": {
+        "label": "train",
+        "ticks": 1551,
+        "span_days": 516.6666666666666,
+        "gross_annualized_pct": 9.437470357833657,
+        "net_annualized_pct": 7.437470357833657,
+        "neg_fraction_pct": 21.598968407479045,
+        "max_consecutive_negative": 12,
+        "max_carry_drawdown_pct": 1.3567853196347173
+      },
+      "forward": {
+        "label": "forward",
+        "ticks": 1095,
+        "span_days": 364.66666670138886,
+        "gross_annualized_pct": -0.6757589999999999,
+        "net_annualized_pct": -2.6757589999999998,
+        "neg_fraction_pct": 41.917808219178085,
+        "max_consecutive_negative": 21,
+        "max_carry_drawdown_pct": 3.5805539497716845
+      },
+      "worst_adverse_up_pct": 41.929045456813526,
+      "implied_buffer_frac": 0.41929045456813524,
+      "capital_factor": 1.4192904545681353,
+      "net_yield_on_capital_pct": 2.291490369497961,
+      "excess_over_risk_free_pct": -2.208509630502039,
+      "forward_excess_over_risk_free_pct": -6.385279360111095,
+      "g1_excess_pass": false,
+      "g2_forward_durable_pass": false,
+      "g3_drawdown_pass": true
+    }
+  ],
+  "status": "OK",
+  "verdict": "BANK",
+  "reasons": [
+    "excess>risk-free+1.0% on 0/3; forward-excess>0 on 0/3; drawdown ok on 3/3",
+    "excess over risk-free does not survive capital base / forward split"
+  ],
+  "generated_at": "2026-06-20T16:07:13.085993+00:00"
+}
