@@ -12,11 +12,13 @@ from scripts.probe_polymarket_calibration import (
     BLOCKED_ON_DATA,
     HAS_PULSE,
     NO_PULSE,
+    PULL_INCOMPLETE,
     WEAK_EDGE,
     DataAudit,
     LeadTimeResult,
     MarketObservation,
     ProbeConfig,
+    PullCompleteness,
     ResolvedMarket,
     analyze_lead_time,
     assign_bucket,
@@ -75,9 +77,38 @@ def _gate_config(**overrides) -> ProbeConfig:
         "min_liquidity": 1000.0,
         "cache_file": None,
         "max_price_fetch": None,
+        "refresh_cache": False,
     }
     defaults.update(overrides)
     return ProbeConfig(**defaults)
+
+
+def _complete_pull() -> PullCompleteness:
+    return PullCompleteness(
+        pages_fetched=10,
+        pagination_mode="offset+date_window",
+        termination="complete",
+        error_detail=None,
+        earliest_end_date="2024-01-01T00:00:00+00:00",
+        latest_end_date="2026-06-20T00:00:00+00:00",
+        incomplete=False,
+    )
+
+
+def _audit(**overrides) -> DataAudit:
+    defaults = {
+        "total_pulled": 100,
+        "exclusions": {},
+        "disputed_flagged": 0,
+        "with_price_by_lead": {"24h": 350, "72h": 221},
+        "usable_for_edge": 350,
+        "category_mix": {"politics": 50, "sports": 50},
+        "pull_completeness": _complete_pull(),
+        "blocked": False,
+        "blocked_reason": None,
+    }
+    defaults.update(overrides)
+    return DataAudit(**defaults)
 
 
 def test_classify_rejects_invalid_refunded_and_unresolved():
@@ -230,15 +261,11 @@ def test_analyze_has_pulse_multi_category(tmp_path):
     assert result.h2_category_exclusion_pass
     assert not result.single_category_only
 
-    audit = DataAudit(
+    audit = _audit(
         total_pulled=240,
-        exclusions={},
-        disputed_flagged=0,
         with_price_by_lead={"24h": 240},
         usable_for_edge=240,
         category_mix={"politics": 60, "sports": 120, "crypto": 60},
-        blocked=False,
-        blocked_reason=None,
     )
     status, verdict, _ = decide_verdict(audit, (result,))
     assert status == "OK"
@@ -255,15 +282,11 @@ def test_analyze_weak_edge_single_category():
     assert result.h1_pass
     assert result.single_category_only
 
-    audit = DataAudit(
+    audit = _audit(
         total_pulled=50,
-        exclusions={},
-        disputed_flagged=0,
         with_price_by_lead={"24h": 50},
         usable_for_edge=50,
         category_mix={"politics": 50},
-        blocked=False,
-        blocked_reason=None,
     )
     _, verdict, _ = decide_verdict(audit, (result,))
     assert verdict == WEAK_EDGE
@@ -280,27 +303,39 @@ def test_analyze_no_pulse_inside_cost_noise():
     result = analyze_lead_time(observations, lead_hours=24, config=config)
     assert not result.h1_pass
 
-    audit = DataAudit(
+    audit = _audit(
         total_pulled=50,
-        exclusions={},
-        disputed_flagged=0,
         with_price_by_lead={"24h": 50},
         usable_for_edge=50,
         category_mix={"politics": 50},
-        blocked=False,
-        blocked_reason=None,
     )
     _, verdict, _ = decide_verdict(audit, (result,))
     assert verdict == NO_PULSE
 
 
+def test_decide_pull_incomplete():
+    audit = _audit(
+        pull_completeness=PullCompleteness(
+            pages_fetched=21,
+            pagination_mode="offset",
+            termination="error",
+            error_detail="offset=2100: ClientResponseError",
+            earliest_end_date="2024-06-01T00:00:00+00:00",
+            latest_end_date="2026-06-20T00:00:00+00:00",
+            incomplete=True,
+        )
+    )
+    status, verdict, _ = decide_verdict(audit, ())
+    assert status == PULL_INCOMPLETE
+    assert verdict == PULL_INCOMPLETE
+
+
 def test_decide_blocked_on_data():
-    audit = DataAudit(
+    audit = _audit(
         total_pulled=50,
         exclusions={"low_liquidity": 50},
-        disputed_flagged=0,
         with_price_by_lead={"24h": 50, "72h": 40},
-        usable_for_edge=40,
+        usable_for_edge=50,
         category_mix={},
         blocked=True,
         blocked_reason="too few",
@@ -319,10 +354,12 @@ def test_build_observations_respects_price_map():
     assert obs[0].market.market_id == "a"
 
 
-def test_decide_verdict_requires_all_lead_times_for_has_pulse():
+def test_decide_verdict_ignores_insufficient_tau():
     good = LeadTimeResult(
         lead_hours=24,
-        observations=100,
+        observations=350,
+        data_sufficient=True,
+        insufficient_note=None,
         buckets=(),
         qualifying_bucket_indices=(0,),
         h1_pass=True,
@@ -332,9 +369,11 @@ def test_decide_verdict_requires_all_lead_times_for_has_pulse():
         single_category_only=False,
         dominant_category="politics",
     )
-    weak = LeadTimeResult(
+    thin = LeadTimeResult(
         lead_hours=72,
-        observations=100,
+        observations=221,
+        data_sufficient=False,
+        insufficient_note="only 221 markets with price at τ (need >= 300) — insufficient for this τ",
         buckets=(),
         qualifying_bucket_indices=(),
         h1_pass=False,
@@ -342,17 +381,9 @@ def test_decide_verdict_requires_all_lead_times_for_has_pulse():
         h2_category_exclusion_pass=False,
         h2_pass=False,
         single_category_only=False,
-        dominant_category="politics",
+        dominant_category=None,
     )
-    audit = DataAudit(
-        total_pulled=100,
-        exclusions={},
-        disputed_flagged=0,
-        with_price_by_lead={"24h": 100, "72h": 100},
-        usable_for_edge=100,
-        category_mix={"politics": 50, "sports": 50},
-        blocked=False,
-        blocked_reason=None,
-    )
-    _, verdict, _ = decide_verdict(audit, (good, weak))
-    assert verdict == WEAK_EDGE
+    audit = _audit(with_price_by_lead={"24h": 350, "72h": 221}, usable_for_edge=350)
+    _, verdict, reasons = decide_verdict(audit, (good, thin))
+    assert verdict == HAS_PULSE
+    assert any("insufficient" in r.lower() for r in reasons)

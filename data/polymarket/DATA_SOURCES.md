@@ -16,9 +16,20 @@ Verified **2026-06-20** for `scripts/probe_polymarket_calibration.py`. No API ke
 |-------|---------|
 | `closed=true` | Only closed markets |
 | `uma_resolution_status=resolved` | UMA-resolved only (excludes `proposed`) |
-| `end_date_min` / `end_date_max` | Window filter (default last 18 months) |
+| `end_date_min` / `end_date_max` | Window filter (default 2024-01-01 → now) |
 | `limit` / `offset` | Pagination (100 per page) |
 | `order=endDate` | Stable paging |
+
+### Pagination strategy (2026-06-20)
+
+Gamma offset paging hard-caps around **offset 2000** (`ClientResponseError`). The probe:
+
+1. Retries transient HTTP errors with exponential backoff (5 attempts).
+2. On soft-cap / error at high offset, switches to **date-windowed** pagination:
+   set `end_date_max` to the oldest `endDate`/`closedTime` seen minus 1s, reset offset to 0, repeat
+   until `end_date_max <= start`.
+3. Records pull completeness in the audit (`pages`, `mode`, `termination`, earliest/latest endDate).
+   A pull that errors out surfaces verdict **`PULL_INCOMPLETE`**, not `BLOCKED_ON_DATA`.
 
 ### Fields consumed
 

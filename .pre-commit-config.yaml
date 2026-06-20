@@ -15,6 +15,6 @@ repos:
       - id: check-json
       - id: check-added-large-files
         args: ['--maxkb=1000']
-        exclude: ^data/tradfi/
+        exclude: ^data/(tradfi|polymarket)/
       - id: debug-statements
       - id: check-merge-conflict
