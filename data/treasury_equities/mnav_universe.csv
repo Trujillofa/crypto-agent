@@ -1,0 +1,17 @@
+ticker,crypto_symbol,binance_symbol,as_of_date,holdings_units,shares_outstanding,source
+MSTR,BTC,BTCUSDT,2023-12-31,189150,16868000,https://www.sec.gov/Archives/edgar/data/1050446/000095017024011709/mstr-ex99_1.htm
+MSTR,BTC,BTCUSDT,2024-02-05,190000,16868000,https://www.sec.gov/Archives/edgar/data/1050446/000095017024011709/mstr-ex99_1.htm
+MSTR,BTC,BTCUSDT,2024-03-31,214278,17647000,https://www.sec.gov/Archives/edgar/data/1050446/000095017024049829/mstr-ex99_1.htm
+MSTR,BTC,BTCUSDT,2024-07-31,226500,19067000,https://www.sec.gov/Archives/edgar/data/1050446/000095017024089243/mstr-ex99_1.htm
+MSTR,BTC,BTCUSDT,2024-11-10,279420,202644230,https://www.sec.gov/Archives/edgar/data/1050446/000119312524255184/d908568dex991.htm
+3350.T,BTC,BTCUSDT,2024-06-30,141.073,181692180,https://www.otcmarkets.com/media/696035/2025-03-05T17-17-21/Metaplanet%202025-2026%20Bitcoin%20Plan.pdf
+3350.T,BTC,BTCUSDT,2024-09-30,398.832,181692180,https://equity.jiji.com/storage/tdnet/140120250810538601.pdf
+3350.T,BTC,BTCUSDT,2024-12-31,1761.98,362683400,https://equity.jiji.com/storage/tdnet/140120250810538601.pdf
+3350.T,BTC,BTCUSDT,2025-03-31,4046,459823340,https://equity.jiji.com/storage/tdnet/140120250810538601.pdf
+3350.T,BTC,BTCUSDT,2025-06-30,13350,654714340,https://equity.jiji.com/storage/tdnet/140120250810538601.pdf
+DFDV,SOL,SOLUSDT,2025-05-12,595988,2037531,https://www.sec.gov/Archives/edgar/data/1805526/000121390025045959/ea024292601ex99-1_defi.htm
+DFDV,SOL,SOLUSDT,2025-07-09,857749,18700000,https://www.sec.gov/Archives/edgar/data/1805526/000121390025063476/ea024881801ex99-1_defi.htm
+SBET,ETH,ETHUSDT,2025-06-13,176270.69,78832600,https://www.sec.gov/Archives/edgar/data/1981535/000164117225014970/ex99-1.htm
+SBET,ETH,ETHUSDT,2025-07-27,438190,128879412,https://www.sec.gov/Archives/edgar/data/1981535/000164117225021266/ex99-1.htm
+SBET,ETH,ETHUSDT,2025-08-31,837230,212494923,https://www.sec.gov/Archives/edgar/data/1981535/000149315225012518/ex99-1.htm
+SBET,ETH,ETHUSDT,2025-12-14,863424,196693191,https://www.sec.gov/Archives/edgar/data/1981535/000149315225028063/ex99-1.htm

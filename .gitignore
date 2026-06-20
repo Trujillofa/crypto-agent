@@ -58,6 +58,8 @@ data/*
 !data/tradfi/**
 !data/token_unlocks/
 !data/token_unlocks/**
+!data/treasury_equities/
+!data/treasury_equities/**
 # Local agent scratch (drafts/plans/run-continuation)
 .omo/
 

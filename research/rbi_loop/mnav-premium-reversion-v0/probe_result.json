@@ -1,0 +1,165 @@
+{
+  "config": {
+    "tickers": [
+      "3350.T",
+      "DFDV",
+      "MSTR",
+      "SBET"
+    ],
+    "start": "2024-01-01",
+    "end": "2026-06-01",
+    "trailing_window_days": 180,
+    "extreme_pct": 10,
+    "horizons": [
+      10,
+      21
+    ],
+    "min_names": 4,
+    "min_names_edge": 3,
+    "seed_csv": "data/treasury_equities/mnav_universe.csv"
+  },
+  "data_audit": {
+    "total_names": 4,
+    "usable_names": 4,
+    "per_name": [
+      {
+        "ticker": "3350.T",
+        "rows": 465,
+        "span_days": 697,
+        "equity_source": "yfinance",
+        "max_disclosure_gap_days": 336,
+        "stale_disclosure": true,
+        "usable": true
+      },
+      {
+        "ticker": "DFDV",
+        "rows": 264,
+        "span_days": 382,
+        "equity_source": "yfinance",
+        "max_disclosure_gap_days": 327,
+        "stale_disclosure": true,
+        "usable": true
+      },
+      {
+        "ticker": "MSTR",
+        "rows": 604,
+        "span_days": 878,
+        "equity_source": "yfinance",
+        "max_disclosure_gap_days": 568,
+        "stale_disclosure": true,
+        "usable": true
+      },
+      {
+        "ticker": "SBET",
+        "rows": 241,
+        "span_days": 350,
+        "equity_source": "yfinance",
+        "max_disclosure_gap_days": 169,
+        "stale_disclosure": true,
+        "usable": true
+      }
+    ],
+    "blocked": false,
+    "blocked_reason": null
+  },
+  "name_results": [
+    {
+      "ticker": "3350.T",
+      "trading_days": 465,
+      "horizon_results": [
+        {
+          "horizon": 10,
+          "event_count": 275,
+          "event_mean_convergence": 8.057000690133437,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": 8.057000690133437,
+          "h1_pass": true
+        },
+        {
+          "horizon": 21,
+          "event_count": 264,
+          "event_mean_convergence": 66.56075278407751,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": 66.56075278407751,
+          "h1_pass": true
+        }
+      ],
+      "h1_pass": true
+    },
+    {
+      "ticker": "DFDV",
+      "trading_days": 264,
+      "horizon_results": [
+        {
+          "horizon": 10,
+          "event_count": 74,
+          "event_mean_convergence": 0.008888826431557329,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": 0.008888826431557329,
+          "h1_pass": true
+        },
+        {
+          "horizon": 21,
+          "event_count": 63,
+          "event_mean_convergence": -0.005284826682016076,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": -0.005284826682016076,
+          "h1_pass": false
+        }
+      ],
+      "h1_pass": true
+    },
+    {
+      "ticker": "MSTR",
+      "trading_days": 604,
+      "horizon_results": [
+        {
+          "horizon": 10,
+          "event_count": 414,
+          "event_mean_convergence": -0.021223893995556797,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": -0.021223893995556797,
+          "h1_pass": false
+        },
+        {
+          "horizon": 21,
+          "event_count": 403,
+          "event_mean_convergence": -0.03594650593744954,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": -0.03594650593744954,
+          "h1_pass": false
+        }
+      ],
+      "h1_pass": false
+    },
+    {
+      "ticker": "SBET",
+      "trading_days": 241,
+      "horizon_results": [
+        {
+          "horizon": 10,
+          "event_count": 51,
+          "event_mean_convergence": 0.04948359863261288,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": 0.04948359863261288,
+          "h1_pass": true
+        },
+        {
+          "horizon": 21,
+          "event_count": 40,
+          "event_mean_convergence": 0.07376378647357072,
+          "baseline_mean_convergence": 0.0,
+          "edge_vs_baseline": 0.07376378647357072,
+          "h1_pass": true
+        }
+      ],
+      "h1_pass": true
+    }
+  ],
+  "status": "OK",
+  "verdict": "HAS_PULSE",
+  "reasons": [
+    "mNAV mean-reversion clears random baseline on 3 names (3350.T, DFDV, SBET)"
+  ],
+  "generated_at": "2026-06-20T16:58:21.013545+00:00"
+}
