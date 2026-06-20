@@ -64,6 +64,7 @@ research/last_result.json
 research/archive/
 research/candidates/
 research/resolved/
+research/**/synthetic-sentiment-*.jsonl
 
 # Generated reports (reproducible)
 docs/reports/config-search-*.csv
