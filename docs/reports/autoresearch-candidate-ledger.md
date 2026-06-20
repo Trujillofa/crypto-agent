@@ -388,3 +388,48 @@ solution in the explored space. **Both candidate vehicles (overlay #99, sentimen
 are now swept to a dead verdict at corrected costs.** Next step is not another probe — it is
 (1) accept the terminal state, keep live services as idle monitors, and only deliberately
 (2) open a new data-first primitive (news/event calendar) gated by a cheap-probe HAS_PULSE.
+
+## Token-unlock 72h short — external-sourced data-first lane (2026-06-20, REJECT at Gate 1)
+
+First post-consolidation data-first lane: an event-calendar short keyed to scheduled token
+unlocks, sourced from the external `vibe-investing` repo's "72-Hour Shock" SSRN working paper
+(52 hand-collected Binance unlock events; claimed 88.5% negative within 72h, mean −16.97%).
+
+Brief: [`token-unlock-72h-short-probe-v0.md`](../specs/token-unlock-72h-short-probe-v0.md).
+Script: `scripts/probe_token_unlock_shock.py` (re-fetches prices fresh from Binance — the paper's
+own price files are self-described "structural templates", so its numbers were never independent).
+Seed: `data/token_unlocks/binance_unlock_events.csv` (metadata only, outcomes excluded by design).
+Artifacts: `research/rbi_loop/token-unlock-72h-short-v0/`.
+
+| Metric | Paper claim | Probe (fresh Binance data) |
+|--------|-------------|----------------------------|
+| Events usable | 52 | 49/52 (good feasibility) |
+| Negative 72h (raw) | 88.5% | **49.0%** |
+| Mean raw 72h return | −16.97% | **+0.98%** |
+| Negative vs BTC | 88.5% | **46.9%** |
+| Mean BTC-relative 72h | −17.18% | **+1.09%** |
+| Short PnL net of 1% haircut | — | **−1.98%** (worse than baseline) |
+
+**Decision: REJECT / NO_PULSE.** The effect does not reproduce on independently-fetched prices;
+the paper's headline was a data-reconstruction artifact. Do **not** subset ("cliff only", ">5%")
+to chase a pass — banned post-hoc overfitting. Only justified follow-up is a v1 with **real
+intraday** unlock timestamps from an external calendar; otherwise the hypothesis is retired.
+
+This is the **fourth independent null** across families that all share one objective: predicting
+crypto price direction (OHLCV structure, higher-TF trend, macro calendar, token unlock). Next
+deliberate bet deliberately changes the **objective**, not the lane — see the carry brief below.
+
+## Delta-neutral funding carry — next deliberate lane (2026-06-20, Gate 0 brief)
+
+**Status:** Gate 0 brief written; cheap probe not yet built. The one structurally-different
+primitive never actually tested: all three prior funding/basis probes measured forward *price*
+returns (directional). Carry-as-yield (long spot + short perp, collect funding, market-neutral)
+tests a **different objective function** and dissolves the trade-frequency constraint that killed
+both live vehicles.
+
+Brief: [`funding-carry-neutral-probe-v0.md`](../specs/funding-carry-neutral-probe-v0.md).
+Data: `migrations/008_add_funding_rates_table.sql` (funding history in prod).
+
+**Pre-committed stop rule:** if the carry probe also nulls (net funding < holding costs, or
+negative-funding frequency erases the carry), that is the **fifth** null across **two** objectives
+— bank the terminal state with conviction. This is the final deliberate bet, not a new campaign.
