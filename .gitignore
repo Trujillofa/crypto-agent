@@ -58,6 +58,8 @@ data/*
 !data/tradfi/**
 !data/token_unlocks/
 !data/token_unlocks/**
+!data/polymarket/
+!data/polymarket/**
 # Local agent scratch (drafts/plans/run-continuation)
 .omo/
 
