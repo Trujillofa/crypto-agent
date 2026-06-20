@@ -464,3 +464,31 @@ capital* does not survive forward. The execution-feasibility audit is **not** ru
 read-only probe work avoided a large engineering build on a compressed trade. Keep live services as
 idle monitors; carry probes remain reusable infra to re-check if a sustained high-funding regime
 returns. **Program terminal state holds — even the one non-directional pulse does not clear the bar.**
+
+## mNAV premium-reversion — first "different universe" lane (2026-06-20, WEAK_EDGE → CLOSED)
+
+First lane outside the crypto/OHLCV universe: crypto-treasury **equity vs crypto NAV** (mNAV)
+relative value — flips asset class (equities), data (equity price + balance-sheet holdings), and
+objective (relative value). Built by Grok (PR #108), reviewed by Claude.
+
+Spec: [`mnav-premium-reversion-probe-v0.md`](../specs/mnav-premium-reversion-probe-v0.md).
+Script: `scripts/probe_mnav_premium_reversion.py`. Seed: `data/treasury_equities/mnav_universe.csv`
+(MSTR, MetaPlanet 3350.T, DFDV, SBET — filing-sourced, point-in-time). Artifacts:
+`research/rbi_loop/mnav-premium-reversion-v0/`.
+
+**Review arc:** v0 reported HAS_PULSE on 3 names — **Claude rejected it as a 4-bug artifact**
+(inverted percentile cut flagging ~65% of days as "extreme", unnormalized raw-mNAV metric, degenerate
+zero baseline, no-significance OR-pass). Grok fixed all four (commit `382c3af`); corrected re-run:
+
+| Ticker | H1 | H=10 edge (p) | H=21 edge (p) | Concentration |
+|--------|----|---------------|---------------|---------------|
+| 3350.T | n | +0.53 (0.205) | +0.13 (0.423) | ok |
+| DFDV | n | +0.69 (0.339) | +0.40 (0.200) | ok |
+| MSTR | n | −1.44 (0.630) | +1.23 (0.439) | ok |
+| SBET | **Y** | +0.93 (0.000) | +1.66 (0.000) | 0.11/0.14 |
+
+**Decision: WEAK_EDGE → CLOSED.** Only SBET passes (needs ≥3 for H2). SBET is one ETH-treasury name
+over a single mid-2025 premium spike-collapse (overlapping windows likely inflate its bootstrap p);
+the most liquid, longest-history name (MSTR) fails. There is no robust **cross-name** premium-
+reversion edge. **Do not** add more treasury names to manufacture 3 passes (post-hoc rescue trap).
+Probe + seed retained as reusable infra. Routing to candidate #2 (Polymarket, spec PR #107).
