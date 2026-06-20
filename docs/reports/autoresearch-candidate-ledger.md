@@ -419,17 +419,32 @@ This is the **fourth independent null** across families that all share one objec
 crypto price direction (OHLCV structure, higher-TF trend, macro calendar, token unlock). Next
 deliberate bet deliberately changes the **objective**, not the lane — see the carry brief below.
 
-## Delta-neutral funding carry — next deliberate lane (2026-06-20, Gate 0 brief)
+## Delta-neutral funding carry — first non-null (2026-06-20, HAS_PULSE at Gate 1)
 
-**Status:** Gate 0 brief written; cheap probe not yet built. The one structurally-different
-primitive never actually tested: all three prior funding/basis probes measured forward *price*
-returns (directional). Carry-as-yield (long spot + short perp, collect funding, market-neutral)
-tests a **different objective function** and dissolves the trade-frequency constraint that killed
-both live vehicles.
+**Status:** Gate 1 RUN — **HAS_PULSE**. The one structurally-different primitive never previously
+tested: all three prior funding/basis probes measured forward *price* returns (directional).
+Carry-as-yield (long spot + short perp, collect funding, market-neutral) tests a **different
+objective function** and dissolves the trade-frequency constraint that killed both live vehicles.
 
 Brief: [`funding-carry-neutral-probe-v0.md`](../specs/funding-carry-neutral-probe-v0.md).
-Data: `migrations/008_add_funding_rates_table.sql` (funding history in prod).
+Script: `scripts/probe_funding_carry_neutral.py` (read-only, public Binance futures funding API).
+Artifacts: `research/rbi_loop/funding-carry-neutral-v0/`.
 
-**Pre-committed stop rule:** if the carry probe also nulls (net funding < holding costs, or
-negative-funding frequency erases the carry), that is the **fifth** null across **two** objectives
-— bank the terminal state with conviction. This is the final deliberate bet, not a new campaign.
+| Symbol | Net ann carry % (−2% drag) | Neg-funding % | Cum net % | Gates |
+|--------|----------------------------|---------------|-----------|-------|
+| BTCUSDT | +5.22 | 15.8 | +12.45 | H1+H2 ✅ |
+| ETHUSDT | +5.49 | 15.6 | +13.10 | H1+H2 ✅ |
+| SOLUSDT | +3.25 | 30.0 | +7.70 | H1+H2 ✅ |
+
+**Read (do not oversell):** this is the **known crypto carry premium** re-confirmed on independent
+data (2.4y of 8h funding), *not* discovered alpha. Value = first lane to survive Gate 1, and it did
+so by being market-neutral yield not a forecast. ~5% net delta-neutral APY on deployed capital —
+must be judged against the **opportunity cost of capital** (stablecoin/T-bill yield is comparable),
+not against zero. The probe measured only the funding stream; it did **not** model leg
+mark-to-market, rebalancing, liquidation/margin risk, or capital efficiency.
+
+**Decision: advance to an execution-feasibility audit, NOT deployment.** HAS_PULSE authorizes only
+a paired spot+perp delta-neutral execution audit (analogue of `short-side-parity-audit-v0.md`) —
+the engine has no paired-position lifecycle and futures execution is LONG-only MVP. No campaign,
+config, paper agent, or live risk before that audit passes. The pre-committed stop rule does **not**
+fire — this is the non-null path it was waiting for.

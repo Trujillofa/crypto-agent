@@ -1,7 +1,8 @@
 # Lane Brief — Delta-Neutral Funding Carry Probe v0 (Gate 0)
 
-**Status:** Gate 0 (brief). Cheap probe not yet built. This is the **final deliberate bet** under
-a pre-committed stop rule, not the start of a new campaign.
+**Status:** Gate 1 RUN — **HAS_PULSE** (2026-06-20). First non-null in the program; it's a *known
+carry premium*, not discovered alpha. Next gate is **execution feasibility**, not deployment. See
+"## v0 result" below.
 **Author role:** planned by Claude (planner/reviewer); cheap probe to be built and run before any
 campaign, config, or live risk.
 **Predecessors / context:**
@@ -122,3 +123,38 @@ no orders, no `--execute` path. Same Gate-1 verdict semantics as every prior pro
 - NO_PULSE → carry does not clear costs; lane closed, invoke the stop rule above.
 - WEAK_EDGE → positive mean but frequently negative / capacity-bound; do not deploy without the
   execution audit proving it's harvestable net of real two-leg costs.
+
+## v0 result (2026-06-20) — HAS_PULSE
+
+Probe ran against the public Binance futures funding history (2646 8h ticks/symbol ≈ 2.4 years,
+2024-01 → 2026-06). All three majors clear both gates:
+
+| Symbol | Ann carry % | Net ann % (−2% drag) | Neg-funding % | Max neg run | Cum net % | H1 | H2 |
+|--------|-------------|----------------------|---------------|-------------|-----------|----|----|
+| BTCUSDT | +7.22 | **+5.22** | 15.8 | 18 ticks (~6d) | +12.45 | ✅ | ✅ |
+| ETHUSDT | +7.49 | **+5.49** | 15.6 | 16 ticks (~5d) | +13.10 | ✅ | ✅ |
+| SOLUSDT | +5.25 | **+3.25** | 30.0 | 21 ticks (~7d) | +7.70 | ✅ | ✅ |
+
+**Verdict: HAS_PULSE.** Net annualized carry clears the 3% hurdle on all three; negative-funding
+fraction is bounded (16% BTC/ETH, 30% SOL) and cumulative net carry is positive over the window.
+
+**What this is — and is NOT.** This is the **known crypto carry premium** (perp longs persistently
+pay funding), re-confirmed on independent data — *not* a discovered alpha. The value is that it's
+the first lane to survive Gate 1, and it did so by being **market-neutral yield, not a price
+forecast** — exactly the objective change the four nulls argued for. Read it as "~5% net APY,
+delta-neutral, on deployed capital," which must be judged against the **opportunity cost of that
+capital** (stablecoin/T-bill yield is in the same ballpark), not against zero.
+
+**Why the probe alone cannot authorize deployment (it is a screen, not a backtest).** It measured
+*only the funding stream*. It did **not** model: (a) mark-to-market of the spot+perp legs and
+rebalancing/slippage (the −2% drag is a crude proxy, not a model); (b) liquidation/margin risk on
+the short perp during up-spikes; (c) capital efficiency (the spot leg ties up full notional);
+(d) the SOL tail (30% negative funding, ~7-day paying runs). A real backtest needs paired spot+perp
+prices marked at each funding tick.
+
+**Decision: advance to the execution-feasibility audit, not deployment.** Per this brief's sequence,
+HAS_PULSE authorizes **only** a separate audit of whether the system can hold and rebalance a paired
+delta-neutral position safely (analogous to `short-side-parity-audit-v0.md`) — the engine currently
+has no spot+perp paired-position lifecycle and futures execution is LONG-only MVP. No campaign,
+config, paper agent, or live risk until that audit passes. The pre-committed stop rule does **not**
+fire — this is the non-null path it was waiting for.

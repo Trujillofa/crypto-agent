@@ -1,0 +1,75 @@
+{
+  "config": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "start": "2024-01-01T00:00:00",
+    "end": "2026-06-01T00:00:00",
+    "min_net_carry_pct": 3.0,
+    "annual_cost_drag_pct": 2.0,
+    "max_neg_fraction_pct": 45.0
+  },
+  "data_audit": {
+    "total_symbols": 3,
+    "usable_symbols": 3,
+    "per_symbol_ticks": {
+      "BTCUSDT": 2646,
+      "ETHUSDT": 2646,
+      "SOLUSDT": 2646
+    },
+    "blocked": false,
+    "blocked_reason": null
+  },
+  "symbol_results": [
+    {
+      "symbol": "BTCUSDT",
+      "ticks": 2646,
+      "span_days": 881.6666667129629,
+      "mean_rate_per_8h": 6.590767573696145e-05,
+      "annualized_carry_pct": 7.21689049319728,
+      "net_annualized_carry_pct": 5.21689049319728,
+      "neg_fraction_pct": 15.835222978080122,
+      "max_consecutive_negative": 18,
+      "cumulative_gross_carry_pct": 17.439170999999906,
+      "cumulative_net_carry_pct": 12.448120771435725,
+      "h1_hurdle_pass": true,
+      "h2_harvestable_pass": true
+    },
+    {
+      "symbol": "ETHUSDT",
+      "ticks": 2646,
+      "span_days": 881.6666667129629,
+      "mean_rate_per_8h": 6.83621164021164e-05,
+      "annualized_carry_pct": 7.485651746031746,
+      "net_annualized_carry_pct": 5.485651746031746,
+      "neg_fraction_pct": 15.570672713529857,
+      "max_consecutive_negative": 16,
+      "cumulative_gross_carry_pct": 18.088615999999778,
+      "cumulative_net_carry_pct": 13.097565771435598,
+      "h1_hurdle_pass": true,
+      "h2_harvestable_pass": true
+    },
+    {
+      "symbol": "SOLUSDT",
+      "ticks": 2646,
+      "span_days": 881.6666667129629,
+      "mean_rate_per_8h": 4.7966122448979593e-05,
+      "annualized_carry_pct": 5.252290408163265,
+      "net_annualized_carry_pct": 3.2522904081632653,
+      "neg_fraction_pct": 30.007558578987148,
+      "max_consecutive_negative": 21,
+      "cumulative_gross_carry_pct": 12.691835999999753,
+      "cumulative_net_carry_pct": 7.700785771435573,
+      "h1_hurdle_pass": true,
+      "h2_harvestable_pass": true
+    }
+  ],
+  "status": "OK",
+  "verdict": "HAS_PULSE",
+  "reasons": [
+    "net annualized carry clears 3.0% on 3 symbols and is harvestable (neg-fraction bounded, cumulative net > 0) on 3"
+  ],
+  "generated_at": "2026-06-20T15:53:51.545310+00:00"
+}
