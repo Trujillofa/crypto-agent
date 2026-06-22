@@ -1,0 +1,26 @@
+{
+  "total_pulled": 20999,
+  "exclusions": {
+    "zero_volume": 6012,
+    "low_liquidity": 3871,
+    "disputed_resolution": 26,
+    "invalid_refunded": 184,
+    "invalid_outcome": 1
+  },
+  "disputed_flagged": 26,
+  "category_mix": {
+    "other": 4658,
+    "crypto": 3263,
+    "sports": 2046,
+    "politics": 938
+  },
+  "pull_completeness": {
+    "pages_fetched": 210,
+    "pagination_mode": "offset+date_window",
+    "termination": "complete",
+    "error_detail": null,
+    "earliest_end_date": "2023-11-03T00:19:05+00:00",
+    "latest_end_date": "2026-06-20T18:02:22+00:00",
+    "incomplete": false
+  }
+}
