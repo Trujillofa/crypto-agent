@@ -21,6 +21,7 @@ jobs:
           hostname: gha-crypto-agent-deploy-${{ github.run_id }}
 
       - name: Execute deployment via SSH
+        id: deploy
         env:
           SSH_HOST: ${{ secrets.HETZNER_TAILSCALE_HOST }}
           SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
@@ -33,21 +34,70 @@ jobs:
           echo "Pinging $SSH_HOST via Tailscale..."
           tailscale ping --timeout 10s "$SSH_HOST" || { echo "Tailscale cannot reach $SSH_HOST — check HETZNER_TAILSCALE_HOST secret and server Tailscale status"; exit 1; }
 
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@$SSH_HOST << 'DEPLOY'
+          # NOTE: the heredoc delimiter is quoted ('DEPLOY'), so the body runs
+          # verbatim on the remote host — no $ expansion on the runner. Capture
+          # remote stdout on the runner so we can forward the result to a step
+          # output for the Telegram message.
+          DEPLOY_LOG=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@$SSH_HOST << 'DEPLOY'
+          set -eo pipefail
           cd /opt/crypto-agent
+
+          # 1) Sync code. --ff-only refuses to clobber server-side hotfixes; if it
+          #    fails, stop and surface the divergence instead of deploying stale code.
           git fetch origin main
           git pull --ff-only origin main
-          # Rebuild only agent containers; leave DB/monitoring untouched
-          docker compose -f docker-compose.prod.yml up -d --build agent_sol_sparse agent_sentiment_macro agent_avax
-          sleep 120
-          # Check for any unhealthy agent containers. Fail the deploy if found.
-          if docker compose -f docker-compose.prod.yml ps agent_sol_sparse agent_sentiment_macro agent_avax | grep "unhealthy"; then
-            echo "Error: One or more agent containers are unhealthy."
-            docker compose -f docker-compose.prod.yml ps
+
+          # 2) Assert we actually landed on the expected commit.
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse origin/main)
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "ERROR: after pull, HEAD ($LOCAL) != origin/main ($REMOTE)"
             exit 1
           fi
+
+          # 3) Derive the agent service set dynamically so new/removed agents are
+          #    picked up without editing this workflow (the prior hardcoded list
+          #    still named agent_avax long after it was removed).
+          AGENTS=$(docker compose -f docker-compose.prod.yml config --services | grep '^agent_' | sort | tr '\n' ' ')
+          if [ -z "$AGENTS" ]; then
+            echo "ERROR: no agent_* services found in docker-compose.prod.yml"
+            exit 1
+          fi
+          echo "Deploying agents: $AGENTS"
+
+          # 4) Rebuild THEN roll. A plain restart will not pick up code/config
+          #    changes baked into Dockerfile.prod (per AGENTS.md).
+          docker compose -f docker-compose.prod.yml build $AGENTS
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS
+
+          # 5) Wait for healthchecks to settle, then require EVERY agent to be
+          #    "(healthy)". This catches unhealthy, restarting, exited, and
+          #    still-starting containers — the old check only matched the literal
+          #    string "unhealthy" and would pass a crash loop.
+          sleep 120
+          NOT_READY=$(docker compose -f docker-compose.prod.yml ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE '\(healthy\)$' || true)
+          if [ -n "$NOT_READY" ]; then
+            echo "ERROR: agents not healthy after 120s:"
+            echo "$NOT_READY"
+            docker compose -f docker-compose.prod.yml ps $AGENTS
+            exit 1
+          fi
+
           docker image prune -f
+
+          # 6) Report the healthy agent list back to the runner (sorted,
+          #    comma-joined) so the Telegram message reflects what actually
+          #    deployed instead of a hardcoded string.
+          HEALTHY=$(echo "$AGENTS" | tr ' ' '\n' | grep . | sort | paste -sd, -)
+          echo "deploy_services=$HEALTHY"
           DEPLOY
+          )
+
+          # Surface the full remote log in the Actions UI, then forward the
+          # marker line as a step output for the success message below.
+          echo "$DEPLOY_LOG"
+          SERVICES=$(echo "$DEPLOY_LOG" | sed -n 's/^deploy_services=//p')
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
 
       - name: Send Telegram Notification on Success
         if: success()
@@ -58,7 +108,8 @@ jobs:
           message: |
             ✅ Deployment Successful!
             Repo: ${{ github.repository }}
-            3 agents are running and healthy: agent_sol_sparse, agent_sentiment_macro, agent_avax
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Agents healthy: ${{ steps.deploy.outputs.services }}
 
       - name: Send Telegram Notification on Failure
         if: failure()
@@ -69,4 +120,5 @@ jobs:
           message: |
             ❌ Deployment Failed!
             Repo: ${{ github.repository }}
-            Check GitHub Actions logs for details.
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Check GitHub Actions logs. Production may be in a partial state — verify with: docker compose -f docker-compose.prod.yml ps
