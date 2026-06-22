@@ -53,6 +53,7 @@ htmlcov/
 # Data (local only, not committed)
 data/*
 !data/macro_events/
+data/microstructure/
 !data/macro_events/**
 !data/tradfi/
 !data/tradfi/**
