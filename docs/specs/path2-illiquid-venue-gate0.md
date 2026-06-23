@@ -31,11 +31,36 @@ selection follows the edge — never on momentum.
 | Sub-question | Required for Gate 0 pass |
 |---|---|
 | Named advantage stated out loud | ✅ `illiquid venue microstructure where the book is thin` |
-| Credible possession of non-public edge | ⏳ **Pending** — operator must supply venue access, data feed, or execution path not available in the public major-venue probes |
+| Credible possession of non-public edge | ⏳ **Pending** — operator must supply **evidence**: a named venue + access (account / historical L2+trades / vendor path) **and** a feasibility table. A bare env-var boolean is a *declaration*, not evidence — the attestation state is `ACCESS_DECLARED_PENDING_EVIDENCE` until the feasibility numbers exist. |
+| Economic viability (capacity & defensibility) | ⏳ **Pending** — see sub-gates below; this is a Gate-0 disqualifier, not a Gate-1 detail |
 | Market selection follows edge | ⏳ **Pending** — candidate venues/pairs to be named only after access is confirmed |
 
 Gate 0 **does not** claim `HAS_PULSE` on any market data. It records the deliberate reopening of
-research under Path 2 and blocks Gate 1 until infra exists.
+research under Path 2 and blocks Gate 1 until infra exists **and** the economic-viability sub-gates
+below are answered with numbers.
+
+### Gate 0 economic-viability sub-gates (capacity & defensibility)
+
+"Credible" is not enough — the capstone question asks for a **defensible** asymmetry, and illiquid-venue
+microstructure is the *least* defensible edge type. These must be answered **before** any Gate 1 data
+spend, because each can disqualify the entire premise on its own:
+
+1. **Capacity / size.** A thin book means even a *real* edge cannot absorb size without you moving the
+   price against yourself. Required number: the **max position size at which the edge survives** (impact
+   < edge). If that size is too small to clear the operator's per-trade operating cost, the lane is dead
+   regardless of statistical pulse — an edge you can't deploy is not an edge.
+2. **Spread vs edge.** Thin books carry wide spreads. A signed-flow edge of +5 bps is worthless against
+   a 50 bps cost to cross. Required: the venue-appropriate round-trip cost, and the edge must clear it
+   with margin (same discipline as #110, which failed net −7 to −10 bps on majors at ~10 bps cost).
+3. **Venue / custody risk.** Illiquid venues are usually smaller exchanges: solvency, withdrawal, and
+   rug risk mean you can lose the **bankroll to the venue**, not just the trade. Required: an explicit
+   max-capital-at-venue cap and an honest statement of counterparty exposure.
+4. **Self-limiting / competition.** The thinness that creates the edge is the same thinness that caps it
+   and invites market makers back once you trade size. Required: why the asymmetry *persists* after you
+   start trading it — i.e. what makes it **defensible**, not just currently-present.
+
+If sub-gates 1 or 3 fail (no deployable size, or unacceptable venue risk), **close the lane at Gate 0** —
+do not spend on Gate 1 data. These are economic questions, answerable on paper before any probe.
 
 ---
 
