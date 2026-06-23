@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-06-23T15:20:05.583242+00:00",
+  "lane_name": "path2-illiquid-venue",
+  "execute": false,
+  "decision": {
+    "action": "RUN_CHEAP_PROBE",
+    "allowed": true,
+    "reasons": [
+      "lane brief exists; cheap-probe verdict missing"
+    ],
+    "evidence": {
+      "lane_brief": "docs/specs/path2-illiquid-venue-gate0.md",
+      "probe_verdict": null
+    }
+  },
+  "selected_command": "uv run python scripts/probe_path2_gate0_attestation.py --lane-name path2-illiquid-venue --brief docs/specs/path2-illiquid-venue-gate0.md --output research/rbi_loop/path2-illiquid-venue/gate0-attestation.json",
+  "execution": null
+}
