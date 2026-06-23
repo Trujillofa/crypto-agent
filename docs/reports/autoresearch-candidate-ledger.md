@@ -526,4 +526,4 @@ WEAK_EDGE, Polymarket WEAK_EDGE** — both closed. Combined with the four direct
 carry BANK, the pattern is structural: a small operator with public data and no differentiated
 advantage finds no durable edge. Next decision is bank-the-program (capstone) vs pursue a
 *differentiated advantage* (proprietary data / latency / scale / privileged access), not another
-market. (Note: mNAV ledger entry lives on `feat/mnav-probe-impl`; reconcile on merge.)
+market.
