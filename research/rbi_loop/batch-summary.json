@@ -1,0 +1,143 @@
+{
+  "generated_at": "2026-06-15T02:58:43.012588+00:00",
+  "lane_count": 4,
+  "blocked_count": 4,
+  "failed_execution_count": 0,
+  "actions": {
+    "ITERATE_OR_CLOSE": 4
+  },
+  "results": [
+    {
+      "decision_output": "research/rbi_loop/basis-premium-filter-v0/decision.json",
+      "report_output": "docs/reports/rbi-loop-basis-premium-filter-v0.md",
+      "record": {
+        "generated_at": "2026-06-15T02:58:42.960694+00:00",
+        "lane_name": "basis-premium-filter-v0",
+        "execute": false,
+        "decision": {
+          "action": "ITERATE_OR_CLOSE",
+          "allowed": false,
+          "reasons": [
+            "autoresearch result did not pass the standard gate"
+          ],
+          "evidence": {
+            "lane_brief": "docs/specs/basis-premium-risk-filter-surface-v0.md",
+            "probe_verdict": "HAS_PULSE",
+            "last_result_status": "keep",
+            "gate_profile": "filter_wfo_ab",
+            "bootstrap": null,
+            "passes_standard_gate": false,
+            "eligible_for_bootstrap_1000": false,
+            "promotion_candidate_failures": [
+              "insufficient_blocks",
+              "no_risk_improvement",
+              "oos_return_not_better"
+            ]
+          }
+        },
+        "selected_command": null,
+        "execution": null
+      },
+      "manifest_path": "config/autoresearch/rbi_loop.basis-premium-filter-v0.yaml"
+    },
+    {
+      "decision_output": "research/rbi_loop/cross-venue-basis-v1/decision.json",
+      "report_output": "docs/reports/rbi-loop-cross-venue-basis-v1.md",
+      "record": {
+        "generated_at": "2026-06-15T02:58:42.974647+00:00",
+        "lane_name": "cross-venue-basis-v1",
+        "execute": false,
+        "decision": {
+          "action": "ITERATE_OR_CLOSE",
+          "allowed": false,
+          "reasons": [
+            "autoresearch result did not pass the standard gate"
+          ],
+          "evidence": {
+            "lane_brief": "docs/specs/cross-venue-basis-dislocation-brief-v0.md",
+            "probe_verdict": "HAS_PULSE",
+            "last_result_status": "discard_all",
+            "gate_profile": "standard",
+            "bootstrap": null,
+            "passes_standard_gate": false,
+            "eligible_for_bootstrap_1000": false,
+            "promotion_candidate_failures": [
+              "require_mode_trade_starvation",
+              "block_mode_no_risk_improvement",
+              "bootstrap_p_loss_far_above_gate"
+            ]
+          }
+        },
+        "selected_command": null,
+        "execution": null
+      },
+      "manifest_path": "config/autoresearch/rbi_loop.cross-venue-basis-v1.yaml"
+    },
+    {
+      "decision_output": "research/rbi_loop/cross-venue-dislocation-event-v0/decision.json",
+      "report_output": "docs/reports/rbi-loop-cross-venue-dislocation-event-v0.md",
+      "record": {
+        "generated_at": "2026-06-15T02:58:42.994642+00:00",
+        "lane_name": "cross-venue-dislocation-event-v0",
+        "execute": false,
+        "decision": {
+          "action": "ITERATE_OR_CLOSE",
+          "allowed": false,
+          "reasons": [
+            "autoresearch result did not pass the standard gate"
+          ],
+          "evidence": {
+            "lane_brief": "docs/specs/cross-venue-dislocation-event-strategy-v0.md",
+            "probe_verdict": "HAS_PULSE",
+            "last_result_status": "discard_all",
+            "gate_profile": "standard",
+            "bootstrap": null,
+            "passes_standard_gate": false,
+            "eligible_for_bootstrap_1000": false,
+            "promotion_candidate_failures": [
+              "wfo_oos_negative_across_entire_grid",
+              "event_sparsity_vs_min_wfo_trades_structural_conflict",
+              "episode_concentrated_profits_outside_oos_coverage"
+            ]
+          }
+        },
+        "selected_command": null,
+        "execution": null
+      },
+      "manifest_path": "config/autoresearch/rbi_loop.cross-venue-dislocation-event-v0.yaml"
+    },
+    {
+      "decision_output": "research/rbi_loop/cross-venue-dislocation-event-v1/decision.json",
+      "report_output": "docs/reports/rbi-loop-cross-venue-dislocation-event-v1.md",
+      "record": {
+        "generated_at": "2026-06-15T02:58:43.011620+00:00",
+        "lane_name": "cross-venue-dislocation-event-v1",
+        "execute": false,
+        "decision": {
+          "action": "ITERATE_OR_CLOSE",
+          "allowed": false,
+          "reasons": [
+            "autoresearch result did not pass the standard gate"
+          ],
+          "evidence": {
+            "lane_brief": "docs/specs/cross-venue-dislocation-event-strategy-v1.md",
+            "probe_verdict": "HAS_PULSE",
+            "last_result_status": "discard_all",
+            "gate_profile": "standard",
+            "bootstrap": null,
+            "passes_standard_gate": false,
+            "eligible_for_bootstrap_1000": false,
+            "promotion_candidate_failures": [
+              "full_period_in_engine_return_negative_across_entire_grid",
+              "thin_per_event_edge_does_not_survive_atr_sizing_and_executor_exits",
+              "bootstrap_p_loss_67_to_99_pct_far_above_gate"
+            ]
+          }
+        },
+        "selected_command": null,
+        "execution": null
+      },
+      "manifest_path": "config/autoresearch/rbi_loop.cross-venue-dislocation-event-v1.yaml"
+    }
+  ]
+}

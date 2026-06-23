@@ -59,6 +59,8 @@ data/microstructure/
 !data/tradfi/**
 !data/token_unlocks/
 !data/token_unlocks/**
+!data/treasury_equities/
+!data/treasury_equities/**
 !data/polymarket/
 !data/polymarket/**
 # Local agent scratch (drafts/plans/run-continuation)
