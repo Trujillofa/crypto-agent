@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-06-23T15:20:01.959397+00:00",
+  "lane_name": "path2-illiquid-venue",
+  "path2_program": true,
+  "named_advantage": "illiquid venue microstructure where the book is thin",
+  "gate0_question": "do I have a credible, defensible information/latency/access asymmetry?",
+  "gate0_answer": "DECLARED_NOT_YET_OPERATIONAL",
+  "gate0_status": "OPEN_PENDING_INFRA",
+  "lane_brief": "docs/specs/path2-illiquid-venue-gate0.md",
+  "infra_env_var": "PATH2_ILLIQUID_VENUE_ACCESS_ATTESTED",
+  "infra_attested": false,
+  "rbi_probe_verdict": null,
+  "notes": "Path 2 Gate 0 attestation only. Does not set HAS_PULSE. Gate 1 requires venue access and illiquid-surface cheap probe."
+}

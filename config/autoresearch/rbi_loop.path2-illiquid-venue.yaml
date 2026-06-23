@@ -1,0 +1,22 @@
+# Path 2 RBI lane manifest — illiquid-venue microstructure (Gate 0).
+#
+# probe_verdict stays unset until Gate 1 cheap probe on a named illiquid surface.
+# path2_gate0_attestation is the Path-2-equivalent state file (see capstone 2026-06-23).
+
+lane_name: path2-illiquid-venue
+lane_brief: docs/specs/path2-illiquid-venue-gate0.md
+probe_verdict:
+path2_gate0_attestation: research/rbi_loop/path2-illiquid-venue/gate0-attestation.json
+last_result:
+overlap_report:
+
+decision_output: research/rbi_loop/path2-illiquid-venue/decision.json
+report_output: docs/reports/rbi-loop-path2-illiquid-venue.md
+timeout_seconds: 120
+
+commands:
+  RUN_CHEAP_PROBE: >-
+    uv run python scripts/probe_path2_gate0_attestation.py
+    --lane-name path2-illiquid-venue
+    --brief docs/specs/path2-illiquid-venue-gate0.md
+    --output research/rbi_loop/path2-illiquid-venue/gate0-attestation.json

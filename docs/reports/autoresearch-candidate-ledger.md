@@ -1,9 +1,16 @@
 # Autoresearch Candidate Ledger
 
-> **PROGRAM TERMINAL (2026-06-23).** The entire research program is closed. Canonical capstone:
-> [research-consolidation-2026-06-23.md](./research-consolidation-2026-06-23.md) — five objective
-> functions × four universes, all NULL/BANK/WEAK_EDGE; missing ingredient is a differentiated
-> advantage, not another market. This ledger is the per-lane registry; the capstone is the narrative.
+> **PROGRAM TERMINAL (2026-06-23).** The entire public-data research program is banked. Canonical
+> capstone: [research-consolidation-2026-06-23.md](./research-consolidation-2026-06-23.md) — five
+> objective functions × four universes, all NULL/BANK/WEAK_EDGE; missing ingredient is a
+> differentiated advantage, not another market. This ledger is the per-lane registry; the capstone is
+> the narrative.
+>
+> **PATH 2 REOPENED (2026-06-23).** Deliberate new program per capstone fork Path 2 — entered with
+> named advantage **illiquid venue microstructure where the book is thin**. Gate 0 premise:
+> *do I have a credible, defensible information/latency/access asymmetry?* See
+> [path2-illiquid-venue-gate0.md](../specs/path2-illiquid-venue-gate0.md). Public-data lanes remain
+> stopped.
 
 Tracks bounded autoresearch campaigns and promotion decisions.
 
@@ -570,3 +577,25 @@ co-location/latency *business* (Path 2), not a code change. Probe + tooling reta
 
 This falsifies the most plausible remaining public-data advantage, cheaply — escalating to the
 **bank-vs-pursue-an-advantage** fork now recorded in the capstone (banked).
+
+## Path 2: illiquid venue microstructure — program reopening (2026-06-23, Gate 0 OPEN)
+
+**Named advantage:** illiquid venue microstructure where the book is thin (capstone Path 2 list).
+**Fork:** [research-consolidation-2026-06-23.md](./research-consolidation-2026-06-23.md) §The forward
+fork — Path 2 starts from a named non-public edge; market selection follows the edge.
+**Gate 0 premise:** *do I have a credible, defensible information/latency/access asymmetry?*
+**Brief:** [`path2-illiquid-venue-gate0.md`](../specs/path2-illiquid-venue-gate0.md).
+**Manifest:** `config/autoresearch/rbi_loop.path2-illiquid-venue.yaml`.
+
+**Gate 0 attestation (2026-06-23):** RBI guard dry → `RUN_CHEAP_PROBE`; `--execute` ran
+`scripts/probe_path2_gate0_attestation.py` → `research/rbi_loop/path2-illiquid-venue/gate0-attestation.json`.
+Result: `gate0_status=OPEN_PENDING_INFRA`, `gate0_answer=DECLARED_NOT_YET_OPERATIONAL` — advantage named
+and recorded; **no `HAS_PULSE` claim** (honest boundary: operator has not supplied illiquid-venue access).
+`probe_verdict` unset until Gate 1 cheap probe on a named illiquid surface.
+
+**Next:** operator names venue/pair + data path; set `PATH2_ILLIQUID_VENUE_ACCESS_ATTESTED=true` when
+credible access exists; then Gate 1 illiquid-surface probe before any autoresearch.
+
+| Lane | Gate | Verdict | RBI Decision | Artifacts |
+|------|------|---------|--------------|-----------|
+| path2-illiquid-venue | Gate 0 attestation | Path-2 OPEN (no market probe) | RUN_CHEAP_PROBE complete; guard awaits Gate 1 `probe_verdict` | `research/rbi_loop/path2-illiquid-venue/gate0-attestation.json`, `decision.json`, `docs/reports/rbi-loop-path2-illiquid-venue.md` |
