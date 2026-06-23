@@ -1,0 +1,1482 @@
+{
+  "config": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT"
+    ],
+    "start": "2026-05-23T00:00:00Z",
+    "end": "2026-06-06T00:00:00Z",
+    "window_days": 14,
+    "ofi_window_sec": 30,
+    "signal_stride_sec": 30,
+    "taker_fee_bps": 10.0,
+    "horizons_sec": [
+      1,
+      5,
+      10,
+      30,
+      60,
+      300
+    ],
+    "bootstrap_resamples": 1000,
+    "train_fraction": 0.7,
+    "min_symbols_h1": 2
+  },
+  "regime_window": {
+    "start": "2026-05-23T00:00:00+00:00",
+    "end": "2026-06-06T00:00:00+00:00",
+    "anchor_symbol": "BTCUSDT",
+    "elevated_vol_days": [
+      "2026-05-23",
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+      "2026-06-04",
+      "2026-06-05"
+    ],
+    "quiet_vol_days": [
+      "2026-05-24",
+      "2026-05-25",
+      "2026-05-30",
+      "2026-05-31"
+    ],
+    "daily_vol_bps": {
+      "2026-05-23": 405.79784164609987,
+      "2026-05-24": 186.2260098493523,
+      "2026-05-25": 128.20023690537846,
+      "2026-05-26": 316.34791039800984,
+      "2026-05-27": 259.2583140472763,
+      "2026-05-28": 272.75440313045056,
+      "2026-05-29": 272.4732843838577,
+      "2026-05-30": 125.56916631092996,
+      "2026-05-31": 118.85541230813088,
+      "2026-06-01": 476.8761316866675,
+      "2026-06-02": 781.2814789750208,
+      "2026-06-03": 533.7329628056175,
+      "2026-06-04": 529.1864460423956,
+      "2026-06-05": 793.8700026385405
+    },
+    "selection_note": "Selected 14d window with 6 elevated-vol days (>=p75=380.1bps) and 4 quiet-vol days (<=p25=200.1bps) from daily (high-low)/close range."
+  },
+  "data_audit": {
+    "blocked": false,
+    "blocked_reason": null,
+    "symbols": [
+      {
+        "symbol": "BTCUSDT",
+        "trades_fetched": 17146187,
+        "span_hours": 335.99947777777777,
+        "coverage_fraction": 0.9999984457671958,
+        "cache_path": "data/microstructure/BTCUSDT/aggtrades_20260523_20260606.jsonl",
+        "fetch_complete": true,
+        "sign_sanity_correlation": 0.008615519277404412,
+        "sign_inverted": false,
+        "half_spread_bps": 0.0007759316549125677,
+        "usable": true,
+        "blocked_reason": null
+      },
+      {
+        "symbol": "ETHUSDT",
+        "trades_fetched": 13879670,
+        "span_hours": 335.9997438888889,
+        "coverage_fraction": 0.9999992377645502,
+        "cache_path": "data/microstructure/ETHUSDT/aggtrades_20260523_20260606.jsonl",
+        "fetch_complete": true,
+        "sign_sanity_correlation": 0.044826299474725204,
+        "sign_inverted": false,
+        "half_spread_bps": 0.024810632844789408,
+        "usable": true,
+        "blocked_reason": null
+      },
+      {
+        "symbol": "SOLUSDT",
+        "trades_fetched": 2320786,
+        "span_hours": 335.9997363888889,
+        "coverage_fraction": 0.9999992154431216,
+        "cache_path": "data/microstructure/SOLUSDT/aggtrades_20260523_20260606.jsonl",
+        "fetch_complete": true,
+        "sign_sanity_correlation": 0.13735678157448544,
+        "sign_inverted": false,
+        "half_spread_bps": 0.0,
+        "usable": true,
+        "blocked_reason": null
+      }
+    ]
+  },
+  "symbol_results": [
+    {
+      "symbol": "BTCUSDT",
+      "forward_samples": 10702,
+      "tradeable_h1": false,
+      "sub10s_h1_only": false,
+      "any_h1": false,
+      "horizons": [
+        {
+          "horizon_sec": 1,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 367,
+              "mean_forward_return_bps": -0.23624701604736945
+            },
+            {
+              "decile": 1,
+              "count": 900,
+              "mean_forward_return_bps": -0.08077847890799339
+            },
+            {
+              "decile": 2,
+              "count": 1321,
+              "mean_forward_return_bps": -0.04704006973277077
+            },
+            {
+              "decile": 3,
+              "count": 1492,
+              "mean_forward_return_bps": 0.02366637696433934
+            },
+            {
+              "decile": 4,
+              "count": 1626,
+              "mean_forward_return_bps": -0.06205974277037695
+            },
+            {
+              "decile": 5,
+              "count": 1595,
+              "mean_forward_return_bps": -0.0097669751786754
+            },
+            {
+              "decile": 6,
+              "count": 1369,
+              "mean_forward_return_bps": 0.031206358656669052
+            },
+            {
+              "decile": 7,
+              "count": 1112,
+              "mean_forward_return_bps": 0.09893857539425677
+            },
+            {
+              "decile": 8,
+              "count": 672,
+              "mean_forward_return_bps": 0.09228253892559757
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.2195093226085854
+            }
+          ],
+          "top_minus_bottom_bps": 0.4557563386559549,
+          "monotonic": false,
+          "monotonic_violations": 2,
+          "bootstrap_p_value": 0.5184815184815185,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": -0.0030548899735207795,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.3592878851939129,
+          "cost_bps": 10.000765392149765,
+          "net_edge_bps": -9.54500905349381,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.15854577720485263,
+          "forward_top_minus_bottom_bps": 0.4557563386559549,
+          "forward_samples": 10702,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 5,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 367,
+              "mean_forward_return_bps": -0.45646979027347245
+            },
+            {
+              "decile": 1,
+              "count": 900,
+              "mean_forward_return_bps": -0.18606001541059047
+            },
+            {
+              "decile": 2,
+              "count": 1321,
+              "mean_forward_return_bps": -0.1636914817321911
+            },
+            {
+              "decile": 3,
+              "count": 1492,
+              "mean_forward_return_bps": -0.004459389210513664
+            },
+            {
+              "decile": 4,
+              "count": 1626,
+              "mean_forward_return_bps": -0.09127775542377675
+            },
+            {
+              "decile": 5,
+              "count": 1595,
+              "mean_forward_return_bps": -0.049529829241101705
+            },
+            {
+              "decile": 6,
+              "count": 1369,
+              "mean_forward_return_bps": 0.08152835205639349
+            },
+            {
+              "decile": 7,
+              "count": 1111,
+              "mean_forward_return_bps": 0.21526936762516904
+            },
+            {
+              "decile": 8,
+              "count": 672,
+              "mean_forward_return_bps": 0.13406342818579123
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.35811525474703443
+            }
+          ],
+          "top_minus_bottom_bps": 0.8145850450205069,
+          "monotonic": false,
+          "monotonic_violations": 2,
+          "bootstrap_p_value": 0.5254745254745254,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": -0.09115781909627801,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.3209717265136228,
+          "cost_bps": 10.000765392149765,
+          "net_edge_bps": -9.186180347129257,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.3012199853126596,
+          "forward_top_minus_bottom_bps": 0.8145850450205069,
+          "forward_samples": 10701,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 10,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 367,
+              "mean_forward_return_bps": -0.6598445611493253
+            },
+            {
+              "decile": 1,
+              "count": 900,
+              "mean_forward_return_bps": -0.15776961390645156
+            },
+            {
+              "decile": 2,
+              "count": 1321,
+              "mean_forward_return_bps": -0.18967022783404458
+            },
+            {
+              "decile": 3,
+              "count": 1492,
+              "mean_forward_return_bps": -0.11061664111673775
+            },
+            {
+              "decile": 4,
+              "count": 1626,
+              "mean_forward_return_bps": -0.11748696552389792
+            },
+            {
+              "decile": 5,
+              "count": 1595,
+              "mean_forward_return_bps": -0.07691210431936679
+            },
+            {
+              "decile": 6,
+              "count": 1369,
+              "mean_forward_return_bps": 0.10309236500938317
+            },
+            {
+              "decile": 7,
+              "count": 1111,
+              "mean_forward_return_bps": 0.27041411759038775
+            },
+            {
+              "decile": 8,
+              "count": 672,
+              "mean_forward_return_bps": 0.17221034656847303
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.5229095762368251
+            }
+          ],
+          "top_minus_bottom_bps": 1.1827541373861505,
+          "monotonic": false,
+          "monotonic_violations": 3,
+          "bootstrap_p_value": 0.4785214785214785,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": -0.03328574856436072,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.3102671865167271,
+          "cost_bps": 10.000765392149765,
+          "net_edge_bps": -8.818011254763615,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.42356018924644634,
+          "forward_top_minus_bottom_bps": 1.1827541373861505,
+          "forward_samples": 10701,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 30,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 367,
+              "mean_forward_return_bps": -0.9841420664603263
+            },
+            {
+              "decile": 1,
+              "count": 900,
+              "mean_forward_return_bps": -0.24134377438565677
+            },
+            {
+              "decile": 2,
+              "count": 1321,
+              "mean_forward_return_bps": -0.35982928225736255
+            },
+            {
+              "decile": 3,
+              "count": 1492,
+              "mean_forward_return_bps": -0.3159421049706197
+            },
+            {
+              "decile": 4,
+              "count": 1626,
+              "mean_forward_return_bps": -0.1761654175881833
+            },
+            {
+              "decile": 5,
+              "count": 1595,
+              "mean_forward_return_bps": -0.18731192527391177
+            },
+            {
+              "decile": 6,
+              "count": 1369,
+              "mean_forward_return_bps": 0.2574097547996319
+            },
+            {
+              "decile": 7,
+              "count": 1111,
+              "mean_forward_return_bps": 0.34132988815864246
+            },
+            {
+              "decile": 8,
+              "count": 672,
+              "mean_forward_return_bps": 0.4477708177204327
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.8347414699580938
+            }
+          ],
+          "top_minus_bottom_bps": 1.8188835364184202,
+          "monotonic": false,
+          "monotonic_violations": 2,
+          "bootstrap_p_value": 0.5134865134865135,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.19825756271269365,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.29842689852168236,
+          "cost_bps": 10.000765392149765,
+          "net_edge_bps": -8.181881855731344,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.751985194525391,
+          "forward_top_minus_bottom_bps": 1.8188835364184202,
+          "forward_samples": 10701,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 60,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 367,
+              "mean_forward_return_bps": -1.2532846514745442
+            },
+            {
+              "decile": 1,
+              "count": 900,
+              "mean_forward_return_bps": -0.722986527720899
+            },
+            {
+              "decile": 2,
+              "count": 1321,
+              "mean_forward_return_bps": -0.547178452054876
+            },
+            {
+              "decile": 3,
+              "count": 1492,
+              "mean_forward_return_bps": -0.508720002984248
+            },
+            {
+              "decile": 4,
+              "count": 1626,
+              "mean_forward_return_bps": -0.12808494282455274
+            },
+            {
+              "decile": 5,
+              "count": 1595,
+              "mean_forward_return_bps": -0.3257702426864126
+            },
+            {
+              "decile": 6,
+              "count": 1368,
+              "mean_forward_return_bps": 0.25452790166619954
+            },
+            {
+              "decile": 7,
+              "count": 1111,
+              "mean_forward_return_bps": 0.3801809666583392
+            },
+            {
+              "decile": 8,
+              "count": 672,
+              "mean_forward_return_bps": 0.6352964428098389
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.9025780390735549
+            }
+          ],
+          "top_minus_bottom_bps": 2.155862690548099,
+          "monotonic": false,
+          "monotonic_violations": 1,
+          "bootstrap_p_value": 0.5104895104895105,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.09140099879090255,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.30384122897600935,
+          "cost_bps": 10.000765392149765,
+          "net_edge_bps": -7.844902701601665,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.9492734287330444,
+          "forward_top_minus_bottom_bps": 2.155862690548099,
+          "forward_samples": 10700,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 300,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 367,
+              "mean_forward_return_bps": -2.046438881930529
+            },
+            {
+              "decile": 1,
+              "count": 900,
+              "mean_forward_return_bps": -1.2453288667368652
+            },
+            {
+              "decile": 2,
+              "count": 1318,
+              "mean_forward_return_bps": -1.8070140188136403
+            },
+            {
+              "decile": 3,
+              "count": 1489,
+              "mean_forward_return_bps": -0.8351974547615868
+            },
+            {
+              "decile": 4,
+              "count": 1626,
+              "mean_forward_return_bps": -1.0485824524366123
+            },
+            {
+              "decile": 5,
+              "count": 1595,
+              "mean_forward_return_bps": -1.4187791374157979
+            },
+            {
+              "decile": 6,
+              "count": 1367,
+              "mean_forward_return_bps": -0.7884888629896051
+            },
+            {
+              "decile": 7,
+              "count": 1111,
+              "mean_forward_return_bps": -0.3929931197628007
+            },
+            {
+              "decile": 8,
+              "count": 672,
+              "mean_forward_return_bps": -0.6155308175740809
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.6678119727140625
+            }
+          ],
+          "top_minus_bottom_bps": 2.7142508546445914,
+          "monotonic": false,
+          "monotonic_violations": 4,
+          "bootstrap_p_value": 0.48951048951048953,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.3713419839068449,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.32262668890470103,
+          "cost_bps": 10.000765392149765,
+          "net_edge_bps": -7.286514537505173,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 1.2945352720612475,
+          "forward_top_minus_bottom_bps": 2.7142508546445914,
+          "forward_samples": 10693,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        }
+      ]
+    },
+    {
+      "symbol": "ETHUSDT",
+      "forward_samples": 8648,
+      "tradeable_h1": false,
+      "sub10s_h1_only": false,
+      "any_h1": false,
+      "horizons": [
+        {
+          "horizon_sec": 1,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 248,
+              "mean_forward_return_bps": -0.21086829874050206
+            },
+            {
+              "decile": 1,
+              "count": 662,
+              "mean_forward_return_bps": -0.22679417530470874
+            },
+            {
+              "decile": 2,
+              "count": 904,
+              "mean_forward_return_bps": -0.13084540146391954
+            },
+            {
+              "decile": 3,
+              "count": 1223,
+              "mean_forward_return_bps": -0.05511968823405692
+            },
+            {
+              "decile": 4,
+              "count": 1213,
+              "mean_forward_return_bps": -0.026995509834797617
+            },
+            {
+              "decile": 5,
+              "count": 1314,
+              "mean_forward_return_bps": 0.02865298540324853
+            },
+            {
+              "decile": 6,
+              "count": 1181,
+              "mean_forward_return_bps": 0.06940144317001307
+            },
+            {
+              "decile": 7,
+              "count": 995,
+              "mean_forward_return_bps": 0.130229412677687
+            },
+            {
+              "decile": 8,
+              "count": 660,
+              "mean_forward_return_bps": 0.16425226500787063
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.19267373465673499
+            }
+          ],
+          "top_minus_bottom_bps": 0.40354203339723704,
+          "monotonic": false,
+          "monotonic_violations": 1,
+          "bootstrap_p_value": 0.4875124875124875,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.012809747760875992,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.36323175180941636,
+          "cost_bps": 10.259221573669041,
+          "net_edge_bps": -9.855679540271804,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.22002252903852004,
+          "forward_top_minus_bottom_bps": 0.40354203339723704,
+          "forward_samples": 8648,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 5,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 248,
+              "mean_forward_return_bps": -0.25652891625401747
+            },
+            {
+              "decile": 1,
+              "count": 662,
+              "mean_forward_return_bps": -0.47799026413636875
+            },
+            {
+              "decile": 2,
+              "count": 904,
+              "mean_forward_return_bps": -0.393779241700567
+            },
+            {
+              "decile": 3,
+              "count": 1223,
+              "mean_forward_return_bps": -0.1926542279815057
+            },
+            {
+              "decile": 4,
+              "count": 1213,
+              "mean_forward_return_bps": -0.034205939115062346
+            },
+            {
+              "decile": 5,
+              "count": 1314,
+              "mean_forward_return_bps": -0.010225528713665812
+            },
+            {
+              "decile": 6,
+              "count": 1181,
+              "mean_forward_return_bps": 0.05834385408962173
+            },
+            {
+              "decile": 7,
+              "count": 995,
+              "mean_forward_return_bps": 0.14760660001731168
+            },
+            {
+              "decile": 8,
+              "count": 660,
+              "mean_forward_return_bps": 0.4287043949097214
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.2931672006323941
+            }
+          ],
+          "top_minus_bottom_bps": 0.5496961168864116,
+          "monotonic": false,
+          "monotonic_violations": 2,
+          "bootstrap_p_value": 0.5394605394605395,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.03641953531312972,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.3669610668800374,
+          "cost_bps": 10.259221573669041,
+          "net_edge_bps": -9.709525456782629,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.3782306235324715,
+          "forward_top_minus_bottom_bps": 0.5496961168864116,
+          "forward_samples": 8648,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 10,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 248,
+              "mean_forward_return_bps": -0.2597072360203013
+            },
+            {
+              "decile": 1,
+              "count": 662,
+              "mean_forward_return_bps": -0.7478417084914394
+            },
+            {
+              "decile": 2,
+              "count": 904,
+              "mean_forward_return_bps": -0.5312708540731167
+            },
+            {
+              "decile": 3,
+              "count": 1223,
+              "mean_forward_return_bps": -0.342174730484161
+            },
+            {
+              "decile": 4,
+              "count": 1213,
+              "mean_forward_return_bps": -0.0990634683885816
+            },
+            {
+              "decile": 5,
+              "count": 1314,
+              "mean_forward_return_bps": 0.02573038420999065
+            },
+            {
+              "decile": 6,
+              "count": 1181,
+              "mean_forward_return_bps": 0.04999073305260279
+            },
+            {
+              "decile": 7,
+              "count": 995,
+              "mean_forward_return_bps": 0.22047243352864257
+            },
+            {
+              "decile": 8,
+              "count": 660,
+              "mean_forward_return_bps": 0.5322046641874246
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 0.5933773690197027
+            }
+          ],
+          "top_minus_bottom_bps": 0.853084605040004,
+          "monotonic": false,
+          "monotonic_violations": 1,
+          "bootstrap_p_value": 0.5014985014985015,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.0876042875460959,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.3696170686790483,
+          "cost_bps": 10.259221573669041,
+          "net_edge_bps": -9.406136968629037,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.46105073657163087,
+          "forward_top_minus_bottom_bps": 0.853084605040004,
+          "forward_samples": 8648,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 30,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 248,
+              "mean_forward_return_bps": -0.26868740324210316
+            },
+            {
+              "decile": 1,
+              "count": 662,
+              "mean_forward_return_bps": -1.1259063649557632
+            },
+            {
+              "decile": 2,
+              "count": 904,
+              "mean_forward_return_bps": -0.9336877232453507
+            },
+            {
+              "decile": 3,
+              "count": 1223,
+              "mean_forward_return_bps": -0.6491060321182374
+            },
+            {
+              "decile": 4,
+              "count": 1212,
+              "mean_forward_return_bps": -0.3500426145063278
+            },
+            {
+              "decile": 5,
+              "count": 1314,
+              "mean_forward_return_bps": 0.03549616077589628
+            },
+            {
+              "decile": 6,
+              "count": 1181,
+              "mean_forward_return_bps": 0.16619037791285912
+            },
+            {
+              "decile": 7,
+              "count": 995,
+              "mean_forward_return_bps": 0.2926202599995571
+            },
+            {
+              "decile": 8,
+              "count": 660,
+              "mean_forward_return_bps": 0.8227962375431587
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 1.1874192366153766
+            }
+          ],
+          "top_minus_bottom_bps": 1.4561066398574798,
+          "monotonic": false,
+          "monotonic_violations": 1,
+          "bootstrap_p_value": 0.5634365634365635,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.27068665114030843,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.39078129217740687,
+          "cost_bps": 10.259221573669041,
+          "net_edge_bps": -8.803114933811562,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.7139932700158887,
+          "forward_top_minus_bottom_bps": 1.4561066398574798,
+          "forward_samples": 8647,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 60,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 248,
+              "mean_forward_return_bps": -0.7382907570577648
+            },
+            {
+              "decile": 1,
+              "count": 662,
+              "mean_forward_return_bps": -1.4916982598236888
+            },
+            {
+              "decile": 2,
+              "count": 904,
+              "mean_forward_return_bps": -1.3769276453637838
+            },
+            {
+              "decile": 3,
+              "count": 1223,
+              "mean_forward_return_bps": -0.8671759324726205
+            },
+            {
+              "decile": 4,
+              "count": 1212,
+              "mean_forward_return_bps": -0.6064970168540935
+            },
+            {
+              "decile": 5,
+              "count": 1314,
+              "mean_forward_return_bps": -0.2955955451015106
+            },
+            {
+              "decile": 6,
+              "count": 1181,
+              "mean_forward_return_bps": 0.019599026126316824
+            },
+            {
+              "decile": 7,
+              "count": 995,
+              "mean_forward_return_bps": 0.4056625519979338
+            },
+            {
+              "decile": 8,
+              "count": 660,
+              "mean_forward_return_bps": 0.8960591541514111
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 1.6586044780490934
+            }
+          ],
+          "top_minus_bottom_bps": 2.396895235106858,
+          "monotonic": false,
+          "monotonic_violations": 1,
+          "bootstrap_p_value": 0.46553446553446554,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": -0.004484811825708035,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.38036276303009064,
+          "cost_bps": 10.259221573669041,
+          "net_edge_bps": -7.862326338562183,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.8722279685712429,
+          "forward_top_minus_bottom_bps": 2.396895235106858,
+          "forward_samples": 8647,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 300,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 248,
+              "mean_forward_return_bps": -1.5945215680218852
+            },
+            {
+              "decile": 1,
+              "count": 662,
+              "mean_forward_return_bps": -4.1358862529778095
+            },
+            {
+              "decile": 2,
+              "count": 901,
+              "mean_forward_return_bps": -2.420890431499193
+            },
+            {
+              "decile": 3,
+              "count": 1223,
+              "mean_forward_return_bps": -1.5684919826783699
+            },
+            {
+              "decile": 4,
+              "count": 1211,
+              "mean_forward_return_bps": -1.970039798661423
+            },
+            {
+              "decile": 5,
+              "count": 1313,
+              "mean_forward_return_bps": -2.197480525524058
+            },
+            {
+              "decile": 6,
+              "count": 1179,
+              "mean_forward_return_bps": -1.0693909588498505
+            },
+            {
+              "decile": 7,
+              "count": 995,
+              "mean_forward_return_bps": -1.8958691774091392
+            },
+            {
+              "decile": 8,
+              "count": 660,
+              "mean_forward_return_bps": -0.5345028647706582
+            },
+            {
+              "decile": 9,
+              "count": 248,
+              "mean_forward_return_bps": 2.543932731278843
+            }
+          ],
+          "top_minus_bottom_bps": 4.1384542993007285,
+          "monotonic": false,
+          "monotonic_violations": 4,
+          "bootstrap_p_value": 0.4865134865134865,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.3529726761836187,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.35740642166276265,
+          "cost_bps": 10.259221573669041,
+          "net_edge_bps": -6.120767274368313,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 1.1186521138727175,
+          "forward_top_minus_bottom_bps": 4.1384542993007285,
+          "forward_samples": 8640,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        }
+      ]
+    },
+    {
+      "symbol": "SOLUSDT",
+      "forward_samples": 7065,
+      "tradeable_h1": false,
+      "sub10s_h1_only": false,
+      "any_h1": false,
+      "horizons": [
+        {
+          "horizon_sec": 1,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 344,
+              "mean_forward_return_bps": -0.08914873282943424
+            },
+            {
+              "decile": 1,
+              "count": 718,
+              "mean_forward_return_bps": -0.08353049536526179
+            },
+            {
+              "decile": 2,
+              "count": 818,
+              "mean_forward_return_bps": -0.021084173936317313
+            },
+            {
+              "decile": 3,
+              "count": 990,
+              "mean_forward_return_bps": -0.005526290350987739
+            },
+            {
+              "decile": 4,
+              "count": 973,
+              "mean_forward_return_bps": -0.006579511190144254
+            },
+            {
+              "decile": 5,
+              "count": 946,
+              "mean_forward_return_bps": -0.07754656342609986
+            },
+            {
+              "decile": 6,
+              "count": 787,
+              "mean_forward_return_bps": -0.03346717868212856
+            },
+            {
+              "decile": 7,
+              "count": 697,
+              "mean_forward_return_bps": 0.016051450604935256
+            },
+            {
+              "decile": 8,
+              "count": 502,
+              "mean_forward_return_bps": 0.08396722478099199
+            },
+            {
+              "decile": 9,
+              "count": 290,
+              "mean_forward_return_bps": 0.23621875517384747
+            }
+          ],
+          "top_minus_bottom_bps": 0.3253674880032817,
+          "monotonic": false,
+          "monotonic_violations": 2,
+          "bootstrap_p_value": 0.5514485514485514,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": -0.06186884774472026,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.34124401530136966,
+          "cost_bps": 10.691994614579295,
+          "net_edge_bps": -10.366627126576013,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.18060633515412794,
+          "forward_top_minus_bottom_bps": 0.3253674880032817,
+          "forward_samples": 7065,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 5,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 344,
+              "mean_forward_return_bps": -0.16589502275158147
+            },
+            {
+              "decile": 1,
+              "count": 718,
+              "mean_forward_return_bps": -0.3962295799388278
+            },
+            {
+              "decile": 2,
+              "count": 818,
+              "mean_forward_return_bps": -0.17950501841780248
+            },
+            {
+              "decile": 3,
+              "count": 990,
+              "mean_forward_return_bps": 0.06662467647402444
+            },
+            {
+              "decile": 4,
+              "count": 973,
+              "mean_forward_return_bps": -0.04820371334876906
+            },
+            {
+              "decile": 5,
+              "count": 946,
+              "mean_forward_return_bps": -0.11004603636218324
+            },
+            {
+              "decile": 6,
+              "count": 787,
+              "mean_forward_return_bps": -0.2355543177212861
+            },
+            {
+              "decile": 7,
+              "count": 697,
+              "mean_forward_return_bps": 0.07835494761307116
+            },
+            {
+              "decile": 8,
+              "count": 502,
+              "mean_forward_return_bps": -0.0053737315504082134
+            },
+            {
+              "decile": 9,
+              "count": 290,
+              "mean_forward_return_bps": 0.4362341603777732
+            }
+          ],
+          "top_minus_bottom_bps": 0.6021291831293547,
+          "monotonic": false,
+          "monotonic_violations": 5,
+          "bootstrap_p_value": 0.4565434565434565,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.004069790122620917,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.36430434646861143,
+          "cost_bps": 10.691994614579295,
+          "net_edge_bps": -10.08986543144994,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.32753786909734756,
+          "forward_top_minus_bottom_bps": 0.6021291831293547,
+          "forward_samples": 7065,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 10,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 344,
+              "mean_forward_return_bps": -0.3132532660403291
+            },
+            {
+              "decile": 1,
+              "count": 718,
+              "mean_forward_return_bps": -0.6313605958807152
+            },
+            {
+              "decile": 2,
+              "count": 818,
+              "mean_forward_return_bps": -0.28311214259847134
+            },
+            {
+              "decile": 3,
+              "count": 990,
+              "mean_forward_return_bps": 0.09867018652856682
+            },
+            {
+              "decile": 4,
+              "count": 973,
+              "mean_forward_return_bps": -0.03131693267559379
+            },
+            {
+              "decile": 5,
+              "count": 946,
+              "mean_forward_return_bps": -0.11882271851646353
+            },
+            {
+              "decile": 6,
+              "count": 787,
+              "mean_forward_return_bps": -0.42797587365766177
+            },
+            {
+              "decile": 7,
+              "count": 697,
+              "mean_forward_return_bps": 0.007665787232671836
+            },
+            {
+              "decile": 8,
+              "count": 502,
+              "mean_forward_return_bps": 0.29613166648612604
+            },
+            {
+              "decile": 9,
+              "count": 290,
+              "mean_forward_return_bps": 0.5243344624710171
+            }
+          ],
+          "top_minus_bottom_bps": 0.8375877285113462,
+          "monotonic": false,
+          "monotonic_violations": 4,
+          "bootstrap_p_value": 0.5144855144855145,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": -0.012201163969668062,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.401446258920634,
+          "cost_bps": 10.691994614579295,
+          "net_edge_bps": -9.854406886067949,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.4250370116756957,
+          "forward_top_minus_bottom_bps": 0.8375877285113462,
+          "forward_samples": 7065,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 30,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 344,
+              "mean_forward_return_bps": -0.43001041908682464
+            },
+            {
+              "decile": 1,
+              "count": 718,
+              "mean_forward_return_bps": -1.0529066545864643
+            },
+            {
+              "decile": 2,
+              "count": 818,
+              "mean_forward_return_bps": -0.5453711946645369
+            },
+            {
+              "decile": 3,
+              "count": 989,
+              "mean_forward_return_bps": -0.19415157700344005
+            },
+            {
+              "decile": 4,
+              "count": 973,
+              "mean_forward_return_bps": -0.07663878749054567
+            },
+            {
+              "decile": 5,
+              "count": 946,
+              "mean_forward_return_bps": -0.11991752787097222
+            },
+            {
+              "decile": 6,
+              "count": 787,
+              "mean_forward_return_bps": -0.6777099756429104
+            },
+            {
+              "decile": 7,
+              "count": 697,
+              "mean_forward_return_bps": 0.30668037499868117
+            },
+            {
+              "decile": 8,
+              "count": 502,
+              "mean_forward_return_bps": 0.4547100691232403
+            },
+            {
+              "decile": 9,
+              "count": 290,
+              "mean_forward_return_bps": 0.8019273024376238
+            }
+          ],
+          "top_minus_bottom_bps": 1.2319377215244485,
+          "monotonic": false,
+          "monotonic_violations": 3,
+          "bootstrap_p_value": 0.4855144855144855,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.4406064445698328,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.4263621938075497,
+          "cost_bps": 10.691994614579295,
+          "net_edge_bps": -9.460056893054848,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 0.787830953166847,
+          "forward_top_minus_bottom_bps": 1.2319377215244485,
+          "forward_samples": 7064,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 60,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 344,
+              "mean_forward_return_bps": -0.566856004080829
+            },
+            {
+              "decile": 1,
+              "count": 718,
+              "mean_forward_return_bps": -1.8222759923255134
+            },
+            {
+              "decile": 2,
+              "count": 818,
+              "mean_forward_return_bps": -0.5112765533101018
+            },
+            {
+              "decile": 3,
+              "count": 989,
+              "mean_forward_return_bps": -0.436097168609653
+            },
+            {
+              "decile": 4,
+              "count": 973,
+              "mean_forward_return_bps": -0.530032057305479
+            },
+            {
+              "decile": 5,
+              "count": 946,
+              "mean_forward_return_bps": -0.3950453910160477
+            },
+            {
+              "decile": 6,
+              "count": 787,
+              "mean_forward_return_bps": -0.8320887017942009
+            },
+            {
+              "decile": 7,
+              "count": 697,
+              "mean_forward_return_bps": 0.6558775692816955
+            },
+            {
+              "decile": 8,
+              "count": 502,
+              "mean_forward_return_bps": 0.7054216467920352
+            },
+            {
+              "decile": 9,
+              "count": 290,
+              "mean_forward_return_bps": 1.458726598714522
+            }
+          ],
+          "top_minus_bottom_bps": 2.025582602795351,
+          "monotonic": false,
+          "monotonic_violations": 3,
+          "bootstrap_p_value": 0.5324675324675324,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.499099863870293,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.422813173588321,
+          "cost_bps": 10.691994614579295,
+          "net_edge_bps": -8.666412011783944,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 1.1422362516045048,
+          "forward_top_minus_bottom_bps": 2.025582602795351,
+          "forward_samples": 7064,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        },
+        {
+          "horizon_sec": 300,
+          "deciles": [
+            {
+              "decile": 0,
+              "count": 344,
+              "mean_forward_return_bps": -1.9063071052629859
+            },
+            {
+              "decile": 1,
+              "count": 717,
+              "mean_forward_return_bps": -2.900419910791733
+            },
+            {
+              "decile": 2,
+              "count": 817,
+              "mean_forward_return_bps": -1.8994813666896548
+            },
+            {
+              "decile": 3,
+              "count": 989,
+              "mean_forward_return_bps": -1.6585667215171818
+            },
+            {
+              "decile": 4,
+              "count": 972,
+              "mean_forward_return_bps": -1.7399218299918018
+            },
+            {
+              "decile": 5,
+              "count": 944,
+              "mean_forward_return_bps": -2.7544460152635093
+            },
+            {
+              "decile": 6,
+              "count": 786,
+              "mean_forward_return_bps": -1.9105348526232868
+            },
+            {
+              "decile": 7,
+              "count": 697,
+              "mean_forward_return_bps": -0.1211133260814128
+            },
+            {
+              "decile": 8,
+              "count": 502,
+              "mean_forward_return_bps": -1.8743667504720674
+            },
+            {
+              "decile": 9,
+              "count": 290,
+              "mean_forward_return_bps": 2.8139565400638693
+            }
+          ],
+          "top_minus_bottom_bps": 4.720263645326855,
+          "monotonic": false,
+          "monotonic_violations": 4,
+          "bootstrap_p_value": 0.5514485514485514,
+          "bootstrap_p_adj": 1.0,
+          "shuffled_spread_bps": 0.7918337452283257,
+          "beats_shuffled": true,
+          "concentration_ok": false,
+          "max_day_concentration": 0.4124213039979393,
+          "cost_bps": 10.691994614579295,
+          "net_edge_bps": -5.97173096925244,
+          "cost_survives": false,
+          "train_top_minus_bottom_bps": 2.0206613755924963,
+          "forward_top_minus_bottom_bps": 4.720263645326855,
+          "forward_samples": 7058,
+          "significant": false,
+          "h1_pass": false,
+          "h3_pass": false
+        }
+      ]
+    }
+  ],
+  "horizon_curve": {
+    "BTCUSDT": {
+      "1": 0.4557563386559549,
+      "5": 0.8145850450205069,
+      "10": 1.1827541373861505,
+      "30": 1.8188835364184202,
+      "60": 2.155862690548099,
+      "300": 2.7142508546445914
+    },
+    "ETHUSDT": {
+      "1": 0.40354203339723704,
+      "5": 0.5496961168864116,
+      "10": 0.853084605040004,
+      "30": 1.4561066398574798,
+      "60": 2.396895235106858,
+      "300": 4.1384542993007285
+    },
+    "SOLUSDT": {
+      "1": 0.3253674880032817,
+      "5": 0.6021291831293547,
+      "10": 0.8375877285113462,
+      "30": 1.2319377215244485,
+      "60": 2.025582602795351,
+      "300": 4.720263645326855
+    }
+  },
+  "status": "OK",
+  "verdict": "NO_PULSE",
+  "reasons": [
+    "no monotonic significant OFI-return relationship on >=2 symbols (symbols with any H1=0)"
+  ],
+  "generated_at": "2026-06-22T21:55:02.340284+00:00"
+}

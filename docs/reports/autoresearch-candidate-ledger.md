@@ -569,6 +569,4 @@ triggered). Verdict logic verified clean on review (proper four-way AND, not the
 co-location/latency *business* (Path 2), not a code change. Probe + tooling retained as reusable infra.
 
 This falsifies the most plausible remaining public-data advantage, cheaply — escalating to the
-**bank-vs-pursue-an-advantage** fork now recorded in the capstone (banked). (Merge note: PR #110 is
-cut off the pre-merge Polymarket branch and carries no microstructure ledger entry; this entry is
-canonical — when #110 merges, take this ledger over the branch copy.)
+**bank-vs-pursue-an-advantage** fork now recorded in the capstone (banked).
