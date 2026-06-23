@@ -32,6 +32,16 @@ def parse_args() -> argparse.Namespace:
         help="Output path for gate0-attestation.json.",
     )
     parser.add_argument(
+        "--venue",
+        default="",
+        help="Named illiquid venue (required with --feasibility-doc to advance Gate 0).",
+    )
+    parser.add_argument(
+        "--feasibility-doc",
+        default="",
+        help="Path to feasibility evidence file (must exist to advance Gate 0).",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite an existing attestation file.",
@@ -43,9 +53,23 @@ def _brief_exists(path: Path) -> bool:
     return path.is_file()
 
 
-def _infra_attested() -> bool:
+def _access_env_declared() -> bool:
     value = os.environ.get(INFRA_ENV_VAR, "").strip().lower()
     return value in {"1", "true", "yes"}
+
+
+def _access_declared_pending_evidence(
+    *,
+    access_env_declared: bool,
+    venue: str,
+    feasibility_doc: Path | None,
+) -> bool:
+    return (
+        access_env_declared
+        and bool(venue.strip())
+        and feasibility_doc is not None
+        and feasibility_doc.is_file()
+    )
 
 
 def build_attestation(
@@ -53,13 +77,20 @@ def build_attestation(
     lane_name: str,
     brief_path: Path,
     named_advantage: str,
-    infra_attested: bool,
+    access_env_declared: bool,
+    venue: str = "",
+    feasibility_doc: Path | None = None,
     existing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    gate0_answer = (
-        "CREDIBLE_ASYMMETRY_ATTESTED" if infra_attested else "DECLARED_NOT_YET_OPERATIONAL"
+    access_pending = _access_declared_pending_evidence(
+        access_env_declared=access_env_declared,
+        venue=venue,
+        feasibility_doc=feasibility_doc,
     )
-    gate0_status = "OPEN_GATE1_PENDING" if infra_attested else "OPEN_PENDING_INFRA"
+    gate0_answer = (
+        "ACCESS_DECLARED_PENDING_EVIDENCE" if access_pending else "DECLARED_NOT_YET_OPERATIONAL"
+    )
+    gate0_status = "OPEN_GATE1_PENDING" if access_pending else "OPEN_PENDING_INFRA"
     payload: dict[str, Any] = {
         "generated_at": datetime.now(UTC).isoformat(),
         "lane_name": lane_name,
@@ -70,7 +101,9 @@ def build_attestation(
         "gate0_status": gate0_status,
         "lane_brief": str(brief_path),
         "infra_env_var": INFRA_ENV_VAR,
-        "infra_attested": infra_attested,
+        "infra_attested": access_env_declared,
+        "venue": venue.strip() or None,
+        "feasibility_doc": str(feasibility_doc) if feasibility_doc else None,
         "rbi_probe_verdict": None,
         "notes": (
             "Path 2 Gate 0 attestation only. Does not set HAS_PULSE. "
@@ -93,6 +126,8 @@ def run_attestation(
     brief: Path,
     named_advantage: str,
     output: Path,
+    venue: str = "",
+    feasibility_doc: Path | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     if not _brief_exists(brief):
@@ -115,7 +150,9 @@ def run_attestation(
         lane_name=lane_name,
         brief_path=brief,
         named_advantage=named_advantage,
-        infra_attested=_infra_attested(),
+        access_env_declared=_access_env_declared(),
+        venue=venue,
+        feasibility_doc=feasibility_doc,
         existing=existing if isinstance(existing, dict) else None,
     )
     write_attestation(output, payload)
@@ -128,11 +165,14 @@ def run_attestation(
 
 def main() -> None:
     args = parse_args()
+    feasibility_doc = Path(args.feasibility_doc) if args.feasibility_doc else None
     result = run_attestation(
         lane_name=args.lane_name,
         brief=Path(args.brief),
         named_advantage=args.named_advantage,
         output=Path(args.output),
+        venue=args.venue,
+        feasibility_doc=feasibility_doc,
         force=args.force,
     )
     print(json.dumps(result, indent=2))
