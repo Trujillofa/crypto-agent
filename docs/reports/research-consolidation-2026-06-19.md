@@ -1,5 +1,11 @@
 # Research Consolidation — 2026-06-19
 
+> **SUPERSEDED (2026-06-23).** This doc closed the *technical-crypto structural-probe* surface.
+> The whole research program — including the post-consolidation different-objective (funding carry),
+> different-universe (mNAV, Polymarket), and different-telemetry (microstructure) lanes — is now
+> closed by the canonical capstone: [research-consolidation-2026-06-23.md](./research-consolidation-2026-06-23.md).
+> The findings below remain valid for the technical-crypto surface specifically.
+
 **Purpose:** Close out the structural-probe + cost-realism investigation and record the
 terminal state of the technical-crypto research program. This is the canonical artifact;
 the ledger and the 2026-06-06 reset doc point here.

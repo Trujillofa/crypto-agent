@@ -1,5 +1,10 @@
 # Autoresearch Candidate Ledger
 
+> **PROGRAM TERMINAL (2026-06-23).** The entire research program is closed. Canonical capstone:
+> [research-consolidation-2026-06-23.md](./research-consolidation-2026-06-23.md) — five objective
+> functions × four universes, all NULL/BANK/WEAK_EDGE; missing ingredient is a differentiated
+> advantage, not another market. This ledger is the per-lane registry; the capstone is the narrative.
+
 Tracks bounded autoresearch campaigns and promotion decisions.
 
 **Goal:** find up to 10 agents, but only if each survives bootstrap=1000 **and** adds independence.
@@ -527,3 +532,41 @@ carry BANK, the pattern is structural: a small operator with public data and no 
 advantage finds no durable edge. Next decision is bank-the-program (capstone) vs pursue a
 *differentiated advantage* (proprietary data / latency / scale / privileged access), not another
 market.
+
+## Order-flow microstructure — different-telemetry lane (2026-06-23, NO_PULSE → CLOSED)
+
+The first **different-telemetry** lane: stop varying the strategy on candle data and change the data
+substrate to tick-level order flow — the most plausible remaining *public-data* differentiated
+advantage (candle systems discard intra-bar ticks at `src/ingest/websocket.py:197`). Built by Grok
+(PR #110), reviewed by Claude.
+
+Spec: [`microstructure-orderflow-probe-v0.md`](../specs/microstructure-orderflow-probe-v0.md).
+Script: `scripts/probe_orderflow_microstructure.py`. Artifacts:
+`research/rbi_loop/microstructure-orderflow-v0/`.
+
+**Design (cost-disciplined):** v0 uses only `aggTrade` signed order flow (OFI), which Binance serves
+*historically* over REST — a read-only study, **no new ingest/store/executor build**. The expensive
+L2/depth capture stack was deliberately gated behind a v0 pulse. The decisive question: the **horizon
+crossover** — sub-10s edge = `NO_PULSE_FOR_STACK` (untradeable on the candle-cadence executor); ≥60s
+edge = tradeable `HAS_PULSE`.
+
+Result on 33.3M real aggTrades (BTC 17.1M / ETH 13.9M / SOL 2.3M, 14d 2026-05-23→06-06, ~100%
+coverage, sign verified non-inverted):
+
+| Symbol | spread 1s→300s (bps) | bootstrap p | monotonic | day-conc | net edge (bps) |
+|--------|----------------------|-------------|-----------|----------|----------------|
+| BTCUSDT | +0.46 → +2.71 | ≈0.49–0.52 | no | 30–36% | −9.6 → −7.3 |
+| ETHUSDT | +0.40 → +4.14 | ≈0.49–0.52 | no | 36–39% | −9.9 → −6.1 |
+| SOLUSDT | +0.33 → +4.72 | ≈0.49–0.52 | no | 34–43% | −10.4 → −6.0 |
+
+**Decision: NO_PULSE → CLOSED.** Fails all four gates on all three symbols: insignificant (p≈0.5),
+non-monotonic, single-day concentration 30–43% (cap 25%), and net edge **−7 to −10 bps** (the largest
+spread is ~half the ~10 bps taker cost). Tick-level sign correlation is **0.009** on BTC — signed flow
+on liquid majors is already priced by market makers; the "less crowded" hypothesis is wrong for
+majors. The spread *grows* with horizon, so there is no hidden sub-10s edge (`NO_PULSE_FOR_STACK` not
+triggered). Verdict logic verified clean on review (proper four-way AND, not the mNAV OR-pass).
+**Do not build the tick-ingestion stack.** A genuine sub-second microstructure edge, if any, is a
+co-location/latency *business* (Path 2), not a code change. Probe + tooling retained as reusable infra.
+
+This falsifies the most plausible remaining public-data advantage, cheaply — escalating to the
+**bank-vs-pursue-an-advantage** fork now recorded in the capstone (banked).
