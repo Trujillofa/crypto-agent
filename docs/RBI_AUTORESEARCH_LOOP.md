@@ -86,6 +86,10 @@ Before code or sweeps, create or update a short brief in `docs/specs/` or `docs/
 - expected regime
 - expected failure mode
 - signal definition
+- **null model the probe will beat** — name the control (shuffled/phase-randomized
+  returns, shuffled-sign/permuted feature) and the `p_adj`/concentration bar up front;
+  see Gate 1 "Mandatory baseline: the random-walk null". A brief with no stated null is
+  incomplete.
 - target symbol/timeframe
 - target trade density
 - independence expectation vs live agents
@@ -119,6 +123,47 @@ Probe classification:
 | `NO_PULSE` | No useful predictive structure | Close lane |
 
 No `HAS_PULSE`, no autoresearch.
+
+#### Mandatory baseline: the random-walk null
+
+A probe does not earn `HAS_PULSE` by showing a positive forward return. It earns it by
+**beating the random-walk null** — the hypothesis that the series carries no exploitable
+structure and any apparent edge is sampling noise. This is the formal version of the
+shuffled-sign / block-bootstrap controls already run per lane (microstructure #110, mNAV
+concentration cap); making it a standing gate stops a future probe from mistaking an
+in-sample artifact for signal.
+
+Every Gate-1 probe MUST report, and clear, all three:
+
+1. **A null model the edge is measured against.** Construct a control that destroys the
+   thesis-specific information while preserving the data's nuisance structure, then show
+   the real edge exceeds the null distribution. Pick the control that kills *only* the
+   claimed signal:
+   - directional / return-prediction theses → **shuffled or phase-randomized returns**
+     (preserves the marginal return distribution and volatility clustering, destroys
+     temporal order);
+   - signed-flow / feature theses → **shuffled-sign / permuted-feature** control
+     (preserves magnitude distribution, destroys the feature→return link), per #110.
+2. **Significance with multiple-testing correction.** Bootstrap the edge statistic with
+   **block** bootstrap (≥ 1000 resamples) to respect autocorrelation — IID resampling
+   inflates significance on serially-correlated returns. If the probe scans N horizons,
+   thresholds, or buckets, correct the p-value across all N (Bonferroni/Holm). Report
+   `p_adj`, not the raw best-of-N.
+3. **Edge is not concentrated.** No single UTC day/hour/event may supply more than **25%**
+   of the edge (the mNAV concentration cap). A pulse that lives in one bar is a single
+   draw from the null, not a repeatable edge.
+
+`HAS_PULSE` requires **all** of: monotonic/structured relationship · `p_adj < 0.05` ·
+beats the chosen null · concentration ≤ 25% · survives the venue-appropriate round-trip
+cost. This is an **AND**, not a best-of — a probe that passes one and fails another is
+`WEAK_EDGE` at most (see #110, whose verdict logic is the reference `significant = monotonic
+AND p_adj < ALPHA AND beats_shuffled AND concentration_ok`).
+
+If a probe cannot beat its own null, the result is `NO_PULSE` regardless of how positive
+the raw mean looks — and that is a *true* null worth banking, not a failure to model
+harder. A fancier estimator on the same data does not add information; it adds variance.
+Model sophistication is never a substitute for a differentiated data surface (the banked
+program's terminal lesson — `docs/reports/research-consolidation-2026-06-23.md`).
 
 ### Gate 2: Bounded Autoresearch
 
