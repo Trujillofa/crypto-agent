@@ -1,7 +1,11 @@
 # Path 2 Gate 0 — Illiquid-Venue Microstructure (Differentiated Advantage)
 
-**Status:** Path 2 program **reopened** (2026-06-23). Gate 0 attestation complete; Gate 1 market
-selection and data access **pending operator infra**.
+**Status:** **CLOSED at Gate 0 on economics** (2026-06-24) for a solo, public-data operator at
+≤ $10k venue exposure — sub-gate 2 (spread vs edge) fails decisively; 1/3/4 reinforce. Decision:
+[path2-gate0-economics-close-2026-06-24.md](../reports/path2-gate0-economics-close-2026-06-24.md).
+Reopens only with a **differentiated venue advantage** (MM rebate / latency / privileged access =
+C-tier business), which requires a fresh Gate 0 brief. *History: program reopened 2026-06-23, Gate 0
+attestation complete (`OPEN_PENDING_INFRA`); economics evaluated on paper 2026-06-24 → close.*
 **Program context:** [research-consolidation-2026-06-23.md](../reports/research-consolidation-2026-06-23.md)
 (Path 2 fork). Prior public-data program is **banked** (terminal).
 **RBI manifest:** `config/autoresearch/rbi_loop.path2-illiquid-venue.yaml`

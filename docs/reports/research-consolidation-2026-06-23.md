@@ -128,6 +128,19 @@ prevent. The verification that mattered is done.
 These are sequential, not exclusive: banking gives Path 2 a clean baseline ("here is everything that
 does not work without an edge, so the edge must come first").
 
+> **Update (2026-06-24) — both forks resolved; program fully terminal.** Fork 1 stands and the
+> public-data book is **sealed**: the last unprobed reset-doc primitive (A1 forced-liquidation cascade)
+> was measured dead (#119), and an independent dual-pass edge review (Claude × Grok) converged on stay
+> banked. Fork 2 was *opened deliberately* (illiquid-venue microstructure, 2026-06-23) and then
+> **closed at Gate 0 on economics (2026-06-24)** for the accessible operator profile (solo, public
+> data, ≤$10k): it fails its own spread-vs-edge / capacity / custody / defensibility sub-gates on
+> paper — see [path2-gate0-economics-close-2026-06-24.md](./path2-gate0-economics-close-2026-06-24.md).
+> The **only** surviving Path-2 prior is a C-tier *business* (MM rebate / latency / privileged access),
+> out of reach from the current profile and requiring its own Gate 0 brief if ever pursued. **No
+> public-data or accessible Path-2 lane has a positive-EV next step.** Forward tracks are non-research:
+> redeploy the proven method to the working (cTrader FX) system, and/or the access/"size-is-edge"
+> operations track. Reconciliation: [deep-edge-research-reconciliation-2026-06-24.md](./deep-edge-research-reconciliation-2026-06-24.md).
+
 ---
 
 ## What stays / what stops
@@ -139,6 +152,8 @@ does not work without an edge, so the edge must come first").
 | Funding carry | **Banked** — known premium, excess over risk-free gone forward (#105) |
 | Different-universe lanes (mNAV, Polymarket) | **Closed WEAK_EDGE** — artifact verdicts corrected on review |
 | Microstructure / tick-ingestion build | **Not built** — OFI NO_PULSE on majors; would be a from-scratch ingest+exec build, now unjustified (#110) |
+| Forced-liquidation / cascade flow (A1) | **Measured dead** — WEAK_EDGE → economically NO_PULSE; last reset-doc primitive, public-data book now sealed (#119) |
+| Path 2 illiquid-venue microstructure (accessible expression) | **Closed at Gate 0 (economics)** — fails spread-vs-edge/capacity/custody/defensibility for solo ≤$10k; reopens only with a C-tier venue advantage (2026-06-24) |
 | Corrected cost/funding defaults (#94) + run-start cost audit (#96) | **Kept** — correctness fix, applies to all future backtests |
 | RBI loop tooling + hard rules (cheap-probe HAS_PULSE, `--execute` human gate) | **Kept** — reusable for any future data-first primitive |
 | All probe scripts + seed data (unlock, carry, mNAV, Polymarket, microstructure) | **Kept** — reusable infra + a proven review discipline that caught two false positives |
