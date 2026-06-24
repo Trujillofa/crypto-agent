@@ -456,3 +456,52 @@ class TestReconcileAll:
         # Spot failed but futures succeeded
         assert len(results) == 1
         assert results[0].market == "futures"
+
+
+class TestAutoFixNotifications:
+    @pytest.mark.asyncio
+    async def test_phantom_db_force_close_emits_reconciliation_alert(self) -> None:
+        """Phantom reconciliation close reports booked fee loss, not a TP win."""
+        portfolio = MagicMock()
+        portfolio.close_position = AsyncMock(return_value=(MagicMock(), -0.061))
+        recon = ExchangeReconciler(
+            portfolio_manager=portfolio,
+            spot_client=None,
+            futures_client=AsyncMock(),
+            spot_symbols=[],
+            futures_symbols=["BTCUSDT"],
+            notifier=MagicMock(),
+            event_log=None,
+            risk_manager=MagicMock(),
+            config=ReconciliationConfig(on_divergence=DivergencePolicy.AUTO_FIX),
+            agent_id="sentiment-macro-bot",
+        )
+        recon._notifier.send_trade_alert = AsyncMock(return_value=True)
+        recon._notifier.send_alert = AsyncMock(return_value=True)
+
+        from src.execution.reconciliation import Divergence
+
+        await recon._auto_fix(
+            [
+                Divergence(
+                    symbol="BTCUSDT",
+                    market="futures",
+                    divergence_type="phantom_db",
+                    db_state={
+                        "quantity": 0.001,
+                        "side": "LONG",
+                        "entry_price": 76_832.20,
+                    },
+                    exchange_state={"quantity": 0.0},
+                    severity="critical",
+                    message="phantom futures position",
+                )
+            ]
+        )
+
+        recon._notifier.send_trade_alert.assert_awaited_once()
+        call_kwargs = recon._notifier.send_trade_alert.call_args.kwargs
+        assert call_kwargs["close_reason"] == "reconciliation"
+        assert call_kwargs["pnl"] == pytest.approx(-0.061)
+        assert call_kwargs["price"] == pytest.approx(76_832.20)
+        assert call_kwargs["entry_price"] == pytest.approx(76_832.20)

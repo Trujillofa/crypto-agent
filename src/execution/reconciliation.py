@@ -362,12 +362,15 @@ class ExchangeReconciler:
 
             if div.divergence_type == "phantom_db":
                 entry_px = float(div.db_state.get("entry_price", 0.0))
+                qty = float(div.db_state.get("quantity", 0.0))
+                position_side = div.db_state.get("side", "LONG")
+                closing_side = "SELL" if position_side in (None, "LONG", "BOTH") else "BUY"
                 try:
-                    await self._portfolio.close_position(
+                    _, realized_pnl = await self._portfolio.close_position(
                         symbol=symbol,
                         price=entry_px,
                         market=market,
-                        closing_side="SELL",
+                        closing_side=closing_side,
                     )
                     self._logger.warning(
                         "AUTO_FIX: force-closed phantom DB position %s %s @ %.4f",
@@ -375,6 +378,17 @@ class ExchangeReconciler:
                         symbol,
                         entry_px,
                     )
+                    if qty > 0 and entry_px > 0:
+                        await self._notifier.send_trade_alert(
+                            symbol=symbol,
+                            side=closing_side,
+                            quantity=qty,
+                            price=entry_px,
+                            pnl=realized_pnl,
+                            market=market,
+                            entry_price=entry_px,
+                            close_reason="reconciliation",
+                        )
                     fixed.append(symbol)
                 except ValueError:
                     self._logger.warning(

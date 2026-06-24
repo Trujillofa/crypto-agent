@@ -62,6 +62,7 @@ class CloseExecutionDetails:
     ticket_id: str | None
     fill_price: float | None = None
     realized_pnl: float | None = None
+    confirmed_fill: bool = False
 
 
 class FuturesTradingExecutor:
@@ -255,9 +256,6 @@ class FuturesTradingExecutor:
         self,
         symbol: str,
         tracked_orders: dict[str, str],
-        last_mark: float,
-        sl_price: float,
-        tp_price: float,
     ) -> CloseExecutionDetails:
         sl_order_id = tracked_orders.get("sl_order_id")
         tp_order_id = tracked_orders.get("tp_order_id")
@@ -287,36 +285,34 @@ class FuturesTradingExecutor:
 
         close_reason: str | None = None
         close_ticket: str | None = None
+        confirmed_fill = False
         if await _is_filled(sl_order_id):
             close_reason = "stop_loss"
             close_ticket = sl_order_id
+            confirmed_fill = True
         elif await _is_filled(tp_order_id):
             close_reason = "take_profit"
             close_ticket = tp_order_id
-        elif sl_price > 0 and last_mark > 0:
-            dist_sl = abs(last_mark - sl_price)
-            dist_tp = abs(last_mark - tp_price) if tp_price > 0 else float("inf")
-            if dist_sl <= dist_tp:
-                close_reason = "stop_loss"
-                close_ticket = sl_order_id
-            else:
-                close_reason = "take_profit"
-                close_ticket = tp_order_id
-        else:
-            close_ticket = sl_order_id or tp_order_id
+            confirmed_fill = True
 
-        fill_price, realized_pnl = await self._fetch_close_execution_details(symbol, close_ticket)
-        if fill_price is None or realized_pnl is None:
-            self._logger.warning(
-                "Using estimated %s close for %s because Binance fill/PnL lookup was unavailable",
-                close_reason or "exchange",
-                symbol,
+        fill_price: float | None = None
+        realized_pnl: float | None = None
+        if confirmed_fill and close_ticket:
+            fill_price, realized_pnl = await self._fetch_close_execution_details(
+                symbol, close_ticket
             )
+            if fill_price is None or realized_pnl is None:
+                self._logger.warning(
+                    "Confirmed %s fill for %s but Binance fill/PnL lookup was unavailable",
+                    close_reason or "exchange",
+                    symbol,
+                )
         return CloseExecutionDetails(
             reason=close_reason,
             ticket_id=close_ticket,
             fill_price=fill_price,
             realized_pnl=realized_pnl,
+            confirmed_fill=confirmed_fill,
         )
 
     async def run(self) -> None:
@@ -407,77 +403,91 @@ class FuturesTradingExecutor:
                     )
                     pos_state = self._positions.get(symbol, {})
                     entry_px = float(pos_state.get("entry_price", 0.0))
-                    last_mark = float(pos_state.get("mark_price", 0.0))
                     qty = float(pos_state.get("amount", 0.0))
                     tracked_orders = self._sl_tp_orders.get(symbol, {})
                     sw_prices = self._sl_tp_prices.get(symbol, {})
                     sl_px = sw_prices.get("sl_price", 0.0)
-                    tp_px = sw_prices.get("tp_price", 0.0)
                     close_details = await self._resolve_close_execution_details(
                         symbol=symbol,
                         tracked_orders=tracked_orders,
-                        last_mark=last_mark,
-                        sl_price=sl_px,
-                        tp_price=tp_px,
-                    )
-                    close_price = (
-                        close_details.fill_price if close_details.fill_price else last_mark
                     )
                     pnl: float | None = None
-                    if close_details.reason == "stop_loss" and self._config.sl_cooldown_minutes > 0:
-                        self._sl_cooldown_timestamps[symbol] = time.time()
-                        self._logger.info(
-                            "SL cooldown started for %s (close=%.4f sl=%.4f)",
-                            symbol,
-                            close_price,
-                            sl_px,
-                        )
-
-                    bars_held: int | None = None
-                    if self._portfolio_manager is not None:
-                        tracked_position = self._portfolio_manager.get_position(
-                            symbol, market="futures"
-                        )
-                        if tracked_position is not None:
-                            bars_held = self._estimate_bars_held(tracked_position.entry_time)
-
-                    realized_pnl: float | None = None
-                    if self._portfolio_manager is not None and close_price > 0:
-                        try:
-                            _, realized_pnl = await self._portfolio_manager.close_position(
-                                symbol=symbol,
-                                price=close_price,
-                                order_id=close_details.ticket_id,
-                                market="futures",
-                                closing_side="SELL",
-                                realized_pnl_override=close_details.realized_pnl,
+                    if close_details.confirmed_fill and close_details.ticket_id:
+                        close_price = close_details.fill_price
+                        if close_price is None:
+                            self._logger.warning(
+                                "Confirmed exchange close for %s but fill price unavailable — "
+                                "skipping close alert",
+                                symbol,
                             )
-                        except ValueError:
-                            pass  # position not in DB (recovered or pre-tracking)
+                        else:
+                            if (
+                                close_details.reason == "stop_loss"
+                                and self._config.sl_cooldown_minutes > 0
+                            ):
+                                self._sl_cooldown_timestamps[symbol] = time.time()
+                                self._logger.info(
+                                    "SL cooldown started for %s (close=%.4f sl=%.4f)",
+                                    symbol,
+                                    close_price,
+                                    sl_px,
+                                )
 
-                    if entry_px > 0 and qty > 0 and close_price > 0:
-                        pnl = (
-                            realized_pnl
-                            if realized_pnl is not None
-                            else (close_price - entry_px) * qty
-                        )
-                        await self._notifier.send_trade_alert(
-                            symbol=symbol,
-                            side="SELL",
-                            quantity=qty,
-                            price=close_price,
-                            pnl=pnl,
-                            market="futures",
-                            entry_price=entry_px,
-                            close_reason=close_details.reason,
-                            bars_held=bars_held,
-                            ticket_id=close_details.ticket_id,
+                            bars_held: int | None = None
+                            if self._portfolio_manager is not None:
+                                tracked_position = self._portfolio_manager.get_position(
+                                    symbol, market="futures"
+                                )
+                                if tracked_position is not None:
+                                    bars_held = self._estimate_bars_held(
+                                        tracked_position.entry_time
+                                    )
+
+                            realized_pnl: float | None = None
+                            if self._portfolio_manager is not None:
+                                try:
+                                    _, realized_pnl = await self._portfolio_manager.close_position(
+                                        symbol=symbol,
+                                        price=close_price,
+                                        order_id=close_details.ticket_id,
+                                        market="futures",
+                                        closing_side="SELL",
+                                        realized_pnl_override=close_details.realized_pnl,
+                                    )
+                                except ValueError:
+                                    realized_pnl = close_details.realized_pnl
+
+                            pnl = realized_pnl
+                            if pnl is not None and entry_px > 0 and qty > 0 and close_price > 0:
+                                await self._notifier.send_trade_alert(
+                                    symbol=symbol,
+                                    side="SELL",
+                                    quantity=qty,
+                                    price=close_price,
+                                    pnl=pnl,
+                                    market="futures",
+                                    entry_price=entry_px,
+                                    close_reason=close_details.reason,
+                                    bars_held=bars_held,
+                                    ticket_id=close_details.ticket_id,
+                                )
+                                self._record_risk_close(symbol, pnl, self._account_balance)
+                            else:
+                                self._logger.warning(
+                                    "Confirmed exchange close for %s but booked PnL unavailable — "
+                                    "skipping close alert",
+                                    symbol,
+                                )
+                    else:
+                        self._logger.info(
+                            "Position %s flat on exchange with no confirmed SL/TP fill — "
+                            "clearing tracking only",
+                            symbol,
                         )
 
                     self._sl_tp_orders.pop(symbol, None)
                     self._sl_tp_prices.pop(symbol, None)
                     self._positions.pop(symbol, None)
-                    self._record_risk_close(symbol, pnl, self._account_balance)
 
                 # Software exits: enforce SL/TP, ATR trailing, and time stops.
                 sw = self._sl_tp_prices.get(symbol)
@@ -586,27 +596,28 @@ class FuturesTradingExecutor:
                                 and self._config.sl_cooldown_minutes > 0
                             ):
                                 self._sl_cooldown_timestamps[symbol] = time.time()
-                            if close_realized_pnl is not None:
-                                pnl = close_realized_pnl
-                            else:
-                                pnl = (
-                                    (close_fill_price - sw_entry_px) * qty
-                                    if sw_entry_px > 0
-                                    else None
+                            pnl = close_realized_pnl
+                            if pnl is not None and close_order.order_id:
+                                await self._notifier.send_trade_alert(
+                                    symbol=symbol,
+                                    side="SELL",
+                                    quantity=qty,
+                                    price=close_fill_price,
+                                    pnl=pnl,
+                                    market="futures",
+                                    entry_price=sw_entry_px if sw_entry_px > 0 else None,
+                                    close_reason=sw_close_reason,
+                                    bars_held=bars_held,
+                                    ticket_id=close_order.order_id,
                                 )
-                            await self._notifier.send_trade_alert(
-                                symbol=symbol,
-                                side="SELL",
-                                quantity=qty,
-                                price=close_fill_price,
-                                pnl=pnl,
-                                market="futures",
-                                entry_price=sw_entry_px if sw_entry_px > 0 else None,
-                                close_reason=sw_close_reason,
-                                bars_held=bars_held,
-                                ticket_id=close_order.order_id,
-                            )
-                            self._record_risk_close(symbol, pnl, self._account_balance)
+                                self._record_risk_close(symbol, pnl, self._account_balance)
+                            else:
+                                self._logger.warning(
+                                    "Software %s close for %s missing booked PnL — "
+                                    "skipping close alert",
+                                    reason_str,
+                                    symbol,
+                                )
                         except Exception as close_exc:
                             self._logger.error(
                                 "Failed to close %s after software %s: %s",
