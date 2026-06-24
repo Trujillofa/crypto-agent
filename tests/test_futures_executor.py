@@ -727,6 +727,39 @@ class TestFuturesTradingExecutor:
         assert executor._calculate_quantity("BTCUSDT", 0.0) == 0.0
         assert executor._calculate_quantity("BTCUSDT", -1.0) == 0.0
 
+    def test_resolve_risk_close_pnl_priority_and_fallback(self) -> None:
+        assert FuturesTradingExecutor._resolve_risk_close_pnl(
+            booked_pnl=-12.5,
+            exchange_realized_pnl=-99.0,
+            close_price=100.0,
+            entry_px=110.0,
+            qty=1.0,
+        ) == pytest.approx(-12.5)
+        assert FuturesTradingExecutor._resolve_risk_close_pnl(
+            booked_pnl=None,
+            exchange_realized_pnl=-8.0,
+            close_price=100.0,
+            entry_px=110.0,
+            qty=1.0,
+        ) == pytest.approx(-8.0)
+        assert FuturesTradingExecutor._resolve_risk_close_pnl(
+            booked_pnl=None,
+            exchange_realized_pnl=None,
+            close_price=95.0,
+            entry_px=100.0,
+            qty=0.5,
+        ) == pytest.approx(-2.5)
+        assert (
+            FuturesTradingExecutor._resolve_risk_close_pnl(
+                booked_pnl=None,
+                exchange_realized_pnl=None,
+                close_price=None,
+                entry_px=100.0,
+                qty=0.5,
+            )
+            is None
+        )
+
     @pytest.mark.asyncio
     async def test_sl_tp_use_long_position_side_in_hedge_mode(self, executor):
         """In hedge mode, SL/TP orders use positionSide=LONG with closePosition=True."""
@@ -913,6 +946,10 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["price"] == pytest.approx(78_100.0)
         assert call_kwargs["pnl"] == pytest.approx(-20.0)
         assert call_kwargs["ticket_id"] == "sl_1"
+        executor._risk_manager.record_trade.assert_called_once_with(
+            "BTCUSDT", pytest.approx(-20.0), 5000.0
+        )
+        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
         assert "BTCUSDT" not in executor._sl_tp_orders
 
     @pytest.mark.asyncio
@@ -1060,7 +1097,7 @@ class TestFuturesTradingExecutor:
 
     @pytest.mark.asyncio
     async def test_monitor_skips_alert_when_fill_lookup_fails(self, executor):
-        """Confirmed fill without fill price/PnL must not emit a close alert."""
+        """Confirmed fill without trade fill/PnL must not alert but still records risk loss."""
         mock_client = MagicMock()
         mock_client.get_position_risk = AsyncMock(return_value=[])
         mock_client.get_account_info = AsyncMock(
@@ -1093,7 +1130,69 @@ class TestFuturesTradingExecutor:
 
         portfolio_manager.close_position.assert_not_awaited()
         notifier.send_trade_alert.assert_not_awaited()
+        executor._risk_manager.record_trade.assert_called_once_with(
+            "BTCUSDT", pytest.approx(-19.0), 5000.0
+        )
+        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
         assert "BTCUSDT" not in executor._sl_tp_orders
+
+    @pytest.mark.asyncio
+    async def test_monitor_records_risk_close_when_booked_pnl_missing_on_confirmed_fill(
+        self, executor
+    ):
+        """Confirmed fill with trade price but no booked PnL records conservative risk loss."""
+        fill_price = 78_100.0
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        mock_client.get_order_status = AsyncMock(
+            return_value=_make_order(
+                order_id="sl_1", side="SELL", price=fill_price, status="FILLED"
+            )
+        )
+        mock_client.get_user_trades = AsyncMock(
+            return_value=[
+                FuturesUserTrade(
+                    trade_id="trade_sl",
+                    order_id="sl_1",
+                    symbol="BTCUSDT",
+                    side="SELL",
+                    price=fill_price,
+                    quantity=0.01,
+                    realized_pnl=0.0,
+                    commission=0.04,
+                    commission_asset="USDT",
+                    time=1_800_000_500_000,
+                )
+            ]
+        )
+        executor._client = mock_client
+        notifier = AsyncMock()
+        executor._notifier = notifier
+        portfolio_manager = MagicMock()
+        portfolio_manager.get_position.return_value = MagicMock(entry_time=None)
+        portfolio_manager.close_position = AsyncMock(side_effect=ValueError("no position"))
+        executor._portfolio_manager = portfolio_manager
+        executor._fetch_close_execution_details = AsyncMock(return_value=(None, None))
+
+        executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "sl_1", "tp_order_id": "tp_1"}
+        executor._positions["BTCUSDT"] = {
+            "entry_price": 80_000.0,
+            "mark_price": 78_000.0,
+            "amount": 0.01,
+            "unrealized_pnl": -20.0,
+        }
+        executor._sl_tp_prices["BTCUSDT"] = {"sl_price": fill_price, "tp_price": 84_000.0}
+
+        await executor._monitor_and_update()
+
+        notifier.send_trade_alert.assert_not_awaited()
+        executor._risk_manager.record_trade.assert_called_once_with(
+            "BTCUSDT", pytest.approx(-19.0), 5000.0
+        )
+        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
 
     @pytest.mark.asyncio
     async def test_monitor_sends_close_notification_on_tp_close(self, executor):
