@@ -450,6 +450,11 @@ class TestHelpers:
     def test_humanize_close_reason_passthrough(self) -> None:
         assert TelegramNotifier._humanize_close_reason("custom reason") == "custom reason"
 
+    def test_humanize_close_reason_reconciliation(self) -> None:
+        assert (
+            TelegramNotifier._humanize_close_reason("reconciliation") == "Reconciliation (forced)"
+        )
+
     def test_format_market_label_paper(self) -> None:
         assert TelegramNotifier._format_market_label("paper-spot") == "📄 PAPER SPOT"
 

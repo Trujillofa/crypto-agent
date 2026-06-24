@@ -477,6 +477,8 @@ class TelegramNotifier:
             return "Trailing Stop"
         if r.startswith("TIME_STOP"):
             return "Time Stop"
+        if r == "RECONCILIATION":
+            return "Reconciliation (forced)"
         return reason
 
     def _format_message(self, message: str, level: AlertLevel) -> str:
