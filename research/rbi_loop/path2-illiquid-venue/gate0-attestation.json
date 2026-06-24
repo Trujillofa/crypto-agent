@@ -4,11 +4,24 @@
   "path2_program": true,
   "named_advantage": "illiquid venue microstructure where the book is thin",
   "gate0_question": "do I have a credible, defensible information/latency/access asymmetry?",
-  "gate0_answer": "DECLARED_NOT_YET_OPERATIONAL",
-  "gate0_status": "OPEN_PENDING_INFRA",
+  "gate0_answer": "CLOSED_AT_GATE0_ECONOMICS",
+  "gate0_status": "CLOSED_AT_GATE0_ECONOMICS",
   "lane_brief": "docs/specs/path2-illiquid-venue-gate0.md",
   "infra_env_var": "PATH2_ILLIQUID_VENUE_ACCESS_ATTESTED",
   "infra_attested": false,
   "rbi_probe_verdict": null,
-  "notes": "Path 2 Gate 0 attestation only. Does not set HAS_PULSE. Gate 1 requires venue access and illiquid-surface cheap probe."
+  "economic_close": {
+    "decided_at": "2026-06-24",
+    "operator_profile": "solo, public-data, no latency/infra edge, <=$10k venue exposure",
+    "decisive_subgate": "2_spread_vs_edge",
+    "subgate_results": {
+      "1_capacity_vs_cost": "FAIL",
+      "2_spread_vs_edge": "FAIL_DECISIVE",
+      "3_custody_venue_risk": "FAIL",
+      "4_defensibility": "FAIL"
+    },
+    "decision_doc": "docs/reports/path2-gate0-economics-close-2026-06-24.md",
+    "reopen_condition": "differentiated venue advantage (MM rebate / latency / privileged access = C-tier business); requires a fresh Gate 0 brief"
+  },
+  "notes": "Path 2 Gate 0 closed on paper economics 2026-06-24. Sub-gate 2 (spread vs edge) fails decisively for the solo public-data <=$10k expression; 1/3/4 reinforce. Never set HAS_PULSE; no Gate 1 data spend. History: reopened 2026-06-23 with gate0_status OPEN_PENDING_INFRA / answer DECLARED_NOT_YET_OPERATIONAL."
 }

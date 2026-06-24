@@ -6,11 +6,25 @@
 > differentiated advantage, not another market. This ledger is the per-lane registry; the capstone is
 > the narrative.
 >
-> **PATH 2 REOPENED (2026-06-23).** Deliberate new program per capstone fork Path 2 — entered with
-> named advantage **illiquid venue microstructure where the book is thin**. Gate 0 premise:
-> *do I have a credible, defensible information/latency/access asymmetry?* See
-> [path2-illiquid-venue-gate0.md](../specs/path2-illiquid-venue-gate0.md). Public-data lanes remain
-> stopped.
+> **PATH 2 CLOSED at Gate 0 on economics (2026-06-24).** The reopened illiquid-venue microstructure
+> lane was evaluated on paper against a solo, public-data operator at ≤$10k venue exposure and
+> **fails its own Gate 0 economic sub-gates** — sub-gate 2 (spread vs edge) decisively, 1/3/4
+> reinforcing. Decision:
+> [path2-gate0-economics-close-2026-06-24.md](./path2-gate0-economics-close-2026-06-24.md).
+> Reopens only with a **differentiated venue advantage** (MM rebate / latency / privileged access =
+> C-tier business) via a fresh Gate 0 brief.
+>
+> **PROGRAM FULLY TERMINAL — both forks resolved (2026-06-24).** Fork 1 (bank the public-data
+> program) stands; the public-data book is **sealed** (last reset-doc primitive, A1 forced-liquidation
+> cascade, measured dead — #119). Fork 2 (Path 2 differentiated advantage) is **closed at Gate 0** for
+> the accessible operator profile; only the C-tier business door remains, out of reach from the
+> current profile (solo, public data, ≤$10k). No public-data or accessible Path-2 lane has a
+> positive-EV next step. Forward tracks are non-research: redeploy method to the working system,
+> and/or the access/"size-is-edge" operations track. See
+> [deep-edge-research-reconciliation-2026-06-24.md](./deep-edge-research-reconciliation-2026-06-24.md).
+>
+> *History: Path 2 reopened 2026-06-23 (Gate 0 attestation `OPEN_PENDING_INFRA`).* Public-data lanes
+> remain stopped.
 
 Tracks bounded autoresearch campaigns and promotion decisions.
 
