@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-24
 **Inputs:** two independent passes —
-[Claude pass](#claude-pass-summary) (frontier-reframe) and
+[`deep-edge-research-claude-pass.md`](./deep-edge-research-claude-pass.md) (frontier-reframe) and
 [`deep-edge-research-grok-pass.md`](./deep-edge-research-grok-pass.md) (exhaustive-enumeration).
 **Canonical bank:** [research-consolidation-2026-06-23.md](./research-consolidation-2026-06-23.md).
 **Null discipline:** [RBI_AUTORESEARCH_LOOP.md](../RBI_AUTORESEARCH_LOOP.md) §Mandatory baseline (#118).
