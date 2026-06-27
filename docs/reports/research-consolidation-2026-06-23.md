@@ -154,6 +154,7 @@ does not work without an edge, so the edge must come first").
 | Microstructure / tick-ingestion build | **Not built** — OFI NO_PULSE on majors; would be a from-scratch ingest+exec build, now unjustified (#110) |
 | Forced-liquidation / cascade flow (A1) | **Measured dead** — WEAK_EDGE → economically NO_PULSE; last reset-doc primitive, public-data book now sealed (#119) |
 | Path 2 illiquid-venue microstructure (accessible expression) | **Closed at Gate 0 (economics)** — fails spread-vs-edge/capacity/custody/defensibility for solo ≤$10k; reopens only with a C-tier venue advantage (2026-06-24) |
+| Cross-sectional / relative-value (rank long-short basket) | **Closed NO_PULSE (2026-06-27)** — the one untested signal *object*; ruin-aware probe shows short-leg blowup bankrupts 4/6 grid cells, lone 7d survivor is a micro-cap slippage artifact. Last conceptual gap sealed — see ledger + `xs-altcoin-momentum-probe-v0.md` |
 | Corrected cost/funding defaults (#94) + run-start cost audit (#96) | **Kept** — correctness fix, applies to all future backtests |
 | RBI loop tooling + hard rules (cheap-probe HAS_PULSE, `--execute` human gate) | **Kept** — reusable for any future data-first primitive |
 | All probe scripts + seed data (unlock, carry, mNAV, Polymarket, microstructure) | **Kept** — reusable infra + a proven review discipline that caught two false positives |
