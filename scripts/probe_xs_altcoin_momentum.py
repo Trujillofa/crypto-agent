@@ -38,7 +38,16 @@ FAPI_BASE = "https://fapi.binance.com"
 DAY_MS = 86_400_000
 # Bases that are stable/fiat or otherwise not a momentum candidate.
 _EXCLUDE_BASES = {
-    "USDC", "USDT", "TUSD", "BUSD", "FDUSD", "DAI", "USDP", "USDD", "EUR", "GBP",
+    "USDC",
+    "USDT",
+    "TUSD",
+    "BUSD",
+    "FDUSD",
+    "DAI",
+    "USDP",
+    "USDD",
+    "EUR",
+    "GBP",
 }
 # Leveraged-token / index suffixes that are not spot-like perps.
 _EXCLUDE_SUFFIXES = ("UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT")
@@ -169,9 +178,7 @@ def build_panel(
     return sorted(all_days), panel
 
 
-def _basket_long_short(
-    ranked: list[tuple[str, float]], q: float
-) -> tuple[list[str], list[str]]:
+def _basket_long_short(ranked: list[tuple[str, float]], q: float) -> tuple[list[str], list[str]]:
     n_leg = max(1, int(len(ranked) * q))
     longs = [s for s, _ in ranked[:n_leg]]
     shorts = [s for s, _ in ranked[-n_leg:]]
@@ -274,7 +281,9 @@ def evaluate(report: ProbeReport) -> None:
     # Gate 4: significant sign-correct spread on a winning, solvent cell
     g4 = any(c.passes_significant and c.mean_gross_spread > 0 for c in winning_cells)
     # Gate 5: shuffle null kills the edge (mean over solvent cells)
-    real = statistics.fmean([c.mean_net_per_period for c in solvent_cells]) if solvent_cells else 0.0
+    real = (
+        statistics.fmean([c.mean_net_per_period for c in solvent_cells]) if solvent_cells else 0.0
+    )
     shuf = statistics.fmean([c.shuffle_mean_net for c in solvent_cells]) if solvent_cells else 0.0
     g5 = real > 0 and (shuf <= 0 or shuf <= 0.25 * real)
 
@@ -310,8 +319,12 @@ def run_probe(cfg: ProbeConfig) -> ProbeReport:
     report = ProbeReport(
         config=cfg,
         universe=sorted(panel.keys()),
-        span_start=datetime.fromtimestamp(days[0] / 1000, UTC).date().isoformat() if days else cfg.start,
-        span_end=datetime.fromtimestamp(days[-1] / 1000, UTC).date().isoformat() if days else cfg.end,
+        span_start=datetime.fromtimestamp(days[0] / 1000, UTC).date().isoformat()
+        if days
+        else cfg.start,
+        span_end=datetime.fromtimestamp(days[-1] / 1000, UTC).date().isoformat()
+        if days
+        else cfg.end,
     )
     for lookback in cfg.lookbacks:
         for q in cfg.quantiles:
@@ -359,8 +372,16 @@ def run_probe(cfg: ProbeConfig) -> ProbeReport:
             logger.info(
                 "cell L=%dd q=%.2f: periods=%d mean_net=%.3f%% wealth=%.2fx solvent=%s "
                 "ruin=%d min=%.1f%% conc=%.2f p=%.3f shuf=%.3f%%",
-                lookback, q, len(net), statistics.fmean(net) * 100, wealth, solvent,
-                n_ruin, min(net) * 100, best_share, p,
+                lookback,
+                q,
+                len(net),
+                statistics.fmean(net) * 100,
+                wealth,
+                solvent,
+                n_ruin,
+                min(net) * 100,
+                best_share,
+                p,
                 (statistics.fmean(shuf_net) * 100) if shuf_net else 0.0,
             )
     evaluate(report)
@@ -462,7 +483,9 @@ def main() -> int:
         "cells": [c.__dict__ for c in report.cells],
         "config": OrderedDict(sorted(cfg.__dict__.items())),
     }
-    (out_dir / "probe_result.json").write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    (out_dir / "probe_result.json").write_text(
+        json.dumps(payload, indent=2, default=str), encoding="utf-8"
+    )
     (out_dir / "probe_report.md").write_text(render_md(report) + "\n", encoding="utf-8")
     logger.info("verdict=%s -> %s", report.verdict, out_dir / "probe_report.md")
     return 0 if report.verdict == "HAS_PULSE" else 1
