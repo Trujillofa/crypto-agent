@@ -11,10 +11,13 @@ from the current operator profile.
 
 ---
 
-## First principles — an edge must come from exactly one asymmetry
+## First principles — a checklist of edge asymmetries (framework, not theorem)
 
-Every durable trading edge reduces to one of seven structural asymmetries. The bank tested **only #1
-on liquid majors** and found it efficient. The others were never the object of study.
+Durable edges tend to come from one or more of seven structural asymmetries. This is a **checklist for
+where to look, not a proof** — the categories overlap (maker rebates are *access* and *cost structure*;
+restaking reward is partly *constraint tolerance*; an airdrop is a protocol subsidy, not necessarily
+trading alpha) and listing an activity under a category does **not** establish it has positive EV. The
+bank tested **only #1 on liquid majors** and found it efficient; the others were never the object of study.
 
 | # | Asymmetry | "I win because I…" |
 |---|---|---|
@@ -39,24 +42,37 @@ on liquid majors** and found it efficient. The others were never the object of s
 | 7 | Constraint tolerance | ⚠️ overlaps #5 | Much of the #5 reward is *compensation* for holding new/illiquid/risky assets others avoid. Edge and tail-risk are the same coin — must be sized as such. |
 
 **Conclusion:** for this profile, #2/#3 are closed, #1/#6/#7 are weak-or-derivative, #4 is a deliberate
-business, and **#5 is the natural, durable, profile-fit advantage.** This matches the reconciliation's
-one substantive addition: the access/"size-is-edge" track is real, uncovered, and *not* a trading-engine lane.
+business, and **#5 is the profile-fit advantage — but only in its narrow, capped form** (see A1 below).
+The durable capability is disciplined discovery + operations, not the reward source. This matches the
+reconciliation's one substantive addition: the access/"size-is-edge" track is real, uncovered, and *not*
+a trading-engine lane.
 
 ---
 
 ## Recommended advantages (ranked)
 
-### ★ A1 — Incentive-farming / capacity-exempt yield (RECOMMENDED #1)
-**Asymmetry #5 (+#7).** Harvest per-wallet incentive distributions where a small operator captures the
-*same nominal reward* a whale would but at a far higher % of capital — and where whale participation
-dilutes the pool.
+### ★ A1 — Capped / fixed-reward incentive operations (RECOMMENDED #1 — NARROWED)
+**Asymmetry #5 (+#7), but only where a per-identity/per-account cap is *enforceable*.** The smallness
+edge is real **only** when the distribution has an enforceable per-person or fixed cap, so a whale
+*cannot* capture proportionally more by deploying size. For ordinary **pro-rata** pools (reward ∝
+capital × time) this is false — that is yield enhancement, not an inverse-scale edge.
 
-- **Surfaces:** airdrop/points programs, launchpad/IEO allocations, restaking/staking yield stacking,
-  testnet incentive programs, early-LP positions on new protocols, governance vote-incentive ("bribe") markets.
-- **Why durable:** protocols bootstrap with incentive distribution structurally and continuously; this is
-  not a single inefficiency that gets arbitraged away, it's a recurring primitive.
-- **Why it fits ≤$10k:** capacity-*capped by design* — the cap is the moat. Whales can't farm it efficiently.
-- **EV character:** real but lumpy and variable; ROI is realized forward, in real (small) money, not backtestable.
+The original draft lumped five economically different activities; they are **not** the same edge:
+
+| Activity | Genuine small-account edge? | Pilot disposition |
+|---|---|---|
+| Fixed / per-identity-capped allocations (documented limits, KYC/account caps) | **Yes** | **Core of pilot** |
+| Testnet / contribution tasks | Sometimes — it's *labor*, not capital | Conditional (legit, anti-sybil-clean, capped labor) |
+| Launchpool on an asset you'd hold anyway | No — pro-rata to capital×time | Yield enhancement only; never buy a token just to farm |
+| Restaking / proportional points | Usually no — pro-rata, risk-compensated | **Defer** (test: would I hold it at points=0?) |
+| Early LP / vote-incentive ("bribe") markets | No — it's a MM/yield-risk business (IL, inventory, contract/bridge risk) | **Reject from pilot** |
+
+- **Durability — corrected:** the *category* recurs, but **no individual program is durable** (terms
+  change retroactively, points may never convert, allocation formulas are undisclosed, sybil filters claw
+  back, reward value can collapse pre-liquidity, competition dilutes future rounds). The durable
+  capability is **disciplined discovery + operations + accounting**, not the reward source.
+- **EV character:** real but lumpy; ROI realized forward in real (small) money, not backtestable.
+  **Unannounced rewards are valued at zero in the base case** (upside tracked separately).
 - **Kill risks:** sybil/anti-farming rules, smart-contract & custody risk, time-intensive ops, reward variance,
   and #7 tail (the asset you hold to qualify can crater). Must be sized and risk-budgeted explicitly.
 - **Buildable by Grok (this is the bridge to "builder"):** eligibility/points trackers, allocation & claim
