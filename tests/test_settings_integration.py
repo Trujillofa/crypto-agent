@@ -18,7 +18,6 @@ from src.strategy import (
     BreakoutRetestStrategy,
     CCIBreakoutStrategy,
     EngineConfig,
-    MacroVolatilityStrategy,
     PanicBlockMACrossoverStrategy,
     SentimentMeanReversionStrategy,
     Signal,
@@ -196,13 +195,13 @@ def test_optional_strategy_registry_skips_missing_modules(monkeypatch):
     assert strategy_registry["vwap_reversion"] is VWAPReversionStrategy
 
 
-def test_wire_optional_strategy_dependencies_sets_sentiment_scorer_and_leaves_macro_unwired():
+def test_wire_optional_strategy_dependencies_sets_sentiment_scorer():
     reader = MagicMock()
     engine = StrategyEngine(
         EngineConfig(
             symbols=["BTCUSDT"],
-            strategy_classes=[SentimentMeanReversionStrategy, MacroVolatilityStrategy],
-            strategy_configs=[{}, {}],
+            strategy_classes=[SentimentMeanReversionStrategy],
+            strategy_configs=[{}],
         ),
         reader,
     )
@@ -213,12 +212,8 @@ def test_wire_optional_strategy_dependencies_sets_sentiment_scorer_and_leaves_ma
     sentiment = next(
         strategy for strategy in strategies if isinstance(strategy, SentimentMeanReversionStrategy)
     )
-    macro = next(
-        strategy for strategy in strategies if isinstance(strategy, MacroVolatilityStrategy)
-    )
 
     assert sentiment._scorer is not None  # pylint: disable=protected-access
-    assert macro._event_feed is None  # pylint: disable=protected-access
 
 
 @pytest.mark.asyncio

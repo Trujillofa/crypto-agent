@@ -56,7 +56,6 @@ from src.strategy import (
     FundingNormalizationStrategy,
     FundingRateStrategy,
     MACDHistogramStrategy,
-    MacroVolatilityStrategy,
     MomentumStrategy,
     PanicBlockMACrossoverStrategy,
     RSIReversalStrategy,
@@ -783,7 +782,6 @@ def _build_strategy_registry() -> dict[str, type[BaseStrategy]]:
         "cci_breakout": CCIBreakoutStrategy,
         "vwap_reversion": VWAPReversionStrategy,
         "sentiment_mean_reversion": SentimentMeanReversionStrategy,
-        "macro_volatility": MacroVolatilityStrategy,
         "funding_rate": FundingRateStrategy,
         "funding_normalization": FundingNormalizationStrategy,
         "dislocation_event": DislocationEventStrategy,
@@ -824,9 +822,7 @@ def _wire_optional_strategy_dependencies(
 ) -> None:
     """Attach optional external dependencies to configured strategies.
 
-    SentimentMeanReversion can use xAI directly when available. MacroVolatility
-    is intentionally left without a feed until a real macro event provider is
-    integrated, so it should not be advertised as operational by default.
+    SentimentMeanReversion can use xAI directly when available.
     """
     logger = get_logger("strategy_wiring")
 
@@ -856,7 +852,6 @@ def _wire_optional_strategy_dependencies(
         error_fallback_score=sentiment_error_fallback_score,
     )
     has_sentiment_strategy = False
-    has_macro_strategy = False
 
     # pylint: disable=protected-access
     for symbol_strategies in strategy_engine._strategies.values():
@@ -864,19 +859,11 @@ def _wire_optional_strategy_dependencies(
             if isinstance(strategy, SentimentMeanReversionStrategy):
                 has_sentiment_strategy = True
                 strategy.set_scorer(sentiment_scorer)
-            elif isinstance(strategy, MacroVolatilityStrategy):
-                has_macro_strategy = True
 
     if has_sentiment_strategy and xai_client is None:
         logger.warning(
             "SentimentMeanReversionStrategy configured without XAI_API_KEY; "
             "using conservative fallback sentiment"
-        )
-
-    if has_macro_strategy:
-        logger.warning(
-            "MacroVolatilityStrategy configured without a macro event provider; "
-            "it will remain HOLD until events are injected"
         )
 
 
