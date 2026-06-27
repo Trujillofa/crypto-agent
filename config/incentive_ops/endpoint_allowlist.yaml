@@ -1,0 +1,43 @@
+# Approved public read-only endpoints for A1 Phase-0 incentive-ops tooling.
+# Host + path_prefix (starts-with) matching. Only GET allowed.
+# Refuse UNVERIFIED or non-matching. Used by capture.py and eligibility.py.
+# See docs/specs/a1-phase0-tooling-handoff-v0.md §5
+
+allowed:
+  - host: "coinlist.co"
+    path_prefixes: ["/token-launches", "/faq"]
+  - host: "legion.cc"
+    path_prefixes: ["/"]
+  - host: "www.binance.com"
+    path_prefixes: ["/en/learn-and-earn"]
+  - host: "launchpad.binance.com"
+    path_prefixes: ["/en"]
+  - host: "www.coinbase.com"
+    path_prefixes: ["/learning-rewards"]
+  - host: "www.jito.network"
+    path_prefixes: ["/"]
+  - host: "layer3.xyz"
+    path_prefixes: ["/"]
+  - host: "www.galxe.com"
+    path_prefixes: ["/", "/help"]
+  - host: "metamask.io"
+    path_prefixes: ["/rewards"]
+  - host: "docs.eigenlayer.xyz"
+    path_prefixes: ["/"]
+  - host: "www.eigenlayer.xyz"
+    path_prefixes: ["/"]
+  - host: "www.ether.fi"
+    path_prefixes: ["/"]
+  - host: "votium.app"
+    path_prefixes: ["/"]
+  - host: "support.uniswap.org"
+    path_prefixes: ["/hc/en-us/articles"]
+  - host: "resources.curve.finance"
+    path_prefixes: ["/"]
+  - host: "www.kaito.ai"
+    path_prefixes: ["/"]
+  # For test harness / future adapters only (localhost for unit tests if needed, but capture/eligibility refuse in prod)
+  - host: "127.0.0.1"
+    path_prefixes: ["/"]
+  - host: "localhost"
+    path_prefixes: ["/"]
