@@ -12,12 +12,15 @@ from .types import (
     Classification,
     Criterion,
     EligibilitySnapshot,
+    EVInputsRecord,
     EVScenarioInputs,
     Mechanism,
     PilotCaps,
     ProgramRecord,
+    ReviewerDecision,
     RewardType,
     SelectionCriteria,
+    VerificationRecord,
 )
 
 __all__ = [
@@ -27,10 +30,13 @@ __all__ = [
     "Classification",
     "Criterion",
     "EligibilitySnapshot",
+    "EVInputsRecord",
     "EVScenarioInputs",
     "Mechanism",
     "PilotCaps",
     "ProgramRecord",
+    "ReviewerDecision",
     "RewardType",
     "SelectionCriteria",
+    "VerificationRecord",
 ]

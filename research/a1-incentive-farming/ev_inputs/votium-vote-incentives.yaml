@@ -1,0 +1,17 @@
+id: votium-vote-incentives
+p_eligibility: 0.55
+p_distribution: 0.45
+reward_qty: 80.0
+realizable_price: 0.4
+liquidity_vesting_haircut: 0.5
+base_yield: 2.0
+gas_bridge_fees: 4.0
+capital: 80.0
+days: 14.0
+benchmark_apy: 0.05
+expected_loss_reserve: 5.0
+manual_hours: 2.5
+hourly_rate: 40.0
+reward_announced: true
+reward_type: announced_token_prorata
+notes: conservative base for day0; no unannounced points in base

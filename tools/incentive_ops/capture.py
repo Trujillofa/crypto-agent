@@ -20,12 +20,23 @@ from src.utils.logger import get_logger
 
 from .allowlist import assert_allowed, is_allowed_url
 from .registry import load_registry
-from .types import CaptureError, CaptureRecord, ProgramRecord
+from .types import (
+    CaptureError,
+    CaptureRecord,
+    EVInputsRecord,
+    EVScenarioInputs,
+    ProgramRecord,
+    ReviewerDecision,
+    RewardType,
+    VerificationRecord,
+)
 
 logger = get_logger(__name__)
 
 SNAPSHOTS_ROOT = Path("research/a1-incentive-farming/snapshots")
 CAPTURES_ROOT = Path("research/a1-incentive-farming/captures")
+VERIFICATIONS_ROOT = Path("research/a1-incentive-farming/verifications")
+EV_INPUTS_ROOT = Path("research/a1-incentive-farming/ev_inputs")
 
 
 def _ensure_dirs() -> None:
@@ -59,6 +70,20 @@ def fetch_raw(url: str, timeout: float = 30.0) -> bytes:
 
 def _compute_sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def ensure_raw_evidence(cap: CaptureRecord) -> bytes:
+    """Durable evidence: load the retained raw bytes and confirm sha. Hash alone is insufficient."""
+    p = Path(cap.raw_path)
+    if not p.exists():
+        # try relative to project root
+        p = Path.cwd() / cap.raw_path
+    if not p.exists():
+        raise CaptureError(f"raw evidence missing for {cap.id}: {cap.raw_path}")
+    raw = p.read_bytes()
+    if _compute_sha256(raw) != cap.snapshot_sha256:
+        raise CaptureError(f"raw sha mismatch for {cap.id} (tamper or loss of bytes)")
+    return raw
 
 
 def _write_raw_snapshot(pid: str, captured_at: datetime, raw: bytes) -> Path:
@@ -167,3 +192,133 @@ def load_captures(
         except Exception:
             logger.warning("bad capture sidecar %s", yf)
     return caps
+
+
+def _ensure_verif_dirs() -> None:
+    VERIFICATIONS_ROOT.mkdir(parents=True, exist_ok=True)
+    EV_INPUTS_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def write_verification_sidecar(v: VerificationRecord) -> Path:
+    """Write typed verification sidecar. reviewer_decision PENDING by design for Day-0."""
+    _ensure_verif_dirs()
+    out = VERIFICATIONS_ROOT / f"{v.id}.yaml"
+    payload = {
+        "id": v.id,
+        "verified_at": v.verified_at.isoformat(),
+        "snapshot_sha256": v.snapshot_sha256,
+        "terms_match_snapshot": v.terms_match_snapshot,
+        "live_round_open": v.live_round_open,
+        "reviewer_decision": str(v.reviewer_decision),
+        "raw_evidence_path": v.raw_evidence_path,
+        "notes": v.notes,
+    }
+    out.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    logger.info("wrote verification sidecar %s decision=%s", v.id, v.reviewer_decision)
+    return out
+
+
+def load_verifications(
+    verif_dir: str = "research/a1-incentive-farming/verifications",
+) -> dict[str, VerificationRecord]:
+    """Load verification sidecars. Missing or PENDING => not verified (non-actionable)."""
+    from pathlib import Path
+
+    import yaml
+
+    pdir = Path(verif_dir)
+    out: dict[str, VerificationRecord] = {}
+    if not pdir.exists():
+        return out
+    for yf in pdir.glob("*.yaml"):
+        try:
+            data = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
+            if not data or "id" not in data:
+                continue
+            dec = ReviewerDecision(str(data.get("reviewer_decision", "PENDING")).upper())
+            out[str(data["id"])] = VerificationRecord(
+                id=str(data["id"]),
+                verified_at=datetime.fromisoformat(str(data["verified_at"]).replace("Z", "+00:00")),
+                snapshot_sha256=str(data["snapshot_sha256"]),
+                terms_match_snapshot=bool(data.get("terms_match_snapshot", False)),
+                live_round_open=bool(data.get("live_round_open", False)),
+                reviewer_decision=dec,
+                raw_evidence_path=data.get("raw_evidence_path"),
+                notes=data.get("notes"),
+            )
+        except Exception:
+            logger.warning("bad verification sidecar %s", yf)
+    return out
+
+
+def write_ev_inputs_sidecar(rec: EVInputsRecord) -> Path:
+    _ensure_verif_dirs()
+    out = EV_INPUTS_ROOT / f"{rec.id}.yaml"
+    # serialize inputs fields + reward_type
+    inp = rec.inputs
+    payload = {
+        "id": rec.id,
+        "p_eligibility": inp.p_eligibility,
+        "p_distribution": inp.p_distribution,
+        "reward_qty": inp.reward_qty,
+        "realizable_price": inp.realizable_price,
+        "liquidity_vesting_haircut": inp.liquidity_vesting_haircut,
+        "base_yield": inp.base_yield,
+        "gas_bridge_fees": inp.gas_bridge_fees,
+        "capital": inp.capital,
+        "days": inp.days,
+        "benchmark_apy": inp.benchmark_apy,
+        "expected_loss_reserve": inp.expected_loss_reserve,
+        "manual_hours": inp.manual_hours,
+        "hourly_rate": inp.hourly_rate,
+        "reward_announced": inp.reward_announced,
+        "reward_type": str(rec.reward_type),
+        "notes": rec.notes,
+    }
+    out.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    logger.info("wrote ev_inputs sidecar %s", rec.id)
+    return out
+
+
+def load_ev_inputs(
+    ev_dir: str = "research/a1-incentive-farming/ev_inputs",
+) -> dict[str, EVInputsRecord]:
+    from pathlib import Path
+
+    import yaml
+
+    pdir = Path(ev_dir)
+    out: dict[str, EVInputsRecord] = {}
+    if not pdir.exists():
+        return out
+    for yf in pdir.glob("*.yaml"):
+        try:
+            data = yaml.safe_load(yf.read_text(encoding="utf-8")) or {}
+            if not data or "id" not in data:
+                continue
+            rt = RewardType(str(data.get("reward_type", "speculative_points")))
+            inp = EVScenarioInputs(
+                p_eligibility=float(data["p_eligibility"]),
+                p_distribution=float(data["p_distribution"]),
+                reward_qty=float(data["reward_qty"]),
+                realizable_price=float(data["realizable_price"]),
+                liquidity_vesting_haircut=float(data["liquidity_vesting_haircut"]),
+                base_yield=float(data["base_yield"]),
+                gas_bridge_fees=float(data["gas_bridge_fees"]),
+                capital=float(data["capital"]),
+                days=float(data["days"]),
+                benchmark_apy=float(data["benchmark_apy"]),
+                expected_loss_reserve=float(data["expected_loss_reserve"]),
+                manual_hours=float(data["manual_hours"]),
+                hourly_rate=float(data["hourly_rate"]),
+                reward_announced=bool(data["reward_announced"]),
+            )
+            out[str(data["id"])] = EVInputsRecord(
+                id=str(data["id"]),
+                inputs=inp,
+                reward_type=rt,
+                notes=data.get("notes"),
+            )
+        except Exception:
+            logger.warning("bad ev_inputs sidecar %s", yf)
+    return out

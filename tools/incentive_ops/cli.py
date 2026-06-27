@@ -12,7 +12,7 @@ import click
 
 from src.utils.logger import configure_logger, get_logger
 
-from .accounting import realized_report, validate_caps
+from .accounting import load_ledger, realized_report, validate_caps
 from .actionability import main_actionability
 from .capture import capture_all
 from .classify import check_classification
@@ -199,13 +199,12 @@ def cmd_eligibility(address: str, program: str) -> None:
 @cli.command("report")
 @click.option("--ledger", type=click.Path(exists=False), default=None)
 def cmd_report(ledger: str | None) -> None:
-    """Accounting report stub (uses sample empty ledger unless --ledger provided)."""
-    led: list[dict[str, Any]] = []
-    if ledger:
-        # simplistic json or yaml, but for Phase0 just note
-        click.echo("Ledger file provided (manual parse not fully implemented in v0)")
+    """Accounting report using real validated ledger parser (no capital movement)."""
+    led = load_ledger(ledger) if ledger else []
     rpt = realized_report(led)
     click.echo(f"report: {rpt}")
+    if ledger:
+        click.echo(f"  loaded from {ledger}")
 
 
 @cli.command("caps-check")
@@ -213,7 +212,7 @@ def cmd_report(ledger: str | None) -> None:
 @click.option("--per", type=float, default=100.0)
 @click.option("--conc", type=int, default=4)
 def cmd_caps_check(total: float, per: float, conc: int) -> None:
-    """Demo that validate_caps blocks breaches (unit logic)."""
+    """Demo that validate_caps blocks breaches (unit logic). No operational 100 placeholder."""
     caps = PilotCaps()
     bad = {"id": "demo-breach", "usd": 300.0}
     # build a ledger that will breach

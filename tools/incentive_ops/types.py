@@ -92,6 +92,15 @@ class Actionability(StrEnum):
     BLOCKED_CAPS = "BLOCKED_CAPS"
 
 
+class ReviewerDecision(StrEnum):
+    """Human reviewer gate for promotion. PENDING keeps every record non-ACTIONABLE."""
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    NEEDS_MORE_INFO = "NEEDS_MORE_INFO"
+
+
 @dataclass(frozen=True)
 class SelectionCriteria:
     c1_fixed_or_capped: Criterion
@@ -320,3 +329,36 @@ class ActionabilityResult:
     status: Actionability
     reason: str
     details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class VerificationRecord:
+    """Typed verification sidecar (research/.../verifications/<id>.yaml).
+
+    Records human attestation that live terms match the retained raw snapshot bytes.
+    reviewer_decision must be APPROVED (and other flags true) to pass verified gate.
+    PENDING forces non-ACTIONABLE per Day-0 rules.
+    raw_evidence_path ensures durable bytes (hash alone insufficient).
+    """
+
+    id: str
+    verified_at: datetime
+    snapshot_sha256: str
+    terms_match_snapshot: bool
+    live_round_open: bool
+    reviewer_decision: ReviewerDecision
+    raw_evidence_path: str | None = None
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class EVInputsRecord:
+    """Typed EV inputs sidecar for base-case (conservative) per program.
+
+    Loaded to drive typed compute_ev without CLI overrides or hardcodes.
+    """
+
+    id: str
+    inputs: EVScenarioInputs
+    reward_type: RewardType
+    notes: str | None = None
