@@ -40,6 +40,7 @@ def test_capture_refuses_unverified():
 def test_capture_uses_allowlisted_and_writes_sidecar(mock_client, tmp_path, monkeypatch):
     # setup mock response
     mock_resp = mock_client.return_value.__enter__.return_value.get.return_value
+    mock_resp.status_code = 200
     mock_resp.content = b"<html>fake terms for test</html>"
     mock_resp.raise_for_status = lambda: None
 

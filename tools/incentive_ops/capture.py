@@ -46,9 +46,15 @@ def fetch_raw(url: str, timeout: float = 30.0) -> bytes:
         with httpx.Client(follow_redirects=False, timeout=timeout) as client:
             resp = client.get(url)
             resp.raise_for_status()
-            return resp.content
     except httpx.HTTPError as e:
         raise CaptureError(f"GET failed for {url}: {e}") from e
+    # Only a 200 with a non-empty body is a real snapshot. A 202/204/redirect-with-no-body
+    # would otherwise be hashed as the empty-string digest and recorded as a valid capture.
+    if resp.status_code != 200:
+        raise CaptureError(f"non-200 ({resp.status_code}) for {url}; not a usable snapshot")
+    if not resp.content:
+        raise CaptureError(f"empty body for {url}; not a usable snapshot")
+    return resp.content
 
 
 def _compute_sha256(data: bytes) -> str:

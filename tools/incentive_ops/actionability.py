@@ -12,7 +12,7 @@ Given starter fixture (no sidecars), MUST return non-ACTIONABLE for all 17.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from src.utils.logger import get_logger
 
@@ -38,8 +38,11 @@ CAPTURE_FRESHNESS_DAYS = 14  # aligned to review window in fixture
 
 
 def _is_fresh_capture(cap: CaptureRecord, now: datetime | None = None) -> bool:
-    now = now or datetime.now()
-    age = now - cap.captured_at
+    now = now or datetime.now(UTC)
+    captured = cap.captured_at
+    if captured.tzinfo is None:  # tolerate naive sidecars; treat as UTC
+        captured = captured.replace(tzinfo=UTC)
+    age = now - captured
     return age <= timedelta(days=CAPTURE_FRESHNESS_DAYS)
 
 
