@@ -1,0 +1,488 @@
+# A1 Phase-0 Starter Registry v0 — classification test fixture
+# Spec: docs/specs/a1-incentive-farming-pilot-v0.md
+# Drafted: 2026-06-27 (planner = Claude/Codex). NO capital deployed, NO code built.
+#
+# ============================ READ THIS FIRST (honesty boundary) ============================
+# PURPOSE: a SEED set of 17 real program ARCHETYPES spanning every classification tier
+# (IN_CORE / IN_CONDITIONAL / YIELD_ONLY / DEFER / REJECT) so Grok can test the *classifier*,
+# not just attractive examples. It deliberately includes rejected and conditional candidates.
+#
+# WHAT IS TRUSTWORTHY HERE:
+#   - distribution_mechanism + classification + classification_reason: web-verified this session
+#     against official/primary sources (verification_status: MECHANISM_VERIFIED_2026-06-27).
+#   - official_source_url: real URLs observed 2026-06-27 (some marked URL_UNVERIFIED — confirm).
+#
+# WHAT IS *NOT* TRUSTWORTHY AND MUST BE RE-FETCHED BEFORE ANY CAPITAL DECISION:
+#   - Whether a specific round/season is OPEN right now, current reward sizes, exact eligibility
+#     windows, and current sybil/jurisdiction terms. These move weekly. Marked
+#     live_round_status: UNVERIFIED unless noted. Training cutoff is 2026-01; treat live detail as stale.
+#   - snapshot_sha256: PENDING_TOOL_CAPTURE on every entry. A genuine frozen hash must be computed
+#     from the raw fetched bytes by Grok's Phase-0 snapshot tool at fetch time; it cannot be
+#     hand-authored. Do not fabricate one.
+#
+# review_expiry = 2026-07-11 on all entries (matches the 2-week paper-inventory window); re-verify
+# or expire each record by then.
+# ===========================================================================================
+
+schema_version: 0
+drafted_at: 2026-06-27
+review_window_days: 14
+default_review_expiry: 2026-07-11
+
+# Field dictionary (the loader Grok builds should validate against this)
+field_dictionary:
+  distribution_mechanism: [fixed_per_identity_cap, labor_task, pro_rata_capital, proportional_points,
+                           lp_market_making, vote_incentive, capped_cashback]
+  reward_type: [announced_fixed_token, announced_token_prorata, speculative_points, cashback, nft_or_xp]
+  classification: [IN_CORE, IN_CONDITIONAL, YIELD_ONLY, DEFER, REJECT]
+  # selection_criteria booleans map to docs/specs/a1-incentive-farming-pilot-v0.md "SELECTION CRITERIA"
+  selection_criteria: [c1_fixed_or_capped, c2_terms_documented, c3_eligibility_public,
+                       c4_capital_bounded, c5_tail_named, c6_reward_rationale]
+
+programs:
+
+  # ---------------------------- IN_CORE: fixed / per-identity-capped ----------------------------
+  - id: coinlist-token-sale
+    name: CoinList token sales (per-participant allocation, KYC)
+    official_source_url: https://coinlist.co/token-launches
+    secondary_url: https://coinlist.co/faq
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: fixed_per_identity_cap
+    reward_type: announced_fixed_token
+    capital_required: per-sale minimum, bounded; allocation capped per verified participant
+    lockup_vesting: varies per sale (often vesting) — confirm per sale
+    eligibility_window: per-sale registration window
+    kyc_required: true
+    jurisdiction_restrictions: true  # blocked jurisdictions list published
+    sybil_policy: one verified identity per participant (KYC-bound)
+    chains_contracts: varies per sale
+    exit_liquidity: depends on listing + vesting
+    tail_risks: [token price collapse post-unlock, vesting lock, jurisdiction exclusion]
+    classification: IN_CORE
+    classification_reason: >
+      KYC + per-participant allocation cap => whale cannot scale reward with capital. Cleanest
+      inverse-scale expression; terms officially documented.
+    selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: legion-merit-sale
+    name: Legion merit-based ICO allocations
+    official_source_url: https://legion.cc/
+    secondary_url: https://icodrops.com/legion/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: fixed_per_identity_cap
+    reward_type: announced_fixed_token
+    capital_required: bounded per sale
+    lockup_vesting: per sale
+    eligibility_window: per sale; merit/score-gated
+    kyc_required: true
+    jurisdiction_restrictions: true  # markets itself MiCA-compliant
+    sybil_policy: identity + merit score gating
+    chains_contracts: varies
+    exit_liquidity: depends on listing
+    tail_risks: [post-listing price, vesting, merit-score opacity]
+    classification: IN_CORE
+    classification_reason: >
+      Merit/identity-gated allocation rather than capital-pro-rata. Per-participant nature fits
+      inverse-scale. Confirm merit-score formula transparency (c2) per sale.
+    selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: maybe, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: binance-learn-and-earn
+    name: Binance Learn & Earn (fixed reward per quiz, KYC)
+    official_source_url: https://www.binance.com/en/learn-and-earn
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: fixed_per_identity_cap
+    reward_type: announced_fixed_token
+    capital_required: ~0 (learn task; some courses require small actions)
+    lockup_vesting: usually none / short
+    eligibility_window: per-course, while supplies last
+    kyc_required: true
+    jurisdiction_restrictions: true
+    sybil_policy: KYC account; first-come fixed pool
+    chains_contracts: exchange-custodied
+    exit_liquidity: immediate (listed tokens to spot)
+    tail_risks: [pool exhausts before completion, small reward vs time]
+    classification: IN_CORE
+    classification_reason: >
+      Fixed reward per verified account for a completed task; capital-independent => true
+      inverse-scale, just small. Labor/time is the real input — track $/hour.
+    selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: coinbase-learning-rewards
+    name: Coinbase Learning Rewards (fixed reward per lesson, KYC)
+    official_source_url: https://www.coinbase.com/learning-rewards
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: fixed_per_identity_cap
+    reward_type: announced_fixed_token
+    capital_required: ~0
+    lockup_vesting: none
+    eligibility_window: while available; region-gated
+    kyc_required: true
+    jurisdiction_restrictions: true
+    sybil_policy: KYC account, one per identity
+    chains_contracts: exchange-custodied
+    exit_liquidity: immediate
+    tail_risks: [region exclusion, small reward vs time]
+    classification: IN_CORE
+    classification_reason: Fixed per-identity reward for a task; capital-independent. Same class as Binance L&E.
+    selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: fixed-threshold-airdrop-archetype
+    name: Fixed-threshold eligibility airdrop (Jito-style ≥N points before cutoff)
+    official_source_url: https://www.jito.network/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: fixed_per_identity_cap
+    reward_type: announced_fixed_token
+    capital_required: low (qualifying action), bounded
+    lockup_vesting: varies
+    eligibility_window: snapshot-dated (e.g. Jito required >=100 points before 2023-11-25)
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: per-wallet; sybil-cluster clawback risk
+    chains_contracts: varies
+    exit_liquidity: at listing
+    tail_risks: [retroactive rule change, sybil clawback, snapshot already passed]
+    classification: IN_CORE
+    classification_reason: >
+      ARCHETYPE for classifier: a discrete eligibility threshold (qualify=fixed reward) is
+      inverse-scale. Jito is the documented historical example, not a current live round.
+    selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: ARCHETYPE_HISTORICAL
+    live_round_status: NOT_LIVE_REFERENCE_ONLY
+    review_expiry: 2026-07-11
+
+  # ---------------------------- IN_CONDITIONAL: labor / task driven ----------------------------
+  - id: layer3-quests
+    name: Layer3 quests (XP, guided journeys, testnet tasks)
+    official_source_url: https://layer3.xyz/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: labor_task
+    reward_type: speculative_points  # XP/credentials; token conversion not guaranteed
+    capital_required: low/none
+    lockup_vesting: n/a
+    eligibility_window: rolling
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: per-account; multi-account farming against ToS
+    chains_contracts: 25+ chains
+    exit_liquidity: only if XP converts to a token (uncertain)
+    tail_risks: [XP never converts, reward = 0, time sink]
+    classification: IN_CONDITIONAL
+    classification_reason: >
+      Labor-driven; admit ONLY if legit + anti-sybil-clean + capped labor, and value the reward
+      at ZERO until a token is announced. The input is time, not capital.
+    selection_criteria: {c1_fixed_or_capped: na, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: maybe}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: galxe-quests-oat
+    name: Galxe quests (OATs, points, mystery boxes)
+    official_source_url: https://www.galxe.com/
+    secondary_url: https://help.galxe.com/en/articles/9645630-create-quest-rewards
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: labor_task
+    reward_type: nft_or_xp
+    capital_required: low/none
+    lockup_vesting: n/a
+    eligibility_window: per-campaign
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: per-account; sybil filtering varies by campaign
+    chains_contracts: many
+    exit_liquidity: OATs/NFTs often illiquid
+    tail_risks: [reward illiquid/zero, top-of-funnel social tasks low value]
+    classification: IN_CONDITIONAL
+    classification_reason: Labor/social tasks; mostly top-of-funnel. Reward=0 base case; only worth it if the task itself has value.
+    selection_criteria: {c1_fixed_or_capped: na, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: maybe}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: testnet-incentive-archetype
+    name: Public testnet incentive program (task/contribution rewards)
+    official_source_url: https://layer3.xyz/  # testnets are curated here; confirm protocol-specific official page
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: labor_task
+    reward_type: speculative_points
+    capital_required: ~0 (testnet funds are fake)
+    lockup_vesting: n/a
+    eligibility_window: per-protocol testnet phase
+    kyc_required: maybe
+    jurisdiction_restrictions: maybe
+    sybil_policy: heavy sybil filtering typical
+    chains_contracts: protocol testnet
+    exit_liquidity: only on mainnet TGE (uncertain)
+    tail_risks: [no TGE, sybil exclusion, pure time sink]
+    classification: IN_CONDITIONAL
+    classification_reason: Capital exposure ~0; the input is labor. Admit only if legit + tasks teach/provide value + reward valued at 0 until announced.
+    selection_criteria: {c1_fixed_or_capped: na, c2_terms_documented: maybe, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: maybe}
+    verification_status: ARCHETYPE
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: kaito-yaps
+    name: Kaito attention/yapper points
+    official_source_url: https://www.kaito.ai/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: labor_task
+    reward_type: speculative_points
+    capital_required: ~0 (attention/content)
+    lockup_vesting: n/a
+    eligibility_window: rolling
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: reputation-weighted; bot/sybil filtering
+    chains_contracts: off-chain attention -> on-chain rewards
+    exit_liquidity: depends on partner TGEs
+    tail_risks: [subjective scoring, reward = 0, heavy time cost]
+    classification: IN_CONDITIONAL
+    classification_reason: Labor (content/attention) not capital; reward=0 base case. Classifier edge case — looks like points but input is labor.
+    selection_criteria: {c1_fixed_or_capped: na, c2_terms_documented: maybe, c3_eligibility_public: maybe,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: maybe}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  # ---------------------------- YIELD_ONLY: pro-rata to capital ----------------------------
+  - id: binance-launchpool
+    name: Binance Launchpool (stake BNB/stablecoin for new-token rewards)
+    official_source_url: https://launchpad.binance.com/en
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: pro_rata_capital
+    reward_type: announced_token_prorata
+    capital_required: scales with desired reward (proportional)
+    lockup_vesting: flexible stake; rewards hourly
+    eligibility_window: per-pool, multi-day farming periods
+    kyc_required: true
+    jurisdiction_restrictions: true
+    sybil_policy: per-account; per-hour per-user cap (~1/10 hourly emission) softens but does not remove capital-proportionality
+    chains_contracts: exchange-custodied
+    exit_liquidity: immediate (listed token)
+    tail_risks: [reward token price, opportunity cost of locked BNB]
+    classification: YIELD_ONLY
+    classification_reason: >
+      Reward is PROPORTIONAL to amount staked × time — NOT inverse-scale. The per-hour per-user
+      cap is not a per-identity allocation cap. Participate ONLY with BNB/stables you would hold
+      anyway; never buy a volatile token just to farm.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: metamask-rewards
+    name: MetaMask Rewards (points from trading/swap volume)
+    official_source_url: https://metamask.io/rewards
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: pro_rata_capital  # volume-proportional
+    reward_type: speculative_points
+    capital_required: scales with trading volume
+    lockup_vesting: n/a
+    eligibility_window: seasonal (Season 1 referenced)
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: per-account
+    chains_contracts: multi
+    exit_liquidity: depends on token conversion
+    tail_risks: [pay real swap fees to earn uncertain points, reward<fees]
+    classification: YIELD_ONLY
+    classification_reason: >
+      Points scale with trading/swap VOLUME => proportional, and you pay real fees to generate it.
+      Not inverse-scale; only sensible if you were going to trade anyway. URL path unverified.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: maybe, c3_eligibility_public: true,
+                         c4_capital_bounded: false, c5_tail_named: true, c6_reward_rationale: maybe}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    notes: official URL path (metamask.io/rewards) UNVERIFIED — confirm before use.
+    review_expiry: 2026-07-11
+
+  - id: capped-cashback-card
+    name: Crypto card capped cashback (e.g. Tria/K Card, ~1.5-6% to a monthly cap)
+    official_source_url: UNVERIFIED  # confirm official issuer page before use
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: capped_cashback
+    reward_type: cashback
+    capital_required: spend-based (you must spend real money)
+    lockup_vesting: none
+    eligibility_window: ongoing; KYC card
+    kyc_required: true
+    jurisdiction_restrictions: true
+    sybil_policy: one card per identity
+    chains_contracts: custodial
+    exit_liquidity: cashback usually liquid
+    tail_risks: ["must actually spend", "% declines after monthly cap", "token-denominated cashback price risk"]
+    classification: YIELD_ONLY
+    classification_reason: >
+      The monthly cap caps the % but reward still requires real spend (cost-structure edge, not
+      inverse-scale). Edge case for the classifier: 'capped' but NOT a per-identity allocation.
+      Only value if you'd make the spend regardless. URL must be verified.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: maybe, c3_eligibility_public: false,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  # ---------------------------- DEFER: proportional points, risk-compensated ----------------------------
+  - id: eigenlayer-restaking-points
+    name: EigenLayer restaking points (-> EIGEN)
+    official_source_url: https://docs.eigenlayer.xyz/
+    secondary_url: https://www.eigenlayer.xyz/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: proportional_points
+    reward_type: speculative_points
+    capital_required: proportional to restaked ETH/LST
+    lockup_vesting: restaking withdrawal delays; slashing exposure
+    eligibility_window: rolling
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: per-wallet; capital-weighted (sybil doesn't help, size does)
+    chains_contracts: EigenLayer + LST protocols (smart-contract + slashing risk)
+    exit_liquidity: EIGEN liquid; underlying ETH subject to unbond
+    tail_risks: [slashing, smart-contract, points->token conversion uncertainty, restaking depeg]
+    classification: DEFER
+    classification_reason: >
+      Points proportional to capital×time and the yield is COMPENSATION FOR ADDED RISK (slashing,
+      contract). Apply the test: would I hold this on cash yield + risk alone if points=0? If no,
+      it's speculative farming. Excluded from v0 pilot.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: lst-restaking-points-archetype
+    name: LST/restaking points (ether.fi-style loyalty/points)
+    official_source_url: https://www.ether.fi/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: proportional_points
+    reward_type: speculative_points
+    capital_required: proportional to deposited capital
+    lockup_vesting: liquid token but contract risk
+    eligibility_window: rolling
+    kyc_required: false
+    jurisdiction_restrictions: maybe
+    sybil_policy: capital-weighted
+    chains_contracts: LST + restaking contracts (stacked smart-contract risk)
+    exit_liquidity: LST liquid; points uncertain
+    tail_risks: [stacked contract risk, depeg, points never convert]
+    classification: DEFER
+    classification_reason: Same DEFER logic as EigenLayer — proportional, risk-compensated. Stacked-contract risk is higher. Excluded v0.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  # ---------------------------- REJECT: MM/yield-risk business, sybil, or undisclosed ----------------------------
+  - id: votium-vote-incentives
+    name: Votium / Curve vote-incentive ("bribe") markets
+    official_source_url: https://votium.app/
+    secondary_url: https://resources.curve.finance/vecrv/overview/
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: vote_incentive
+    reward_type: announced_token_prorata
+    capital_required: requires locking CRV->veCRV (up to 4y) or vlCVX; proportional to lock
+    lockup_vesting: up to 4-year lock for veCRV
+    eligibility_window: per voting round (biweekly)
+    kyc_required: false
+    jurisdiction_restrictions: false
+    sybil_policy: capital/lock-weighted
+    chains_contracts: Curve + Convex + Votium contracts
+    exit_liquidity: locked for years (veCRV) — illiquid
+    tail_risks: [multi-year lock, token inventory, governance complexity, contract risk]
+    classification: REJECT
+    classification_reason: >
+      A market-making / governance-yield business: multi-year capital lock, inventory risk,
+      capital-proportional. Not inverse-scale and not solo-pilot-appropriate. REJECT from pilot.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: false, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: UNVERIFIED
+    review_expiry: 2026-07-11
+
+  - id: uniswap-v3-lp
+    name: Uniswap v3 concentrated-liquidity LP
+    official_source_url: https://support.uniswap.org/hc/en-us/articles/37113550065549-What-are-the-risks-when-providing-liquidity
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: lp_market_making
+    reward_type: announced_token_prorata  # fees proportional to liquidity
+    capital_required: proportional to liquidity supplied
+    lockup_vesting: none, but active range management
+    eligibility_window: ongoing
+    kyc_required: false
+    jurisdiction_restrictions: false
+    sybil_policy: capital-weighted
+    chains_contracts: Uniswap v3 contracts
+    exit_liquidity: liquid, but realized value hit by IL
+    tail_risks: [impermanent loss, out-of-range, volatility, smart-contract risk]
+    classification: REJECT
+    classification_reason: >
+      LP returns are pro-rata to capital while bearing IL, out-of-range, volatility and contract
+      risk — a market-making business, explicitly OUT of the pilot. Official Uniswap risk page cited.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: true, c3_eligibility_public: true,
+                         c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
+    verification_status: MECHANISM_VERIFIED_2026-06-27
+    live_round_status: LIVE
+    review_expiry: 2026-07-11
+
+  - id: undisclosed-sybil-points-farm-archetype
+    name: Undisclosed-conversion points farm that rewards multi-wallet activity (RED FLAG archetype)
+    official_source_url: UNVERIFIED  # by nature, terms undisclosed
+    observed_at: 2026-06-27
+    snapshot_sha256: PENDING_TOOL_CAPTURE
+    distribution_mechanism: proportional_points
+    reward_type: speculative_points
+    capital_required: variable
+    lockup_vesting: unknown
+    eligibility_window: undisclosed
+    kyc_required: false
+    jurisdiction_restrictions: unknown
+    sybil_policy: weak / multi-wallet implicitly rewarded
+    chains_contracts: varies
+    exit_liquidity: unknown
+    tail_risks: [undisclosed rules, retroactive sybil clawback, reward never materializes]
+    classification: REJECT
+    classification_reason: >
+      INTENTIONAL NEGATIVE FIXTURE for the classifier: undisclosed conversion + multi-wallet
+      incentive trips the STOP gates (sybil behavior, materially undisclosed rules). Must auto-REJECT.
+    selection_criteria: {c1_fixed_or_capped: false, c2_terms_documented: false, c3_eligibility_public: false,
+                         c4_capital_bounded: false, c5_tail_named: true, c6_reward_rationale: false}
+    verification_status: SYNTHETIC_NEGATIVE_FIXTURE
+    live_round_status: NOT_A_REAL_PROGRAM
+    review_expiry: 2026-07-11
