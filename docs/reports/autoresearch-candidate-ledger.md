@@ -613,3 +613,43 @@ credible access exists; then Gate 1 illiquid-surface probe before any autoresear
 | Lane | Gate | Verdict | RBI Decision | Artifacts |
 |------|------|---------|--------------|-----------|
 | path2-illiquid-venue | Gate 0 attestation | Path-2 OPEN (no market probe) | RUN_CHEAP_PROBE complete; guard awaits Gate 1 `probe_verdict` | `research/rbi_loop/path2-illiquid-venue/gate0-attestation.json`, `decision.json`, `docs/reports/rbi-loop-path2-illiquid-venue.md` |
+
+## Cross-sectional altcoin momentum — last-gap due-diligence probe (2026-06-27, NO_PULSE → CLOSED)
+
+**Why run it post-capstone:** a deliberate false-negative audit before sealing the banked program —
+"did we discard anything alive?" Every prior lane was *single-name directional* or *single-pair/event*;
+the one signal **object** never tested was **cross-sectional / relative-value** (a dollar-neutral rank
+basket). The capstone's efficient-venue argument is about predicting one instrument and does not, on its
+face, cover a cross-sectional risk premium — so the gap was real and worth one cheap probe.
+
+**Brief:** [`xs-altcoin-momentum-probe-v0.md`](../specs/xs-altcoin-momentum-probe-v0.md).
+**Probe:** `scripts/probe_xs_altcoin_momentum.py` (self-contained, read-only Binance public klines, no DB).
+**Artifacts:** `research/rbi_loop/xs-altcoin-momentum-v0/{probe_result.json,probe_report.md}`.
+
+**Method:** 37 USDT perps (top by 24h quote volume), daily bars 2023-01-01 → 2026-06-01. Weekly-rebalanced,
+equal-weight, dollar-neutral long(top-quantile mom)/short(bottom-quantile), skip-recent-1d, net of 12bps/leg
+turnover + 3bps/day funding. Grid: lookback {7,14,30}d × quantile {0.2,0.3}. Five pre-registered gates incl.
+label-shuffle null.
+
+**Review arc (self-corrected false positive):** v1 evaluation printed **HAS_PULSE** on positive *arithmetic
+mean*. Rejected on inspection — `cum_net` of −1451%/−3735% is impossible unless periods went below −100%, i.e.
+**short-leg blowup** (shorting a micro-cap that pumped 200–300% in a week). Re-evaluated on **geometric terminal
+wealth with ruin detection** → the truth:
+
+| lookback | terminal wealth | solvent | worst week |
+|---|---:|:--:|---:|
+| 7d | 21.3x / 5.2x | yes | −33% / −21% |
+| 14d | 0.00x | **NO (ruin)** | −210% / −141% |
+| 30d | 0.00x | **NO (ruin)** | −238% / −157% |
+
+**Decision: NO_PULSE → CLOSED.** 4 of 6 cells bankrupt the book (G0 solvency FAIL); only the 7d horizon
+survives, and that lone survivor is a short-horizon micro-cap artifact whose 21x will not survive realistic
+per-name slippage on illiquid bottom-quantile alts (12bps is wildly optimistic there — the brief's own kill
+risk). A signal that works at one horizon and **ruins at the two standard ones** is fragile, not robust. Same
+taxonomy as the rest of the program: real-looking arithmetic edge, destroyed by tail risk / friction / single-
+horizon fragility. **This closes the last conceptual gap — the relative-value object is now measured null, with
+no missed chance left behind. Program remains banked.**
+
+| Lane | Gate | Verdict | RBI Decision | Artifacts |
+|------|------|---------|--------------|-----------|
+| xs-altcoin-momentum-v0 | Gate 1 cheap probe | NO_PULSE | CLOSE_LANE (solvency + robustness FAIL) | `research/rbi_loop/xs-altcoin-momentum-v0/probe_result.json`, `probe_report.md` |

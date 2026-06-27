@@ -10,7 +10,6 @@ from src.strategy.engine import EngineConfig, StrategyEngine
 from src.strategy.funding_normalization import FundingNormalizationStrategy
 from src.strategy.funding_rate import FundingRateStrategy
 from src.strategy.macd_strategy import MACDHistogramStrategy
-from src.strategy.macro_volatility import MacroVolatilityStrategy
 from src.strategy.mean_reversion import MeanReversionStrategy
 from src.strategy.momentum_strategy import MomentumStrategy
 from src.strategy.multi_timeframe_regime import MultiTimeframeRegimeRouter
@@ -46,7 +45,6 @@ __all__ = [
     "VWAPReversionStrategy",
     "MeanReversionStrategy",
     "SentimentMeanReversionStrategy",
-    "MacroVolatilityStrategy",
     "RegimeRouterStrategy",
     "MultiTimeframeRegimeRouter",
     "DislocationEventStrategy",
