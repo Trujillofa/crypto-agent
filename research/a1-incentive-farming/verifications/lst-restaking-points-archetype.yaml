@@ -1,0 +1,16 @@
+id: lst-restaking-points-archetype
+verified_at: null
+snapshot_sha256: 87558bfd0e2761e042a6513f7be5785e952ff4dc18a4e00a5857c7e9f06b6476
+terms_match_snapshot: false
+live_round_open: false
+reviewer_decision: PENDING
+raw_evidence_path: research/a1-incentive-farming/snapshots/lst-restaking-points-archetype/20260627T225651Z.raw
+official_round_terms_url: null
+captured_source_url: https://www.ether.fi/
+jurisdiction_status: UNKNOWN
+eligibility_open: null
+eligibility_close: null
+claim_date: null
+vesting_end: null
+notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
+  UNKNOWN. Audit fields present for future human review.

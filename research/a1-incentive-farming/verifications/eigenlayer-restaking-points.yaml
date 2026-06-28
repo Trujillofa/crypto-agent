@@ -1,0 +1,16 @@
+id: eigenlayer-restaking-points
+verified_at: null
+snapshot_sha256: PENDING_TOOL_CAPTURE
+terms_match_snapshot: false
+live_round_open: false
+reviewer_decision: PENDING
+raw_evidence_path: null
+official_round_terms_url: null
+captured_source_url: https://docs.eigenlayer.xyz/
+jurisdiction_status: UNKNOWN
+eligibility_open: null
+eligibility_close: null
+claim_date: null
+vesting_end: null
+notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
+  UNKNOWN. Audit fields present for future human review.

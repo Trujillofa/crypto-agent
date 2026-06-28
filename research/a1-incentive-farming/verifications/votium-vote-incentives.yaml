@@ -1,0 +1,16 @@
+id: votium-vote-incentives
+verified_at: null
+snapshot_sha256: cde097204363f00ceb1ae89195daea5e008e399a11a740649641eaa66c902149
+terms_match_snapshot: false
+live_round_open: false
+reviewer_decision: PENDING
+raw_evidence_path: research/a1-incentive-farming/snapshots/votium-vote-incentives/20260627T225652Z.raw
+official_round_terms_url: null
+captured_source_url: https://votium.app/
+jurisdiction_status: UNKNOWN
+eligibility_open: null
+eligibility_close: null
+claim_date: null
+vesting_end: null
+notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
+  UNKNOWN. Audit fields present for future human review.

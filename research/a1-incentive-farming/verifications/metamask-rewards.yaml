@@ -1,0 +1,16 @@
+id: metamask-rewards
+verified_at: null
+snapshot_sha256: 95462d9707b931449198c9787822bcf15640b5ab082d39fc4a3bfd90101f85a0
+terms_match_snapshot: false
+live_round_open: false
+reviewer_decision: PENDING
+raw_evidence_path: research/a1-incentive-farming/snapshots/metamask-rewards/20260627T225651Z.raw
+official_round_terms_url: null
+captured_source_url: https://metamask.io/rewards
+jurisdiction_status: UNKNOWN
+eligibility_open: null
+eligibility_close: null
+claim_date: null
+vesting_end: null
+notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
+  UNKNOWN. Audit fields present for future human review.

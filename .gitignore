@@ -73,9 +73,9 @@ research/candidates/
 research/resolved/
 research/**/synthetic-sentiment-*.jsonl
 
-# A1 incentive-ops Phase-0: raw fetched snapshots are large and public-reproducible via URL+sha;
-# only the sidecar metadata (with sha256) is committed for audit trail.
-research/a1-incentive-farming/snapshots/**/*.raw
+# A1 incentive-ops Phase-0: raw fetched snapshots are retained in Git for durable evidence
+# (sha + bytes bound in verification sidecars). Committed alongside sidecars.
+# research/a1-incentive-farming/snapshots/**/*.raw   # now tracked for durability
 
 # Generated reports (reproducible)
 docs/reports/config-search-*.csv
