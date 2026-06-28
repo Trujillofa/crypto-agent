@@ -7,8 +7,12 @@ Does not approve programs, deploy capital, or use wallets/eligibility lookups.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
+import os
 import subprocess
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -48,6 +52,7 @@ from .types import (
 logger = get_logger(__name__)
 
 RUNS_ROOT = Path("research/a1-incentive-farming/runs")
+LOCK_PATH = RUNS_ROOT / ".baseline.lock"
 REGISTRY_PATH = "research/a1-incentive-farming/starter-registry-v0.yaml"
 HANDOFF_PATH = "docs/specs/a1-phase0-tooling-handoff-v0.md"
 SPEC_PATH = "docs/specs/a1-incentive-farming-pilot-v0.md"
@@ -162,9 +167,28 @@ def load_manifest(manifest_path: Path | str) -> dict[str, Any]:
 
 
 def save_manifest(manifest_path: Path | str, data: dict[str, Any]) -> None:
+    """Atomically replace manifest via temp file (POSIX rename)."""
     p = Path(manifest_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    tmp = p.with_suffix(".yaml.tmp")
+    tmp.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    tmp.replace(p)
+
+
+@contextmanager
+def _baseline_start_lock() -> Iterator[None]:
+    """Exclusive non-blocking lock for baseline start (prevents concurrent starts)."""
+    RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+    fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as e:
+            raise BaselineError("another baseline start in progress (lock held)") from e
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _find_raw_by_hash(pid: str, sha: str) -> str | None:
@@ -261,12 +285,35 @@ _INVARIANT_EXPECTATIONS: dict[str, bool] = {
 }
 
 
+def _check_reviewer_decisions_locked(frozen_ids: list[str]) -> list[str]:
+    """Inspect verification sidecars; none of the frozen universe may be APPROVED."""
+    vers = load_verifications()
+    violations: list[str] = []
+    for pid in frozen_ids:
+        ver = vers.get(pid)
+        if ver is None:
+            continue
+        if ver.reviewer_decision != ReviewerDecision.PENDING:
+            violations.append(f"{pid}: reviewer_decision={ver.reviewer_decision} (must be PENDING)")
+    return violations
+
+
 def _assert_invariants(manifest: dict[str, Any]) -> list[str]:
     violations: list[str] = []
     for key, expected in _INVARIANT_EXPECTATIONS.items():
         if manifest.get(key) is not expected:
             violations.append(f"{key}={manifest.get(key)} expected {expected}")
+    if manifest.get("reviewer_decisions_locked_pending"):
+        violations.extend(_check_reviewer_decisions_locked(manifest.get("frozen_program_ids", [])))
     return violations
+
+
+def _require_all_active_captures(capture_result: CaptureTickResult, active_ids: list[str]) -> None:
+    if capture_result.failures:
+        raise BaselineError(f"capture failures for active research: {capture_result.failures}")
+    missing = sorted(set(active_ids) - set(capture_result.successes))
+    if missing:
+        raise BaselineError(f"active research capture incomplete; missing: {missing}")
 
 
 def _capture_active_subset(
@@ -346,9 +393,23 @@ def _write_observation(
             "rule_changes_allowed": manifest.get("rule_changes_allowed", False),
         },
     }
-    out = obs_dir / f"{now.strftime('%Y%m%dT%H%M%SZ')}.yaml"
+    out = _collision_safe_observation_path(obs_dir, now, kind, payload)
     out.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return out
+
+
+def _collision_safe_observation_path(
+    obs_dir: Path, now: datetime, kind: str, payload: dict[str, Any]
+) -> Path:
+    ts = now.strftime("%Y%m%dT%H%M%SZ")
+    digest = hashlib.sha256(yaml.safe_dump(payload, sort_keys=True).encode()).hexdigest()[:12]
+    base = f"{ts}_{kind}_{digest}"
+    candidate = obs_dir / f"{base}.yaml"
+    seq = 0
+    while candidate.exists():
+        seq += 1
+        candidate = obs_dir / f"{base}_{seq}.yaml"
+    return candidate
 
 
 def _write_day0_report(
@@ -472,54 +533,66 @@ def _build_manifest_skeleton(
 
 def baseline_start(*, duration_days: int = 14, now: datetime | None = None) -> dict[str, Any]:
     """Atomically start a baseline run. Sets RUNNING only after all steps succeed."""
-    if find_running_manifest():
-        raise BaselineError("another RUNNING baseline exists; refuse second start")
+    if duration_days <= 0:
+        raise BaselineError(f"duration_days must be positive, got {duration_days}")
 
-    now = now or datetime.now(UTC)
-    started_at = now
-    planned_end = started_at + timedelta(days=duration_days)
-    run_id = f"baseline-{now.strftime('%Y%m%dT%H%M%SZ')}"
-    run_dir = RUNS_ROOT / run_id
-    manifest_path = run_dir / "manifest.yaml"
+    with _baseline_start_lock():
+        if find_running_manifest():
+            raise BaselineError("another RUNNING baseline exists; refuse second start")
 
-    records, _ = load_registry(REGISTRY_PATH, warn=False)
-    universe = split_universe(records)
-    manifest = _build_manifest_skeleton(
-        run_id,
-        duration_days=duration_days,
-        universe=universe,
-        now=now,
-        started_at=started_at,
-        planned_end=planned_end,
-    )
-    save_manifest(manifest_path, manifest)
+        now = now or datetime.now(UTC)
+        started_at = now
+        planned_end = started_at + timedelta(days=duration_days)
+        run_id = f"baseline-{now.strftime('%Y%m%dT%H%M%SZ')}"
+        run_dir = RUNS_ROOT / run_id
+        manifest_path = run_dir / "manifest.yaml"
 
-    try:
-        capture_result = _capture_active_subset(records, universe.active_research_program_ids, now)
-        gate_result = _run_gates()
-        if gate_result.get("actionable_program_ids"):
-            raise BaselineError("ACTIONABLE records after gates")
-
-        _write_observation(
-            run_dir,
-            kind="day-0",
-            capture_result=capture_result,
-            gate_result=gate_result,
-            manifest=manifest,
+        records, _ = load_registry(REGISTRY_PATH, warn=False)
+        universe = split_universe(records)
+        manifest = _build_manifest_skeleton(
+            run_id,
+            duration_days=duration_days,
+            universe=universe,
             now=now,
+            started_at=started_at,
+            planned_end=planned_end,
         )
-        _write_day0_report(run_dir, manifest, capture_result, gate_result)
+        save_manifest(manifest_path, manifest)
 
-        manifest["status"] = "RUNNING"
-        save_manifest(manifest_path, manifest)
-        logger.info("baseline %s started RUNNING", run_id)
-        return manifest
-    except Exception as e:
-        manifest["status"] = "ABORTED"
-        manifest["actual_end_at_utc"] = _iso_utc(now)
-        manifest["abort_reason"] = str(e)
-        save_manifest(manifest_path, manifest)
-        raise BaselineError(f"baseline start aborted: {e}") from e
+        try:
+            capture_result = _capture_active_subset(
+                records, universe.active_research_program_ids, now
+            )
+            _require_all_active_captures(capture_result, universe.active_research_program_ids)
+            gate_result = _run_gates()
+            if gate_result.get("actionable_program_ids"):
+                raise BaselineError("ACTIONABLE records after gates")
+
+            violations = _assert_invariants(manifest)
+            if violations:
+                raise BaselineError(f"invariant violations before RUNNING: {violations}")
+
+            manifest["status"] = "RUNNING"
+            save_manifest(manifest_path, manifest)
+
+            _write_observation(
+                run_dir,
+                kind="day-0",
+                capture_result=capture_result,
+                gate_result=gate_result,
+                manifest=manifest,
+                now=now,
+            )
+            _write_day0_report(run_dir, manifest, capture_result, gate_result)
+
+            logger.info("baseline %s started RUNNING", run_id)
+            return manifest
+        except Exception as e:
+            manifest["status"] = "ABORTED"
+            manifest["actual_end_at_utc"] = _iso_utc(now)
+            manifest["abort_reason"] = str(e)
+            save_manifest(manifest_path, manifest)
+            raise BaselineError(f"baseline start aborted: {e}") from e
 
 
 def _get_running_manifest() -> tuple[Path, dict[str, Any]]:
@@ -529,7 +602,8 @@ def _get_running_manifest() -> tuple[Path, dict[str, Any]]:
     return mp, load_manifest(mp)
 
 
-def _verify_frozen_universe(manifest: dict[str, Any]) -> None:
+def _verify_frozen_artifacts(manifest: dict[str, Any]) -> None:
+    """Reject tick/close if any frozen artifact or executing revision changed."""
     records, _ = load_registry(REGISTRY_PATH, warn=False)
     current = split_universe(records)
     if current.frozen_program_ids != manifest["frozen_program_ids"]:
@@ -540,6 +614,14 @@ def _verify_frozen_universe(manifest: dict[str, Any]) -> None:
         raise BaselineError("control_program_ids changed since baseline start")
     if _sha256_file(REGISTRY_PATH) != manifest["registry_sha256"]:
         raise BaselineError("registry content changed since baseline start")
+    handoff_path = manifest.get("handoff_path", HANDOFF_PATH)
+    if _sha256_file(handoff_path) != manifest["handoff_sha256"]:
+        raise BaselineError("handoff content changed since baseline start")
+    spec_path = manifest.get("spec_path", SPEC_PATH)
+    if _sha256_file(spec_path) != manifest["spec_sha256"]:
+        raise BaselineError("spec content changed since baseline start")
+    if _get_git_sha() != manifest["starting_git_sha"]:
+        raise BaselineError("git revision changed since baseline start")
 
 
 def baseline_tick(*, now: datetime | None = None) -> dict[str, Any]:
@@ -548,7 +630,7 @@ def baseline_tick(*, now: datetime | None = None) -> dict[str, Any]:
     if manifest.get("rule_changes_allowed"):
         raise BaselineError("rule_changes_allowed is true; refuse tick")
 
-    _verify_frozen_universe(manifest)
+    _verify_frozen_artifacts(manifest)
     now = now or datetime.now(UTC)
     records, _ = load_registry(REGISTRY_PATH, warn=False)
 

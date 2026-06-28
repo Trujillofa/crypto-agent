@@ -22,10 +22,16 @@ from tools.incentive_ops.baseline import (
     is_active_research,
     split_universe,
 )
-from tools.incentive_ops.capture import load_verifications
+from tools.incentive_ops.capture import load_verifications, write_verification_sidecar
 from tools.incentive_ops.cli import cli
 from tools.incentive_ops.registry import load_registry
-from tools.incentive_ops.types import Actionability, ActionabilityResult, ReviewerDecision
+from tools.incentive_ops.types import (
+    Actionability,
+    ActionabilityResult,
+    JurisdictionStatus,
+    ReviewerDecision,
+    VerificationRecord,
+)
 
 FIXED_NOW = datetime(2026, 6, 27, 12, 0, 0, tzinfo=UTC)
 
@@ -364,3 +370,173 @@ def test_cli_smoke_start_tick_status_close(mock_fetch, baseline_env):
     r4 = runner.invoke(cli, ["baseline", "close", "--abort"])
     assert r4.exit_code == 0, r4.output
     assert "ABORTED" in r4.output
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_start_aborts_when_any_active_capture_fails(mock_fetch, baseline_env):
+    recs = _all_records()
+    active = [r for r in recs if is_active_research(r)]
+    raw = {r.official_source_url: b"<html>ok</html>" for r in active}
+    fail_url = active[0].official_source_url
+
+    def _side_effect(url: str) -> bytes:
+        if url == fail_url:
+            raise blmod.CaptureError("simulated fetch failure")
+        return raw[url]
+
+    mock_fetch.side_effect = _side_effect
+
+    with pytest.raises(BaselineError, match="capture failures"):
+        baseline_start(duration_days=14, now=FIXED_NOW)
+
+    manifests = list(baseline_env["runs"].glob("*/manifest.yaml"))
+    data = yaml.safe_load(manifests[0].read_text(encoding="utf-8"))
+    assert data["status"] == "ABORTED"
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_approved_verification_sidecar_reports_invariant_violation(mock_fetch, baseline_env):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    baseline_start(duration_days=14, now=FIXED_NOW)
+
+    write_verification_sidecar(
+        VerificationRecord(
+            id="coinlist-token-sale",
+            snapshot_sha256="deadbeef",
+            terms_match_snapshot=True,
+            live_round_open=True,
+            reviewer_decision=ReviewerDecision.APPROVED,
+            verified_at=FIXED_NOW,
+            raw_evidence_path="fake",
+            official_round_terms_url="https://coinlist.co/token-launches",
+            captured_source_url="https://coinlist.co/token-launches",
+            jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+        )
+    )
+
+    st = baseline_status(now=FIXED_NOW + timedelta(hours=1))
+    assert any("reviewer_decision=APPROVED" in v for v in st["invariant_violations"])
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_tick_rejects_handoff_spec_and_git_changes(mock_fetch, baseline_env, monkeypatch):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    handoff = baseline_env["repo"] / blmod.HANDOFF_PATH
+    spec = baseline_env["repo"] / blmod.SPEC_PATH
+    handoff_original = handoff.read_text(encoding="utf-8")
+    spec_original = spec.read_text(encoding="utf-8")
+
+    baseline_start(duration_days=14, now=FIXED_NOW)
+
+    handoff.write_text(handoff_original + "\n# mutated\n", encoding="utf-8")
+    with pytest.raises(BaselineError, match="handoff content changed"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=1))
+
+    handoff.write_text(handoff_original, encoding="utf-8")
+    spec.write_text(spec_original + "\n# mutated\n", encoding="utf-8")
+    with pytest.raises(BaselineError, match="spec content changed"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=2))
+
+    spec.write_text(spec_original, encoding="utf-8")
+    monkeypatch.setattr(blmod, "_get_git_sha", lambda: "different-sha")
+    with pytest.raises(BaselineError, match="git revision changed"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=3))
+
+
+def test_same_second_raw_snapshots_do_not_collide(baseline_env):
+    recs = _all_records()
+    rec = next(r for r in recs if r.id == "coinlist-token-sale")
+
+    with patch("tools.incentive_ops.baseline.fetch_raw", return_value=b"content-a"):
+        cap_a, _ = capture_with_dedup(rec, FIXED_NOW)
+    with patch("tools.incentive_ops.baseline.fetch_raw", return_value=b"content-b"):
+        cap_b, _ = capture_with_dedup(rec, FIXED_NOW)
+
+    assert cap_a.raw_path != cap_b.raw_path
+    raw_files = list((baseline_env["snapshots"] / rec.id).glob("*.raw"))
+    assert len(raw_files) == 2
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_same_second_observations_do_not_collide(mock_fetch, baseline_env):
+    from tools.incentive_ops.baseline import _write_observation
+
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    manifest = baseline_start(duration_days=14, now=FIXED_NOW)
+    run_dir = baseline_env["runs"] / manifest["run_id"]
+    manifest_data = yaml.safe_load((run_dir / "manifest.yaml").read_text(encoding="utf-8"))
+    gate = {"classify_counts": {}, "actionability_counts": {}, "actionable_program_ids": []}
+    cap = blmod.CaptureTickResult(successes=manifest_data["active_research_program_ids"])
+
+    p1 = _write_observation(
+        run_dir,
+        kind="tick",
+        capture_result=cap,
+        gate_result=gate,
+        manifest=manifest_data,
+        now=FIXED_NOW,
+    )
+    cap2 = blmod.CaptureTickResult(successes=manifest_data["active_research_program_ids"][:-1])
+    p2 = _write_observation(
+        run_dir,
+        kind="tick",
+        capture_result=cap2,
+        gate_result=gate,
+        manifest=manifest_data,
+        now=FIXED_NOW,
+    )
+    assert p1 != p2
+    assert p1.exists() and p2.exists()
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_start_refuses_when_lock_held(mock_fetch, baseline_env):
+    import fcntl
+    import os
+
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    baseline_env["runs"].mkdir(parents=True, exist_ok=True)
+    lock_path = baseline_env["runs"] / ".baseline.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    try:
+        with pytest.raises(BaselineError, match="lock held"):
+            baseline_start(duration_days=14, now=FIXED_NOW)
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_day0_report_shows_running_status(mock_fetch, baseline_env):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    manifest = baseline_start(duration_days=14, now=FIXED_NOW)
+    report = (baseline_env["runs"] / manifest["run_id"] / "reports" / "day-0.md").read_text(
+        encoding="utf-8"
+    )
+    assert "**Status:** RUNNING" in report
+
+
+def test_reject_non_positive_days():
+    with pytest.raises(BaselineError, match="duration_days must be positive"):
+        baseline_start(duration_days=0, now=FIXED_NOW)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["baseline", "start", "--days", "0"])
+    assert result.exit_code == 1
+    assert "must be positive" in result.output

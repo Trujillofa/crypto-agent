@@ -227,9 +227,12 @@ def baseline_group() -> None:
 
 
 @baseline_group.command("start")
-@click.option("--days", default=14, type=int, help="Baseline duration in days")
+@click.option("--days", default=14, type=int, help="Baseline duration in days (must be > 0)")
 def cmd_baseline_start(days: int) -> None:
     """Atomically freeze universe, capture, gate, and begin RUNNING baseline."""
+    if days <= 0:
+        click.echo(f"BASELINE START FAIL: --days must be positive, got {days}", err=True)
+        sys.exit(1)
     try:
         manifest = baseline_start(duration_days=days)
         click.echo(f"Baseline started: {manifest['run_id']}")
