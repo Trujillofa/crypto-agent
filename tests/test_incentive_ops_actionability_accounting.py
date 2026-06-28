@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from tools.incentive_ops import cli as incentive_cli
 from tools.incentive_ops.accounting import CapsExceeded, load_ledger, validate_caps
 from tools.incentive_ops.actionability import check_actionability, check_all_actionability
 from tools.incentive_ops.capture import _compute_sha256
-from tools.incentive_ops import cli as incentive_cli
 from tools.incentive_ops.types import (
     Actionability,
     CaptureRecord,
