@@ -254,6 +254,8 @@ class PilotCaps:
         for name, val in [("total_usd", self.total_usd), ("per_program_usd", self.per_program_usd)]:
             if not math.isfinite(val) or val < 0:
                 raise ValidationError(f"{name} must be finite and >=0, got {val}")
+        if type(self.max_concurrent) is not int or self.max_concurrent < 0:
+            raise ValidationError(f"max_concurrent must be integer >=0, got {self.max_concurrent}")
 
 
 @dataclass(frozen=True)

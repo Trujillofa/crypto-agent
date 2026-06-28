@@ -38,6 +38,8 @@ def validate_caps(
         usd = float(raw_usd)
         if not math.isfinite(usd):
             raise CapsExceeded(f"ledger entry {pid} usd is NaN or Inf")
+        if usd < 0:
+            raise CapsExceeded(f"ledger entry {pid} usd must be >=0, got {usd}")
         committed_total += usd
         per_program[pid] = per_program.get(pid, 0.0) + usd
         if pid:
@@ -49,6 +51,8 @@ def validate_caps(
     cand_usd = float(raw_cand)
     if not math.isfinite(cand_usd):
         raise CapsExceeded("candidate usd is NaN or Inf")
+    if cand_usd < 0:
+        raise CapsExceeded(f"candidate usd must be >=0, got {cand_usd}")
     if "usd" not in candidate and "capital_usd" not in candidate:
         logger.info("validate_caps: candidate usd not supplied, using 0.0 for Day-0 sim")
 

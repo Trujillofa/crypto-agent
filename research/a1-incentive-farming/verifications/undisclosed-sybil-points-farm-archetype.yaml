@@ -7,10 +7,10 @@ reviewer_decision: PENDING
 raw_evidence_path: null
 official_round_terms_url: null
 captured_source_url: UNVERIFIED
-jurisdiction_status: 'True'
+jurisdiction_status: UNKNOWN
 eligibility_open: null
 eligibility_close: null
 claim_date: null
 vesting_end: null
-notes: 'Schema extended per review #5. New fields null until round-specific human
-  audit. Captured terms/live=false per #4.'
+notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
+  UNKNOWN. Audit fields present for future human review.

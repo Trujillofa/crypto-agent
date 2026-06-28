@@ -102,9 +102,16 @@ def cmd_classify(check: bool, path: str | None) -> None:
 
 
 @cli.command("actionability")
-def cmd_actionability() -> None:
+@click.option(
+    "--ledger",
+    type=click.Path(exists=False),
+    default=None,
+    help="Path to ledger YAML/JSON for caps checks",
+)
+def cmd_actionability(ledger: str | None) -> None:
     """Run the SEPARATE actionability gate (default-deny). Expect all non-ACTIONABLE on starter."""
-    summary = main_actionability()
+    led = load_ledger(ledger) if ledger else None
+    summary = main_actionability(ledger=led)
     for pid, status in summary.items():
         click.echo(f"{pid}: {status}")
     non = all("ACTIONABLE" not in s for s in summary.values())

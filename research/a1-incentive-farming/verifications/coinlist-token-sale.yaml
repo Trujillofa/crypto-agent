@@ -1,5 +1,5 @@
 id: coinlist-token-sale
-verified_at: '2026-06-28T01:11:45.114932+00:00'
+verified_at: null
 snapshot_sha256: 57dbf3d94cb99159e7296d3b4ec8c69d3dc4026b31c7abd77ebe42b9c5bd249e
 terms_match_snapshot: false
 live_round_open: false
@@ -7,10 +7,10 @@ reviewer_decision: PENDING
 raw_evidence_path: research/a1-incentive-farming/snapshots/coinlist-token-sale/20260627T225644Z.raw
 official_round_terms_url: null
 captured_source_url: https://coinlist.co/token-launches
-jurisdiction_status: 'True'
+jurisdiction_status: UNKNOWN
 eligibility_open: null
 eligibility_close: null
 claim_date: null
 vesting_end: null
-notes: 'Schema extended per review #5. New fields null until round-specific human
-  audit. Captured terms/live=false per #4.'
+notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
+  UNKNOWN. Audit fields present for future human review.

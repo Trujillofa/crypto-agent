@@ -518,3 +518,61 @@ def test_verif_audit_fields_enforced():
     res2 = check_actionability(rec, {"p1": cap}, {"p1": ver_unk}, {"p1": ev})
     assert res2.status == Actionability.BLOCKED_UNVERIFIED
     assert "jurisdiction" in res2.reason.lower()
+
+
+# --- Financial gate negative tests (re-review) ---
+
+
+def test_pilot_caps_rejects_invalid_max_concurrent():
+    from tools.incentive_ops.types import ValidationError
+
+    with pytest.raises(ValidationError):
+        PilotCaps(max_concurrent=float("nan"))
+    with pytest.raises(ValidationError):
+        PilotCaps(max_concurrent=-1)
+    # bool not int
+    with pytest.raises(ValidationError):
+        PilotCaps(max_concurrent=True)  # True is 1 but type check
+
+
+def test_validate_caps_rejects_negative_ledger_and_candidate():
+    caps = PilotCaps()
+    # negative ledger
+    with pytest.raises(CapsExceeded):
+        validate_caps([{"id": "p1", "usd": -1000}], {"id": "p2", "usd": 250}, caps)
+    # negative candidate
+    with pytest.raises(CapsExceeded):
+        validate_caps([{"id": "p1", "usd": 100}], {"id": "p2", "usd": -1}, caps)
+
+
+def test_actionability_with_real_ledger_triggers_blocked_caps(tmp_path):
+    """Positive path: real ledger commitments cause BLOCKED_CAPS via CLI/main path."""
+    rec = _mk_rec("p1")
+    rawf = tmp_path / "cli_ledger.raw"
+    rawf.write_bytes(b"cli-ledger-test")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="https://ex/round",
+    )
+    ver = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+    ev = _mk_ev("p1", cap=100.0, readiness=EVReadiness.READY)
+    # large existing ledger that +100 would exceed 1000 total or concurrent
+    big_ledger = [{"id": f"o{i}", "usd": 400} for i in range(3)]  # 1200 >1000
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev}, ledger=big_ledger)
+    assert res.status == Actionability.BLOCKED_CAPS
+    assert "total" in (res.reason or "").lower() or "caps" in (res.reason or "").lower()
