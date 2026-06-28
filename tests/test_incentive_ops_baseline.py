@@ -119,7 +119,9 @@ def test_split_universe_active_vs_control():
     assert "binance-launchpool" in split.control_program_ids
     assert "coinlist-token-sale" in split.active_research_program_ids
     assert "layer3-quests" in split.active_research_program_ids
-    assert len(split.active_research_program_ids) == 7
+    assert "coinbase-learning-rewards" in split.control_program_ids
+    assert len(split.active_research_program_ids) == 6
+    assert len(split.control_program_ids) == 11
 
 
 @patch("tools.incentive_ops.baseline.fetch_raw")
