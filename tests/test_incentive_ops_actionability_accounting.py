@@ -12,10 +12,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 from tools.incentive_ops.accounting import CapsExceeded, load_ledger, validate_caps
 from tools.incentive_ops.actionability import check_actionability, check_all_actionability
 from tools.incentive_ops.capture import _compute_sha256
+from tools.incentive_ops import cli as incentive_cli
 from tools.incentive_ops.types import (
     Actionability,
     CaptureRecord,
@@ -376,7 +378,7 @@ def test_verif_supersedes_registry_unverified(tmp_path):
     assert res.status == Actionability.ACTIONABLE  # supersedes
 
 
-# --- New enforcement tests for NaN/Inf, READY provenance, verif audit fields (re-review blockers) ---
+# --- New enforcement tests (re-review blockers) ---
 
 
 def test_ev_inputs_rejects_nan_and_inf():
@@ -576,3 +578,17 @@ def test_actionability_with_real_ledger_triggers_blocked_caps(tmp_path):
     res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev}, ledger=big_ledger)
     assert res.status == Actionability.BLOCKED_CAPS
     assert "total" in (res.reason or "").lower() or "caps" in (res.reason or "").lower()
+
+
+def test_cli_actionability_accepts_ledger_option_and_runs(tmp_path):
+    """CliRunner smoke test for actionability --ledger to prevent signature mismatch regression."""
+    runner = CliRunner()
+    ledger = tmp_path / "test_ledger.yaml"
+    ledger.write_text("- id: committed1\n  usd: 900\n")
+    # invoke; it should not raise TypeError and should produce output
+    result = runner.invoke(incentive_cli.cli, ["actionability", "--ledger", str(ledger)])
+    # exit 0 or 2 is fine (non-actionable), but must not be exception from signature
+    assert result.exit_code in (0, 2)
+    assert "All non-ACTIONABLE" in result.output or "BLOCKED" in result.output
+    # ledger file was accepted (no 'unknown option' or parse error)
+    assert "Error" not in result.output or result.exit_code == 2
