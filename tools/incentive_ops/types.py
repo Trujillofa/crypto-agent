@@ -5,6 +5,7 @@ All cross-module data uses these (no loose dicts). See handoff spec.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -101,6 +102,21 @@ class ReviewerDecision(StrEnum):
     NEEDS_MORE_INFO = "NEEDS_MORE_INFO"
 
 
+class EVReadiness(StrEnum):
+    """Readiness of EV inputs for promotion decisions. READY requires full acceptable provenance."""
+
+    UNREADY = "UNREADY"
+    READY = "READY"
+
+
+class JurisdictionStatus(StrEnum):
+    """Jurisdiction eligibility status for verification audit. Only ELIGIBLE allows promotion."""
+
+    ELIGIBLE = "ELIGIBLE"
+    UNKNOWN = "UNKNOWN"
+    INELIGIBLE = "INELIGIBLE"
+
+
 @dataclass(frozen=True)
 class SelectionCriteria:
     c1_fixed_or_capped: Criterion
@@ -186,13 +202,15 @@ class EVScenarioInputs:
     reward_announced: bool
 
     def __post_init__(self) -> None:
-        # Range + non-neg validation (fail closed)
+        # Range + non-neg + finite validation (fail closed, blocker #1 NaN/Inf)
         for name, val in [
             ("p_eligibility", self.p_eligibility),
             ("p_distribution", self.p_distribution),
         ]:
             if not (0.0 <= val <= 1.0):
                 raise ValidationError(f"{name} must be in [0,1], got {val}")
+            if not math.isfinite(val):
+                raise ValidationError(f"{name} must be finite, got {val}")
         for name, val in [
             ("reward_qty", self.reward_qty),
             ("realizable_price", self.realizable_price),
@@ -208,6 +226,8 @@ class EVScenarioInputs:
         ]:
             if val < 0.0:
                 raise ValidationError(f"{name} must be >= 0, got {val}")
+            if not math.isfinite(val):
+                raise ValidationError(f"{name} must be finite, got {val}")
 
 
 @dataclass(frozen=True)
@@ -229,6 +249,11 @@ class PilotCaps:
     total_usd: float = 1000.0
     per_program_usd: float = 250.0
     max_concurrent: int = 3
+
+    def __post_init__(self) -> None:
+        for name, val in [("total_usd", self.total_usd), ("per_program_usd", self.per_program_usd)]:
+            if not math.isfinite(val) or val < 0:
+                raise ValidationError(f"{name} must be finite and >=0, got {val}")
 
 
 @dataclass(frozen=True)
@@ -352,7 +377,7 @@ class VerificationRecord:
     raw_evidence_path: str | None = None
     official_round_terms_url: str | None = None
     captured_source_url: str | None = None
-    jurisdiction_status: str | None = None
+    jurisdiction_status: JurisdictionStatus = JurisdictionStatus.UNKNOWN
     eligibility_open: date | None = None
     eligibility_close: date | None = None
     claim_date: date | None = None
@@ -371,6 +396,6 @@ class EVInputsRecord:
     id: str
     inputs: EVScenarioInputs
     reward_type: RewardType
-    readiness: str = "UNREADY"
+    readiness: EVReadiness = EVReadiness.UNREADY
     provenance: dict[str, str] = field(default_factory=dict)
     notes: str | None = None

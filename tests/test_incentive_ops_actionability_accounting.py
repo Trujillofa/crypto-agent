@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.incentive_ops.accounting import load_ledger, validate_caps
+from tools.incentive_ops.accounting import CapsExceeded, load_ledger, validate_caps
 from tools.incentive_ops.actionability import check_actionability, check_all_actionability
 from tools.incentive_ops.capture import _compute_sha256
 from tools.incentive_ops.types import (
@@ -21,13 +21,16 @@ from tools.incentive_ops.types import (
     CaptureRecord,
     Classification,
     EVInputsRecord,
+    EVReadiness,
     EVScenarioInputs,
+    JurisdictionStatus,
     Mechanism,
     PilotCaps,
     ProgramRecord,
     ReviewerDecision,
     RewardType,
     SelectionCriteria,
+    ValidationError,
     VerificationRecord,
 )
 
@@ -137,7 +140,13 @@ def _mk_cap(pid: str, intent_sha: str = "good") -> CaptureRecord:
 
 
 def _mk_ver(
-    pid: str, sha: str, terms=True, live_o=True, dec=ReviewerDecision.APPROVED
+    pid: str,
+    sha: str,
+    terms=True,
+    live_o=True,
+    dec=ReviewerDecision.APPROVED,
+    verified_at=None,
+    jurisdiction=JurisdictionStatus.ELIGIBLE,
 ) -> VerificationRecord:
     return VerificationRecord(
         id=pid,
@@ -145,11 +154,15 @@ def _mk_ver(
         terms_match_snapshot=terms,
         live_round_open=live_o,
         reviewer_decision=dec,
-        verified_at=datetime.now(UTC),
+        verified_at=verified_at or datetime.now(UTC),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex",
+        raw_evidence_path="tmp.raw",
+        jurisdiction_status=jurisdiction,
     )
 
 
-def _mk_ev(pid: str, cap: float = 80.0, readiness="READY") -> EVInputsRecord:
+def _mk_ev(pid: str, cap: float = 80.0, readiness=EVReadiness.READY) -> EVInputsRecord:
     inp = EVScenarioInputs(
         p_eligibility=0.8,
         p_distribution=0.7,
@@ -166,12 +179,31 @@ def _mk_ev(pid: str, cap: float = 80.0, readiness="READY") -> EVInputsRecord:
         hourly_rate=10.0,
         reward_announced=True,
     )
+    # good provenance for all material (for positive path)
+    prov = dict.fromkeys(
+        [
+            "p_eligibility",
+            "p_distribution",
+            "reward_qty",
+            "realizable_price",
+            "liquidity_vesting_haircut",
+            "base_yield",
+            "gas_bridge_fees",
+            "capital",
+            "days",
+            "benchmark_apy",
+            "expected_loss_reserve",
+            "manual_hours",
+            "hourly_rate",
+        ],
+        "evidence from official terms snapshot at verification time",
+    )
     return EVInputsRecord(
         id=pid,
         inputs=inp,
         reward_type=RewardType.ANNOUNCED_FIXED_TOKEN,
         readiness=readiness,
-        provenance={"capital": "test"},
+        provenance=prov,
     )
 
 
@@ -208,11 +240,22 @@ def test_positive_actionability_path_with_approved_verif_real_capital_ready_ev(t
         snapshot_sha256=actual_sha,
         captured_at=datetime.now(UTC),
         raw_path=str(raw_file),
-        source_url="https://ex",
+        source_url="https://ex/round",
     )
-    ver = _mk_ver("p1", actual_sha, terms=True, live_o=True, dec=ReviewerDecision.APPROVED)
-    ev = _mk_ev("p1", cap=80.0, readiness="READY")
-    # NO patch -- full real evidence + sha bind + ensure
+    ver = VerificationRecord(
+        id="p1",
+        snapshot_sha256=actual_sha,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(raw_file),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+    ev = _mk_ev("p1", cap=80.0, readiness=EVReadiness.READY)
+    # NO patch -- full real evidence + sha bind + ensure + audit + prov
     res = check_actionability(
         rec, {"p1": cap}, {"p1": ver}, {"p1": ev}, ledger=[{"id": "other", "usd": 10}]
     )
@@ -248,13 +291,24 @@ def test_ev_unready_blocks_promotion(tmp_path):
         snapshot_sha256=act,
         captured_at=datetime.now(UTC),
         raw_path=str(rawf),
-        source_url="ex",
+        source_url="https://ex/round",
     )
-    ver = _mk_ver("p1", act, dec=ReviewerDecision.APPROVED)
-    ev = _mk_ev("p1", readiness="UNREADY")
+    ver = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+    ev = _mk_ev("p1", readiness=EVReadiness.UNREADY)
     res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.BLOCKED_PROMOTION
-    assert "UNREADY" in res.reason or "unready" in res.reason.lower()
+    assert "not READY with full acceptable provenance" in res.reason
 
 
 def test_missing_capital_blocks_caps(tmp_path):
@@ -267,10 +321,21 @@ def test_missing_capital_blocks_caps(tmp_path):
         snapshot_sha256=act,
         captured_at=datetime.now(UTC),
         raw_path=str(rawf),
-        source_url="ex",
+        source_url="https://ex/round",
     )
-    ver = _mk_ver("p1", act, dec=ReviewerDecision.APPROVED)
-    ev = _mk_ev("p1", cap=0.0, readiness="READY")
+    ver = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+    ev = _mk_ev("p1", cap=0.0, readiness=EVReadiness.READY)
     res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.BLOCKED_CAPS
     assert "capital" in res.reason.lower()
@@ -292,9 +357,164 @@ def test_verif_supersedes_registry_unverified(tmp_path):
         snapshot_sha256=act,
         captured_at=datetime.now(UTC),
         raw_path=str(rawf),
-        source_url="ex",
+        source_url="https://ex/round",
     )
-    ver = _mk_ver("p1", act, dec=ReviewerDecision.APPROVED, live_o=True)
+    ver = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
     ev = _mk_ev("p1")
     res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.ACTIONABLE  # supersedes
+
+
+# --- New enforcement tests for NaN/Inf, READY provenance, verif audit fields (re-review blockers) ---
+
+
+def test_ev_inputs_rejects_nan_and_inf():
+    base = {
+        "p_eligibility": 0.8,
+        "p_distribution": 0.7,
+        "reward_qty": 100.0,
+        "realizable_price": 0.5,
+        "liquidity_vesting_haircut": 0.6,
+        "base_yield": 10.0,
+        "gas_bridge_fees": 2.0,
+        "days": 10.0,
+        "benchmark_apy": 0.05,
+        "expected_loss_reserve": 1.0,
+        "manual_hours": 1.0,
+        "hourly_rate": 10.0,
+        "reward_announced": True,
+    }
+    with pytest.raises(ValidationError):
+        EVScenarioInputs(capital=float("nan"), **base)
+    with pytest.raises(ValidationError):
+        EVScenarioInputs(capital=float("inf"), **base)
+    with pytest.raises(ValidationError):
+        EVScenarioInputs(capital=float("-inf"), **base)
+
+
+def test_validate_caps_rejects_nan_inf():
+    caps = PilotCaps()
+    with pytest.raises(CapsExceeded):
+        validate_caps([{"id": "p1", "usd": 100}], {"id": "p2", "usd": float("nan")}, caps)
+    with pytest.raises(CapsExceeded):
+        validate_caps([{"id": "p1", "usd": 100}], {"id": "p2", "usd": float("inf")}, caps)
+
+
+def test_load_ledger_rejects_nan_inf_negative_gas_hours():
+    import tempfile
+
+    import yaml
+
+    bad = [{"id": "p", "usd": 10, "gas_usd": float("nan"), "realized_usd": 0, "hours": 1}]
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "bad.yaml"
+        p.write_text(yaml.safe_dump(bad))
+        with pytest.raises(ValidationError) as exc:
+            load_ledger(p)
+        assert "NaN or Inf" in str(exc.value) or "not numeric" in str(exc.value)
+    bad2 = [{"id": "p", "usd": 10, "gas_usd": -1, "realized_usd": 0, "hours": 1}]
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "bad2.yaml"
+        p.write_text(yaml.safe_dump(bad2))
+        with pytest.raises(ValidationError) as exc:
+            load_ledger(p)
+        assert "must be >= 0" in str(exc.value)
+
+
+def test_ready_ev_requires_full_acceptable_provenance():
+    rec = _mk_rec("p1")
+    rawf = Path(tempfile.mkdtemp()) / "prov.raw"
+    rawf.write_bytes(b"prov-test")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="https://ex/round",
+    )
+    ver = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+    # bad prov (minimal)
+    ev_bad = EVInputsRecord(
+        id="p1",
+        inputs=_mk_ev("p1", readiness=EVReadiness.READY).inputs,
+        reward_type=RewardType.ANNOUNCED_FIXED_TOKEN,
+        readiness=EVReadiness.READY,
+        provenance={"capital": "test"},
+    )
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev_bad})
+    assert res.status == Actionability.BLOCKED_PROMOTION
+    assert "provenance" in res.reason.lower()
+
+
+def test_verif_audit_fields_enforced():
+    rec = _mk_rec("p1")
+    rawf = Path(tempfile.mkdtemp()) / "audit.raw"
+    rawf.write_bytes(b"audit")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="https://ex/round",
+    )
+    # missing url
+    ver_bad = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url=None,
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+    ev = _mk_ev("p1", readiness=EVReadiness.READY)
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver_bad}, {"p1": ev})
+    assert res.status == Actionability.BLOCKED_UNVERIFIED
+    assert (
+        "audit" in res.reason.lower()
+        or "missing" in res.reason.lower()
+        or "url" in res.reason.lower()
+    )
+    # unknown juris
+    ver_unk = VerificationRecord(
+        id="p1",
+        snapshot_sha256=act,
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=datetime.now(UTC),
+        raw_evidence_path=str(rawf),
+        official_round_terms_url="https://ex/round",
+        captured_source_url="https://ex/round",
+        jurisdiction_status=JurisdictionStatus.UNKNOWN,
+    )
+    res2 = check_actionability(rec, {"p1": cap}, {"p1": ver_unk}, {"p1": ev})
+    assert res2.status == Actionability.BLOCKED_UNVERIFIED
+    assert "jurisdiction" in res2.reason.lower()

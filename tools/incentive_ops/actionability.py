@@ -35,6 +35,8 @@ from .types import (
     Classification,
     Criterion,
     EVInputsRecord,
+    EVReadiness,
+    JurisdictionStatus,
     PilotCaps,
     ProgramRecord,
     ReviewerDecision,
@@ -88,6 +90,31 @@ def _is_verified(
         return False, "live_round not open per verification"
     if ver.reviewer_decision != ReviewerDecision.APPROVED:
         return False, f"reviewer_decision={ver.reviewer_decision} (must be APPROVED)"
+
+    # Audit field enforcement (blocker #3)
+    if ver.verified_at is None:
+        return False, "verified_at is null (human verification timestamp required)"
+    if not ver.official_round_terms_url or not ver.captured_source_url or not ver.raw_evidence_path:
+        return (
+            False,
+            "missing required audit fields (official_round_terms_url, captured_source_url, raw_evidence_path)",
+        )
+    if cap is not None:
+        if ver.captured_source_url != cap.source_url:
+            return False, "captured_source_url does not match capture source"
+        if ver.raw_evidence_path != cap.raw_path:
+            return False, "raw_evidence_path does not match capture"
+    if ver.official_round_terms_url != ver.captured_source_url:
+        return False, "official_round_terms_url != captured_source_url"
+    j = ver.jurisdiction_status
+    if isinstance(j, str):
+        try:
+            j = JurisdictionStatus(str(j).upper())
+        except Exception:
+            j = JurisdictionStatus.UNKNOWN
+    if j != JurisdictionStatus.ELIGIBLE:
+        return False, f"jurisdiction_status={j} (must be ELIGIBLE; UNKNOWN/INELIGIBLE blocks)"
+
     # Verif sidecar supersedes stale registry live_round_status (blocker #5)
     return True, "verified"
 
@@ -112,6 +139,45 @@ def _passes_promotion(rec: ProgramRecord, base_ev: float) -> bool:
     if any(c == Criterion.MAYBE for c in crits):
         return False
     return base_ev > 0.0
+
+
+def _has_acceptable_provenance(evrec: EVInputsRecord | None) -> bool:
+    """For READY, every material input must have specific evidence-based provenance.
+    Reject UNKNOWN, placeholder, 'from sidecar', 'test', missing, etc. (blocker #2)
+    """
+    if not evrec or evrec.readiness != EVReadiness.READY:
+        return False
+    prov = evrec.provenance or {}
+    material = [
+        "p_eligibility",
+        "p_distribution",
+        "reward_qty",
+        "realizable_price",
+        "liquidity_vesting_haircut",
+        "base_yield",
+        "gas_bridge_fees",
+        "capital",
+        "days",
+        "benchmark_apy",
+        "expected_loss_reserve",
+        "manual_hours",
+        "hourly_rate",
+    ]
+    bad = (
+        "unknown",
+        "placeholder",
+        "from sidecar",
+        "sourced",
+        "test",
+        "day-0",
+        "conservative",
+        "structure",
+    )
+    for f in material:
+        val = str(prov.get(f, "")).lower()
+        if not val or any(b in val for b in bad):
+            return False
+    return True
 
 
 def check_actionability(
@@ -160,28 +226,30 @@ def check_actionability(
             details={"id": rec.id, "tier": str(rec.classification)},
         )
 
-    # 4. Promotion? (typed base EV from sidecar inputs, remove base_ev_positive=False)
+    # 4. Promotion? (typed base EV from sidecar inputs)
     base_ev = 0.0
-    if evrec is not None:
-        if getattr(evrec, "readiness", "UNREADY") != "READY":
-            base_ev = 0.0  # UNREADY / unknown inputs do not contribute positive EV (blocker #4)
-        else:
-            try:
-                ev_res = compute_ev(evrec.inputs, reward_type=evrec.reward_type)
-                base_ev = float(ev_res.get("net_ev", 0.0))
-            except Exception as e:
-                logger.warning("ev compute fail for %s: %s", rec.id, e)
+    readiness_val = getattr(evrec, "readiness", EVReadiness.UNREADY)
+    if (
+        evrec is not None
+        and readiness_val == EVReadiness.READY
+        and _has_acceptable_provenance(evrec)
+    ):
+        try:
+            ev_res = compute_ev(evrec.inputs, reward_type=evrec.reward_type)
+            base_ev = float(ev_res.get("net_ev", 0.0))
+        except Exception as e:
+            logger.warning("ev compute fail for %s: %s", rec.id, e)
     if not _passes_promotion(rec, base_ev):
         reason = f"selection criteria or base EV={base_ev:.2f} failed"
-        if evrec and getattr(evrec, "readiness", "") != "READY":
-            reason += " (EV inputs UNREADY)"
+        if not (evrec and readiness_val == EVReadiness.READY and _has_acceptable_provenance(evrec)):
+            reason += " (EV inputs not READY with full acceptable provenance)"
         return ActionabilityResult(
             status=Actionability.BLOCKED_PROMOTION,
             reason=reason,
             details={
                 "id": rec.id,
                 "base_ev": base_ev,
-                "readiness": getattr(evrec, "readiness", None) if evrec else None,
+                "readiness": str(readiness_val) if evrec else None,
             },
         )
 

@@ -16,7 +16,7 @@ import yaml
 
 from src.utils.logger import get_logger
 
-from .types import CapCheck, PilotCaps, ValidationError
+from .types import CapCheck, CapsExceeded, PilotCaps, ValidationError
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,10 @@ def validate_caps(
 
     for entry in ledger or []:
         pid = str(entry.get("id", entry.get("program_id", "")))
-        usd = float(entry.get("usd", entry.get("capital_usd", 0.0)))
+        raw_usd = entry.get("usd", entry.get("capital_usd", 0.0))
+        usd = float(raw_usd)
+        if not math.isfinite(usd):
+            raise CapsExceeded(f"ledger entry {pid} usd is NaN or Inf")
         committed_total += usd
         per_program[pid] = per_program.get(pid, 0.0) + usd
         if pid:
@@ -42,7 +45,10 @@ def validate_caps(
 
     cand_id = str(candidate.get("id", candidate.get("program_id", "unknown")))
     # No hardcoded 100 placeholder: caller must supply real proposed capital for the check.
-    cand_usd = float(candidate.get("usd", candidate.get("capital_usd", 0.0)))
+    raw_cand = candidate.get("usd", candidate.get("capital_usd", 0.0))
+    cand_usd = float(raw_cand)
+    if not math.isfinite(cand_usd):
+        raise CapsExceeded("candidate usd is NaN or Inf")
     if "usd" not in candidate and "capital_usd" not in candidate:
         logger.info("validate_caps: candidate usd not supplied, using 0.0 for Day-0 sim")
 
@@ -150,6 +156,8 @@ def load_ledger(path: str | Path | None = None) -> list[dict[str, Any]]:
             usd_f = float(usd)
         except Exception:
             raise ValidationError(f"ledger entry {i} ({pid}) usd not numeric") from None
+        if not math.isfinite(usd_f):
+            raise ValidationError(f"ledger entry {i} ({pid}) usd is NaN or Inf")
         if usd_f < 0:
             raise ValidationError(f"ledger entry {i} ({pid}) usd < 0")
 

@@ -24,7 +24,9 @@ from .types import (
     CaptureError,
     CaptureRecord,
     EVInputsRecord,
+    EVReadiness,
     EVScenarioInputs,
+    JurisdictionStatus,
     ProgramRecord,
     ReviewerDecision,
     RewardType,
@@ -223,7 +225,9 @@ def write_verification_sidecar(v: VerificationRecord) -> Path:
         "raw_evidence_path": v.raw_evidence_path,
         "official_round_terms_url": v.official_round_terms_url,
         "captured_source_url": v.captured_source_url,
-        "jurisdiction_status": v.jurisdiction_status,
+        "jurisdiction_status": v.jurisdiction_status.value
+        if hasattr(v.jurisdiction_status, "value")
+        else str(v.jurisdiction_status),
         "eligibility_open": v.eligibility_open.isoformat() if v.eligibility_open else None,
         "eligibility_close": v.eligibility_close.isoformat() if v.eligibility_close else None,
         "claim_date": v.claim_date.isoformat() if v.claim_date else None,
@@ -260,6 +264,11 @@ def load_verifications(
                     verified_at = datetime.fromisoformat(str(va).replace("Z", "+00:00"))
                 except Exception:
                     verified_at = None
+            jstr = data.get("jurisdiction_status")
+            try:
+                js = JurisdictionStatus(str(jstr).upper()) if jstr else JurisdictionStatus.UNKNOWN
+            except Exception:
+                js = JurisdictionStatus.UNKNOWN
             out[str(data["id"])] = VerificationRecord(
                 id=str(data["id"]),
                 verified_at=verified_at,
@@ -270,7 +279,7 @@ def load_verifications(
                 raw_evidence_path=data.get("raw_evidence_path"),
                 official_round_terms_url=data.get("official_round_terms_url"),
                 captured_source_url=data.get("captured_source_url"),
-                jurisdiction_status=data.get("jurisdiction_status"),
+                jurisdiction_status=js,
                 eligibility_open=_parse_optional_date(data.get("eligibility_open")),
                 eligibility_close=_parse_optional_date(data.get("eligibility_close")),
                 claim_date=_parse_optional_date(data.get("claim_date")),
@@ -304,7 +313,7 @@ def write_ev_inputs_sidecar(rec: EVInputsRecord) -> Path:
         "hourly_rate": inp.hourly_rate,
         "reward_announced": inp.reward_announced,
         "reward_type": str(rec.reward_type),
-        "readiness": getattr(rec, "readiness", "UNREADY"),
+        "readiness": rec.readiness.value if hasattr(rec.readiness, "value") else str(rec.readiness),
         "provenance": getattr(rec, "provenance", {}),
         "notes": rec.notes,
     }
@@ -346,11 +355,16 @@ def load_ev_inputs(
                 hourly_rate=float(data["hourly_rate"]),
                 reward_announced=bool(data["reward_announced"]),
             )
+            rstr = data.get("readiness", "UNREADY")
+            try:
+                rd = EVReadiness(str(rstr).upper())
+            except Exception:
+                rd = EVReadiness.UNREADY
             out[str(data["id"])] = EVInputsRecord(
                 id=str(data["id"]),
                 inputs=inp,
                 reward_type=rt,
-                readiness=str(data.get("readiness", "UNREADY")),
+                readiness=rd,
                 provenance=dict(data.get("provenance", {})),
                 notes=data.get("notes"),
             )
