@@ -1,8 +1,9 @@
 id: undisclosed-sybil-points-farm-archetype
-verified_at: '2026-06-27T23:55:41.500308+00:00'
+verified_at: null
 snapshot_sha256: PENDING_TOOL_CAPTURE
-terms_match_snapshot: true
+terms_match_snapshot: false
 live_round_open: false
 reviewer_decision: PENDING
-raw_evidence_path: research/a1-incentive-farming/snapshots/undisclosed-sybil-points-farm-archetype/
-notes: Day-0 paper inventory; decision PENDING per ops requirements. No capital.
+raw_evidence_path: null
+notes: 'Corrected: pending use PENDING+terms=false+verified_at=None; captured bind
+  exact sha+raw path'

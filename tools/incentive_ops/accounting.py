@@ -117,11 +117,11 @@ def load_ledger(path: str | Path | None = None) -> list[dict[str, Any]]:
     Expects list of entries with at minimum 'id' and numeric 'usd' (or 'capital_usd').
     Raises ValidationError on bad schema. Used by actionability/report for Day-0.
     """
-    if not path:
+    if path is None or str(path).strip() == "":
         return []
     p = Path(path)
     if not p.exists():
-        return []
+        raise ValidationError(f"explicitly supplied ledger path does not exist: {path}")
     try:
         if p.suffix.lower() in (".yaml", ".yml"):
             data = yaml.safe_load(p.read_text(encoding="utf-8")) or []
@@ -151,6 +151,15 @@ def load_ledger(path: str | Path | None = None) -> list[dict[str, Any]]:
             raise ValidationError(f"ledger entry {i} ({pid}) usd not numeric") from None
         if usd_f < 0:
             raise ValidationError(f"ledger entry {i} ({pid}) usd < 0")
+
+        # Validate every numeric field strictly (blocker #6)
+        for nf in ("gas_usd", "realized_usd", "hours"):
+            val = e.get(nf, e.get(nf.replace("_usd", ""), 0))
+            try:
+                float(val)
+            except Exception:
+                raise ValidationError(f"ledger entry {i} ({pid}) {nf} not numeric") from None
+
         entry = {
             "id": pid,
             "usd": usd_f,

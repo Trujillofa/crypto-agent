@@ -342,23 +342,26 @@ class VerificationRecord:
     """
 
     id: str
-    verified_at: datetime
     snapshot_sha256: str
     terms_match_snapshot: bool
     live_round_open: bool
     reviewer_decision: ReviewerDecision
+    verified_at: datetime | None = None
     raw_evidence_path: str | None = None
     notes: str | None = None
 
 
 @dataclass(frozen=True)
 class EVInputsRecord:
-    """Typed EV inputs sidecar for base-case (conservative) per program.
+    """Typed EV inputs sidecar for base-case per program.
 
-    Loaded to drive typed compute_ev without CLI overrides or hardcodes.
+    readiness="UNREADY" + per-field provenance required for valid Day-0 evidence (not invented values).
+    Only READY inputs may contribute to positive base_ev.
     """
 
     id: str
     inputs: EVScenarioInputs
     reward_type: RewardType
+    readiness: str = "UNREADY"
+    provenance: dict[str, str] = field(default_factory=dict)
     notes: str | None = None

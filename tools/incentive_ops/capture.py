@@ -205,7 +205,7 @@ def write_verification_sidecar(v: VerificationRecord) -> Path:
     out = VERIFICATIONS_ROOT / f"{v.id}.yaml"
     payload = {
         "id": v.id,
-        "verified_at": v.verified_at.isoformat(),
+        "verified_at": v.verified_at.isoformat() if v.verified_at else None,
         "snapshot_sha256": v.snapshot_sha256,
         "terms_match_snapshot": v.terms_match_snapshot,
         "live_round_open": v.live_round_open,
@@ -236,9 +236,16 @@ def load_verifications(
             if not data or "id" not in data:
                 continue
             dec = ReviewerDecision(str(data.get("reviewer_decision", "PENDING")).upper())
+            va = data.get("verified_at")
+            verified_at = None
+            if va:
+                try:
+                    verified_at = datetime.fromisoformat(str(va).replace("Z", "+00:00"))
+                except Exception:
+                    verified_at = None
             out[str(data["id"])] = VerificationRecord(
                 id=str(data["id"]),
-                verified_at=datetime.fromisoformat(str(data["verified_at"]).replace("Z", "+00:00")),
+                verified_at=verified_at,
                 snapshot_sha256=str(data["snapshot_sha256"]),
                 terms_match_snapshot=bool(data.get("terms_match_snapshot", False)),
                 live_round_open=bool(data.get("live_round_open", False)),
@@ -273,6 +280,8 @@ def write_ev_inputs_sidecar(rec: EVInputsRecord) -> Path:
         "hourly_rate": inp.hourly_rate,
         "reward_announced": inp.reward_announced,
         "reward_type": str(rec.reward_type),
+        "readiness": getattr(rec, "readiness", "UNREADY"),
+        "provenance": getattr(rec, "provenance", {}),
         "notes": rec.notes,
     }
     out.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -317,6 +326,8 @@ def load_ev_inputs(
                 id=str(data["id"]),
                 inputs=inp,
                 reward_type=rt,
+                readiness=str(data.get("readiness", "UNREADY")),
+                provenance=dict(data.get("provenance", {})),
                 notes=data.get("notes"),
             )
         except Exception:

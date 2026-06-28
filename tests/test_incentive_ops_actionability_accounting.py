@@ -6,9 +6,30 @@ Caps must block >1000 total, >250 per, >3 concurrent.
 
 from __future__ import annotations
 
-from tools.incentive_ops.accounting import validate_caps
-from tools.incentive_ops.actionability import check_all_actionability
-from tools.incentive_ops.types import Actionability, PilotCaps
+import os
+import tempfile
+from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from tools.incentive_ops.accounting import load_ledger, validate_caps
+from tools.incentive_ops.actionability import check_actionability, check_all_actionability
+from tools.incentive_ops.types import (
+    Actionability,
+    CaptureRecord,
+    Classification,
+    EVInputsRecord,
+    EVScenarioInputs,
+    Mechanism,
+    PilotCaps,
+    ProgramRecord,
+    ReviewerDecision,
+    RewardType,
+    SelectionCriteria,
+    VerificationRecord,
+)
 
 
 def test_all_17_non_actionable_on_starter_fixture():
@@ -50,3 +71,174 @@ def test_validate_caps_ok_when_under():
     ck = validate_caps(ledger, {"id": "b", "usd": 100}, caps)
     assert ck.ok
     assert ck.concurrent_after == 2
+
+
+# --- New tests for Phase-0 ops gates (blockers fixed) ---
+
+
+def _mk_rec(
+    pid: str, tier: Classification = Classification.IN_CORE, live: str = "LIVE"
+) -> ProgramRecord:
+    sel = SelectionCriteria(
+        c1_fixed_or_capped="true",
+        c2_terms_documented="true",
+        c3_eligibility_public="true",
+        c4_capital_bounded="true",
+        c5_tail_named="true",
+        c6_reward_rationale="true",
+    )
+    return ProgramRecord(
+        id=pid,
+        name=pid,
+        official_source_url="https://ex",
+        secondary_url=None,
+        observed_at=datetime.now(UTC).date(),
+        snapshot_sha256="deadbeef" * 8,
+        distribution_mechanism=Mechanism.FIXED_PER_IDENTITY_CAP,
+        reward_type=RewardType.ANNOUNCED_FIXED_TOKEN,
+        capital_required="test",
+        lockup_vesting="",
+        eligibility_window="",
+        kyc_required=False,
+        jurisdiction_restrictions=False,
+        sybil_policy="",
+        chains_contracts="",
+        exit_liquidity="",
+        tail_risks=[],
+        classification=tier,
+        classification_reason="test",
+        selection_criteria=sel,
+        verification_status="MECH",
+        live_round_status=live,
+        review_expiry=datetime.now(UTC).date(),
+    )
+
+
+def _mk_cap(pid: str, intent_sha: str = "good") -> CaptureRecord:
+    tmp = Path(tempfile.mkdtemp()) / f"test-{pid}.raw"
+    content = b"unit-test-evidence-bytes-" + os.urandom(16) if "wrong" not in intent_sha.lower() else b"wrong-content-to-make-ensure-pass-but-hash-mismatch-later"
+    tmp.write_bytes(content)
+    use_sha = "WRONG" if "wrong" in intent_sha.lower() else "fixedshaforpositiveunit" + os.urandom(4).hex()
+    return CaptureRecord(
+        id=pid,
+        snapshot_sha256=use_sha,
+        captured_at=datetime.now(UTC),
+        raw_path=str(tmp),
+        source_url="https://ex",
+    )
+
+
+def _mk_ver(
+    pid: str, sha: str, terms=True, live_o=True, dec=ReviewerDecision.APPROVED
+) -> VerificationRecord:
+    return VerificationRecord(
+        id=pid,
+        snapshot_sha256=sha,
+        terms_match_snapshot=terms,
+        live_round_open=live_o,
+        reviewer_decision=dec,
+        verified_at=datetime.now(UTC),
+    )
+
+
+def _mk_ev(pid: str, cap: float = 80.0, readiness="READY") -> EVInputsRecord:
+    inp = EVScenarioInputs(
+        p_eligibility=0.8,
+        p_distribution=0.7,
+        reward_qty=100.0,
+        realizable_price=0.5,
+        liquidity_vesting_haircut=0.6,
+        base_yield=10.0,
+        gas_bridge_fees=2.0,
+        capital=cap,
+        days=10.0,
+        benchmark_apy=0.05,
+        expected_loss_reserve=1.0,
+        manual_hours=1.0,
+        hourly_rate=10.0,
+        reward_announced=True,
+    )
+    return EVInputsRecord(
+        id=pid,
+        inputs=inp,
+        reward_type=RewardType.ANNOUNCED_FIXED_TOKEN,
+        readiness=readiness,
+        provenance={"capital": "test"},
+    )
+
+
+def test_verification_must_bind_hash_and_id():
+    rec = _mk_rec("p1")
+    cap = _mk_cap("p1", "good")
+    # ver with different sha to hit mismatch after ensure passes
+    ver = _mk_ver("p1", "WRONG")
+    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
+        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": _mk_ev("p1")})
+    assert res.status == Actionability.BLOCKED_UNVERIFIED
+    assert "hash" in res.reason.lower() or "match" in res.reason.lower()
+
+
+def test_positive_actionability_path_with_approved_verif_real_capital_ready_ev():
+    rec = _mk_rec("p1")
+    cap = _mk_cap("p1", "good")
+    actual_sha = cap.snapshot_sha256
+    ver = _mk_ver("p1", actual_sha, terms=True, live_o=True, dec=ReviewerDecision.APPROVED)
+    ev = _mk_ev("p1", cap=80.0, readiness="READY")
+    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
+        res = check_actionability(
+            rec, {"p1": cap}, {"p1": ver}, {"p1": ev}, ledger=[{"id": "other", "usd": 10}]
+        )
+    assert res.status == Actionability.ACTIONABLE
+
+
+def test_blocks_on_pending_reviewer_decision():
+    rec = _mk_rec("p1")
+    cap = _mk_cap("p1", "good")
+    actual_sha = cap.snapshot_sha256
+    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.PENDING)
+    ev = _mk_ev("p1")
+    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
+        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    assert res.status == Actionability.BLOCKED_UNVERIFIED
+    assert "PENDING" in res.reason
+
+
+def test_ev_unready_blocks_promotion():
+    rec = _mk_rec("p1")
+    cap = _mk_cap("p1", "good")
+    actual_sha = cap.snapshot_sha256
+    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.APPROVED)
+    ev = _mk_ev("p1", readiness="UNREADY")
+    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
+        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    assert res.status == Actionability.BLOCKED_PROMOTION
+    assert "UNREADY" in res.reason or "unready" in res.reason.lower()
+
+
+def test_missing_capital_blocks_caps():
+    rec = _mk_rec("p1")
+    cap = _mk_cap("p1", "good")
+    actual_sha = cap.snapshot_sha256
+    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.APPROVED)
+    ev = _mk_ev("p1", cap=0.0, readiness="READY")
+    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
+        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    assert res.status == Actionability.BLOCKED_CAPS
+    assert "capital" in res.reason.lower()
+
+
+def test_load_ledger_supplied_missing_raises():
+    with pytest.raises(Exception) as exc:  # ValidationError
+        load_ledger("/tmp/does-not-exist-for-test-xyz.yaml")
+    assert "does not exist" in str(exc.value) or "missing" in str(exc.value).lower()
+
+
+def test_verif_supersedes_registry_unverified():
+    rec = _mk_rec("p1", live="UNVERIFIED")  # stale registry
+    cap = _mk_cap("p1", "good")
+    actual_sha = cap.snapshot_sha256
+    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.APPROVED, live_o=True)
+    ev = _mk_ev("p1")
+    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
+        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    assert res.status == Actionability.ACTIONABLE  # supersedes

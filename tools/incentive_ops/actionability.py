@@ -75,15 +75,20 @@ def _is_verified(
         return False, f"raw evidence fail: {e}"
     if ver is None:
         return False, "no verification sidecar"
+    # Cryptographic + identity binding to capture (blocker #2)
+    if ver.id != rec.id:
+        return False, "verification id does not match record"
+    if cap is not None and ver.snapshot_sha256 != cap.snapshot_sha256:
+        return False, "verification snapshot_sha256 does not match capture"
+    if ver.snapshot_sha256 == "PENDING_TOOL_CAPTURE":
+        return False, "verification has no real snapshot hash"
     if not ver.terms_match_snapshot:
         return False, "terms do not match snapshot"
     if not ver.live_round_open:
         return False, "live_round not open per verification"
     if ver.reviewer_decision != ReviewerDecision.APPROVED:
         return False, f"reviewer_decision={ver.reviewer_decision} (must be APPROVED)"
-    # still respect some registry live status as additional signal
-    if rec.live_round_status in ("UNVERIFIED", "NOT_LIVE_REFERENCE_ONLY", "NOT_A_REAL_PROGRAM"):
-        return False, f"live_round_status={rec.live_round_status}"
+    # Verif sidecar supersedes stale registry live_round_status (blocker #5)
     return True, "verified"
 
 
@@ -120,7 +125,7 @@ def check_actionability(
 ) -> ActionabilityResult:
     """Core gate. Rewired for typed verif + EV sidecars + reviewer + actual capital + durable raw.
 
-    proposed_capital: real amount for this rec (0.0 or from ev_inputs for Day-0 sim; no hard 100).
+    proposed_capital / ev sidecar capital used; missing/<=0 blocks caps.
     """
     captures = captures or {}
     verifications = verifications or {}
@@ -158,24 +163,39 @@ def check_actionability(
     # 4. Promotion? (typed base EV from sidecar inputs, remove base_ev_positive=False)
     base_ev = 0.0
     if evrec is not None:
-        try:
-            ev_res = compute_ev(evrec.inputs, reward_type=evrec.reward_type)
-            base_ev = float(ev_res.get("net_ev", 0.0))
-        except Exception as e:
-            logger.warning("ev compute fail for %s: %s", rec.id, e)
+        if getattr(evrec, "readiness", "UNREADY") != "READY":
+            base_ev = 0.0  # UNREADY / unknown inputs do not contribute positive EV (blocker #4)
+        else:
+            try:
+                ev_res = compute_ev(evrec.inputs, reward_type=evrec.reward_type)
+                base_ev = float(ev_res.get("net_ev", 0.0))
+            except Exception as e:
+                logger.warning("ev compute fail for %s: %s", rec.id, e)
     if not _passes_promotion(rec, base_ev):
+        reason = f"selection criteria or base EV={base_ev:.2f} failed"
+        if evrec and getattr(evrec, "readiness", "") != "READY":
+            reason += " (EV inputs UNREADY)"
         return ActionabilityResult(
             status=Actionability.BLOCKED_PROMOTION,
-            reason=f"selection criteria or base EV={base_ev:.2f} failed",
-            details={"id": rec.id, "base_ev": base_ev},
+            reason=reason,
+            details={
+                "id": rec.id,
+                "base_ev": base_ev,
+                "readiness": getattr(evrec, "readiness", None) if evrec else None,
+            },
         )
 
-    # 5. Caps? use actual proposed capital (no 100 placeholder)
-    usd = (
-        proposed_capital
-        if proposed_capital is not None
-        else (evrec.inputs.capital if evrec else 0.0)
-    )
+    # 5. Caps? use EV-sidecar capital; missing or <=0 must block (blocker #3)
+    if evrec is not None:
+        usd = evrec.inputs.capital
+    else:
+        usd = proposed_capital if proposed_capital is not None else None
+    if usd is None or usd <= 0:
+        return ActionabilityResult(
+            status=Actionability.BLOCKED_CAPS,
+            reason="missing or non-positive capital; cannot evaluate caps",
+            details={"id": rec.id, "proposed_usd": usd},
+        )
     cap_check = validate_caps(ledger or [], {"id": rec.id, "usd": usd}, caps)
     if not cap_check.ok:
         return ActionabilityResult(
@@ -210,7 +230,9 @@ def check_all_actionability(
     led = ledger if ledger is not None else []
     out: dict[str, ActionabilityResult] = {}
     for rec in records:
-        # For Day-0: proposed_capital=0 (no capital), rely on PENDING to block
+        evrec = ev_dict.get(rec.id)
+        # Use EV-sidecar capital for meaningful cap eval; missing/zero will block in caps gate (blocker #3)
+        prop_cap = evrec.inputs.capital if evrec else None
         out[rec.id] = check_actionability(
             rec,
             caps_dict,
@@ -218,7 +240,7 @@ def check_all_actionability(
             ev_dict,
             led,
             caps,
-            proposed_capital=0.0,
+            proposed_capital=prop_cap,
         )
     return out
 

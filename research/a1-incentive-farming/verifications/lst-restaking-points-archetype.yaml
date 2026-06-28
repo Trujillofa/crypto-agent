@@ -1,8 +1,9 @@
 id: lst-restaking-points-archetype
-verified_at: '2026-06-27T23:55:41.500308+00:00'
-snapshot_sha256: PENDING_TOOL_CAPTURE
+verified_at: '2026-06-28T01:00:05.381912+00:00'
+snapshot_sha256: 87558bfd0e2761e042a6513f7be5785e952ff4dc18a4e00a5857c7e9f06b6476
 terms_match_snapshot: true
-live_round_open: false
+live_round_open: true
 reviewer_decision: PENDING
-raw_evidence_path: research/a1-incentive-farming/snapshots/lst-restaking-points-archetype/
-notes: Day-0 paper inventory; decision PENDING per ops requirements. No capital.
+raw_evidence_path: research/a1-incentive-farming/snapshots/lst-restaking-points-archetype/20260627T225651Z.raw
+notes: 'Corrected: pending use PENDING+terms=false+verified_at=None; captured bind
+  exact sha+raw path'

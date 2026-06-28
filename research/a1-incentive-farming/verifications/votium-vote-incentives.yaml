@@ -1,8 +1,9 @@
 id: votium-vote-incentives
-verified_at: '2026-06-27T23:55:41.500308+00:00'
-snapshot_sha256: PENDING_TOOL_CAPTURE
+verified_at: '2026-06-28T01:00:05.384156+00:00'
+snapshot_sha256: cde097204363f00ceb1ae89195daea5e008e399a11a740649641eaa66c902149
 terms_match_snapshot: true
-live_round_open: false
+live_round_open: true
 reviewer_decision: PENDING
-raw_evidence_path: research/a1-incentive-farming/snapshots/votium-vote-incentives/
-notes: Day-0 paper inventory; decision PENDING per ops requirements. No capital.
+raw_evidence_path: research/a1-incentive-farming/snapshots/votium-vote-incentives/20260627T225652Z.raw
+notes: 'Corrected: pending use PENDING+terms=false+verified_at=None; captured bind
+  exact sha+raw path'
