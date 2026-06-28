@@ -101,9 +101,12 @@ def ensure_raw_evidence(cap: CaptureRecord) -> bytes:
 def _write_raw_snapshot(pid: str, captured_at: datetime, raw: bytes) -> Path:
     _ensure_dirs()
     ts = captured_at.strftime("%Y%m%dT%H%M%SZ")
+    sha_short = hashlib.sha256(raw).hexdigest()[:16]
     pid_dir = SNAPSHOTS_ROOT / pid
     pid_dir.mkdir(parents=True, exist_ok=True)
-    out = pid_dir / f"{ts}.raw"
+    out = pid_dir / f"{ts}_{sha_short}.raw"
+    if out.exists():
+        return out
     out.write_bytes(raw)
     return out
 
