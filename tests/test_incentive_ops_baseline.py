@@ -61,6 +61,10 @@ def baseline_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, P
     for d in (runs, captures, snapshots, verifications, ev_inputs):
         d.mkdir(parents=True, exist_ok=True)
 
+    verif_src = Path("research/a1-incentive-farming/verifications")
+    for yf in verif_src.glob("*.yaml"):
+        (verifications / yf.name).write_text(yf.read_text(encoding="utf-8"), encoding="utf-8")
+
     monkeypatch.chdir(repo)
     monkeypatch.setattr(blmod, "RUNS_ROOT", runs)
     monkeypatch.setattr(blmod, "REGISTRY_PATH", str(reg_dst))
@@ -540,3 +544,92 @@ def test_reject_non_positive_days():
     result = runner.invoke(cli, ["baseline", "start", "--days", "0"])
     assert result.exit_code == 1
     assert "must be positive" in result.output
+
+
+def _approved_sidecar(pid: str = "coinlist-token-sale") -> VerificationRecord:
+    return VerificationRecord(
+        id=pid,
+        snapshot_sha256="deadbeef",
+        terms_match_snapshot=True,
+        live_round_open=True,
+        reviewer_decision=ReviewerDecision.APPROVED,
+        verified_at=FIXED_NOW,
+        raw_evidence_path="fake",
+        official_round_terms_url="https://coinlist.co/token-launches",
+        captured_source_url="https://coinlist.co/token-launches",
+        jurisdiction_status=JurisdictionStatus.ELIGIBLE,
+    )
+
+
+def _read_reviewer_decision(verifications_dir: Path, pid: str) -> str:
+    data = yaml.safe_load((verifications_dir / f"{pid}.yaml").read_text(encoding="utf-8"))
+    return str(data["reviewer_decision"])
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_tick_fails_on_approved_sidecar_without_overwriting(mock_fetch, baseline_env):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    baseline_start(duration_days=14, now=FIXED_NOW)
+    write_verification_sidecar(_approved_sidecar())
+
+    with pytest.raises(BaselineError, match="invariant violations"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=1))
+
+    assert (
+        _read_reviewer_decision(baseline_env["verifications"], "coinlist-token-sale") == "APPROVED"
+    )
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_close_fails_on_approved_sidecar_without_overwriting(mock_fetch, baseline_env):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    baseline_start(duration_days=14, now=FIXED_NOW)
+    write_verification_sidecar(_approved_sidecar())
+
+    with pytest.raises(BaselineError, match="invariant violations"):
+        baseline_close(abort=True, now=FIXED_NOW + timedelta(hours=1))
+
+    assert (
+        _read_reviewer_decision(baseline_env["verifications"], "coinlist-token-sale") == "APPROVED"
+    )
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_missing_frozen_verification_sidecar_is_invariant_violation(mock_fetch, baseline_env):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    baseline_start(duration_days=14, now=FIXED_NOW)
+    (baseline_env["verifications"] / "binance-launchpool.yaml").unlink()
+
+    st = baseline_status(now=FIXED_NOW + timedelta(hours=1))
+    assert any(
+        "binance-launchpool: missing verification sidecar" in v for v in st["invariant_violations"]
+    )
+
+    with pytest.raises(BaselineError, match="missing verification sidecar"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=2))
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+@patch("tools.incentive_ops.baseline._write_day0_report")
+def test_day0_report_failure_never_persists_running(mock_report, mock_fetch, baseline_env):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+    mock_report.side_effect = OSError("simulated report write failure")
+
+    with pytest.raises(BaselineError, match="simulated report write failure"):
+        baseline_start(duration_days=14, now=FIXED_NOW)
+
+    manifest_path = next(baseline_env["runs"].glob("*/manifest.yaml"))
+    data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    assert data["status"] != "RUNNING"
+    assert data["status"] == "ABORTED"

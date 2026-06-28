@@ -286,12 +286,13 @@ _INVARIANT_EXPECTATIONS: dict[str, bool] = {
 
 
 def _check_reviewer_decisions_locked(frozen_ids: list[str]) -> list[str]:
-    """Inspect verification sidecars; none of the frozen universe may be APPROVED."""
+    """Inspect all frozen verification sidecars; each must exist and be PENDING."""
     vers = load_verifications()
     violations: list[str] = []
     for pid in frozen_ids:
         ver = vers.get(pid)
         if ver is None:
+            violations.append(f"{pid}: missing verification sidecar")
             continue
         if ver.reviewer_decision != ReviewerDecision.PENDING:
             violations.append(f"{pid}: reviewer_decision={ver.reviewer_decision} (must be PENDING)")
@@ -306,6 +307,12 @@ def _assert_invariants(manifest: dict[str, Any]) -> list[str]:
     if manifest.get("reviewer_decisions_locked_pending"):
         violations.extend(_check_reviewer_decisions_locked(manifest.get("frozen_program_ids", [])))
     return violations
+
+
+def _require_invariants(manifest: dict[str, Any]) -> None:
+    violations = _assert_invariants(manifest)
+    if violations:
+        raise BaselineError(f"invariant violations: {violations}")
 
 
 def _require_all_active_captures(capture_result: CaptureTickResult, active_ids: list[str]) -> None:
@@ -324,6 +331,7 @@ def _capture_active_subset(
     result = CaptureTickResult()
     id_set = set(active_ids)
     prior = load_captures()
+    existing_vers = load_verifications()
     for rec in records:
         if rec.id not in id_set:
             continue
@@ -340,8 +348,9 @@ def _capture_active_subset(
                 result.hash_changed.append(rec.id)
             else:
                 result.hash_unchanged.append(rec.id)
-            ver = _make_pending_verification(cap)
-            write_verification_sidecar(ver)
+            existing = existing_vers.get(rec.id)
+            if existing is None or existing.reviewer_decision == ReviewerDecision.PENDING:
+                write_verification_sidecar(_make_pending_verification(cap))
         except (CaptureError, Exception) as e:
             result.failures[rec.id] = str(e)
             logger.warning("capture failed %s: %s", rec.id, e)
@@ -568,23 +577,22 @@ def baseline_start(*, duration_days: int = 14, now: datetime | None = None) -> d
             if gate_result.get("actionable_program_ids"):
                 raise BaselineError("ACTIONABLE records after gates")
 
-            violations = _assert_invariants(manifest)
-            if violations:
-                raise BaselineError(f"invariant violations before RUNNING: {violations}")
+            _require_invariants(manifest)
 
-            manifest["status"] = "RUNNING"
-            save_manifest(manifest_path, manifest)
-
+            running_manifest = dict(manifest)
+            running_manifest["status"] = "RUNNING"
             _write_observation(
                 run_dir,
                 kind="day-0",
                 capture_result=capture_result,
                 gate_result=gate_result,
-                manifest=manifest,
+                manifest=running_manifest,
                 now=now,
             )
-            _write_day0_report(run_dir, manifest, capture_result, gate_result)
+            _write_day0_report(run_dir, running_manifest, capture_result, gate_result)
 
+            manifest["status"] = "RUNNING"
+            save_manifest(manifest_path, manifest)
             logger.info("baseline %s started RUNNING", run_id)
             return manifest
         except Exception as e:
@@ -631,6 +639,7 @@ def baseline_tick(*, now: datetime | None = None) -> dict[str, Any]:
         raise BaselineError("rule_changes_allowed is true; refuse tick")
 
     _verify_frozen_artifacts(manifest)
+    _require_invariants(manifest)
     now = now or datetime.now(UTC)
     records, _ = load_registry(REGISTRY_PATH, warn=False)
 
@@ -723,10 +732,9 @@ def baseline_close(*, abort: bool = False, now: datetime | None = None) -> dict[
             f"planned end {_iso_utc(planned_end)} not reached; use --abort to close early"
         )
 
+    _require_invariants(manifest)
     tick_result = baseline_tick(now=now)
     violations = _assert_invariants(manifest)
-    if violations:
-        raise BaselineError(f"invariant violations: {violations}")
 
     gate_result = tick_result["gates"]
     capture_result: CaptureTickResult = tick_result["captures"]
