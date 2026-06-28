@@ -14,6 +14,13 @@ from src.utils.logger import configure_logger, get_logger
 
 from .accounting import load_ledger, realized_report, validate_caps
 from .actionability import main_actionability
+from .baseline import (
+    BaselineError,
+    baseline_close,
+    baseline_start,
+    baseline_status,
+    baseline_tick,
+)
 from .capture import capture_all
 from .classify import check_classification
 from .deadlines import main_deadlines
@@ -212,6 +219,78 @@ def cmd_report(ledger: str | None) -> None:
     click.echo(f"report: {rpt}")
     if ledger:
         click.echo(f"  loaded from {ledger}")
+
+
+@cli.group("baseline")
+def baseline_group() -> None:
+    """Phase-0 14-day baseline orchestrator (atomic start, no capital)."""
+
+
+@baseline_group.command("start")
+@click.option("--days", default=14, type=int, help="Baseline duration in days")
+def cmd_baseline_start(days: int) -> None:
+    """Atomically freeze universe, capture, gate, and begin RUNNING baseline."""
+    try:
+        manifest = baseline_start(duration_days=days)
+        click.echo(f"Baseline started: {manifest['run_id']}")
+        click.echo(f"  status={manifest['status']}")
+        click.echo(f"  window={manifest['started_at_utc']} → {manifest['planned_end_at_utc']}")
+        click.echo(f"  active_research={len(manifest['active_research_program_ids'])}")
+        click.echo(f"  controls={len(manifest['control_program_ids'])}")
+        sys.exit(0)
+    except BaselineError as e:
+        click.echo(f"BASELINE START FAIL: {e}", err=True)
+        sys.exit(1)
+
+
+@baseline_group.command("tick")
+def cmd_baseline_tick() -> None:
+    """Refetch active-research sources and record one observation."""
+    try:
+        result = baseline_tick()
+        caps = result["captures"]
+        click.echo(f"Tick OK: observation={result['observation']}")
+        click.echo(f"  successes={len(caps.successes)} failures={len(caps.failures)}")
+        click.echo(f"  hash_changed={caps.hash_changed}")
+        sys.exit(0)
+    except BaselineError as e:
+        click.echo(f"BASELINE TICK FAIL: {e}", err=True)
+        sys.exit(1)
+
+
+@baseline_group.command("status")
+def cmd_baseline_status() -> None:
+    """Report elapsed/remaining time and gate counts for the baseline."""
+    try:
+        st = baseline_status()
+        m = st["manifest"]
+        click.echo(f"=== baseline status ({st['status_note']}) ===")
+        click.echo(f"run_id={m['run_id']} status={m['status']}")
+        click.echo(f"elapsed={st['elapsed_seconds']}s remaining={st['remaining_seconds']}s")
+        click.echo(f"verification={st['verification_counts']}")
+        click.echo(f"ev={st['ev_counts']}")
+        click.echo(f"actionability={st['actionability_counts']}")
+        if st["invariant_violations"]:
+            click.echo(f"INVARIANT VIOLATIONS: {st['invariant_violations']}")
+        sys.exit(0)
+    except BaselineError as e:
+        click.echo(f"BASELINE STATUS FAIL: {e}", err=True)
+        sys.exit(1)
+
+
+@baseline_group.command("close")
+@click.option("--abort", is_flag=True, help="Close before planned end (marks ABORTED)")
+def cmd_baseline_close(abort: bool) -> None:
+    """Run final tick, write final.md, set COMPLETE or ABORTED."""
+    try:
+        result = baseline_close(abort=abort)
+        m = result["manifest"]
+        click.echo(f"Baseline closed: {m['run_id']} status={m['status']}")
+        click.echo(f"  ended_at={m['actual_end_at_utc']}")
+        sys.exit(0)
+    except BaselineError as e:
+        click.echo(f"BASELINE CLOSE FAIL: {e}", err=True)
+        sys.exit(1)
 
 
 @cli.command("caps-check")
