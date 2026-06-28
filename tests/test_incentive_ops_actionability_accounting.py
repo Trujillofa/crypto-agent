@@ -10,12 +10,12 @@ import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from tools.incentive_ops.accounting import load_ledger, validate_caps
 from tools.incentive_ops.actionability import check_actionability, check_all_actionability
+from tools.incentive_ops.capture import _compute_sha256
 from tools.incentive_ops.types import (
     Actionability,
     CaptureRecord,
@@ -116,9 +116,17 @@ def _mk_rec(
 
 def _mk_cap(pid: str, intent_sha: str = "good") -> CaptureRecord:
     tmp = Path(tempfile.mkdtemp()) / f"test-{pid}.raw"
-    content = b"unit-test-evidence-bytes-" + os.urandom(16) if "wrong" not in intent_sha.lower() else b"wrong-content-to-make-ensure-pass-but-hash-mismatch-later"
+    content = (
+        b"unit-test-evidence-bytes-" + os.urandom(16)
+        if "wrong" not in intent_sha.lower()
+        else b"wrong-content-to-make-ensure-pass-but-hash-mismatch-later"
+    )
     tmp.write_bytes(content)
-    use_sha = "WRONG" if "wrong" in intent_sha.lower() else "fixedshaforpositiveunit" + os.urandom(4).hex()
+    use_sha = (
+        "WRONG"
+        if "wrong" in intent_sha.lower()
+        else "fixedshaforpositiveunit" + os.urandom(4).hex()
+    )
     return CaptureRecord(
         id=pid,
         snapshot_sha256=use_sha,
@@ -167,62 +175,103 @@ def _mk_ev(pid: str, cap: float = 80.0, readiness="READY") -> EVInputsRecord:
     )
 
 
-def test_verification_must_bind_hash_and_id():
+def test_verification_must_bind_hash_and_id(tmp_path):
     rec = _mk_rec("p1")
-    cap = _mk_cap("p1", "good")
-    # ver with different sha to hit mismatch after ensure passes
+    # real bytes for ensure, actual sha for cap; ver uses different to trigger bind fail
+    rawf = tmp_path / "bind.raw"
+    rawf.write_bytes(b"bind-test-bytes-for-sha-mismatch")
+    act_sha = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act_sha,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="ex",
+    )
     ver = _mk_ver("p1", "WRONG")
-    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
-        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": _mk_ev("p1")})
+    # no patch on ensure; will pass bytes, fail on ver sha != cap sha
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": _mk_ev("p1")})
     assert res.status == Actionability.BLOCKED_UNVERIFIED
     assert "hash" in res.reason.lower() or "match" in res.reason.lower()
 
 
-def test_positive_actionability_path_with_approved_verif_real_capital_ready_ev():
+def test_positive_actionability_path_with_approved_verif_real_capital_ready_ev(tmp_path):
+    """Full binding path with real bytes + actual computed SHA, no mock for ensure (blocker #7)."""
     rec = _mk_rec("p1")
-    cap = _mk_cap("p1", "good")
-    actual_sha = cap.snapshot_sha256
+    # real bytes + actual sha
+    raw_file = tmp_path / "real-round-terms.raw"
+    content = b"official-round-terms-page-content-for-test-evidence-0123456789abcdef"
+    raw_file.write_bytes(content)
+    actual_sha = _compute_sha256(content)
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=actual_sha,
+        captured_at=datetime.now(UTC),
+        raw_path=str(raw_file),
+        source_url="https://ex",
+    )
     ver = _mk_ver("p1", actual_sha, terms=True, live_o=True, dec=ReviewerDecision.APPROVED)
     ev = _mk_ev("p1", cap=80.0, readiness="READY")
-    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
-        res = check_actionability(
-            rec, {"p1": cap}, {"p1": ver}, {"p1": ev}, ledger=[{"id": "other", "usd": 10}]
-        )
+    # NO patch -- full real evidence + sha bind + ensure
+    res = check_actionability(
+        rec, {"p1": cap}, {"p1": ver}, {"p1": ev}, ledger=[{"id": "other", "usd": 10}]
+    )
     assert res.status == Actionability.ACTIONABLE
 
 
-def test_blocks_on_pending_reviewer_decision():
+def test_blocks_on_pending_reviewer_decision(tmp_path):
     rec = _mk_rec("p1")
-    cap = _mk_cap("p1", "good")
-    actual_sha = cap.snapshot_sha256
-    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.PENDING)
+    rawf = tmp_path / "pending.raw"
+    rawf.write_bytes(b"pending-decision-test-bytes")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="ex",
+    )
+    ver = _mk_ver("p1", act, dec=ReviewerDecision.PENDING)
     ev = _mk_ev("p1")
-    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
-        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.BLOCKED_UNVERIFIED
     assert "PENDING" in res.reason
 
 
-def test_ev_unready_blocks_promotion():
+def test_ev_unready_blocks_promotion(tmp_path):
     rec = _mk_rec("p1")
-    cap = _mk_cap("p1", "good")
-    actual_sha = cap.snapshot_sha256
-    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.APPROVED)
+    rawf = tmp_path / "unready.raw"
+    rawf.write_bytes(b"unready-ev-test-bytes")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="ex",
+    )
+    ver = _mk_ver("p1", act, dec=ReviewerDecision.APPROVED)
     ev = _mk_ev("p1", readiness="UNREADY")
-    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
-        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.BLOCKED_PROMOTION
     assert "UNREADY" in res.reason or "unready" in res.reason.lower()
 
 
-def test_missing_capital_blocks_caps():
+def test_missing_capital_blocks_caps(tmp_path):
     rec = _mk_rec("p1")
-    cap = _mk_cap("p1", "good")
-    actual_sha = cap.snapshot_sha256
-    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.APPROVED)
+    rawf = tmp_path / "cap.raw"
+    rawf.write_bytes(b"cap0-test-bytes")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="ex",
+    )
+    ver = _mk_ver("p1", act, dec=ReviewerDecision.APPROVED)
     ev = _mk_ev("p1", cap=0.0, readiness="READY")
-    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
-        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.BLOCKED_CAPS
     assert "capital" in res.reason.lower()
 
@@ -233,12 +282,19 @@ def test_load_ledger_supplied_missing_raises():
     assert "does not exist" in str(exc.value) or "missing" in str(exc.value).lower()
 
 
-def test_verif_supersedes_registry_unverified():
+def test_verif_supersedes_registry_unverified(tmp_path):
     rec = _mk_rec("p1", live="UNVERIFIED")  # stale registry
-    cap = _mk_cap("p1", "good")
-    actual_sha = cap.snapshot_sha256
-    ver = _mk_ver("p1", actual_sha, dec=ReviewerDecision.APPROVED, live_o=True)
+    rawf = tmp_path / "super.raw"
+    rawf.write_bytes(b"supersede-registry-test")
+    act = _compute_sha256(rawf.read_bytes())
+    cap = CaptureRecord(
+        id="p1",
+        snapshot_sha256=act,
+        captured_at=datetime.now(UTC),
+        raw_path=str(rawf),
+        source_url="ex",
+    )
+    ver = _mk_ver("p1", act, dec=ReviewerDecision.APPROVED, live_o=True)
     ev = _mk_ev("p1")
-    with patch("tools.incentive_ops.actionability.ensure_raw_evidence", return_value=b"dummy"):
-        res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
+    res = check_actionability(rec, {"p1": cap}, {"p1": ver}, {"p1": ev})
     assert res.status == Actionability.ACTIONABLE  # supersedes

@@ -1,9 +1,16 @@
 id: galxe-quests-oat
-verified_at: '2026-06-28T01:00:05.367675+00:00'
+verified_at: '2026-06-28T01:11:45.123756+00:00'
 snapshot_sha256: 12694673504f4dad43d60eddc6f777ccc59dcf11a65b9c499f0c4c7f6c0aae2e
-terms_match_snapshot: true
-live_round_open: true
+terms_match_snapshot: false
+live_round_open: false
 reviewer_decision: PENDING
 raw_evidence_path: research/a1-incentive-farming/snapshots/galxe-quests-oat/20260627T225648Z.raw
-notes: 'Corrected: pending use PENDING+terms=false+verified_at=None; captured bind
-  exact sha+raw path'
+official_round_terms_url: null
+captured_source_url: https://www.galxe.com/
+jurisdiction_status: maybe
+eligibility_open: null
+eligibility_close: null
+claim_date: null
+vesting_end: null
+notes: 'Schema extended per review #5. New fields null until round-specific human
+  audit. Captured terms/live=false per #4.'

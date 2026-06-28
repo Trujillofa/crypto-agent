@@ -339,6 +339,8 @@ class VerificationRecord:
     reviewer_decision must be APPROVED (and other flags true) to pass verified gate.
     PENDING forces non-ACTIONABLE per Day-0 rules.
     raw_evidence_path ensures durable bytes (hash alone insufficient).
+
+    Added fields (blocker #5): round-specific URLs, jurisdiction, key dates for auditing live_round_open.
     """
 
     id: str
@@ -348,6 +350,13 @@ class VerificationRecord:
     reviewer_decision: ReviewerDecision
     verified_at: datetime | None = None
     raw_evidence_path: str | None = None
+    official_round_terms_url: str | None = None
+    captured_source_url: str | None = None
+    jurisdiction_status: str | None = None
+    eligibility_open: date | None = None
+    eligibility_close: date | None = None
+    claim_date: date | None = None
+    vesting_end: date | None = None
     notes: str | None = None
 
 

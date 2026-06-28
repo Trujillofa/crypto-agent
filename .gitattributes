@@ -1,0 +1,5 @@
+# Mark large raw HTML snapshots as binary to avoid diff --check and text mangling
+research/a1-incentive-farming/snapshots/**/*.raw binary
+# Also protect other binary-ish research artifacts if added
+research/a1-incentive-farming/snapshots/** binary
+*.raw binary

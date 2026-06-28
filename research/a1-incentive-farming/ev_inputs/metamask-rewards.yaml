@@ -1,22 +1,46 @@
 id: metamask-rewards
-p_eligibility: 0.6
+p_eligibility: 0.55
 p_distribution: 0.45
-reward_qty: 70.0
-realizable_price: 0.35
-liquidity_vesting_haircut: 0.55
+reward_qty: 60.0
+realizable_price: 0.4
+liquidity_vesting_haircut: 0.5
 base_yield: 1.5
-gas_bridge_fees: 4.5
+gas_bridge_fees: 4.0
 capital: 60.0
 days: 14.0
 benchmark_apy: 0.05
-expected_loss_reserve: 6.0
+expected_loss_reserve: 5.0
 manual_hours: 2.0
-hourly_rate: 45.0
+hourly_rate: 40.0
 reward_announced: false
 reward_type: speculative_points
 readiness: UNREADY
 provenance:
-  p_eligibility: UNKNOWN (no measurement)
-  capital: from sidecar for caps eval
-  status: UNREADY placeholder - not evidence based
-notes: UNREADY + provenance
+  p_eligibility: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  p_distribution: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  reward_qty: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  realizable_price: UNKNOWN (no direct measurement at Day-0 capture; conservative
+    placeholder only; evidence required for READY)
+  liquidity_vesting_haircut: UNKNOWN (no direct measurement at Day-0 capture; conservative
+    placeholder only; evidence required for READY)
+  base_yield: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  gas_bridge_fees: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  capital: EV sidecar capital value for cap validation; sourced from sidecar for Day-0
+    structure
+  days: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  benchmark_apy: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  expected_loss_reserve: UNKNOWN (no direct measurement at Day-0 capture; conservative
+    placeholder only; evidence required for READY)
+  manual_hours: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  hourly_rate: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
+    only; evidence required for READY)
+  overall: All values UNREADY per review. Provenance now for every material input.
+notes: 'Complete per-input provenance (blocker #6)'

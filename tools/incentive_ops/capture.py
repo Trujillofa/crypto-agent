@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
@@ -30,6 +30,16 @@ from .types import (
     RewardType,
     VerificationRecord,
 )
+
+
+def _parse_optional_date(val: str | None) -> date | None:
+    if not val:
+        return None
+    try:
+        return date.fromisoformat(str(val).split("T")[0])
+    except Exception:
+        return None
+
 
 logger = get_logger(__name__)
 
@@ -211,6 +221,13 @@ def write_verification_sidecar(v: VerificationRecord) -> Path:
         "live_round_open": v.live_round_open,
         "reviewer_decision": str(v.reviewer_decision),
         "raw_evidence_path": v.raw_evidence_path,
+        "official_round_terms_url": v.official_round_terms_url,
+        "captured_source_url": v.captured_source_url,
+        "jurisdiction_status": v.jurisdiction_status,
+        "eligibility_open": v.eligibility_open.isoformat() if v.eligibility_open else None,
+        "eligibility_close": v.eligibility_close.isoformat() if v.eligibility_close else None,
+        "claim_date": v.claim_date.isoformat() if v.claim_date else None,
+        "vesting_end": v.vesting_end.isoformat() if v.vesting_end else None,
         "notes": v.notes,
     }
     out.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -251,6 +268,13 @@ def load_verifications(
                 live_round_open=bool(data.get("live_round_open", False)),
                 reviewer_decision=dec,
                 raw_evidence_path=data.get("raw_evidence_path"),
+                official_round_terms_url=data.get("official_round_terms_url"),
+                captured_source_url=data.get("captured_source_url"),
+                jurisdiction_status=data.get("jurisdiction_status"),
+                eligibility_open=_parse_optional_date(data.get("eligibility_open")),
+                eligibility_close=_parse_optional_date(data.get("eligibility_close")),
+                claim_date=_parse_optional_date(data.get("claim_date")),
+                vesting_end=_parse_optional_date(data.get("vesting_end")),
                 notes=data.get("notes"),
             )
         except Exception:

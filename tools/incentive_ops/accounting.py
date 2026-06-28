@@ -8,6 +8,7 @@ Real validated ledger parsing added for operational Day-0.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -152,13 +153,17 @@ def load_ledger(path: str | Path | None = None) -> list[dict[str, Any]]:
         if usd_f < 0:
             raise ValidationError(f"ledger entry {i} ({pid}) usd < 0")
 
-        # Validate every numeric field strictly (blocker #6)
-        for nf in ("gas_usd", "realized_usd", "hours"):
+        # Stricter (blocker #8): reject NaN/Inf; gas_usd/hours >=0; realized_usd may be negative (signed P&L)
+        for nf, allow_neg in [("gas_usd", False), ("realized_usd", True), ("hours", False)]:
             val = e.get(nf, e.get(nf.replace("_usd", ""), 0))
             try:
-                float(val)
+                fval = float(val)
             except Exception:
                 raise ValidationError(f"ledger entry {i} ({pid}) {nf} not numeric") from None
+            if math.isnan(fval) or math.isinf(fval):
+                raise ValidationError(f"ledger entry {i} ({pid}) {nf} is NaN or Inf")
+            if not allow_neg and fval < 0:
+                raise ValidationError(f"ledger entry {i} ({pid}) {nf} must be >= 0")
 
         entry = {
             "id": pid,
