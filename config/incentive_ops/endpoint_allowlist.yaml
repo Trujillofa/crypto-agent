@@ -8,8 +8,8 @@ allowed:
     path_prefixes: ["/token-launches", "/faq"]
   - host: "legion.cc"
     path_prefixes: ["/"]
-  - host: "www.binance.com"
-    path_prefixes: ["/en/learn-and-earn"]
+  - host: "academy.binance.com"
+    path_prefixes: ["/ur-PK/bitcoin"]
   - host: "launchpad.binance.com"
     path_prefixes: ["/en"]
   - host: "www.coinbase.com"

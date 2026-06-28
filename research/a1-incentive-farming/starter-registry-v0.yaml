@@ -98,7 +98,7 @@ programs:
 
   - id: binance-learn-and-earn
     name: Binance Learn & Earn (fixed reward per quiz, KYC)
-    official_source_url: https://www.binance.com/en/learn-and-earn
+    official_source_url: https://academy.binance.com/ur-PK/bitcoin
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
     distribution_mechanism: fixed_per_identity_cap
@@ -124,27 +124,28 @@ programs:
 
   - id: coinbase-learning-rewards
     name: Coinbase Learning Rewards (fixed reward per lesson, KYC)
-    official_source_url: https://www.coinbase.com/learning-rewards
+    official_source_url: https://help.coinbase.com/en/coinbase/getting-started/getting-started-with-coinbase/learning-rewards-faq-and-terms
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
     distribution_mechanism: fixed_per_identity_cap
     reward_type: announced_fixed_token
     capital_required: ~0
     lockup_vesting: none
-    eligibility_window: while available; region-gated
+    eligibility_window: ended 2025-05-27 (program discontinued)
     kyc_required: true
     jurisdiction_restrictions: true
     sybil_policy: KYC account, one per identity
     chains_contracts: exchange-custodied
     exit_liquidity: immediate
-    tail_risks: [region exclusion, small reward vs time]
+    tail_risks: [program ended, region exclusion, small reward vs time]
     classification: IN_CORE
-    classification_reason: Fixed per-identity reward for a task; capital-independent. Same class as Binance L&E.
+    classification_reason: Fixed per-identity reward for a task; capital-independent. Same class as Binance L&E. Program ended 2025-05-27 — frozen reference only.
     selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: true, c3_eligibility_public: true,
                          c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
     verification_status: MECHANISM_VERIFIED_2026-06-27
-    live_round_status: UNVERIFIED
+    live_round_status: NOT_LIVE_REFERENCE_ONLY
     review_expiry: 2026-07-11
+    notes: Coinbase discontinued Learning Rewards effective 2025-05-27 per official help notice.
 
   - id: fixed-threshold-airdrop-archetype
     name: Fixed-threshold eligibility airdrop (Jito-style ≥N points before cutoff)
@@ -250,7 +251,7 @@ programs:
 
   - id: kaito-yaps
     name: Kaito attention/yapper points
-    official_source_url: https://www.kaito.ai/
+    official_source_url: https://www.kaito.ai/mindshare-arena/voices
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
     distribution_mechanism: labor_task

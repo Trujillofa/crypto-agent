@@ -26,6 +26,9 @@ from tools.incentive_ops.types import (
 def test_allowlist_permits_fixture_hosts():
     assert is_allowed_url("https://coinlist.co/token-launches")
     assert is_allowed_url("https://layer3.xyz/")
+    assert is_allowed_url("https://academy.binance.com/ur-PK/bitcoin")
+    assert is_allowed_url("https://www.kaito.ai/mindshare-arena/voices")
+    assert not is_allowed_url("https://www.binance.com/en/learn-and-earn")
     assert not is_allowed_url("https://evil.com/steal")
 
 
