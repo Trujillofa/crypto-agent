@@ -313,8 +313,8 @@ def check_all_actionability(
     return out
 
 
-def main_actionability() -> dict[str, str]:
-    res = check_all_actionability()
+def main_actionability(ledger: list[dict] | None = None) -> dict[str, str]:
+    res = check_all_actionability(ledger=ledger)
     summary = {pid: str(r.status) for pid, r in res.items()}
     non_act = all(s != str(Actionability.ACTIONABLE) for s in summary.values())
     logger.info("actionability: all_non_actionable=%s count=%d", non_act, len(summary))
