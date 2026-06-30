@@ -120,8 +120,10 @@ def test_split_universe_active_vs_control():
     assert "coinlist-token-sale" in split.active_research_program_ids
     assert "layer3-quests" in split.active_research_program_ids
     assert "coinbase-learning-rewards" in split.control_program_ids
-    assert len(split.active_research_program_ids) == 6
-    assert len(split.control_program_ids) == 11
+    # binance-learn-and-earn is reference-only (no GET-able terms page) -> control
+    assert "binance-learn-and-earn" in split.control_program_ids
+    assert len(split.active_research_program_ids) == 5
+    assert len(split.control_program_ids) == 12
 
 
 @patch("tools.incentive_ops.baseline.fetch_raw")
