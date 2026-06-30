@@ -428,7 +428,9 @@ def test_approved_verification_sidecar_reports_invariant_violation(mock_fetch, b
 
 
 @patch("tools.incentive_ops.baseline.fetch_raw")
-def test_tick_rejects_handoff_spec_and_git_changes(mock_fetch, baseline_env, monkeypatch):
+def test_tick_rejects_handoff_and_spec_but_tolerates_git_change(
+    mock_fetch, baseline_env, monkeypatch
+):
     recs = _all_records()
     raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
     mock_fetch.side_effect = lambda url: raw[url]
@@ -449,10 +451,43 @@ def test_tick_rejects_handoff_spec_and_git_changes(mock_fetch, baseline_env, mon
     with pytest.raises(BaselineError, match="spec content changed"):
         baseline_tick(now=FIXED_NOW + timedelta(hours=2))
 
+    # An unrelated repo commit (different HEAD) must NOT break the baseline: the
+    # gate-logic surface is frozen by content hash, not the whole-repo git SHA.
     spec.write_text(spec_original, encoding="utf-8")
     monkeypatch.setattr(blmod, "_get_git_sha", lambda: "different-sha")
-    with pytest.raises(BaselineError, match="git revision changed"):
-        baseline_tick(now=FIXED_NOW + timedelta(hours=3))
+    result = baseline_tick(now=FIXED_NOW + timedelta(hours=3))
+    assert result["observation"]
+
+
+@patch("tools.incentive_ops.baseline.fetch_raw")
+def test_tick_rejects_tooling_and_allowlist_changes(
+    mock_fetch, baseline_env, tmp_path, monkeypatch
+):
+    recs = _all_records()
+    raw = {r.official_source_url: b"<html>x</html>" for r in recs if is_active_research(r)}
+    mock_fetch.side_effect = lambda url: raw[url]
+
+    # Point the frozen tooling/allowlist surface at controllable temp artifacts.
+    tool_dir = tmp_path / "tooling"
+    tool_dir.mkdir()
+    mod = tool_dir / "mod.py"
+    mod.write_text("RULES = 1\n", encoding="utf-8")
+    allowlist = tmp_path / "endpoint_allowlist.yaml"
+    allowlist.write_text("hosts: []\n", encoding="utf-8")
+    monkeypatch.setattr(blmod, "TOOLING_DIR", tool_dir)
+    monkeypatch.setattr(blmod, "ALLOWLIST_PATH", allowlist)
+
+    baseline_start(duration_days=14, now=FIXED_NOW)
+
+    # Mutating the gate-logic tooling aborts the run.
+    mod.write_text("RULES = 2  # changed\n", encoding="utf-8")
+    with pytest.raises(BaselineError, match="tooling content changed"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=1))
+
+    mod.write_text("RULES = 1\n", encoding="utf-8")
+    allowlist.write_text("hosts: [evil.example]\n", encoding="utf-8")
+    with pytest.raises(BaselineError, match="allowlist content changed"):
+        baseline_tick(now=FIXED_NOW + timedelta(hours=2))
 
 
 def test_same_second_raw_snapshots_do_not_collide(baseline_env):
