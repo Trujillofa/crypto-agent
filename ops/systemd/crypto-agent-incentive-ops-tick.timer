@@ -1,0 +1,10 @@
+[Unit]
+Description=Tick the crypto-agent A1 incentive-ops baseline daily
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 UTC
+Persistent=true
+Unit=crypto-agent-incentive-ops-tick.service
+
+[Install]
+WantedBy=timers.target
