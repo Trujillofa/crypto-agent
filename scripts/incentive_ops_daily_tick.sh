@@ -36,8 +36,17 @@ fi
 
 git commit -q -m "chore(incentive_ops): baseline tick $(date -u +%Y-%m-%d)
 
-Automated daily read-only observation of the A1 Phase-0 baseline (no capital, no
-push). Pushing tick commits remains a manual step.
+Automated daily read-only observation of the A1 Phase-0 baseline (no capital).
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
-echo "[$(ts)] tick committed on $(git rev-parse --abbrev-ref HEAD)"
+branch="$(git rev-parse --abbrev-ref HEAD)"
+echo "[$(ts)] tick committed on $branch"
+
+# Auto-push the observation. Fail loudly (no auto-rebase/merge) if the remote has
+# diverged, so a human resolves it rather than the timer guessing.
+if git push origin "HEAD:$branch"; then
+  echo "[$(ts)] pushed to origin/$branch"
+else
+  echo "[$(ts)] WARN: push failed (origin/$branch may have advanced); commit is local only. Resolve manually." >&2
+  exit 1
+fi
