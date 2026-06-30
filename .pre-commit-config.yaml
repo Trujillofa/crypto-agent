@@ -9,12 +9,16 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # Raw capture snapshots are byte-exact evidence bound by snapshot_sha256;
+      # text-munging hooks must never rewrite them or the hash binding breaks.
       - id: trailing-whitespace
+        exclude: ^research/a1-incentive-farming/snapshots/.*\.raw$
       - id: end-of-file-fixer
+        exclude: ^research/a1-incentive-farming/snapshots/.*\.raw$
       - id: check-yaml
       - id: check-json
       - id: check-added-large-files
         args: ['--maxkb=1000']
-        exclude: ^data/(tradfi|polymarket)/
+        exclude: ^(data/(tradfi|polymarket)/|research/a1-incentive-farming/snapshots/.*\.raw$)
       - id: debug-statements
       - id: check-merge-conflict

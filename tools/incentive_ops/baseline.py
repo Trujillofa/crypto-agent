@@ -57,6 +57,14 @@ REGISTRY_PATH = "research/a1-incentive-farming/starter-registry-v0.yaml"
 HANDOFF_PATH = "docs/specs/a1-phase0-tooling-handoff-v0.md"
 SPEC_PATH = "docs/specs/a1-incentive-farming-pilot-v0.md"
 
+# The actual gate-logic surface frozen for the duration of a baseline. We freeze
+# the tooling package + endpoint allowlist by *content hash* (not the whole-repo
+# git SHA) so unrelated commits in this multi-agent repo do not break ticks,
+# while any change to the rules that compute the gates still aborts the run.
+_PKG_DIR = Path(__file__).resolve().parent
+TOOLING_DIR = _PKG_DIR
+ALLOWLIST_PATH = _PKG_DIR.parents[1] / "config" / "incentive_ops" / "endpoint_allowlist.yaml"
+
 
 class BaselineError(RuntimeError):
     """Baseline orchestration failure (fail closed)."""
@@ -84,6 +92,25 @@ class CaptureTickResult:
 def _sha256_file(path: Path | str) -> str:
     p = Path(path)
     return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def _sha256_tree(root: Path | str, *, suffix: str = ".py") -> str:
+    """Deterministic content hash over every ``*<suffix>`` file under ``root``.
+
+    Path-sorted, includes each file's repo-relative path so renames/additions
+    change the digest; ``__pycache__`` is skipped. Used to freeze the gate-logic
+    tooling for a baseline window without coupling to the whole-repo git SHA.
+    """
+    root = Path(root)
+    h = hashlib.sha256()
+    for p in sorted(root.rglob(f"*{suffix}")):
+        if "__pycache__" in p.parts:
+            continue
+        h.update(p.relative_to(root).as_posix().encode())
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
 
 
 def _get_git_sha() -> str:
@@ -522,7 +549,9 @@ def _build_manifest_skeleton(
         "planned_end_at_utc": _iso_utc(planned_end),
         "actual_end_at_utc": None,
         "duration_days": duration_days,
-        "starting_git_sha": _get_git_sha(),
+        "starting_git_sha": _get_git_sha(),  # informational provenance only (not enforced)
+        "tooling_sha256": _sha256_tree(TOOLING_DIR),
+        "allowlist_sha256": _sha256_file(ALLOWLIST_PATH),
         "registry_path": REGISTRY_PATH,
         "registry_sha256": _sha256_file(REGISTRY_PATH),
         "handoff_path": HANDOFF_PATH,
@@ -628,8 +657,12 @@ def _verify_frozen_artifacts(manifest: dict[str, Any]) -> None:
     spec_path = manifest.get("spec_path", SPEC_PATH)
     if _sha256_file(spec_path) != manifest["spec_sha256"]:
         raise BaselineError("spec content changed since baseline start")
-    if _get_git_sha() != manifest["starting_git_sha"]:
-        raise BaselineError("git revision changed since baseline start")
+    # Freeze the gate-logic surface by content, not the whole-repo git SHA, so
+    # unrelated commits during the window do not break ticks.
+    if _sha256_tree(TOOLING_DIR) != manifest["tooling_sha256"]:
+        raise BaselineError("incentive_ops tooling content changed since baseline start")
+    if _sha256_file(ALLOWLIST_PATH) != manifest["allowlist_sha256"]:
+        raise BaselineError("endpoint allowlist content changed since baseline start")
 
 
 def baseline_tick(*, now: datetime | None = None) -> dict[str, Any]:

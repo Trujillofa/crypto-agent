@@ -1,46 +1,54 @@
+# =====================================================================
+# EV INPUTS SIDECAR — coinlist-token-sale   (IN_CORE)
+# Gates: actionability.py::_has_acceptable_provenance + ev.py::compute_ev
+#
+# Net_EV = P(elig)*P(dist)*reward_qty*realizable_price*liq_vesting_haircut   (speculative)
+#          + base_yield                                                       (pays even if reward=0)
+#          - gas_bridge_fees
+#          - opportunity_cost(capital*days vs benchmark_apy)
+#          - expected_loss_reserve
+#          - manual_hours*hourly_rate
+#
+# To pass Gate 4: set readiness=READY, REPLACE every number with a measured value,
+# and give every provenance entry a real "<source>, <date>" string.
+# BANNED provenance substrings (auto-reject): unknown, placeholder, from sidecar,
+# sourced, test, day-0, conservative, structure.
+# BASE-CASE RULE: if the reward is NOT officially announced, set realizable_price=0.
+# Never let unannounced points produce a positive EV.
+# =====================================================================
 id: coinlist-token-sale
-p_eligibility: 0.55
-p_distribution: 0.45
-reward_qty: 60.0
-realizable_price: 0.4
-liquidity_vesting_haircut: 0.5
-base_yield: 1.5
-gas_bridge_fees: 4.0
-capital: 60.0
-days: 14.0
-benchmark_apy: 0.05
-expected_loss_reserve: 5.0
-manual_hours: 2.0
-hourly_rate: 40.0
-reward_announced: true
-reward_type: announced_fixed_token
-readiness: UNREADY
-provenance:
-  p_eligibility: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  p_distribution: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  reward_qty: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  realizable_price: UNKNOWN (no direct measurement at Day-0 capture; conservative
-    placeholder only; evidence required for READY)
-  liquidity_vesting_haircut: UNKNOWN (no direct measurement at Day-0 capture; conservative
-    placeholder only; evidence required for READY)
-  base_yield: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  gas_bridge_fees: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  capital: EV sidecar capital value for cap validation; sourced from sidecar for Day-0
-    structure
-  days: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  benchmark_apy: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  expected_loss_reserve: UNKNOWN (no direct measurement at Day-0 capture; conservative
-    placeholder only; evidence required for READY)
-  manual_hours: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  hourly_rate: UNKNOWN (no direct measurement at Day-0 capture; conservative placeholder
-    only; evidence required for READY)
-  overall: All values UNREADY per review. Provenance now for every material input.
-notes: 'Complete per-input provenance (blocker #6)'
+reward_announced: true               # FILL: true only if reward officially announced; if false -> realizable_price: 0.0
+reward_type: announced_fixed_token   # keep unless the terms describe a different mechanism
+
+# --- material inputs: REPLACE each estimate with a measured value ---
+p_eligibility: 0.55          # REPLACE: P(you meet eligibility) 0-1, from official criteria vs your account/KYC
+p_distribution: 0.45         # REPLACE: P(reward actually distributes) 0-1
+reward_qty: 60.0             # REPLACE: expected reward token quantity per the sale terms
+realizable_price: 0.4        # REPLACE: conservative $ you could actually SELL at (0 if unannounced)
+liquidity_vesting_haircut: 0.5  # REPLACE: 0-1 fraction surviving vesting/illiquidity (1.0 = none)
+base_yield: 1.5              # REPLACE: $ contractual yield that pays even if reward = 0 (often 0 for a sale)
+gas_bridge_fees: 4.0         # REPLACE: $ total gas + bridge cost to participate + claim + exit
+capital: 60.0                # REPLACE: $ capital at risk (CAP: <= $250/protocol, <= $1000 total)
+days: 14.0                   # REPLACE: days capital is committed/locked
+benchmark_apy: 0.05          # REPLACE: stablecoin/cash benchmark APY for opportunity cost
+expected_loss_reserve: 5.0   # REPLACE: $ reserve for contract/custody/depeg tail
+manual_hours: 2.0            # REPLACE: hours of hands-on work (KYC, allocation, claim, sell)
+hourly_rate: 40.0            # REPLACE: $/hr you value your time at
+
+readiness: UNREADY           # FILL: flip to READY only when ALL provenance below is real evidence
+
+provenance:                  # FILL each "<evidence source>, <YYYY-MM-DD>" — NO banned words, none empty
+  p_eligibility: ""          # FILL e.g. "CoinList sale eligibility section + my KYC tier, 2026-06-30"
+  p_distribution: ""         # FILL: basis for distribution probability
+  reward_qty: ""             # FILL: sale terms allocation math
+  realizable_price: ""       # FILL: price venue/oracle + date (or note token unannounced -> 0)
+  liquidity_vesting_haircut: ""  # FILL: vesting schedule + liquidity assessment
+  base_yield: ""             # FILL: yield source, or note "none" with basis
+  gas_bridge_fees: ""        # FILL: chain + measured/estimated fee
+  capital: ""                # FILL: chosen deployment amount + rationale
+  days: ""                   # FILL: lock period per terms
+  benchmark_apy: ""          # FILL: benchmark instrument + rate date
+  expected_loss_reserve: ""  # FILL: basis for the reserve
+  manual_hours: ""           # FILL: time estimate basis
+  hourly_rate: ""            # FILL: your rate basis
+notes: ""

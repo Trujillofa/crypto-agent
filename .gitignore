@@ -93,3 +93,6 @@ backups/
 # Production Secrets and Backups
 config/nginx/ssl/
 *.bak
+
+# incentive_ops baseline runtime lock (not an artifact)
+research/a1-incentive-farming/runs/.baseline.lock
