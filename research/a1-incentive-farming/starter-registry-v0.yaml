@@ -44,7 +44,7 @@ programs:
   # ---------------------------- IN_CORE: fixed / per-identity-capped ----------------------------
   - id: coinlist-token-sale
     name: CoinList token sales (per-participant allocation, KYC)
-    official_source_url: https://coinlist.co/token-launches
+    official_source_url: https://coinlist.co/faq
     secondary_url: https://coinlist.co/faq
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
@@ -71,7 +71,7 @@ programs:
 
   - id: legion-merit-sale
     name: Legion merit-based ICO allocations
-    official_source_url: https://legion.cc/
+    official_source_url: https://app.legion.cc/documents/Launchpad_Terms_of_Service.pdf
     secondary_url: https://icodrops.com/legion/
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
@@ -98,7 +98,11 @@ programs:
 
   - id: binance-learn-and-earn
     name: Binance Learn & Earn (fixed reward per quiz, KYC)
-    official_source_url: https://academy.binance.com/ur-PK/bitcoin
+    # Canonical program page, but every Binance Learn&Earn URL is JS-gated and
+    # returns 0 bytes to a no-JS GET, so there is no capturable official terms
+    # page. Marked NOT_LIVE_REFERENCE_ONLY below to keep it out of the actively
+    # observed (capture-required) set; revisit if a static terms page appears.
+    official_source_url: https://www.binance.com/en/learn-and-earn
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
     distribution_mechanism: fixed_per_identity_cap
@@ -119,7 +123,7 @@ programs:
     selection_criteria: {c1_fixed_or_capped: true, c2_terms_documented: true, c3_eligibility_public: true,
                          c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: true}
     verification_status: MECHANISM_VERIFIED_2026-06-27
-    live_round_status: UNVERIFIED
+    live_round_status: NOT_LIVE_REFERENCE_ONLY
     review_expiry: 2026-07-11
 
   - id: coinbase-learning-rewards
@@ -176,7 +180,7 @@ programs:
   # ---------------------------- IN_CONDITIONAL: labor / task driven ----------------------------
   - id: layer3-quests
     name: Layer3 quests (XP, guided journeys, testnet tasks)
-    official_source_url: https://layer3.xyz/
+    official_source_url: https://docs.layer3.xyz/
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
     distribution_mechanism: labor_task
@@ -202,7 +206,7 @@ programs:
 
   - id: galxe-quests-oat
     name: Galxe quests (OATs, points, mystery boxes)
-    official_source_url: https://www.galxe.com/
+    official_source_url: https://docs.galxe.com/about/introduction
     secondary_url: https://help.galxe.com/en/articles/9645630-create-quest-rewards
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
@@ -251,7 +255,7 @@ programs:
 
   - id: kaito-yaps
     name: Kaito attention/yapper points
-    official_source_url: https://www.kaito.ai/mindshare-arena/voices
+    official_source_url: https://docs.kaito.ai/
     observed_at: 2026-06-27
     snapshot_sha256: PENDING_TOOL_CAPTURE
     distribution_mechanism: labor_task

@@ -8,6 +8,8 @@ allowed:
     path_prefixes: ["/token-launches", "/faq"]
   - host: "legion.cc"
     path_prefixes: ["/"]
+  - host: "app.legion.cc"
+    path_prefixes: ["/documents"]
   - host: "academy.binance.com"
     path_prefixes: ["/ur-PK/bitcoin"]
   - host: "launchpad.binance.com"
@@ -18,8 +20,12 @@ allowed:
     path_prefixes: ["/"]
   - host: "layer3.xyz"
     path_prefixes: ["/"]
+  - host: "docs.layer3.xyz"
+    path_prefixes: ["/"]
   - host: "www.galxe.com"
     path_prefixes: ["/", "/help"]
+  - host: "docs.galxe.com"
+    path_prefixes: ["/"]
   - host: "metamask.io"
     path_prefixes: ["/rewards"]
   - host: "docs.eigenlayer.xyz"
@@ -35,6 +41,8 @@ allowed:
   - host: "resources.curve.finance"
     path_prefixes: ["/"]
   - host: "www.kaito.ai"
+    path_prefixes: ["/"]
+  - host: "docs.kaito.ai"
     path_prefixes: ["/"]
   # For test harness / future adapters only (localhost for unit tests if needed, but capture/eligibility refuse in prod)
   - host: "127.0.0.1"
