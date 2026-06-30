@@ -1,16 +1,15 @@
 id: kaito-yaps
 verified_at: null
-snapshot_sha256: PENDING_TOOL_CAPTURE
+snapshot_sha256: b3d6199ab52b8f886969003a8317058fee199459c5235d3601ef682df667edbb
 terms_match_snapshot: false
 live_round_open: false
 reviewer_decision: PENDING
-raw_evidence_path: null
-official_round_terms_url: null
-captured_source_url: https://www.kaito.ai/
+raw_evidence_path: research/a1-incentive-farming/snapshots/kaito-yaps/20260630T222523Z_b3d6199ab52b8f88.raw
+official_round_terms_url: https://docs.kaito.ai/
+captured_source_url: https://docs.kaito.ai/
 jurisdiction_status: UNKNOWN
 eligibility_open: null
 eligibility_close: null
 claim_date: null
 vesting_end: null
-notes: Captured/pending unverified (terms/live=false). verified_at null, jurisdiction
-  UNKNOWN. Audit fields present for future human review.
+notes: null

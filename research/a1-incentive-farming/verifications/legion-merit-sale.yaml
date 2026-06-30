@@ -1,35 +1,15 @@
-# =====================================================================
-# VERIFICATION SIDECAR — legion-merit-sale   (IN_CORE)
-# Gate: tools/incentive_ops/actionability.py::_is_verified
-# Human attestation. Each field must satisfy the rule in its comment for the
-# candidate to clear Gate 2 (Verified). reviewer_decision=APPROVED is YOUR
-# personal sign-off that you read the live official terms — do not approve
-# anything you have not actually read.
-# =====================================================================
 id: legion-merit-sale
-
-# --- cryptographic binding to capture (DO NOT EDIT — must match captures/legion-merit-sale.yaml) ---
-snapshot_sha256: 60ffa9aa338ac3cc87f900a32e60486e611645b30b963ca46a7c7a5e77680796   # == capture.snapshot_sha256 (refreshed 2026-06-30, bytes unchanged)
-raw_evidence_path: research/a1-incentive-farming/snapshots/legion-merit-sale/20260630T172540Z_60ffa9aa338ac3cc.raw  # == capture.raw_path
-captured_source_url: https://legion.cc/   # == capture.source_url
-
-# --- human attestation (FILL after reading the LIVE official round terms) ---
-# NOTE: the captured page is the Legion landing page, not a single merit sale's
-# terms. The gate requires official_round_terms_url == captured_source_url, so to
-# verify a SPECIFIC sale you must RE-CAPTURE that sale's own terms page first
-# (run the capture tool against the sale URL); this sidecar then binds to it.
-# Legion merit allocations hinge on the "merit score" formula — confirm it is
-# DISCLOSED (selection criterion #2) or this candidate fails on undisclosed terms.
-verified_at: null                 # FILL: ISO-8601 UTC, e.g. 2026-06-30T14:00:00+00:00
-official_round_terms_url: null    # FILL: must == captured_source_url; the official terms page you actually read
-terms_match_snapshot: false       # FILL: true ONLY if live terms still match the captured snapshot bytes
-live_round_open: false            # FILL: true ONLY if the sale/round is open right now
-jurisdiction_status: UNKNOWN      # FILL: ELIGIBLE | INELIGIBLE | UNKNOWN — must be ELIGIBLE (your country allowed + KYC passable)
-reviewer_decision: PENDING        # FILL: PENDING -> APPROVED is the final human gate
-
-# --- schedule metadata (optional; feeds the deadline monitor) ---
-eligibility_open: null            # FILL: ISO date window opens
-eligibility_close: null           # FILL: ISO date window closes
-claim_date: null                  # FILL: ISO date reward claimable
-vesting_end: null                 # FILL: ISO date vesting ends
-notes: ""                         # FILL: merit-score disclosure, per-identity cap, sybil/KYC rules
+verified_at: null
+snapshot_sha256: ae68cbb539252a26632c24f48c9a3eb291871cd88be4f794bf9a784a54bf34e6
+terms_match_snapshot: false
+live_round_open: false
+reviewer_decision: PENDING
+raw_evidence_path: research/a1-incentive-farming/snapshots/legion-merit-sale/20260630T222523Z_ae68cbb539252a26.raw
+official_round_terms_url: https://app.legion.cc/documents/Launchpad_Terms_of_Service.pdf
+captured_source_url: https://app.legion.cc/documents/Launchpad_Terms_of_Service.pdf
+jurisdiction_status: UNKNOWN
+eligibility_open: null
+eligibility_close: null
+claim_date: null
+vesting_end: null
+notes: null
