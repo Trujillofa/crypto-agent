@@ -13,23 +13,6 @@ LANGUAGE_ALIASES: dict[str, str] = {
     "cs": "c#",
 }
 
-SUPPORTED_LANGUAGES: list[str] = [
-    "bash",
-    "c",
-    "c++",
-    "c#",
-    "go",
-    "java",
-    "javascript",
-    "kotlin",
-    "php",
-    "python",
-    "ruby",
-    "rust",
-    "swift",
-    "typescript",
-]
-
 
 def normalize_language(lang: str) -> str:
     value = lang.strip().lower()
