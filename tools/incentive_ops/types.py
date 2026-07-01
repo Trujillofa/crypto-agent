@@ -12,6 +12,8 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
+from eth_hash.auto import keccak
+
 
 # Errors (fail closed)
 class SuspectedSecretError(ValueError):
@@ -283,11 +285,14 @@ class EligibilitySnapshot:
 
 
 class Address:
-    """Validated address value object. Address-only. Rejects secrets. EVM primary."""
+    """Validated address value object. Address-only. Rejects secrets. EVM + Solana."""
 
     _EVM_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
     _PRIVKEY_RE = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")
     _MNEMONIC_WORD_RE = re.compile(r"^[a-z]+$")
+    _SOLANA_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+    _BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    _BASE58_INDEX = {c: i for i, c in enumerate(_BASE58_ALPHABET)}
 
     def __init__(self, value: str) -> None:
         if not isinstance(value, str):
@@ -298,8 +303,13 @@ class Address:
         if self._looks_like_secret(v):
             # Never include the value in the exception message or attributes
             raise SuspectedSecretError("Input looks like a private key or mnemonic seed; rejected")
-        if not self._is_valid_format(v):
-            raise ValueError("Invalid address format (expected EVM 0x + 40 hex)")
+        fmt = self._detect_format(v)
+        if fmt is None:
+            raise ValueError(
+                "Invalid address format (expected EVM 0x + 40 hex or Solana base58 pubkey)"
+            )
+        if fmt == "evm":
+            self._validate_eip55(v)
         self._value = self._normalize(v)
 
     @staticmethod
@@ -314,8 +324,59 @@ class Address:
         return False
 
     @staticmethod
-    def _is_valid_format(v: str) -> bool:
-        return bool(Address._EVM_RE.match(v))
+    def _detect_format(v: str) -> str | None:
+        if Address._EVM_RE.match(v):
+            return "evm"
+        if Address._is_solana_pubkey(v):
+            return "solana"
+        return None
+
+    @staticmethod
+    def _b58decode(value: str) -> bytes:
+        num = 0
+        for char in value:
+            num = num * 58 + Address._BASE58_INDEX[char]
+        pad = 0
+        for char in value:
+            if char == "1":
+                pad += 1
+            else:
+                break
+        decoded = num.to_bytes((num.bit_length() + 7) // 8, "big") if num else b""
+        return b"\x00" * pad + decoded
+
+    @staticmethod
+    def _is_solana_pubkey(v: str) -> bool:
+        if not Address._SOLANA_RE.match(v):
+            return False
+        try:
+            return len(Address._b58decode(v)) == 32
+        except KeyError:
+            return False
+
+    @staticmethod
+    def _eip55_checksum(hex_addr: str) -> str:
+        """Return ``0x`` + EIP-55 checksummed address for a 40-char hex string (any case)."""
+        lower = hex_addr.lower()
+        digest = keccak(lower.encode("ascii")).hex()
+        out = ["0x"]
+        for i, ch in enumerate(lower):
+            if ch in "0123456789":
+                out.append(ch)
+            elif int(digest[i], 16) >= 8:
+                out.append(ch.upper())
+            else:
+                out.append(ch)
+        return "".join(out)
+
+    @staticmethod
+    def _validate_eip55(v: str) -> None:
+        hex_part = v[2:]
+        # All-lower or all-upper are accepted as non-checksummed (incl. all-digit addresses).
+        if hex_part == hex_part.lower() or hex_part == hex_part.upper():
+            return
+        if v != Address._eip55_checksum(hex_part):
+            raise ValueError("Invalid EIP-55 checksum")
 
     @staticmethod
     def _normalize(v: str) -> str:

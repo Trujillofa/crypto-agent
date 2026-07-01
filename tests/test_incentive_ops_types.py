@@ -31,6 +31,30 @@ def test_address_evm_ok():
     assert str(a) == "0x0000000000000000000000000000000000000000"
 
 
+def test_address_accepts_valid_eip55_checksum():
+    vitalik = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+    a = Address(vitalik)
+    assert str(a) == vitalik
+
+
+def test_address_accepts_non_checksummed_evm_case():
+    lower = "0xd8da6bf26964af9d7eed9e03e53415d37aa96045"
+    upper = "0xD8DA6BF26964AF9D7EED9E03E53415D37AA96045"
+    assert str(Address(lower)) == lower
+    assert str(Address(upper)) == upper
+
+
+def test_address_rejects_wrong_eip55_checksum():
+    with pytest.raises(ValueError, match="Invalid EIP-55 checksum"):
+        Address("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA9604E")
+
+
+def test_address_accepts_solana_base58_pubkey():
+    wrapped_sol = "So11111111111111111111111111111111111111112"
+    a = Address(wrapped_sol)
+    assert str(a) == wrapped_sol
+
+
 def test_address_rejects_privkey():
     with pytest.raises(SuspectedSecretError):
         Address("0x" + "a" * 64)
