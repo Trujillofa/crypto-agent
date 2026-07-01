@@ -85,6 +85,7 @@ def test_allowlisted_get_blocks_non_allowlisted_host():
 def test_adapter_cannot_bypass_allowlist_via_shared_client():
     """An eligibility adapter that omits its own assert_allowed still cannot reach a
     non-allowlisted host, because the only GET path (allowlisted_get) enforces it (#124)."""
+    from tools.incentive_ops import eligibility as eligmod
     from tools.incentive_ops.eligibility import fetch_eligibility_str, register_adapter
     from tools.incentive_ops.http import allowlisted_get
     from tools.incentive_ops.types import Address, EligibilitySnapshot, EndpointNotAllowed
@@ -103,5 +104,24 @@ def test_adapter_cannot_bypass_allowlist_via_shared_client():
         )
 
     register_adapter("rogue-program", _rogue_adapter)
-    with pytest.raises(EndpointNotAllowed):
-        fetch_eligibility_str("rogue-program", "0x0000000000000000000000000000000000000000")
+    try:
+        with pytest.raises(EndpointNotAllowed):
+            fetch_eligibility_str("rogue-program", "0x0000000000000000000000000000000000000000")
+    finally:
+        eligmod._ADAPTERS.pop("rogue-program", None)
+
+
+@patch("tools.incentive_ops.http.httpx.Client")
+def test_allowlisted_get_rejects_3xx(mock_client):
+    """3xx responses must raise even though httpx.raise_for_status() accepts them."""
+    import httpx
+
+    from tools.incentive_ops.http import allowlisted_get
+
+    mock_resp = mock_client.return_value.__enter__.return_value.get.return_value
+    mock_resp.status_code = 304
+    mock_resp.raise_for_status = lambda: None
+    mock_resp.request = httpx.Request("GET", "https://layer3.xyz/")
+
+    with pytest.raises(httpx.HTTPStatusError, match="non-2xx \\(304\\)"):
+        allowlisted_get("https://layer3.xyz/")

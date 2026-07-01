@@ -33,4 +33,11 @@ def allowlisted_get(url: str, *, timeout: float = DEFAULT_TIMEOUT) -> httpx.Resp
     with httpx.Client(follow_redirects=False, timeout=timeout) as client:
         resp = client.get(url)
     resp.raise_for_status()
+    # raise_for_status() ignores 3xx when redirects are disabled; enforce full 2xx contract.
+    if not 200 <= resp.status_code < 300:
+        raise httpx.HTTPStatusError(
+            f"non-2xx ({resp.status_code}) for {url}",
+            request=resp.request,
+            response=resp,
+        )
     return resp
