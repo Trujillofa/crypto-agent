@@ -21,13 +21,6 @@ orders_filled_total = Counter(
     "execution_orders_filled_total", "Total number of orders filled", ["symbol", "side"]
 )
 
-# Counter for rejected orders
-orders_rejected_total = Counter(
-    "execution_orders_rejected_total",
-    "Total number of orders rejected",
-    ["symbol", "reason"],
-)
-
 # Gauge for current open orders count
 open_orders_count = Gauge(
     "execution_open_orders_count", "Current number of open orders", ["symbol"]
@@ -87,7 +80,6 @@ class ExecutionMetrics:
         self.orders_placed = orders_placed_total
         self.orders_cancelled = orders_cancelled_total
         self.orders_filled = orders_filled_total
-        self.orders_rejected = orders_rejected_total
         self.open_orders = open_orders_count
         self.order_latency = order_latency_seconds
         self.realized_pnl = realized_pnl_total

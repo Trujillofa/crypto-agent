@@ -634,19 +634,6 @@ class BinanceFuturesClient:
             margin_ratio=float(data.get("marginRatio", 0)),
         )
 
-    async def cancel_all_open_orders(self, symbol: str) -> dict[str, Any]:
-        """Cancel all open orders for a symbol.
-
-        Endpoint: DELETE /fapi/v1/allOpenOrders
-        Used to clean up SL/TP bracket orders when closing a position.
-        """
-        return await self._request(
-            "DELETE",
-            "/fapi/v1/allOpenOrders",
-            params={"symbol": symbol},
-            signed=True,
-        )
-
     async def cancel_order(self, symbol: str, order_id: str) -> dict[str, Any]:
         """Cancel a futures order.
 

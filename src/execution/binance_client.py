@@ -51,7 +51,6 @@ class BinancePrivateClient:
     """Async Binance Spot private API client."""
 
     BASE_URL = "https://api.binance.com"
-    TESTNET_URL = "https://testnet.binance.vision"
     DEMO_URL = "https://demo-api.binance.com"
 
     def __init__(
