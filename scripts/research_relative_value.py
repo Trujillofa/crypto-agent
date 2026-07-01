@@ -19,6 +19,8 @@ from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import configure_logger
 
+_SPREAD_LOOKBACK_BARS = 20
+
 
 class ETHBTCMeanReversion(BaseStrategy):
     """ETHBTC spread mean-reversion strategy.
@@ -40,8 +42,6 @@ class ETHBTCMeanReversion(BaseStrategy):
         # Get spread (ETHBTC)
         spread = indicators.get("ethbtc_spread")
         z_score = indicators.get("ethbtc_zscore")
-        indicators.get("ema_50")
-        indicators.get("ema_200_4h")
 
         if spread is None or z_score is None:
             return Signal(SignalType.HOLD, symbol, 0, 0, "No spread data", {})
@@ -82,7 +82,7 @@ class ETHBTCMeanReversion(BaseStrategy):
         return "ETHBTCMeanReversion"
 
 
-async def compute_ethbtc_spread(data_btc, data_eth, timeframe):
+async def compute_ethbtc_spread(data_btc, data_eth) -> list[dict]:
     """Compute ETHBTC spread and z-score."""
     spread_data = []
 
@@ -99,8 +99,8 @@ async def compute_ethbtc_spread(data_btc, data_eth, timeframe):
             spreads.append(spread)
 
             # Compute z-score with lookback
-            if len(spreads) >= 20:
-                lookback = spreads[-20:]
+            if len(spreads) >= _SPREAD_LOOKBACK_BARS:
+                lookback = spreads[-_SPREAD_LOOKBACK_BARS:]
                 mean = sum(lookback) / len(lookback)
                 variance = sum((x - mean) ** 2 for x in lookback) / len(lookback)
                 std = variance**0.5
@@ -138,7 +138,7 @@ async def run_ethbtc_backtest(start_date, end_date):
             btc_by_time = {row["time"]: row for row in btc_data}
             eth_by_time = {row["time"]: row for row in eth_data}
 
-            spread_data = await compute_ethbtc_spread(btc_by_time, eth_by_time, "1h")
+            spread_data = await compute_ethbtc_spread(btc_by_time, eth_by_time)
 
             if not spread_data:
                 print("No spread data generated")
