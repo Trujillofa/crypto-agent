@@ -99,14 +99,6 @@ class ProbeConfig:
 
 
 @dataclass(frozen=True)
-class DailyInputs:
-    equity_close: float
-    crypto_close: float
-    holdings_units: float
-    shares_outstanding: float
-
-
-@dataclass(frozen=True)
 class NameAudit:
     ticker: str
     rows: int

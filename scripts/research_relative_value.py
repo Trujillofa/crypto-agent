@@ -82,7 +82,7 @@ class ETHBTCMeanReversion(BaseStrategy):
         return "ETHBTCMeanReversion"
 
 
-async def compute_ethbtc_spread(data_btc, data_eth) -> list[dict]:
+def compute_ethbtc_spread(data_btc, data_eth) -> list[dict]:
     """Compute ETHBTC spread and z-score."""
     spread_data = []
 
@@ -138,7 +138,7 @@ async def run_ethbtc_backtest(start_date, end_date):
             btc_by_time = {row["time"]: row for row in btc_data}
             eth_by_time = {row["time"]: row for row in eth_data}
 
-            spread_data = await compute_ethbtc_spread(btc_by_time, eth_by_time)
+            spread_data = compute_ethbtc_spread(btc_by_time, eth_by_time)
 
             if not spread_data:
                 print("No spread data generated")

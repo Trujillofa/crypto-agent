@@ -31,7 +31,6 @@ from src.utils.logger import get_logger
 logger = get_logger("funding_rate_import")
 
 BINANCE_API_BASE = "https://fapi.binance.com"
-BATCH_SIZE = 1000
 
 
 async def fetch_funding_rates(
