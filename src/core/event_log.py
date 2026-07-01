@@ -130,14 +130,10 @@ class EventLog:
 
     def _notify_subscribers(self, event: Event) -> None:
         """Dispatch event to subscribers."""
-        # Global subscribers
-        for callback in self._global_subscribers:
+        callbacks = list(self._global_subscribers)
+        callbacks.extend(self._subscribers.get(event.type, []))
+        for callback in callbacks:
             asyncio.create_task(self._safe_callback(callback, event))
-
-        # Type-specific subscribers
-        if event.type in self._subscribers:
-            for callback in self._subscribers[event.type]:
-                asyncio.create_task(self._safe_callback(callback, event))
 
     async def _safe_callback(
         self, callback: Callable[[Event], Coroutine[Any, Any, None]], event: Event
