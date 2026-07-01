@@ -750,8 +750,8 @@ git diff
 - **Architecture**: See `CLAUDE.md` for agent coordination
 - **API Docs**: See `docs/TRADING_EXECUTION.md`
 - **Indicators**: See `docs/INDICATORS.md`
-- **Deployment**: See `DEPLOYMENT.md`
-- **Code Review**: See `CODE_REVIEW.md`
+- **Deployment**: See [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Code Review**: See [CODE_REVIEW.md](CODE_REVIEW.md)
 
 ---
 

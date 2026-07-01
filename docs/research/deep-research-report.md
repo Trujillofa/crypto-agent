@@ -21,8 +21,8 @@ There’s already an “AI” component, but it’s an **operational overseer** 
 
 Several repo documents appear slightly out of sync with the actual config and runtime wiring:
 
-- The README describes “Spot trading only” and claims no futures support, and shows “enabled: false” examples for execution; however the current `config/settings.yaml` includes an explicit `futures:` section enabled and a strategy routing concept (`default_trading_mode: spot`), while `USAGE.md` describes both spot and futures modes. citeturn10view0turn8view0turn10view1
-- A generated `CODE_REVIEW.md` (dated Feb 7, 2026) reports that the strategy engine is “under-developed” and “not connected,” but the actual `src/main.py` clearly instantiates `StrategyEngine` and routes signals (to paper, spot, and futures paths). This suggests the review document is stale relative to the current code. citeturn6view0turn8view2
+- The README describes “Spot trading only” and claims no futures support, and shows “enabled: false” examples for execution; however the current `config/settings.yaml` includes an explicit `futures:` section enabled and a strategy routing concept (`default_trading_mode: spot`), while `docs/USAGE.md` describes both spot and futures modes. citeturn10view0turn8view0turn10view1
+- A generated `docs/CODE_REVIEW.md` (dated Feb 7, 2026) reports that the strategy engine is “under-developed” and “not connected,” but the actual `src/main.py` clearly instantiates `StrategyEngine` and routes signals (to paper, spot, and futures paths). This suggests the review document is stale relative to the current code. citeturn6view0turn8view2
 
 That drift matters for an AI-driven lifecycle: autonomous systems depend on documents/config/code agreeing, or you get the software equivalent of “the map says bridge; reality says canyon.”
 
