@@ -533,10 +533,6 @@ def evaluate_h1_symbol(
     )
 
 
-def _daily_close_lookup(bars: Sequence[TradFiBar]) -> dict[str, float]:
-    return {bar.close_ts_utc.date().isoformat(): bar.close for bar in bars}
-
-
 def _sma(values: Sequence[float]) -> float:
     if not values:
         return 0.0
@@ -826,20 +822,6 @@ async def load_symbol_bars(symbol: str, config: ProbeConfig) -> list[HourlyBar]:
         return bars
     finally:
         await close_pool()
-
-
-def load_symbol_bars_from_csv(csv_path: Path) -> list[HourlyBar]:
-    bars: list[HourlyBar] = []
-    with csv_path.open(encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            bars.append(
-                HourlyBar(
-                    time=_parse_ts(row["time"]),
-                    close_price=float(row["close_price"]),
-                )
-            )
-    return sorted(bars, key=lambda bar: bar.time)
 
 
 async def run_probe(config: ProbeConfig | None = None) -> ProbeReport:

@@ -704,19 +704,6 @@ def _top_minus_bottom_spread_indices(
     return top_mean - bottom_mean
 
 
-def _top_minus_bottom_spread(
-    observations: Sequence[SignalObservation],
-    decile_assignments: Sequence[int],
-    forward_returns_bps: Sequence[float],
-) -> float | None:
-    del observations
-    return _top_minus_bottom_spread_indices(
-        decile_assignments,
-        forward_returns_bps,
-        range(len(decile_assignments)),
-    )
-
-
 def block_bootstrap_p_value(
     observations: Sequence[SignalObservation],
     decile_assignments: Sequence[int],
@@ -1174,11 +1161,6 @@ async def fetch_agg_trades(
 def cache_path_for(config: ProbeConfig, symbol: str, start: datetime, end: datetime) -> Path:
     label = f"{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}"
     return config.cache_dir / symbol / f"aggtrades_{label}.jsonl"
-
-
-def write_cache(path: Path, trades: Sequence[AggTrade]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(trades_to_jsonl(trades), encoding="utf-8")
 
 
 def audit_symbol_data(

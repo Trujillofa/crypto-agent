@@ -451,14 +451,6 @@ class StrategyEngine:
             pass
         return None
 
-    def get_strategy_names(self) -> list[str]:
-        """Get names of all active strategies."""
-        names = []
-        for symbol_strategies in self._strategies.values():
-            for strategy in symbol_strategies:
-                names.append(strategy.get_name())
-        return names
-
     def stop(self) -> None:
         """Stop the engine loop."""
         self._running = False

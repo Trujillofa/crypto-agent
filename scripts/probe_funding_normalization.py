@@ -220,19 +220,6 @@ def entry_threshold_negative_tail(
     return max(floor, abs(negatives[index]))
 
 
-def entry_threshold_positive_tail(
-    funding_rates: Sequence[float],
-    tail_pct: float,
-    floor: float = 0.00008,
-) -> float:
-    """Entry threshold from the most positive tail (for short-side normalization probe)."""
-    positives = sorted((rate for rate in funding_rates if rate > 0), reverse=True)
-    if len(positives) < 10:
-        return floor
-    index = max(0, min(len(positives) - 1, int(len(positives) * tail_pct / 100.0)))
-    return max(floor, positives[index])
-
-
 def _parse_dt(value: str | datetime) -> datetime:
     if isinstance(value, datetime):
         return value

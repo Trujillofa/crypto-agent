@@ -20,13 +20,3 @@ def parse_frontmatter(content: str) -> tuple[JSONDict, str]:
     loaded = yaml.safe_load(raw_metadata)
     metadata = loaded if isinstance(loaded, dict) else {}
     return metadata, body
-
-
-def build_frontmatter(metadata: JSONDict, body: str) -> str:
-    if not metadata:
-        return body
-
-    metadata_yaml = yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True).strip()
-    if not body:
-        return f"---\n{metadata_yaml}\n---\n"
-    return f"---\n{metadata_yaml}\n---\n{body}"

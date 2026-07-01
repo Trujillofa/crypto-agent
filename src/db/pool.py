@@ -183,13 +183,3 @@ class DatabasePool:
         """Fetch multiple rows from the database."""
         async with get_connection() as conn:
             return await conn.fetch(query, *args)
-
-    async def fetch_rows(
-        self,
-        query: str,
-        *args: object,
-    ) -> list[dict[str, object]]:
-        """Fetch rows as dictionaries for easier access."""
-        async with get_connection() as conn:
-            rows = await conn.fetch(query, *args)
-            return [dict(row) for row in rows]

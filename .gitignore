@@ -11,6 +11,7 @@ build/
 
 # Virtual environments
 .venv/
+.venv_new/
 venv/
 ENV/
 
@@ -31,6 +32,7 @@ ENV/
 # Agent artifacts
 .codex/
 .claude/
+.commandcode/
 .crew/
 .gemini/
 .copilot/
@@ -86,6 +88,7 @@ docs/reports/*-wfo-*.json
 
 # Docker volumes / local state
 *.log
+wfo_results.csv
 
 # Database backups
 backups/

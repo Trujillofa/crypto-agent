@@ -19,6 +19,8 @@ from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import configure_logger
 
+_SPREAD_LOOKBACK_BARS = 20
+
 
 class ETHBTCMeanReversion(BaseStrategy):
     """ETHBTC spread mean-reversion strategy.
@@ -35,14 +37,11 @@ class ETHBTCMeanReversion(BaseStrategy):
         super().__init__(config)
         self._lookback = int(self._config.get("lookback", 20))
         self._z_threshold = float(self._config.get("z_threshold", 1.5))
-        self._exit_z = float(self._config.get("exit_z", 0.3))
 
     async def evaluate(self, symbol, indicators):
         # Get spread (ETHBTC)
         spread = indicators.get("ethbtc_spread")
         z_score = indicators.get("ethbtc_zscore")
-        indicators.get("ema_50")
-        indicators.get("ema_200_4h")
 
         if spread is None or z_score is None:
             return Signal(SignalType.HOLD, symbol, 0, 0, "No spread data", {})
@@ -83,64 +82,7 @@ class ETHBTCMeanReversion(BaseStrategy):
         return "ETHBTCMeanReversion"
 
 
-class CrossSectionalMomentum(BaseStrategy):
-    """Cross-sectional momentum ranking strategy.
-
-    Thesis: Top performer continues to outperform. Rank BTC/ETH/SOL by
-    momentum, long top, short bottom.
-    """
-
-    REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
-
-    def __init__(self, config=None):
-        super().__init__(config)
-        self._mom_period = int(self._config.get("mom_period", 24))
-        self._top_n = int(self._config.get("top_n", 1))
-
-    async def evaluate(self, symbol, indicators):
-        # This strategy needs multi-symbol data - simplified for backtest
-        # In production, would rank across universe
-        mom = indicators.get(f"momentum_{symbol.lower()}", 0)
-
-        if mom > 0.05:
-            return Signal(
-                SignalType.BUY,
-                symbol,
-                indicators.get("close_price", 0),
-                0.7,
-                f"Strong momentum: {mom:.2%}",
-                {"momentum": mom},
-            )
-        elif mom < -0.05:
-            return Signal(
-                SignalType.SELL,
-                symbol,
-                indicators.get("close_price", 0),
-                0.7,
-                f"Weak momentum: {mom:.2%}",
-                {"momentum": mom},
-                trading_mode="futures",
-            )
-
-        return Signal(SignalType.HOLD, symbol, 0, 0, "No signal", {})
-
-    def get_name(self):
-        return "CrossSectionalMomentum"
-
-
-async def fetch_multi_symbol(reader, symbols, timeframe, start_time, end_time):
-    """Fetch and align data for multiple symbols."""
-    data_by_symbol = {}
-
-    for symbol in symbols:
-        data = await reader.fetch_range(symbol, timeframe, start_time, end_time)
-        # Convert to dict keyed by time
-        data_by_symbol[symbol] = {row["time"]: row for row in data}
-
-    return data_by_symbol
-
-
-async def compute_ethbtc_spread(data_btc, data_eth, timeframe):
+def compute_ethbtc_spread(data_btc, data_eth) -> list[dict]:
     """Compute ETHBTC spread and z-score."""
     spread_data = []
 
@@ -157,8 +99,8 @@ async def compute_ethbtc_spread(data_btc, data_eth, timeframe):
             spreads.append(spread)
 
             # Compute z-score with lookback
-            if len(spreads) >= 20:
-                lookback = spreads[-20:]
+            if len(spreads) >= _SPREAD_LOOKBACK_BARS:
+                lookback = spreads[-_SPREAD_LOOKBACK_BARS:]
                 mean = sum(lookback) / len(lookback)
                 variance = sum((x - mean) ** 2 for x in lookback) / len(lookback)
                 std = variance**0.5
@@ -196,7 +138,7 @@ async def run_ethbtc_backtest(start_date, end_date):
             btc_by_time = {row["time"]: row for row in btc_data}
             eth_by_time = {row["time"]: row for row in eth_data}
 
-            spread_data = await compute_ethbtc_spread(btc_by_time, eth_by_time, "1h")
+            spread_data = compute_ethbtc_spread(btc_by_time, eth_by_time)
 
             if not spread_data:
                 print("No spread data generated")
@@ -208,7 +150,6 @@ async def run_ethbtc_backtest(start_date, end_date):
                 config = {
                     "lookback": 20,
                     "z_threshold": z_thresh,
-                    "exit_z": 0.3,
                 }
 
                 bt_config = BacktestConfig(

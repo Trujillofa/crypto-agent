@@ -130,14 +130,10 @@ class EventLog:
 
     def _notify_subscribers(self, event: Event) -> None:
         """Dispatch event to subscribers."""
-        # Global subscribers
-        for callback in self._global_subscribers:
+        callbacks = list(self._global_subscribers)
+        callbacks.extend(self._subscribers.get(event.type, []))
+        for callback in callbacks:
             asyncio.create_task(self._safe_callback(callback, event))
-
-        # Type-specific subscribers
-        if event.type in self._subscribers:
-            for callback in self._subscribers[event.type]:
-                asyncio.create_task(self._safe_callback(callback, event))
 
     async def _safe_callback(
         self, callback: Callable[[Event], Coroutine[Any, Any, None]], event: Event
@@ -164,10 +160,6 @@ class EventLog:
             if event_type not in self._subscribers:
                 self._subscribers[event_type] = []
             self._subscribers[event_type].append(callback)
-
-    def get_recent(self, limit: int = 100) -> list[Event]:
-        """Get N most recent events from memory."""
-        return list(self._ring_buffer)[-limit:]
 
     def get_recent_by_type(self, event_type: str, limit: int = 100) -> list[Event]:
         """Get N most recent events of a specific type from memory."""

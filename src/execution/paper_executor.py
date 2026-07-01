@@ -4,7 +4,6 @@ import asyncio
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
 
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
@@ -1323,20 +1322,6 @@ class PaperExecutor:
         if elapsed < 0:
             return 0
         return int(elapsed // tf_seconds)
-
-    def get_positions(self) -> dict[str, Any]:
-        """Return current positions for status reporting."""
-        result = {}
-        for key, pos in self._positions.items():
-            symbol, market_tag = self._parse_position_key(key)
-            display_key = f"{symbol}:{market_tag}"
-            result[display_key] = {
-                "side": pos.side,
-                "quantity": pos.quantity,
-                "entry_price": pos.entry_price,
-                "notional": pos.notional,
-            }
-        return result
 
     @property
     def balance(self) -> float:

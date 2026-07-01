@@ -170,7 +170,7 @@ This file lists **manual** steps that must be performed outside the codebase. Ea
 **Why:** You’ll need consistent steps to deploy safely.
 
 **What to do (manual):**
-1. Write `DEPLOYMENT.md` with server requirements, ports, SSL, backups, and rollbacks.
+1. Write `docs/DEPLOYMENT.md` with server requirements, ports, SSL, backups, and rollbacks.
 2. Include validation commands for each step.
 
 **Verify:**

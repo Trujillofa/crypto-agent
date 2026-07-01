@@ -172,10 +172,6 @@ async def _run_cell(
     }
 
 
-def _delta(a: float, b: float) -> float:
-    return b - a
-
-
 def _within_noise(actual: float, expected: float, *, abs_tol: float, rel_tol: float = 0.05) -> bool:
     return abs(actual - expected) <= max(abs_tol, abs(expected) * rel_tol)
 
