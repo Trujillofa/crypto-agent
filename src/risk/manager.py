@@ -505,13 +505,6 @@ class RiskManager:
         self._logger.error("Trading blocked by reconciliation: %s", reason)
         self._save_state()
 
-    def clear_reconciliation_block(self) -> None:
-        """Clear reconciliation block (manual resolution)."""
-        if self._reconciliation_block:
-            self._logger.warning("Reconciliation block cleared")
-            self._reconciliation_block = None
-            self._save_state()
-
     def get_risk_summary(self) -> dict[str, Any]:
         """Get current risk status summary."""
         return {

@@ -50,7 +50,3 @@ class BaseStrategy(ABC):
     def get_name(self) -> str:
         """Return the name of this strategy."""
         return self.__class__.__name__
-
-    def get_config(self) -> Mapping[str, object]:
-        """Return the strategy configuration."""
-        return self._config

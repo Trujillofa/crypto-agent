@@ -120,10 +120,6 @@ class ExecutionMetrics:
         """Record an order fill."""
         self.orders_filled.labels(symbol=symbol, side=side).inc()
 
-    def record_order_rejected(self, symbol: str, reason: str) -> None:
-        """Record an order rejection."""
-        self.orders_rejected.labels(symbol=symbol, reason=reason).inc()
-
     def record_risk_block(self, symbol: str, reason: str) -> None:
         """Record an order blocked by risk manager."""
         self.risk_blocks.labels(symbol=symbol, reason=reason).inc()

@@ -443,13 +443,6 @@ class PortfolioManager:
                     loss_count=int(loss_count or 0),
                 )
 
-    async def get_today_stats(self) -> tuple[float, int, float]:
-        """Return today's (total_pnl, trades_count, win_rate_pct) for daily summary.
-
-        Queries positions closed since the start of the current UTC day.
-        """
-        return await self.get_daily_stats(datetime.now(UTC).date())
-
     async def get_daily_stats(self, day: date) -> tuple[float, int, float]:
         """Return stats for a specific UTC calendar day."""
         details = await self.get_daily_summary_details(day)

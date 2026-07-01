@@ -32,6 +32,7 @@ ENV/
 # Agent artifacts
 .codex/
 .claude/
+.commandcode/
 .crew/
 .gemini/
 .copilot/

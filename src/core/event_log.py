@@ -165,10 +165,6 @@ class EventLog:
                 self._subscribers[event_type] = []
             self._subscribers[event_type].append(callback)
 
-    def get_recent(self, limit: int = 100) -> list[Event]:
-        """Get N most recent events from memory."""
-        return list(self._ring_buffer)[-limit:]
-
     def get_recent_by_type(self, event_type: str, limit: int = 100) -> list[Event]:
         """Get N most recent events of a specific type from memory."""
         matching = [e for e in self._ring_buffer if e.type == event_type]

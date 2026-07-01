@@ -34,7 +34,3 @@ SUPPORTED_LANGUAGES: list[str] = [
 def normalize_language(lang: str) -> str:
     value = lang.strip().lower()
     return LANGUAGE_ALIASES.get(value, value)
-
-
-def available_languages() -> list[str]:
-    return SUPPORTED_LANGUAGES.copy()

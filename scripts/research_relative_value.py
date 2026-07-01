@@ -35,7 +35,6 @@ class ETHBTCMeanReversion(BaseStrategy):
         super().__init__(config)
         self._lookback = int(self._config.get("lookback", 20))
         self._z_threshold = float(self._config.get("z_threshold", 1.5))
-        self._exit_z = float(self._config.get("exit_z", 0.3))
 
     async def evaluate(self, symbol, indicators):
         # Get spread (ETHBTC)
@@ -81,63 +80,6 @@ class ETHBTCMeanReversion(BaseStrategy):
 
     def get_name(self):
         return "ETHBTCMeanReversion"
-
-
-class CrossSectionalMomentum(BaseStrategy):
-    """Cross-sectional momentum ranking strategy.
-
-    Thesis: Top performer continues to outperform. Rank BTC/ETH/SOL by
-    momentum, long top, short bottom.
-    """
-
-    REQUIRED_TIMEFRAMES = {"entry": "1h", "regime": "4h"}
-
-    def __init__(self, config=None):
-        super().__init__(config)
-        self._mom_period = int(self._config.get("mom_period", 24))
-        self._top_n = int(self._config.get("top_n", 1))
-
-    async def evaluate(self, symbol, indicators):
-        # This strategy needs multi-symbol data - simplified for backtest
-        # In production, would rank across universe
-        mom = indicators.get(f"momentum_{symbol.lower()}", 0)
-
-        if mom > 0.05:
-            return Signal(
-                SignalType.BUY,
-                symbol,
-                indicators.get("close_price", 0),
-                0.7,
-                f"Strong momentum: {mom:.2%}",
-                {"momentum": mom},
-            )
-        elif mom < -0.05:
-            return Signal(
-                SignalType.SELL,
-                symbol,
-                indicators.get("close_price", 0),
-                0.7,
-                f"Weak momentum: {mom:.2%}",
-                {"momentum": mom},
-                trading_mode="futures",
-            )
-
-        return Signal(SignalType.HOLD, symbol, 0, 0, "No signal", {})
-
-    def get_name(self):
-        return "CrossSectionalMomentum"
-
-
-async def fetch_multi_symbol(reader, symbols, timeframe, start_time, end_time):
-    """Fetch and align data for multiple symbols."""
-    data_by_symbol = {}
-
-    for symbol in symbols:
-        data = await reader.fetch_range(symbol, timeframe, start_time, end_time)
-        # Convert to dict keyed by time
-        data_by_symbol[symbol] = {row["time"]: row for row in data}
-
-    return data_by_symbol
 
 
 async def compute_ethbtc_spread(data_btc, data_eth, timeframe):
@@ -208,7 +150,6 @@ async def run_ethbtc_backtest(start_date, end_date):
                 config = {
                     "lookback": 20,
                     "z_threshold": z_thresh,
-                    "exit_z": 0.3,
                 }
 
                 bt_config = BacktestConfig(
