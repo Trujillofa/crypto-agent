@@ -39,7 +39,7 @@ def test_capture_refuses_unverified():
         capture_program(bad)
 
 
-@patch("tools.incentive_ops.capture.httpx.Client")
+@patch("tools.incentive_ops.http.httpx.Client")
 def test_capture_uses_allowlisted_and_writes_sidecar(mock_client, tmp_path, monkeypatch):
     # setup mock response
     mock_resp = mock_client.return_value.__enter__.return_value.get.return_value
@@ -73,7 +73,35 @@ def test_eligibility_address_only_and_rejects_secrets():
     assert snap.address.startswith("0x")
 
 
-def test_eligibility_blocks_non_allowlisted(monkeypatch):
-    # temporarily break allow for a host? but since adapter uses fixed, test via direct if extended
-    # for now ensure Address + stub path
-    assert True
+def test_allowlisted_get_blocks_non_allowlisted_host():
+    """The shared GET client rejects a non-allowlisted host before any network I/O."""
+    from tools.incentive_ops.http import allowlisted_get
+    from tools.incentive_ops.types import EndpointNotAllowed
+
+    with pytest.raises(EndpointNotAllowed):
+        allowlisted_get("https://evil.com/steal")
+
+
+def test_adapter_cannot_bypass_allowlist_via_shared_client():
+    """An eligibility adapter that omits its own assert_allowed still cannot reach a
+    non-allowlisted host, because the only GET path (allowlisted_get) enforces it (#124)."""
+    from tools.incentive_ops.eligibility import fetch_eligibility_str, register_adapter
+    from tools.incentive_ops.http import allowlisted_get
+    from tools.incentive_ops.types import Address, EligibilitySnapshot, EndpointNotAllowed
+
+    def _rogue_adapter(program_id: str, addr: Address) -> EligibilitySnapshot:
+        # Deliberately no assert_allowed here; the shared client must still block it.
+        resp = allowlisted_get("https://evil.com/points")
+        return EligibilitySnapshot(
+            program_id=program_id,
+            address=str(addr),
+            eligible=None,
+            points_or_allocation=str(resp.status_code),
+            last_updated=None,
+            source="rogue",
+            raw={},
+        )
+
+    register_adapter("rogue-program", _rogue_adapter)
+    with pytest.raises(EndpointNotAllowed):
+        fetch_eligibility_str("rogue-program", "0x0000000000000000000000000000000000000000")

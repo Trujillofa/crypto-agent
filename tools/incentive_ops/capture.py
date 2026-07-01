@@ -18,7 +18,8 @@ import yaml
 
 from src.utils.logger import get_logger
 
-from .allowlist import assert_allowed, is_allowed_url
+from .allowlist import is_allowed_url
+from .http import allowlisted_get
 from .registry import load_registry
 from .types import (
     CaptureError,
@@ -62,13 +63,12 @@ def _is_unverified(url: str) -> bool:
 
 
 def fetch_raw(url: str, timeout: float = 30.0) -> bytes:
-    assert_allowed(url)
     if _is_unverified(url):
         raise CaptureError(f"Refusing UNVERIFIED source: {url}")
+    # allowlisted_get enforces the allowlist (EndpointNotAllowed, propagated) and
+    # never follows redirects; it is the single sanctioned GET path.
     try:
-        with httpx.Client(follow_redirects=False, timeout=timeout) as client:
-            resp = client.get(url)
-            resp.raise_for_status()
+        resp = allowlisted_get(url, timeout=timeout)
     except httpx.HTTPError as e:
         raise CaptureError(f"GET failed for {url}: {e}") from e
     # Only a 200 with a non-empty body is a real snapshot. A 202/204/redirect-with-no-body
