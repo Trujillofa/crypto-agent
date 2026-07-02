@@ -1,10 +1,10 @@
 id: kaito-yaps
 verified_at: null
-snapshot_sha256: b3d6199ab52b8f886969003a8317058fee199459c5235d3601ef682df667edbb
+snapshot_sha256: d8c2383e07c6ec4db8beece1d1d82543a41a758cf6c97ef5c5c3bf52b12dae74
 terms_match_snapshot: false
 live_round_open: false
 reviewer_decision: PENDING
-raw_evidence_path: research/a1-incentive-farming/snapshots/kaito-yaps/20260630T222523Z_b3d6199ab52b8f88.raw
+raw_evidence_path: research/a1-incentive-farming/snapshots/kaito-yaps/20260702T060011Z_d8c2383e07c6ec4d.raw
 official_round_terms_url: https://docs.kaito.ai/
 captured_source_url: https://docs.kaito.ai/
 jurisdiction_status: UNKNOWN
