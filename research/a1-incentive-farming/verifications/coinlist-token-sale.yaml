@@ -1,10 +1,10 @@
 id: coinlist-token-sale
 verified_at: null
-snapshot_sha256: 36fcf4894732a18b7efc1f21ca4c28f0528127d9727fc74fcf2b122d04420bde
+snapshot_sha256: d71283ddc5de03d8edf60e18d5c9199787a16b05474f660872df6ecd66def8af
 terms_match_snapshot: false
 live_round_open: false
 reviewer_decision: PENDING
-raw_evidence_path: research/a1-incentive-farming/snapshots/coinlist-token-sale/20260703T060011Z_36fcf4894732a18b.raw
+raw_evidence_path: research/a1-incentive-farming/snapshots/coinlist-token-sale/20260704T060011Z_d71283ddc5de03d8.raw
 official_round_terms_url: https://coinlist.co/faq
 captured_source_url: https://coinlist.co/faq
 jurisdiction_status: UNKNOWN
