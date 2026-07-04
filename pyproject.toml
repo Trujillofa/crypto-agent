@@ -69,6 +69,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "openai>=1.0.0",
     "yfinance>=0.2.40",
+    "eth-hash[pycryptodome]>=0.8.0",
 ]
 
 [project.optional-dependencies]
