@@ -447,6 +447,7 @@ def test_analyze_drift_detects_watched_service_signal_drought() -> None:
 
 def _load_sentinel_script():
     import importlib.util
+    import sys
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
@@ -454,9 +455,14 @@ def _load_sentinel_script():
         "production_drift_sentinel_script",
         root / "scripts" / "production_drift_sentinel.py",
     )
-    module = importlib.util.module_from_spec(spec)
+    assert spec is not None
     assert spec.loader is not None
-    spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(spec)
+    original_sys_path = list(sys.path)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = original_sys_path
     return module
 
 
