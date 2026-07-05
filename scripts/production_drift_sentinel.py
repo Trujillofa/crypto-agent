@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -63,6 +64,13 @@ def parse_args() -> argparse.Namespace:
         default="docs/reports/production-drift-sentinel",
         help="Path prefix for markdown/json artifacts",
     )
+    parser.add_argument(
+        "--dedupe-state",
+        help=(
+            "Path to a state file recording the last alerted findings; when set, "
+            "an unchanged set of findings exits 0 so schedulers only alert on change"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -77,6 +85,32 @@ def _exit_code(fail_on: str, findings: list[object]) -> int:
     if fail_on == "warning":
         return 1 if (has_error or has_warning) else 0
     return 1 if has_error else 0
+
+
+def _findings_fingerprint(findings: list[object]) -> str:
+    parts = sorted(
+        f"{getattr(finding, 'severity', '')}|{getattr(finding, 'code', '')}|{getattr(finding, 'message', '')}"
+        for finding in findings
+    )
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _apply_dedupe(exit_code: int, state_path: Path, fingerprint: str) -> int:
+    previous: str | None = None
+    if state_path.exists():
+        previous = state_path.read_text(encoding="utf-8").strip() or None
+
+    if exit_code == 0:
+        state_path.unlink(missing_ok=True)
+        return 0
+
+    if previous == fingerprint:
+        print("Findings unchanged since last alert; exiting 0 (dedupe)")
+        return 0
+
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(fingerprint + "\n", encoding="utf-8")
+    return exit_code
 
 
 def _render_markdown(report: DriftReport, expected_branch: str) -> str:
@@ -330,7 +364,14 @@ def main() -> int:
     print(f"Markdown report: {markdown_path}")
     print(f"JSON report: {json_path}")
 
-    return _exit_code(args.fail_on, report.findings)
+    exit_code = _exit_code(args.fail_on, report.findings)
+    if args.dedupe_state:
+        exit_code = _apply_dedupe(
+            exit_code,
+            Path(args.dedupe_state),
+            _findings_fingerprint(report.findings),
+        )
+    return exit_code
 
 
 if __name__ == "__main__":
