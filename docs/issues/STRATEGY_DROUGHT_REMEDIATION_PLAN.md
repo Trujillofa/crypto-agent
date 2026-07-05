@@ -1,0 +1,187 @@
+# Strategy Drought Remediation Plan
+
+**Date:** 2026-07-05
+**Status:** Proposed — awaiting approval before any changes
+**Scope:** `sol_1h_trend_pullback_overlay_live`, `sentiment_macro`, `sol_trend_pullback_sparse`
+
+---
+
+## Executive Summary
+
+A strategy-drought review on 2026-07-05 verified that **no malfunction exists** — all
+containers are healthy, ingestion is clean, indicators compute every minute, and the AI
+sentiment pipeline is responsive. However, three issues are suppressing trade activity
+and degrading PnL. This plan proposes a phased remediation with explicit validation
+gates before any live change.
+
+---
+
+## Issue 1 — `sol_1h_trend_pullback_overlay_live`: Never Traded (Buy Threshold Too High)
+
+### Evidence
+
+- **Config:** `config/settings.sol_1h_trend_pullback_overlay_live.yaml`
+  - `buy_threshold: 1.27`, `buy_threshold_uptrend: 1.07`
+  - 6 strategies configured, each produces confidence ≤ 1.0
+- **Runtime logs (live, last 24h):**
+  - `2026-07-05 02:04` — BollingerBounce → BUY(0.54) → Consensus HOLD (score 0.54 < 1.27)
+  - `2026-07-05 03:04` — BollingerBounce → BUY(0.67) → Consensus HOLD (score 0.67 < 1.27)
+  - `2026-07-04 20:04` — RSIReversal → SELL(0.51) → Consensus HOLD (score -0.51 > -0.79)
+- **Database:** 0 positions ever for this agent on a live futures account.
+- **Aggregator logic** (`src/strategy/aggregator.py:136`): `total_score >= effective_buy_threshold` —
+  since individual strategies fire at 0.5–0.7 confidence, the score can only exceed 1.27
+  if **2–3 strategies confluence simultaneously**.
+
+### Root Cause
+
+The `buy_threshold` of 1.27 was likely set for a multi-strategy confluence design, but
+in practice SOLUSDT 1h rarely produces 2–3 simultaneous BUY signals. The agent has been
+live on futures for weeks without a single entry.
+
+### Proposed Fix (Phased)
+
+| Phase | Change | Gate |
+|-------|--------|------|
+| 1 — Paper | Create/verify paper config with `buy_threshold: 0.85`, `buy_threshold_uptrend: 0.75` | Run paper agent 7–14 days, confirm entries occur |
+| 2 — Replay backtest | Backtest 2026-04-01 → 2026-07-05 at thresholds 0.8 / 0.9 / 1.0 | Compare PnL, win rate, max drawdown vs current 1.27 |
+| 3 — Live (if Phase 1–2 pass) | Lower live `buy_threshold` to selected value | Monitor first 10 live trades, kill-switch if drawdown > 5% |
+
+### Files to Modify (Phase 3 only)
+
+```
+config/settings.sol_1h_trend_pullback_overlay_live.yaml   # buy_threshold, buy_threshold_uptrend
+config/settings.sol_1h_trend_pullback_overlay_live.yaml   # per_symbol_aggregator_config.SOLUSDT.buy_threshold
+```
+
+---
+
+## Issue 2 — `sentiment_macro`: 1W / 11L Streak, May Drawdown
+
+### Evidence
+
+- **Config:** `config/settings.sentiment_macro.yaml`
+  - `buy_threshold: 0.6`, single strategy (`sentiment_mean_reversion`)
+  - `atr_pct_threshold: 0.005`, `rsi_oversold: 35.0`
+  - `global_trend_filter_buffer_pct: 0.0`
+- **Database (last 15 trades, May 7 → May 31):**
+
+  | Date | Symbol | Side | Entry | Exit | PnL (USDT) |
+  |------|--------|------|-------|------|------------|
+  | May 31 | BTCUSDT | LONG | 73619 | 73228 | -0.39 |
+  | May 27 | BTCUSDT | LONG | 74933 | 74280 | -0.65 |
+  | May 26 | BTCUSDT | LONG | 76832 | 76832 | -0.06 |
+  | May 25 | SOLUSDT | LONG | 85.01 | 84.11 | -0.23 |
+  | May 24 | ETHUSDT | LONG | 2100 | 2079 | -0.21 |
+  | May 22 | BTCUSDT | LONG | 75718 | 74949 | -0.77 |
+  | May 21 | BTCUSDT | LONG | 77216 | 76506 | -0.71 |
+  | May 18 | BTCUSDT | LONG | 77095 | 76378 | -0.72 |
+  | May 16 | BTCUSDT | LONG | 78044 | 77480 | -0.63 |
+  | May 16 | ETHUSDT | LONG | 2195 | 2185 | -0.12 |
+  | May 16 | BTCUSDT | LONG | 78488 | 78154 | -0.40 |
+  | **May 13** | BTCUSDT | LONG | 79254 | 80460 | **+1.14** |
+  | May 8 | BTCUSDT | LONG | 79598 | 80226 | +0.56 |
+  | May 7 | BTCUSDT | LONG | 81154 | 80560 | -0.66 |
+  | May 7 | ETHUSDT | LONG | 2312 | 2293 | -0.18 |
+
+- **Summary:** 2 wins, 13 losses in the last 15 trades. **All LONGs in a sustained downtrend**
+  (BTC fell from ~81k → 73k through May). The strategy is mean-reversion but kept buying dips
+  that kept dipping.
+
+### Root Cause
+
+The `sentiment_mean_reversion` strategy buys when RSI is oversold + sentiment is supportive +
+Bollinger distance met. In a sustained downtrend, "oversold" conditions persist and dips
+keep going lower. The `global_trend_filter_buffer_pct: 0.0` allows entries right at/below
+EMA200, and the `atr_pct_threshold: 0.005` may not be filtering enough for the volatility
+regime.
+
+### Proposed Fix (Phased)
+
+| Phase | Change | Gate |
+|-------|--------|------|
+| 1 — Diagnose | Backtest sentiment_mean_reversion on BTC/SOL/ETH Jan–Jun 2026. Identify if edge degraded or if it's purely regime. | Win rate, PnL, regime-conditional metrics |
+| 2 — Tighten gates (paper) | Raise `atr_pct_threshold` to 0.006–0.007, raise `sentiment_gate_threshold` to 40.0, add `btc_regime_filter_enabled: true` | 7–14 day paper run, compare entry frequency |
+| 3 — Live (if Phase 1–2 pass) | Apply validated config changes to live config | Monitor first 10 live trades |
+
+### Files to Modify (Phase 3 only)
+
+```
+config/settings.sentiment_macro.yaml   # atr_pct_threshold, sentiment_gate_threshold, btc_regime_filter
+```
+
+---
+
+## Issue 3 — `sol_trend_pullback_sparse`: Paper-Only (Unfunded Spot Account)
+
+### Evidence
+
+- **Config:** `config/settings.sol_trend_pullback_sparse.yaml`
+  - `mode: paper`, `test_mode: true`
+  - Comment: "spot account has $0 USDT balance (2026-04-25)"
+- **Database:** 8 closed trades, +$97.74 lifetime PnL. Last trade May 5 (61 days ago).
+- The strategy has a demonstrated edge but cannot trade live without capital.
+
+### Proposed Fix
+
+| Phase | Change | Gate |
+|-------|--------|------|
+| 1 — Capital decision | Fund the Binance spot account OR migrate to futures | User decision (capital allocation) |
+| 2 — Config update | Set `mode: live`, `test_mode: false`, update `order_size_usdt` based on funded balance | Manual verification of account balance |
+| 3 — Deploy | Restart container with updated config | Monitor first 5 trades |
+
+### Files to Modify (Phase 2 only, after funding)
+
+```
+config/settings.sol_trend_pullback_sparse.yaml   # mode, test_mode, order_size_usdt
+```
+
+---
+
+## Implementation Order
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  PARALLEL TRACK                                         │
+│                                                         │
+│  Track A: sol_1h overlay        Track B: sentiment_macro│
+│  ┌──────────────────────┐       ┌─────────────────────┐ │
+│  │ Phase 1: Paper test  │       │ Phase 1: Backtest   │ │
+│  │ Phase 2: Replay BT   │       │ Phase 2: Paper test │ │
+│  │ Phase 3: Live deploy │       │ Phase 3: Live deploy│ │
+│  └──────────────────────┘       └─────────────────────┘ │
+│                                                         │
+│  Track C: sol_sparse (BLOCKED on capital decision)      │
+│  ┌──────────────────────┐                               │
+│  │ Phase 1: Fund account│  ← user decision needed      │
+│  │ Phase 2: Config      │                               │
+│  │ Phase 3: Deploy      │                               │
+│  └──────────────────────┘                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Priority:** Track A (sol_1h) is cheapest to validate — it's already live but never
+fires, so any threshold change is pure upside. Track B (sentiment) needs the most
+analysis since the edge may be regime-conditional. Track C is blocked on a human
+decision.
+
+---
+
+## Risk Controls
+
+- **No live config changes in this PR.** This is a planning document only.
+- All threshold changes require paper validation + backtest confirmation first.
+- Live deployments include a kill-switch: if drawdown exceeds 5% on first 10 trades,
+  revert to previous config immediately.
+- Each live change is a separate commit + container restart, not a batch deploy.
+
+---
+
+## Verification Checklist (Post-Implementation)
+
+- [ ] `sol_1h_overlay`: at least 3 paper entries in 7 days at new threshold
+- [ ] `sol_1h_overlay`: backtest shows positive expectancy at new threshold
+- [ ] `sentiment_macro`: regime-conditional backtest identifies the edge boundary
+- [ ] `sentiment_macro`: paper entries reduced in downtrend conditions
+- [ ] `sol_sparse`: spot account funded before live config change
+- [ ] All agents: no new errors in logs after config changes
+- [ ] Prometheus/Grafana still scraping all agents after restart
