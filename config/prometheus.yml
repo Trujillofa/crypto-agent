@@ -1,6 +1,14 @@
 global:
   scrape_interval: 15s
 
+# Alerts are routed through the ctrader stack's Alertmanager (shared on this
+# host via the external ctrader-network), which owns the Telegram receiver.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - ctrader-alertmanager:9093
+
 rule_files:
   - /etc/prometheus/alerts.yml
 

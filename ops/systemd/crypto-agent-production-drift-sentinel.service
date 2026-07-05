@@ -10,7 +10,7 @@ User=emilio
 WorkingDirectory=/opt/crypto-agent
 Environment=EXPECTED_DEPLOY_BRANCH=main
 EnvironmentFile=-/etc/default/crypto-agent-production-drift-sentinel
-ExecStart=/usr/bin/python3 scripts/production_drift_sentinel.py --production-local --remote-dir /opt/crypto-agent --watch-service agent_sol_sparse --signal-stale-hours 72 --fail-on error --output-prefix data/reports/production-drift-sentinel
+ExecStart=/usr/bin/python3 scripts/production_drift_sentinel.py --production-local --remote-dir /opt/crypto-agent --watch-service agent_sol_sparse --signal-stale-hours 72 --fail-on error --output-prefix data/reports/production-drift-sentinel --dedupe-state data/reports/.production-drift-sentinel.last-alert
 
 [Install]
 WantedBy=multi-user.target

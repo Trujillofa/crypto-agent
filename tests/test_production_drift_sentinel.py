@@ -443,3 +443,74 @@ def test_analyze_drift_detects_watched_service_signal_drought() -> None:
 
     codes = {finding.code for finding in findings}
     assert "WATCH_SERVICE_SIGNAL_DROUGHT" in codes
+
+
+def _load_sentinel_script():
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location(
+        "production_drift_sentinel_script",
+        root / "scripts" / "production_drift_sentinel.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    original_sys_path = list(sys.path)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = original_sys_path
+    return module
+
+
+def _finding(severity: str, code: str, message: str) -> object:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(severity=severity, code=code, message=message)
+
+
+def test_dedupe_first_alert_passes_through_and_records_state(tmp_path) -> None:
+    script = _load_sentinel_script()
+    state = tmp_path / "state"
+    findings = [_finding("error", "GIT_DRIFT", "branch mismatch")]
+
+    result = script._apply_dedupe(1, state, script._findings_fingerprint(findings))
+
+    assert result == 1
+    assert state.exists()
+
+
+def test_dedupe_suppresses_repeat_of_same_findings(tmp_path) -> None:
+    script = _load_sentinel_script()
+    state = tmp_path / "state"
+    fingerprint = script._findings_fingerprint([_finding("error", "GIT_DRIFT", "branch mismatch")])
+
+    assert script._apply_dedupe(1, state, fingerprint) == 1
+    assert script._apply_dedupe(1, state, fingerprint) == 0
+
+
+def test_dedupe_alerts_again_when_findings_change(tmp_path) -> None:
+    script = _load_sentinel_script()
+    state = tmp_path / "state"
+
+    first = script._findings_fingerprint([_finding("error", "GIT_DRIFT", "branch mismatch")])
+    second = script._findings_fingerprint(
+        [_finding("error", "WATCH_SERVICE_SIGNAL_DROUGHT", "no signals")]
+    )
+
+    assert script._apply_dedupe(1, state, first) == 1
+    assert script._apply_dedupe(1, state, second) == 1
+
+
+def test_dedupe_clean_run_resets_state_so_next_drift_alerts(tmp_path) -> None:
+    script = _load_sentinel_script()
+    state = tmp_path / "state"
+    fingerprint = script._findings_fingerprint([_finding("error", "GIT_DRIFT", "branch mismatch")])
+
+    assert script._apply_dedupe(1, state, fingerprint) == 1
+    assert script._apply_dedupe(0, state, script._findings_fingerprint([])) == 0
+    assert not state.exists()
+    assert script._apply_dedupe(1, state, fingerprint) == 1
