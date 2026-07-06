@@ -8,8 +8,9 @@ overlay's untradeable threshold) or regime?
 **Method:** read-only bar-by-bar replay, 2026-04-15 → 2026-07-06. SOLUSDT 4h klines from
 Binance public REST; indicators computed with the project's own
 `src/features/technical.py::compute_indicators` over trailing 200-bar windows (mirroring
-production `computer.py` `limit=200`); signals from the actual `TrendPullbackStrategy` class
-with the exact config values from the agent's YAML. First-failing-gate recorded per bar.
+production `src/features/computer.py::_read_ohlcv` `limit=200`); signals from the actual
+`TrendPullbackStrategy` class with the exact config values from the agent's YAML.
+First-failing-gate recorded per bar.
 
 ## Validation
 
