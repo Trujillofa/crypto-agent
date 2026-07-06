@@ -14,14 +14,31 @@ cd "$REPO"
 
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-# Skip quietly when no baseline is RUNNING (post-close / not yet started).
-if ! python -m tools.incentive_ops baseline status 2>/dev/null | grep -q 'status=RUNNING'; then
+# Use the project's uv-managed environment; bare `python` under the systemd
+# unit's minimal PATH is the system interpreter and lacks project deps.
+run_ops() { uv run --project "$REPO" python -m tools.incentive_ops "$@"; }
+
+# Skip quietly only when the baseline is genuinely absent or not RUNNING.
+# Any other failure (e.g. import error) must surface, not masquerade as
+# "no baseline" — that silently skipped ticks on 2026-07-05/06.
+status_rc=0
+status_out="$(run_ops baseline status 2>&1)" || status_rc=$?
+if [ "$status_rc" -ne 0 ]; then
+  if grep -q 'BASELINE STATUS FAIL' <<<"$status_out"; then
+    echo "[$(ts)] no baseline runs found; nothing to tick"
+    exit 0
+  fi
+  echo "[$(ts)] ERROR: baseline status check crashed (rc=$status_rc):" >&2
+  printf '%s\n' "$status_out" >&2
+  exit 1
+fi
+if ! grep -q 'status=RUNNING' <<<"$status_out"; then
   echo "[$(ts)] no RUNNING baseline; nothing to tick"
   exit 0
 fi
 
 echo "[$(ts)] tick start"
-python -m tools.incentive_ops baseline tick
+run_ops baseline tick
 
 # Stage only incentive-ops artifacts; commit only if the tick changed something.
 git add research/a1-incentive-farming/runs \
