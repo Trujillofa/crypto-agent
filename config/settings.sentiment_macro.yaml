@@ -5,11 +5,11 @@ reconciliation:
   periodic_interval_seconds: 300  # re-check every 5 min while running
 display_name: sentiment-macro-1h-multiasset
 
-# Live trading: rolled back to futures on 2026-04-20 (was spot-only Stage D Apr 16-20).
-# Rationale: futures had 95 live trades, 70% WR, +$727 PnL (Mar 13 - Apr 16) vs
-# spot's 3 entries / 0 round-trips / -$0.51 realized. Futures track record is the edge.
-# Budget: $22/trade notional, default_leverage 3x, isolated margin, one-way mode.
-# Note: $22 minimum needed — Binance LOT_SIZE truncation can drop $20 order to $18.73.
+# History: rolled back to futures on 2026-04-20 (was spot-only Stage D Apr 16-20) on the
+# strength of the Mar 13 - Apr 16 futures run (95 trades, 70% WR, +$727). That apparent
+# edge did NOT persist — May ran 2W/13L — and later sweeps falsified it (see below).
+# Sizing history: $22/trade notional, 3x isolated, one-way; $22 minimum because Binance
+# LOT_SIZE truncation can drop a $20 order to $18.73.
 #
 # DISARMED to paper 2026-07-06: vol-filter sweep #101 (2026-06-19) found no setting that
 # both trades and holds an edge; consolidation 2026-06-19 ruled sentiment-macro not a
