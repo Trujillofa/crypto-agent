@@ -481,8 +481,8 @@ The system supports running multiple isolated trading agents simultaneously. The
 
 | Agent | Config | Description |
 |-------|--------|-------------|
-| `agent_sol_1h_trend_pullback_overlay_live` | `config/settings.sol_1h_trend_pullback_overlay_live.yaml` | **Only deployable technical agent** — SOL 1h trend-pullback overlay, Phase 0 forward validation in progress |
-| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | SOL-only sentiment mean reversion, live futures routing |
+| `agent_sol_1h_trend_pullback_overlay_live` | `config/settings.sol_1h_trend_pullback_overlay_live.yaml` | **Disarmed to paper 2026-07-06** (monitor only) — threshold sweep 2026-06-18 found no tradeable buy_threshold with an edge at corrected costs; do not re-arm without a new pre-registered WFO pass |
+| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | **Disarmed to paper 2026-07-06** (kept for xAI sentiment feed recording) — vol-filter sweep #101 found no setting that trades AND holds an edge; last 15 live trades 2W/13L |
 | `agent_sol_sparse` | `config/settings.sol_trend_pullback_sparse.yaml` | SOL trend pullback (paper) |
 | `agent_sol_panic_block_paper` | `config/settings.sol_4h_panic_block_paper.yaml` | SOL panic-block paper validation |
 

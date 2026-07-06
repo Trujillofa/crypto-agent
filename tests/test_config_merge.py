@@ -107,7 +107,7 @@ reconciliation:
 """
 
 _ORIGINAL_SENTIMENT_MACRO = """
-mode: live
+mode: paper
 agent_id: sentiment-macro-bot
 display_name: sentiment-macro-1h-multiasset
 log_level: INFO
@@ -150,10 +150,10 @@ prometheus:
   port: 8000
 
 trading_execution:
-  enabled: true
+  enabled: false
   api_key: ""
   api_secret: ""
-  test_mode: false
+  test_mode: true
   order_size_usdt: 22.0
   stop_loss_pct: 0.02
   take_profit_pct: 0.05
@@ -175,7 +175,7 @@ futures:
   max_leverage: 10
   margin_mode: isolated
   position_mode: one-way
-  test_mode: false
+  test_mode: true
   liquidation_buffer_pct: 5.0
 
 strategy:

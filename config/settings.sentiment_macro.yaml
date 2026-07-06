@@ -10,7 +10,13 @@ display_name: sentiment-macro-1h-multiasset
 # spot's 3 entries / 0 round-trips / -$0.51 realized. Futures track record is the edge.
 # Budget: $22/trade notional, default_leverage 3x, isolated margin, one-way mode.
 # Note: $22 minimum needed — Binance LOT_SIZE truncation can drop $20 order to $18.73.
-mode: live
+#
+# DISARMED to paper 2026-07-06: vol-filter sweep #101 (2026-06-19) found no setting that
+# both trades and holds an edge; consolidation 2026-06-19 ruled sentiment-macro not a
+# viable forward vehicle (last 15 live trades: 2W/13L, all longs into a downtrend).
+# Container kept running so the xAI sentiment feed keeps recording observations.
+# Do NOT re-arm without a new pre-registered validation at corrected costs.
+mode: paper
 
 trading:
   pairs:
@@ -27,7 +33,8 @@ ai:
   fallback_model: deepseek-v4-pro
 
 trading_execution:
-  test_mode: false
+  enabled: false
+  test_mode: true
   use_atr_sizing: false
   order_size_usdt: 22.0
   # Widened SL from 1.5 to 2.0 ATR — old 1.5x was getting clipped by 1h noise.
@@ -39,8 +46,11 @@ trading_execution:
     backtest_use_executor_exit_model: true
 
 futures:
+  # enabled stays true so the paper simulator keeps futures signal semantics
+  # (mode: paper above never constructs live executors); test_mode: true means
+  # even a mode flip would land on the Binance testnet, not real funds.
   enabled: true
-  test_mode: false
+  test_mode: true
   default_leverage: 3
   max_leverage: 10
   margin_mode: isolated
