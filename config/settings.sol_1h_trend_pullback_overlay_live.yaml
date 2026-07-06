@@ -1,6 +1,11 @@
 agent_id: sol-1h-trend-pullback-overlay-live
 display_name: sol-1h-trend-pullback-overlay-live
-mode: live
+# DISARMED to paper 2026-07-06: the 2026-06-18 threshold sweep
+# (docs/reports/overlay-threshold-sweep-2026-06-18.md) found no buy_threshold that both
+# trades >=2/mo and survives corrected costs; consolidation 2026-06-19 ruled the overlay
+# not a viable forward vehicle. Container kept as monitor only. Do NOT re-arm or lower
+# buy_threshold without a new pre-registered WFO pass at corrected costs.
+mode: paper
 
 trading:
   pairs:
@@ -14,8 +19,8 @@ telegram:
   daily_summary_enabled: true
 
 trading_execution:
-  enabled: true
-  test_mode: false
+  enabled: false
+  test_mode: true
   use_atr_sizing: false
   order_size_usdt: 22.0
   sl_atr_multiplier: 2.38
@@ -26,8 +31,11 @@ trading_execution:
     backtest_use_executor_exit_model: true
 
 futures:
+  # enabled stays true so the paper simulator keeps futures signal semantics
+  # (mode: paper above never constructs live executors); test_mode: true means
+  # even a mode flip would land on the Binance testnet, not real funds.
   enabled: true
-  test_mode: false
+  test_mode: true
   default_leverage: 3
   max_leverage: 3
   margin_mode: isolated
