@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import httpx
+
 from src.utils.logger import get_logger
 
-from .http import allowlisted_get
+from .allowlist import assert_allowed
 from .types import Address, EligibilitySnapshot
 
 logger = get_logger(__name__)
@@ -42,11 +44,12 @@ def _default_stub(program_id: str, addr: Address) -> EligibilitySnapshot:
 def _example_layer3_adapter(program_id: str, addr: Address) -> EligibilitySnapshot:
     # Example adapter using allowlisted host. In real would query specific quest API if public.
     # For demo we GET the program page (allowlisted) and report no structured points.
-    # The GET goes through the shared allowlisted client, so the allowlist is
-    # enforced even though this adapter no longer calls assert_allowed itself.
     url = "https://layer3.xyz/"
+    assert_allowed(url)
     try:
-        r = allowlisted_get(url, timeout=15.0)
+        with httpx.Client(timeout=15.0) as client:
+            r = client.get(url)
+            r.raise_for_status()
         return EligibilitySnapshot(
             program_id=program_id,
             address=str(addr),
