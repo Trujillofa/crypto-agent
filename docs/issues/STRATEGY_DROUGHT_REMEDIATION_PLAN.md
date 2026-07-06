@@ -1,8 +1,41 @@
 # Strategy Drought Remediation Plan
 
 **Date:** 2026-07-05
-**Status:** Proposed — awaiting approval before any changes
+**Status:** SUPERSEDED (Tracks A & B) — see counter-evidence below. Track C remains open, blocked on a capital decision.
 **Scope:** `sol_1h_trend_pullback_overlay_live`, `sentiment_macro`, `sol_trend_pullback_sparse`
+
+---
+
+## ⚠️ Counter-Evidence — Do Not Execute Tracks A or B (added 2026-07-06)
+
+This plan's diagnosis is correct (no malfunction; the overlay's `buy_threshold` exceeds
+what one strategy vote can produce), but Tracks A and B re-open decisions that were
+already settled by pre-registered experiments this plan does not cite:
+
+- **Track A (lower overlay `buy_threshold`) was falsified on 2026-06-18.**
+  [`overlay-threshold-sweep-2026-06-18.md`](../reports/overlay-threshold-sweep-2026-06-18.md)
+  swept exactly the proposed region (0.5–1.27) on the production-mirror config at
+  corrected costs (#94), WFO 2024-01 → 2026-02: every threshold with tradeable frequency
+  loses (0.80 → −17.5%, 0.90 → fails gates at 77% max DD, 1.00 → −21.6%), and the
+  deployed 1.07/1.27 fail the pre-registered ≥2 trades/mo floor. Lowering the threshold
+  is not "pure upside" — it converts a dormant agent into a measured losing one. Note the
+  overlay's original WFO pass predates the cost fix (#94) and was established under ~3×
+  overcharged costs; the >1.0 confluence gate is part of what made it pass.
+- **Track B (tighten sentiment_macro gates) was swept on 2026-06-19** (#101,
+  [`sentiment-vol-filter-sweep`](../reports/sentiment-vol-filter-sweep-2026-06-19.md)):
+  no setting both trades and holds an edge.
+- **Both verdicts were consolidated in**
+  [`research-consolidation-2026-06-19.md`](../reports/research-consolidation-2026-06-19.md):
+  overlay — "Not viable — untradeable gate, no edge beneath it"; sentiment-macro —
+  "Not viable". A 7–14 day paper run or a 3-month replay (~17 trades at threshold 0.85)
+  cannot overturn a 2-year corrected-cost WFO and should not be run against live capital.
+
+**Resolution:** both agents were disarmed to paper (execution flags off, containers and
+data feeds kept) rather than left live-armed and dormant — this plan itself is the
+demonstration that a dormant live agent invites exactly the config change the sweep
+falsified. Track C (`sol_sparse` funding) stays a human capital decision; note its
+"demonstrated edge" is 8 lifetime trades and it has also been dry in paper mode since
+2026-05-05, so diagnose the dryness before funding anything.
 
 ---
 
