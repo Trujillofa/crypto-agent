@@ -11,6 +11,7 @@ sys.path.append(os.getcwd())
 
 import yaml
 
+from scripts.experiment_autopilot import _resolve_global_trend_filter
 from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
@@ -118,12 +119,11 @@ async def main():
     strategy_section = raw_config.get("strategy", {})
     if not isinstance(strategy_section, dict):
         strategy_section = {}
-    config_trend_filter = (
-        bool(strategy_section["global_trend_filter_enabled"])
-        if "global_trend_filter_enabled" in strategy_section
-        else None
+    apply_trend_filter, trend_filter_source, config_trend_filter = _resolve_global_trend_filter(
+        raw_config=raw_config,
+        disable_trend_filter=args.disable_trend_filter,
+        cost_profile=None,
     )
-    trend_filter_source = "cli_override" if args.disable_trend_filter else "engine_default"
 
     config = BacktestConfig(
         symbol=args.symbol,
@@ -141,7 +141,7 @@ async def main():
         use_atr_sizing=settings.trading_execution.use_atr_sizing,
         atr_multiplier=settings.trading_execution.atr_multiplier,
         risk_per_trade=settings.trading_execution.risk_per_trade_pct,
-        apply_global_trend_filter=not args.disable_trend_filter,
+        apply_global_trend_filter=apply_trend_filter,
         global_trend_filter_buffer_pct=float(
             strategy_section.get("global_trend_filter_buffer_pct", 0.05)
         ),

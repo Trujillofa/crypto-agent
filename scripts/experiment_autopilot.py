@@ -156,6 +156,12 @@ def _resolve_global_trend_filter(
         return cost_profile.apply_global_trend_filter, "cost_profile_override", config_explicit
     if disable_trend_filter:
         return False, "cli_override", config_explicit
+    # Mirror live behavior (src/main.py): the strategy config decides; the
+    # engine default only applies when the config is silent. Previously the
+    # config value was recorded for audit but ignored, so a backtest of a
+    # filter-off config still silently blocked below-trend buys.
+    if config_explicit is not None:
+        return config_explicit, "config", config_explicit
     return True, "engine_default", config_explicit
 
 

@@ -56,6 +56,40 @@ def test_resolve_trend_filter_engine_default() -> None:
     assert explicit is None
 
 
+def test_resolve_trend_filter_respects_config_false() -> None:
+    """A filter-off config must actually turn the filter off (mirrors live)."""
+    apply, source, explicit = _resolve_global_trend_filter(
+        raw_config=_base_raw_config(trend_filter_enabled=False),
+        disable_trend_filter=False,
+        cost_profile=None,
+    )
+    assert apply is False
+    assert source == "config"
+    assert explicit is False
+
+
+def test_resolve_trend_filter_respects_config_true() -> None:
+    apply, source, explicit = _resolve_global_trend_filter(
+        raw_config=_base_raw_config(trend_filter_enabled=True),
+        disable_trend_filter=False,
+        cost_profile=None,
+    )
+    assert apply is True
+    assert source == "config"
+    assert explicit is True
+
+
+def test_resolve_trend_filter_cli_beats_config() -> None:
+    apply, source, explicit = _resolve_global_trend_filter(
+        raw_config=_base_raw_config(trend_filter_enabled=True),
+        disable_trend_filter=True,
+        cost_profile=None,
+    )
+    assert apply is False
+    assert source == "cli_override"
+    assert explicit is True
+
+
 def test_resolve_trend_filter_cost_profile_override() -> None:
     apply, source, explicit = _resolve_global_trend_filter(
         raw_config=_base_raw_config(trend_filter_enabled=True),
