@@ -77,8 +77,16 @@ def main() -> int:
     manifests = sorted(RUNS_ROOT.glob("*/manifest.yaml")) if RUNS_ROOT.is_dir() else []
     running = []
     for mp in manifests:
-        data = yaml.safe_load(mp.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and data.get("status") == "RUNNING":
+        try:
+            data = yaml.safe_load(mp.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            print(f"freeze-guard: FAIL — unparseable manifest {mp}: {exc}", file=sys.stderr)
+            return 1
+        if not isinstance(data, dict):
+            # An empty/non-mapping manifest must not silently read as "no baseline".
+            print(f"freeze-guard: FAIL — manifest is not a mapping: {mp}", file=sys.stderr)
+            return 1
+        if data.get("status") == "RUNNING":
             running.append((mp, data))
 
     if not running:

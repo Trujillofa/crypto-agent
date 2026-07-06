@@ -109,3 +109,17 @@ def test_no_runs_dir_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Repos/branches without any baseline runs are unaffected."""
     monkeypatch.setattr(guard, "RUNS_ROOT", tmp_path / "nonexistent")
     assert guard.main() == 0
+
+
+def test_empty_manifest_fails(repo: Path):
+    """A corrupted/empty manifest must fail loudly, not read as 'no baseline'."""
+    mp = repo / "research/a1-incentive-farming/runs/baseline-test/manifest.yaml"
+    mp.write_text("", encoding="utf-8")
+    assert guard.main() == 1
+
+
+def test_unparseable_manifest_fails(repo: Path):
+    """Invalid YAML in a manifest is a hard failure, not a bypass."""
+    mp = repo / "research/a1-incentive-farming/runs/baseline-test/manifest.yaml"
+    mp.write_text("status: [unclosed\n  - :bad", encoding="utf-8")
+    assert guard.main() == 1
