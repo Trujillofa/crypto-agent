@@ -13,36 +13,55 @@ the rules below fixed before any data is viewed.
 
 ---
 
+> Parameters below were filled in on 2026-07-07 from the **in-sample report only**
+> (`docs/reports/macro-surprise-drift-probe-v0.md`); no OOS data was viewed. They become
+> locked when the human signs the line at the bottom of this file.
+
 ## Hypothesis
 
-[Placeholder: exact market behavior expected after NFP — e.g. direction and persistence
-of the move in the chosen instrument following a positive NFP surprise. Must be filled
-in before the probe runs.]
+Hot NFP surprises (actual > consensus, `z > 0`) are followed by **positive** BTCUSDT
+forward returns, and cold surprises by negative ones — "good news is good", the
+**opposite** of the ex-ante risk-off sign frozen in probe v0. In-sample basis (BTCUSDT,
+28 events, 2024-01 → 2026-05): hot mean +0.65% vs cold mean −1.09% at +24h, consistent
+across BTC/ETH/SOL and across +6h/+24h/+72h horizons.
 
 ## Market/instrument
 
-[Placeholder: exact instrument, venue, and timeframe.]
+BTCUSDT spot (Binance), 1h candles. BTCUSDT is the **only gated instrument**. ETHUSDT
+and SOLUSDT may be computed as consistency checks but carry no weight in the verdict.
 
 ## Event window
 
-[Placeholder: exact NFP release dates or release windows in scope, including the OOS
-date range boundaries.]
+**OOS = US NFP scheduled releases from 2021-01-08 through 2023-12-08 (36 releases)** —
+strictly before the in-sample archive (2024-01-05 → 2026-05-08), so no overlap with the
+data the hypothesis was formed on. NFP releases after 2026-05-08 may be appended as
+forward confirmation as they occur, but the verdict is decided on the 2021–2023 window.
+Releases where point-in-time consensus cannot be recovered are excluded and the
+exclusion count reported.
 
 ## Entry rule
 
-[Placeholder: deterministic entry condition and timing relative to the release.]
+At the close of the first 1h BTCUSDT candle at or after the release timestamp: if
+`z > 0` (hot, same standardized-surprise definition as
+`scripts/probe_macro_surprise_drift.py`), enter **long**. If `z ≤ 0`, no position.
+One entry per release, fixed notional.
 
 ## Exit rule
 
-[Placeholder: deterministic exit condition — time-based, level-based, or both.]
+Fixed time exit: close the position 24 hours after entry (first candle close at or
+after entry + 24h). No stop, no target, no discretionary exit.
 
 ## Data source
 
-[Placeholder: OHLCV/tick source and the NFP surprise data source (consensus vs actual).]
+- OHLCV: Binance via `scripts/download_historical.py` (BTCUSDT 1h, 2021-01 → 2024-01).
+- Surprises: BLS actuals + Investing.com Wayback-archived consensus, same method and
+  same point-in-time caveat as `data/macro_events/us_macro_surprises.csv`. Consensus is
+  collected for the OOS window **before** any return is computed.
 
 ## Cost assumptions
 
-[Placeholder: spread, commission, and slippage — fixed before running.]
+0.04%/side taker fee + 0.02%/side slippage = **0.12% round trip**, matching the
+post-#94 realistic backtest defaults. Spot only — no funding.
 
 ## Pass threshold
 
@@ -69,3 +88,7 @@ the data, verdict = **NO_PULSE**.
 **YES** or **NO_PULSE**
 
 Verdict: _[pending]_
+
+## Lock sign-off
+
+Parameters locked by: _[human signature + date required before the probe script runs]_
