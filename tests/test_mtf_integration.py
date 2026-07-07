@@ -8,6 +8,7 @@ from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.features.reader import IndicatorReader
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
+from src.strategy.simple_ma import SimpleMACrossoverStrategy
 
 
 class MockMTFStrategy(BaseStrategy):
@@ -245,10 +246,66 @@ class TestMTFNoLookahead:
 class TestBackwardCompatibility:
     """Verify existing single-timeframe strategies still work."""
 
-    @pytest.mark.skip(reason="Requires database - run manually with: pytest -m integration")
     async def test_existing_strategy_unchanged(self):
-        """Existing single-timeframe strategies should work without changes."""
-        pass
+        """Existing single-timeframe strategies should work without changes.
+
+        Runs the production SimpleMACrossoverStrategy through the engine's
+        single-timeframe path: an EMA crossover up opens a long, the
+        crossover down closes it via signal.
+        """
+        mock_data = [
+            # Bar 1: short EMA below long EMA — establishes previous state, HOLD
+            {
+                "time": "2024-06-01 08:00:00",
+                "close_price": 100.0,
+                "ema_12": 99.0,
+                "ema_26": 100.0,
+                "ema_50": 98.0,
+                "ema_200": 90.0,
+            },
+            # Bar 2: crossover up + price above EMA50/EMA200 — BUY, opens long
+            {
+                "time": "2024-06-01 12:00:00",
+                "close_price": 105.0,
+                "ema_12": 102.0,
+                "ema_26": 101.0,
+                "ema_50": 99.0,
+                "ema_200": 90.0,
+            },
+            # Bar 3: crossover down + price below EMA50 — SELL, closes long
+            {
+                "time": "2024-06-01 16:00:00",
+                "close_price": 95.0,
+                "ema_12": 100.0,
+                "ema_26": 101.0,
+                "ema_50": 99.0,
+                "ema_200": 90.0,
+            },
+        ]
+
+        reader = MockReader({("BTCUSDT", "4h"): mock_data})
+
+        config = BacktestConfig(
+            symbol="BTCUSDT",
+            timeframe="4h",
+            start_date="2024-06-01",
+            end_date="2024-06-02",
+            strategy_classes=[SimpleMACrossoverStrategy],
+            strategy_configs=[{}],
+            initial_capital=10000.0,
+        )
+
+        engine = BacktestEngine(config, reader)
+        result = await engine.run()
+
+        assert result.total_trades == 1
+        trade = result.trades[0]
+        assert trade.side == "BUY"
+        assert trade.exit_reason == "SIGNAL"
+        assert trade.entry_price == pytest.approx(105.0 * (1 + config.slippage_pct))
+        assert trade.exit_price == pytest.approx(95.0 * (1 - config.slippage_pct))
+        assert trade.pnl < 0
+        assert result.final_equity == pytest.approx(10000.0 + trade.pnl)
 
     async def test_multiple_strategies_mixed_timeframes(self):
         mock_data = [
