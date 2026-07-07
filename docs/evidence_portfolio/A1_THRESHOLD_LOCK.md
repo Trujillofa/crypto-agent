@@ -105,10 +105,69 @@ list are evaluated against the locked definitions above.
 **No A1 program scales unless it is profitable after operator time** (economic profit >
 $0). Cash-positive but economically negative programs are Fix at best, never Scale.
 
+## Annex (locked 2026-07-07, before Phase-0 close): scope, sources, zero-capital mapping
+
+### Program scope
+
+The classification table applies to the **5 frozen active research programs** of run
+`baseline-20260630T222523Z` (manifest:
+`research/a1-incentive-farming/runs/baseline-20260630T222523Z/manifest.yaml`):
+
+1. `coinlist-token-sale`
+2. `galxe-quests-oat`
+3. `kaito-yaps`
+4. `layer3-quests`
+5. `legion-merit-sale`
+
+The 12 control programs in the same manifest are context only and receive no
+classification. Programs not in the frozen manifest cannot be classified from Phase-0
+data.
+
+### Measurement sources
+
+- Cash components (rewards, gas, fees, slippage, retries, lockup): the run's ledger and
+  observation files under
+  `research/a1-incentive-farming/runs/baseline-20260630T222523Z/`.
+- Operator hours: the hours-worked accounting defined in
+  `docs/specs/a1-incentive-farming-pilot-v0.md` (Accounting section). **If operator
+  hours were not contemporaneously recorded for the window, they may not be
+  reconstructed from memory — the affected program classifies Freeze (poor data
+  quality).**
+- Capital deployed: the run manifest's invariants (`zero_capital`, `wallets_used`).
+
+### Zero-capital mapping
+
+The Phase-0 baseline is an **observation-only** window (`zero_capital: true`,
+`wallets_used: false`; as of 2026-07-07 all 17 programs are unverified and
+non-actionable). It is therefore locked now, before close, that:
+
+- If the window closes with zero deployed capital and zero realized rewards, **cash net
+  profit is exactly $0** for every program: Scale and Fix are unreachable (both require
+  cash > $0), Kill's cash trigger is not met (requires < $0), and Phase-0 ROI is
+  undefined (zero denominator), which counts as **failing** the ROI > 1% criterion.
+- A program with cash net profit exactly $0 and no capital deployed classifies
+  **Freeze** by definition — the observation window produced stability and data-quality
+  evidence, not economics. This closes the table's gap at exactly $0 and is a threshold
+  clarification made before any Phase-0 result is reviewed.
+- Consequently a zero-capital Phase-0 **cannot produce a Scale verdict**.
+- Any move to a capital-deployed pilot (Phase-1) is a **new decision requiring its own
+  pre-registered thresholds before deployment** — it is not a reinterpretation of this
+  table, and a Phase-0 Freeze verdict carries no presumption of Phase-1 admission.
+
+What Phase-0 *can* legitimately decide: which of the 5 programs earn a Phase-1
+capital-deployed pilot proposal, judged on the frozen evidence dimensions —
+verification progress, capture stability (content-hash churn), data quality, and
+EV-readiness — with the pilot's economics thresholds locked before it starts.
+
 ## PRs #132/#133 re-land rule
 
 PRs #132 (allowlisted GET client) and #133 (address checksums) were merged during the
 tooling freeze and reverted on 2026-07-06 (`ac43cec`, `4e106f0`). They **re-land only if
-Phase-0 data classifies at least one program as Scale** — i.e. the tooling investment is
-justified by evidence. They do **not** re-land merely because the freeze expires on
-2026-07-11. If no program scales, both PRs stay reverted until a program earns Scale.
+Phase-0 data supports scaling** — i.e. the tooling investment is justified by evidence.
+They do **not** re-land merely because the freeze expires on 2026-07-11.
+
+Given the zero-capital mapping above, the operative reading is locked now: "Phase-0
+data supports scaling" means **at least one program earns an approved Phase-1
+capital-deployed pilot** (with its own pre-registered thresholds) **and the reverted
+tooling is required for that pilot**. If no program earns a Phase-1 pilot, both PRs
+stay reverted.
