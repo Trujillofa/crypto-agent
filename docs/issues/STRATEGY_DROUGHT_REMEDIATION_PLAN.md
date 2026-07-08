@@ -211,6 +211,10 @@ decision.
 
 ## Verification Checklist (Post-Implementation)
 
+Status checked on 2026-07-08. These gates require current production evidence:
+paper entries, backtest output, service logs, and Prometheus/Grafana scrape
+state. Don't mark them done from local config alone.
+
 - [ ] `sol_1h_overlay`: at least 3 paper entries in 7 days at new threshold
 - [ ] `sol_1h_overlay`: backtest shows positive expectancy at new threshold
 - [ ] `sentiment_macro`: regime-conditional backtest identifies the edge boundary

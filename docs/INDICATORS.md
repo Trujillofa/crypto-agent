@@ -366,14 +366,22 @@ The `indicators` table is a TimescaleDB hypertable for:
 - All operations are async to avoid blocking
 - Separate metrics for each symbol
 
-## Future Enhancements
+## Current gaps
 
-- [ ] Support for custom indicator periods
-- [ ] Multi-timeframe indicators (1m, 5m, 15m, 1h, 4h, 1d)
-- [ ] Indicator alerts (RSI crossovers, MACD signals)
-- [ ] Real-time indicator streaming via WebSocket
-- [ ] Backtest strategies using historical indicators
-- [ ] ML model training pipeline integration
+Status checked on 2026-07-08 against the local tree.
+
+- [ ] Support for custom indicator periods. Indicator periods are still fixed in
+  `src/features/technical.py`.
+- [x] Multi-timeframe indicators. Runtime and backtest paths fetch the declared
+  strategy timeframes, and MTF reader/engine coverage exists.
+- [ ] Indicator alerts. Telegram trade alerts exist, but there is no dedicated
+  RSI/MACD crossover alert pipeline.
+- [ ] Real-time indicator streaming via WebSocket. OHLCV WebSocket ingestion
+  exists, but indicator values are computed and stored on the scheduled pipeline.
+- [x] Backtest strategies using historical indicators. `BacktestEngine` reads
+  historical indicator ranges through `IndicatorReader`.
+- [ ] ML model training pipeline integration. RL research code exists, but there
+  is no production training pipeline wired to the indicator store.
 
 ## References
 

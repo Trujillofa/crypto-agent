@@ -5,6 +5,10 @@
 **Analysis window**: 2026-03-19 → 2026-04-13 (25 days, post P&L sizing fix)
 **Gate context**: 100-trade decision gate from project memory
 
+> Status checked on 2026-07-08. This report is a point-in-time decision gate.
+> The unchecked criteria below should be re-evaluated from current production
+> trade history before marking any item done or changing the strategy.
+
 ---
 
 ## TL;DR

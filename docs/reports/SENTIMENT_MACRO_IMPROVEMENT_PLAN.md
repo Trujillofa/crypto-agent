@@ -3,6 +3,13 @@
 **Created:** 2026-03-25
 **Goal:** Optimize the SentimentMeanReversion strategy using autoresearch + WFO
 
+> Status checked on 2026-07-08. This is a dated execution plan. Treat the
+> unchecked checklist below as historical unless current runtime data confirms
+> the same work is still needed. More recent sentiment-macro evidence lives in
+> `docs/reports/sentiment-macro-decision-gate-20260413.md`,
+> `docs/reports/sentiment-macro-live-bleed-investigation-2026-06-01.md`, and
+> `docs/reports/sol-sparse-dryness-diagnosis-2026-07-06.md`.
+
 ---
 
 ## Current State
@@ -299,6 +306,10 @@ strategy:
 ---
 
 ## Execution Checklist
+
+This checklist is retained as historical planning context. Don't check items off
+from local code alone; verify current DB coverage, backtest artifacts, deployed
+config, and production logs first.
 
 ### Prerequisites
 - [ ] Local TimescaleDB running with indicator data

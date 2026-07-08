@@ -253,13 +253,17 @@ live overlay via config promotion later.
 
 ## Engineering checklist
 
-- [ ] `src/strategy/session_liquidity.py` + tests
-- [ ] Engine + backtest BUY gate
-- [ ] `main.py` config parsing
-- [ ] `settings.sol_1h_trend_pullback_overlay_paper_americas_gate.yaml`
-- [ ] Phase 2 A/B script or documented `run_backtest.py` commands
-- [ ] Ledger row after Phase 2 (PASS / REJECT)
-- [ ] Probe import refactor (dedupe `DEFAULT_WINDOWS`)
+Status checked on 2026-07-08 against the local tree. This lane remains
+**CLOSED / REJECT**; completed implementation items are kept only as historical
+evidence.
+
+- [x] `src/strategy/session_liquidity.py` + tests
+- [x] Engine + backtest BUY gate
+- [x] `main.py` config parsing
+- [x] `settings.sol_1h_trend_pullback_overlay_paper_americas_gate.yaml`
+- [x] Phase 2 A/B script or documented `run_backtest.py` commands
+- [x] Ledger row after Phase 2 (PASS / REJECT)
+- [x] Probe import refactor (dedupe `DEFAULT_WINDOWS`)
 
 **Explicitly not in v1 checklist:**
 

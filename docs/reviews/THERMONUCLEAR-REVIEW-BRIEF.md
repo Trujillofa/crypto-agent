@@ -110,12 +110,16 @@ Conventional Commits, scoped per `CLAUDE.md`. Co-author line:
 
 ## Acceptance criteria
 
-- [ ] `uv run pytest -v` green; `ruff check` + `ruff format --check` clean.
-- [ ] No changes under `tools/incentive_ops/**`; no `src/` module relocations; no prod Docker/config path changes.
-- [ ] Root artifact files (`wfo_results.csv`, stray logs, `.coverage`, `.venv_new`) gone and gitignored.
-- [ ] Root markdown reduced to the 7 agent-instruction files + `README.md`; the rest live under `docs/` with references updated.
+Status checked on 2026-07-08 against the local tree. `uv run pytest -v`,
+`uv run ruff check .`, `uv run ruff format --check .`, and `git diff --check`
+passed. The current diff is docs-only.
+
+- [x] `uv run pytest -v` green; `ruff check` + `ruff format --check` clean.
+- [x] No changes under `tools/incentive_ops/**`; no `src/` module relocations; no prod Docker/config path changes.
+- [x] Root artifact files (`wfo_results.csv`, stray logs, `.coverage`, `.venv_new`) gone and gitignored.
+- [x] Root markdown reduced to the 7 agent-instruction files + `README.md`; the rest live under `docs/` with references updated.
 - [ ] Every deleted symbol verified unreferenced (grep evidence in the PR description or commit body).
-- [ ] Diff is reviewable: small, purpose-scoped commits — not one giant blob.
+- [x] Diff is reviewable: small, purpose-scoped commits — not one giant blob.
 
 ## Out of scope (explicitly)
 - Behavior changes to any strategy, risk, or execution logic.

@@ -353,6 +353,11 @@ available.
 
 Before adding any new tracked config:
 
+Status checked on 2026-07-08. This is still a reusable promotion gate for future
+candidate configs. Mark individual items only from the candidate ledger, WFO
+artifacts, overlap report, and exact config/risk/compose files for that
+candidate.
+
 - [ ] Standard gate passed at bootstrap=100.
 - [ ] `eligible_for_bootstrap_1000=true`.
 - [ ] bootstrap=1000 passed.
