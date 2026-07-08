@@ -305,46 +305,21 @@ strategy:
 
 ---
 
-## Execution Checklist
+## Historical execution status
 
-This checklist is retained as historical planning context. Don't check items off
-from local code alone; verify current DB coverage, backtest artifacts, deployed
-config, and production logs first.
+Status checked on 2026-07-08. This March plan is no longer an active execution
+checklist. Later research records show that repeated threshold and aggregator
+sweeps on the same 1h technical stack were exhausted; use the current candidate
+ledger and decision-gate reports for active promotion decisions.
 
-### Prerequisites
-- [ ] Local TimescaleDB running with indicator data
-- [ ] DB has BTC/ETH/SOL 1h data from 2024 onwards
-- [ ] Python venv activated
-
-### Phase 1 (Baseline)
-- [ ] Run BTCUSDT baseline WFO
-- [ ] Run ETHUSDT baseline WFO
-- [ ] Run SOLUSDT baseline WFO
-- [ ] Document baseline metrics
-
-### Phase 2 (Sweeps)
-- [ ] Create overlay YAML files
-- [ ] Run RSI threshold sweep (6 runs)
-- [ ] Run BB distance sweep (6 runs)
-- [ ] Run aggregator sweep (6 runs)
-- [ ] Analyze sweep results
-
-### Phase 3 (Multi-Symbol)
-- [ ] Create per-symbol optimized overlay
-- [ ] Run combined optimization
-- [ ] Compare vs single-symbol results
-
-### Phase 4 (Ensemble)
-- [ ] Create ensemble expansion overlay
-- [ ] Run with multiple strategies
-- [ ] Check if min_agreement needs adjustment
-
-### Phase 5 (Deploy)
-- [ ] Select winning configuration
-- [ ] Update `config/settings.sentiment_macro.yaml`
-- [ ] Deploy to Hetzner: `ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose -f docker-compose.prod.yml up -d --build agent_sentiment_macro"`
-- [ ] Verify deployment
-- [ ] Monitor for 2 weeks
+- Baseline and follow-up sentiment-macro evidence is recorded in
+  `docs/reports/SENTIMENT_MACRO_BASELINE_RESULTS.md`,
+  `docs/reports/sentiment-macro-pair-promotion-screen-2026-05-05.md`, and
+  `docs/reports/sentiment-macro-decision-gate-20260413.md`.
+- Current production status should be checked from TimescaleDB, service logs,
+  and Prometheus before changing `config/settings.sentiment_macro.yaml`.
+- Do not revive this checklist as a task list. Create a new spec if a new
+  sentiment-macro lane is justified by fresh evidence.
 
 ---
 

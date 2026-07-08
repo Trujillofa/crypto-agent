@@ -461,9 +461,11 @@ The system tracks funding costs in position PnL. High funding costs can erode pr
 
 ## Production Deployment
 
-### Pre-Flight Checklist
+### Reusable pre-flight checklist
 
-Before going live, verify:
+Before going live with a new deployment or promotion, verify these items against
+the current target environment. Leave this checklist unchecked in the docs; use
+a dated release or deployment note to record a specific run.
 
 - [ ] All tests pass (`pytest`)
 - [ ] Paper trading tested thoroughly
