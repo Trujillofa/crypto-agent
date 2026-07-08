@@ -9,6 +9,12 @@
 > The unchecked criteria below should be re-evaluated from current production
 > trade history before marking any item done or changing the strategy.
 
+> Rechecked on 2026-07-08 from production `positions` for
+> `sentiment-macro-bot` after 2026-03-19: 86 closed positions, final realized
+> PnL +316.29 USDT, peak equity +325.01 USDT, BTC worst trade -66.54 USDT, and
+> minimum rolling 20-trade expectancy -5.50 USDT. No sentiment-macro trades were
+> recorded in the last 7 days.
+
 ---
 
 ## TL;DR
@@ -80,7 +86,7 @@ This is the expected shape for a mean-reversion-on-sentiment strategy.
 4. **Per-trade Sharpe 0.219** is acceptable for mean reversion but not high-confidence
 
 ### Exit criteria for HOLD (reassess when ALL met)
-- [ ] 80+ closed round-trips post-fix
+- [x] 80+ closed round-trips post-fix
 - [ ] Equity recovers to new all-time high (surpasses +$325.01)
 - [ ] BTC worst-trade magnitude decreases or stops being an outlier
 
@@ -95,7 +101,7 @@ At 13.7 trades/week, 31 more round-trips = ~2–3 weeks of operation.
 
 ## Action Items
 
-- [ ] Re-run this analysis at 80 closed trades (approx 2026-04-27)
+- [x] Re-run this analysis at 80 closed trades (approx 2026-04-27)
 - [ ] If BTC worst-trade outlier repeats, investigate tightening BTC stop-loss
 - [ ] No code or config changes required right now — agent is operating correctly
 

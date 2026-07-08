@@ -142,14 +142,20 @@ strategy:
 
 ## Verification Checklist
 
-Status checked on 2026-07-08. Local config and tests can only prove part of this;
-production DB state still needs live verification.
+Status checked on 2026-07-08. Production `docker compose ps` showed the four
+active agent services healthy. The production `positions` table showed current
+agent rows scoped as `agent_id::SYMBOL`, and no active positions were open at
+the time of the check.
 
-- [ ] All production agents use unique agent_ids. Check `docker-compose.prod.yml`
-  and the running containers before marking done.
+- [x] All production agents use unique agent_ids. Running services used
+  `sol-trend-pullback-sparse`, `sol-4h-panic-block-paper`,
+  `sol-1h-trend-pullback-overlay-live`, and `sentiment-macro-bot`.
 - [ ] No two agents share symbol without timeframe distinction. Check active
   configs and runtime `AGENT_ID` values before marking done.
-- [ ] Position queries show expected isolation. Requires live TimescaleDB queries.
+- [x] Position queries show expected isolation. Production rows for current
+  agents are agent-scoped, for example
+  `sentiment-macro-bot::BTCUSDT` and
+  `sol-trend-pullback-sparse::SOLUSDT`.
 - [ ] Cross-agent contamination test passes. `scripts/validate_agent_isolation.py`
   exists; run it against the current production DB before marking done.
 

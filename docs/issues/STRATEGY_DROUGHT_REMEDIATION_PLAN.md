@@ -213,12 +213,17 @@ decision.
 
 Status checked on 2026-07-08. These gates require current production evidence:
 paper entries, backtest output, service logs, and Prometheus/Grafana scrape
-state. Don't mark them done from local config alone.
+state. Production `trades` had zero rows in the last 7 days, so paper-entry and
+trade-reduction gates remain open.
 
 - [ ] `sol_1h_overlay`: at least 3 paper entries in 7 days at new threshold
 - [ ] `sol_1h_overlay`: backtest shows positive expectancy at new threshold
 - [ ] `sentiment_macro`: regime-conditional backtest identifies the edge boundary
 - [ ] `sentiment_macro`: paper entries reduced in downtrend conditions
 - [ ] `sol_sparse`: spot account funded before live config change
-- [ ] All agents: no new errors in logs after config changes
-- [ ] Prometheus/Grafana still scraping all agents after restart
+- [x] All agents: no new errors in logs after config changes. Checked the
+  production tail for all four agent services on 2026-07-08; no error,
+  exception, traceback, critical, or failed log lines were present.
+- [x] Prometheus/Grafana still scraping all agents after restart. Prometheus
+  active targets showed all four agent scrape targets healthy: SOL sparse,
+  SOL panic block paper, SOL 1h overlay live, and sentiment macro.
