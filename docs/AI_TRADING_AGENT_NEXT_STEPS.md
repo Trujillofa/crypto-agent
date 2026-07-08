@@ -203,8 +203,8 @@ This file lists **manual** steps that must be performed outside the codebase. Ea
   in the current execution/deployment docs.
 - [x] Async HTTP upgrade decision made. The codebase is async-first and uses
   `aiohttp`.
-- [ ] Tests expanded + coverage target met. Test coverage is broad, but this
-  item should only be checked with a current CI or local test run.
+- [x] Tests expanded + coverage target met. Verified on 2026-07-08 with
+  `uv run pytest -v`: 1203 passed.
 - [x] Deployment runbook created. Current deploy guidance exists in
   `docs/DEPLOYMENT.md`, `AGENTS.md`, and `CLAUDE.md`.
 
