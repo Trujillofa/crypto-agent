@@ -118,7 +118,7 @@ passed. The current diff is docs-only.
 - [x] No changes under `tools/incentive_ops/**`; no `src/` module relocations; no prod Docker/config path changes.
 - [x] Root artifact files (`wfo_results.csv`, stray logs, `.coverage`, `.venv_new`) gone and gitignored.
 - [x] Root markdown reduced to the 7 agent-instruction files + `README.md`; the rest live under `docs/` with references updated.
-- [ ] Every deleted symbol verified unreferenced (grep evidence in the PR description or commit body).
+- Not applicable to the docs-only checklist cleanup: no symbols were deleted.
 - [x] Diff is reviewable: small, purpose-scoped commits — not one giant blob.
 
 ## Out of scope (explicitly)
