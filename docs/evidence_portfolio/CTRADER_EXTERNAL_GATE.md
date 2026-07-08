@@ -51,15 +51,12 @@ challenge (or funded) capital.
 
 ---
 
-## External follow-up checklist (work belongs to the cTrader repository)
+## External follow-up ownership
 
-- [ ] Deterministic replay harness covers every agent-managed exit path
-- [ ] Partial TP: ≥5 real-time executions observed and reconciled
-- [ ] Trailing stop: ≥5 real-time executions observed and reconciled
-- [ ] Break-even move: ≥5 real-time executions observed and reconciled
-- [ ] Forced close / emergency exit: ≥5 real-time executions observed and reconciled
-- [ ] Broker SL and TP handling re-verified under the current reconciler
-- [ ] Forward sample reaches ≥30 closed trades or ≥10 live sessions (whichever later)
-- [ ] Net expectancy recomputed after all costs on the forward sample
-- [ ] Drawdown check: < 50% of challenge allowance across the validation window
-- [ ] Zero-violation audit of challenge rules over the full validation window
+Status checked on 2026-07-08. All cTrader execution, reconciliation, forward
+validation, and funded-challenge gates are owned by the `ctrader-trading-agent`
+repository. Do not implement, validate, or close those tasks in `crypto-agent`.
+
+This file is only a boundary note so `crypto-agent` agents do not mistake the
+cTrader gate for local work. The canonical checklist and evidence must live in
+`ctrader-trading-agent`.

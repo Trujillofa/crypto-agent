@@ -1,5 +1,9 @@
 # Manual Next Steps (Human-Only Actions)
 
+> Status checked on 2026-07-08. This is an early bootstrap checklist, not the
+> current production runbook. Use `CLAUDE.md`, `AGENTS.md`, `docs/DEPLOYMENT.md`,
+> and `docker-compose.prod.yml` for current repo and deploy behavior.
+
 This file lists **manual** steps that must be performed outside the codebase. Each item explains **why** it matters, **what to do**, and **how to verify**.
 
 ---
@@ -180,18 +184,29 @@ This file lists **manual** steps that must be performed outside the codebase. Ea
 
 ## Quick Checklist
 
-- [ ] `.env` filled with real secrets
-- [ ] DB migration files created and applied
-- [ ] Persistence mode decision documented
-- [ ] Monitoring secured with auth
-- [ ] Production compose file + health checks
-- [ ] Config validation policy set
-- [ ] Metrics label policy defined
-- [ ] Risk rules enforced
-- [ ] Binance private auth plan decided
-- [ ] Async HTTP upgrade decision made
-- [ ] Tests expanded + coverage target met
-- [ ] Deployment runbook created
+- [ ] `.env` filled with real secrets. Runtime-only; don't mark this in git
+  without checking the deployed host.
+- [x] DB migration files created and applied locally. The repo has migrations
+  `000` through `007`; production application still needs live DB verification.
+- [x] Persistence mode decision documented. The current architecture uses
+  TimescaleDB; no SQLite fallback is part of the active runtime path.
+- [ ] Monitoring secured with auth. Nginx auth config exists, but live exposure
+  and credentials need production verification.
+- [x] Production compose file + health checks. `docker-compose.prod.yml` exists.
+- [x] Config validation policy set. Current loading and validation live in
+  `src/main.py`.
+- [x] Metrics label policy defined. Label validation lives in
+  `src/ingest/metrics.py`.
+- [x] Risk rules enforced. Execution paths use risk guards/managers; live behavior
+  still needs runtime checks before any promotion.
+- [x] Binance private auth plan decided. Private auth is env-driven and documented
+  in the current execution/deployment docs.
+- [x] Async HTTP upgrade decision made. The codebase is async-first and uses
+  `aiohttp`.
+- [ ] Tests expanded + coverage target met. Test coverage is broad, but this
+  item should only be checked with a current CI or local test run.
+- [x] Deployment runbook created. Current deploy guidance exists in
+  `docs/DEPLOYMENT.md`, `AGENTS.md`, and `CLAUDE.md`.
 
 ---
 

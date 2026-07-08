@@ -142,10 +142,16 @@ strategy:
 
 ## Verification Checklist
 
-- [ ] All production agents use unique agent_ids
-- [ ] No two agents share symbol without timeframe distinction
-- [ ] Position queries show expected isolation
-- [ ] Cross-agent contamination test passes
+Status checked on 2026-07-08. Local config and tests can only prove part of this;
+production DB state still needs live verification.
+
+- [ ] All production agents use unique agent_ids. Check `docker-compose.prod.yml`
+  and the running containers before marking done.
+- [ ] No two agents share symbol without timeframe distinction. Check active
+  configs and runtime `AGENT_ID` values before marking done.
+- [ ] Position queries show expected isolation. Requires live TimescaleDB queries.
+- [ ] Cross-agent contamination test passes. `scripts/validate_agent_isolation.py`
+  exists; run it against the current production DB before marking done.
 
 ## Notes
 
