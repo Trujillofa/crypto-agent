@@ -182,16 +182,21 @@ This file lists **manual** steps that must be performed outside the codebase. Ea
 
 ---
 
-## Quick Checklist
+## Bootstrap status
 
-- [ ] `.env` filled with real secrets. Runtime-only; don't mark this in git
-  without checking the deployed host.
+Status checked on 2026-07-08. Runtime-only items are listed as requirements
+instead of checkboxes because secrets and exposure checks must not be recorded as
+git-tracked completion without a dated deployment audit.
+
+- Runtime requirement: `.env` must be filled with real secrets on the deployed
+  host and must not be tracked by git.
 - [x] DB migration files created and applied locally. The repo has migrations
   `000` through `007`; production application still needs live DB verification.
 - [x] Persistence mode decision documented. The current architecture uses
   TimescaleDB; no SQLite fallback is part of the active runtime path.
-- [ ] Monitoring secured with auth. Nginx auth config exists, but live exposure
-  and credentials need production verification.
+- Runtime requirement: monitoring exposure and authentication must be verified
+  on the deployed host. `docker-compose.prod.yml` currently notes nginx is
+  disabled because Tailscale owns the host HTTPS listener.
 - [x] Production compose file + health checks. `docker-compose.prod.yml` exists.
 - [x] Config validation policy set. Current loading and validation live in
   `src/main.py`.
