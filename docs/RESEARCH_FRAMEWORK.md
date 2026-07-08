@@ -201,14 +201,15 @@ Stop iterating if:
 - The strategy needs 5+ filters to be profitable
 - Each "improvement" only changes one cherry-picked metric
 
-### Iteration checklist
+### Iteration questions
 
 Before each iteration round:
 
-- [ ] What specifically failed in the last validation?
-- [ ] Is the failure a parameter issue or a logic issue?
-- [ ] If logic: does the fix still match the original hypothesis?
-- [ ] After the fix: re-run the full Phase 3 scorecard
+- Identify what specifically failed in the last validation.
+- Decide whether the failure is a parameter issue or a logic issue.
+- If the failure is logic-related, confirm the fix still matches the original
+  hypothesis.
+- After the fix, re-run the full Phase 3 scorecard.
 
 ### Kill criterion (stop iterating, abandon strategy)
 

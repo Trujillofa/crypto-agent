@@ -36,7 +36,8 @@ Co-Authored-By: Agent Name <email@domain.com>
 **Commit trailer:**
 `Co-Authored-By: Sisyphus <clio-agent@sisyphuslabs.ai>`
 
-## Verification
-- [ ] Agent appears in `AGENTS.md`
-- [ ] Instruction file follows the naming convention
-- [ ] Co-Authored-By format matches existing agents
+## Verification requirements
+
+- Agent appears in `AGENTS.md`.
+- Instruction file follows the naming convention.
+- `Co-Authored-By` format matches existing agents.

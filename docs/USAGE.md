@@ -461,21 +461,21 @@ The system tracks funding costs in position PnL. High funding costs can erode pr
 
 ## Production Deployment
 
-### Reusable pre-flight checklist
+### Reusable pre-flight requirements
 
 Before going live with a new deployment or promotion, verify these items against
-the current target environment. Leave this checklist unchecked in the docs; use
-a dated release or deployment note to record a specific run.
+the current target environment. Use a dated release or deployment note to record
+a specific run.
 
-- [ ] All tests pass (`pytest`)
-- [ ] Paper trading tested thoroughly
-- [ ] Test mode validated with small amounts
-- [ ] Risk limits reviewed and adjusted
-- [ ] Grafana dashboards configured
-- [ ] Telegram alerts tested
-- [ ] Binance API keys have IP restrictions
-- [ ] Server has adequate resources (CPU, RAM, disk)
-- [ ] Monitoring and alerting set up
+- All tests pass (`pytest`).
+- Paper trading has been tested thoroughly.
+- Test mode has been validated with small amounts.
+- Risk limits have been reviewed and adjusted.
+- Grafana dashboards are configured.
+- Telegram alerts are tested.
+- Binance API keys have IP restrictions.
+- Server resources are adequate: CPU, RAM, and disk.
+- Monitoring and alerting are set up.
 
 ### Step-by-Step Production Deployment
 
