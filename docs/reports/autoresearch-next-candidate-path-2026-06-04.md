@@ -349,27 +349,26 @@ available.
 
 ---
 
-## Candidate Acceptance Checklist
+## Candidate acceptance requirements
 
 Before adding any new tracked config:
 
 Status checked on 2026-07-08. This is still a reusable promotion gate for future
-candidate configs. Mark individual items only from the candidate ledger, WFO
-artifacts, overlap report, and exact config/risk/compose files for that
-candidate.
+candidate configs. Record a dated candidate-specific run in the candidate
+ledger, WFO artifacts, overlap report, and exact config/risk/compose files.
 
-- [ ] Standard gate passed at bootstrap=100.
-- [ ] `eligible_for_bootstrap_1000=true`.
-- [ ] bootstrap=1000 passed.
-- [ ] Entry overlap checked versus:
+- Standard gate passed at bootstrap=100.
+- `eligible_for_bootstrap_1000=true`.
+- bootstrap=1000 passed.
+- Entry overlap checked versus:
   - `agent_sol_1h_trend_pullback_overlay_live`,
   - `agent_sentiment_macro`,
   - any other active promoted agent.
-- [ ] Profit concentration is not single-window dominated.
-- [ ] Runtime/backtest parity fields are explicit in config.
-- [ ] Risk file exists for the exact `agent_id`.
-- [ ] Compose service and Prometheus target are added only after promotion.
-- [ ] Live notional starts small; no scaling before forward evidence.
+- Profit concentration is not single-window dominated.
+- Runtime/backtest parity fields are explicit in config.
+- Risk file exists for the exact `agent_id`.
+- Compose service and Prometheus target are added only after promotion.
+- Live notional starts small; no scaling before forward evidence.
 
 ---
 

@@ -207,9 +207,9 @@ ssh -L 25432:127.0.0.1:25432 \
 
 ---
 
-## Security Checklist
+## Security requirements
 
-- [ ] Rotate Hetzner API token after any session where it was shared
-- [ ] Rotate Tailscale auth keys after use
-- [ ] Update UFW allowlist if corporate IP changes
-- [ ] Never commit API tokens, SSH keys, or passwords to git
+- Rotate the Hetzner API token after any session where it was shared.
+- Rotate Tailscale auth keys after use.
+- Update the UFW allowlist if the corporate IP changes.
+- Never commit API tokens, SSH keys, or passwords to git.
