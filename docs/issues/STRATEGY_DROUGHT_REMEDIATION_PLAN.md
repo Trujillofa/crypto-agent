@@ -214,13 +214,22 @@ decision.
 Status checked on 2026-07-08. These gates require current production evidence:
 paper entries, backtest output, service logs, and Prometheus/Grafana scrape
 state. Production `trades` had zero rows in the last 7 days, so paper-entry and
-trade-reduction gates remain open.
+trade-reduction gates remain open. The sentiment-macro edge-boundary question
+was resolved negative by the 2026-06-19 vol-filter sweep: no `atr_pct_threshold`
+or filter-off arm both traded and kept an edge at corrected costs.
 
-- [ ] `sol_1h_overlay`: at least 3 paper entries in 7 days at new threshold
-- [ ] `sol_1h_overlay`: backtest shows positive expectancy at new threshold
-- [ ] `sentiment_macro`: regime-conditional backtest identifies the edge boundary
-- [ ] `sentiment_macro`: paper entries reduced in downtrend conditions
-- [ ] `sol_sparse`: spot account funded before live config change
+- `sol_1h_overlay` paper-entry gate is still open: at least 3 paper entries in
+  7 days at a viable new threshold.
+- `sol_1h_overlay` backtest gate is failed/open: no corrected-cost threshold has
+  shown positive expectancy.
+- [x] `sentiment_macro`: regime-conditional backtest identifies the edge
+  boundary. The 2026-06-19 sweep found the boundary is terminal, not tunable:
+  more frequency produced more loss.
+- `sentiment_macro` trade-reduction gate is superseded by disarmament: the
+  service is now configured as paper, and no production trades were recorded in
+  the last 7 days.
+- `sol_sparse` live-readiness gate is still open: spot account must be funded
+  before any live config change.
 - [x] All agents: no new errors in logs after config changes. Checked the
   production tail for all four agent services on 2026-07-08; no error,
   exception, traceback, critical, or failed log lines were present.

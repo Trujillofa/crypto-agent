@@ -87,23 +87,38 @@ This is the expected shape for a mean-reversion-on-sentiment strategy.
 
 ### Exit criteria for HOLD (reassess when ALL met)
 - [x] 80+ closed round-trips post-fix
-- [ ] Equity recovers to new all-time high (surpasses +$325.01)
-- [ ] BTC worst-trade magnitude decreases or stops being an outlier
+- Equity recovery gate did not pass. Follow-up evidence checked on 2026-07-08
+  showed final post-fix equity at +$316.29, below the +$325.01 peak.
+- BTC outlier gate did not pass. BTC remained the worst post-fix trade at
+  -$66.54.
 
 At 13.7 trades/week, 31 more round-trips = ~2–3 weeks of operation.
 
 ### Exit criteria for KILL (reassess strategy itself)
-- [ ] Equity drops below peak drawdown (-$174 below peak = equity below +$151)
-- [ ] Any single symbol PnL turns net-negative post-fix
-- [ ] Per-trade expectancy turns negative over a rolling 20-trade window
+- Peak drawdown kill gate did not trigger in the checked production sample:
+  equity stayed above the +$151 threshold.
+- Per-symbol PnL kill gate did not trigger in the checked production sample:
+  BTC, ETH, and SOL each remained net-positive post-fix.
+- [x] Rolling expectancy kill gate triggered. The checked production sample had
+  a minimum rolling 20-trade expectancy of -$5.50.
+
+### Follow-up status checked on 2026-07-08
+
+The April HOLD decision is superseded. `config/settings.sentiment_macro.yaml`
+disarms the agent to paper, and the 2026-06-19 vol-filter sweep found no
+corrected-cost threshold that both trades and keeps an edge. Do not re-arm this
+strategy without a new pre-registered validation plan and fresh production
+evidence.
 
 ---
 
 ## Action Items
 
 - [x] Re-run this analysis at 80 closed trades (approx 2026-04-27)
-- [ ] If BTC worst-trade outlier repeats, investigate tightening BTC stop-loss
-- [ ] No code or config changes required right now — agent is operating correctly
+- BTC stop-loss tightening is no longer a standalone action for this strategy:
+  the current recommendation is to keep sentiment-macro disarmed to paper.
+- No immediate code or config change is required from this report because the
+  strategy is already disarmed in `config/settings.sentiment_macro.yaml`.
 
 ## References
 
