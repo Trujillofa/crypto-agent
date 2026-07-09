@@ -40,6 +40,7 @@ def test_default_paper_agents_match_active_paper_services() -> None:
     assert [spec.service for spec in DEFAULT_PAPER_AGENTS] == [
         "agent_sol_sparse",
         "agent_sol_panic_block_paper",
+        "agent_sentiment_macro",
     ]
     assert all(spec.symbols == ("SOLUSDT",) for spec in DEFAULT_PAPER_AGENTS)
 
