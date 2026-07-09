@@ -98,6 +98,16 @@ DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
         min_review_days=28,
         min_review_trades=10,
     ),
+    PaperAgentSpec(
+        agent_id="sentiment-macro-bot",
+        service="agent_sentiment_macro",
+        config_path="config/settings.sentiment_macro.yaml",
+        symbols=("SOLUSDT",),
+        timeframe="1h",
+        validation_started_at="2026-07-06T00:00:00Z",
+        min_review_days=28,
+        min_review_trades=10,
+    ),
 )
 
 
