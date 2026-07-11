@@ -1,0 +1,52 @@
+timestamp_utc: '2026-07-11T06:00:10Z'
+kind: tick
+captures:
+  successes:
+  - coinlist-token-sale
+  - legion-merit-sale
+  - layer3-quests
+  - galxe-quests-oat
+  - kaito-yaps
+  failures: {}
+  hash_changed:
+  - coinlist-token-sale
+  - layer3-quests
+  - galxe-quests-oat
+  - kaito-yaps
+  hash_unchanged:
+  - legion-merit-sale
+  prior_hashes:
+    coinlist-token-sale: 6cd2d966383522e223895edf3df512bf471af076bc8a22aa37f05e6f53e792ff
+    legion-merit-sale: ae68cbb539252a26632c24f48c9a3eb291871cd88be4f794bf9a784a54bf34e6
+    layer3-quests: 70ee582b2f573b3750eb106b568fcfe16c9c7ca1133ae4e88350b7d98fdb763c
+    galxe-quests-oat: 282636b64ec88f8efb47220b2c49d9ccb32478ce5e300aace04f459ab1c9ed95
+    kaito-yaps: 79743d8f3bf47bc0fb612be1e018b6f749fc450d98aa558b028aad3ca8e54b2f
+  new_hashes:
+    coinlist-token-sale: 66c1f429cc0cda61c624792e4e9aaf40a3cf72f9b461f10a6fc5063e947b9653
+    legion-merit-sale: ae68cbb539252a26632c24f48c9a3eb291871cd88be4f794bf9a784a54bf34e6
+    layer3-quests: 8f6d884b272aa92d0a38af2767ed79b7887e2aeaba1bb5b8869cdf5c26ada783
+    galxe-quests-oat: 90bd76d4f6d72af918536ffb595d5aea72b556d81bab2856522445cb7447dc55
+    kaito-yaps: 042c3ef6c05f648d06926578ed2be8f47127c986452fc2720b3af2feb5ccc0a5
+verification_counts:
+  verified: 0
+  unverified: 17
+  pending: 17
+ev_counts:
+  ready: 0
+  unready: 17
+actionability:
+  classify_counts:
+    IN_CORE: 5
+    IN_CONDITIONAL: 4
+    YIELD_ONLY: 3
+    DEFER: 2
+    REJECT: 3
+  actionability_counts:
+    BLOCKED_UNVERIFIED: 10
+    BLOCKED_NEEDS_CAPTURE: 7
+  actionable_program_ids: []
+invariants:
+  zero_capital: true
+  wallets_used: false
+  eligibility_lookups_used: false
+  rule_changes_allowed: false
