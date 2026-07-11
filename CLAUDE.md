@@ -172,13 +172,14 @@ Automate only after the process is refined and proven:
 
 - Keep changes **minimal and surgical**. Do not refactor unrelated code.
 - No unused imports, no dead code, no commented-out blocks.
+- No `TODO`/`FIXME`/`HACK`/`XXX` comments — `ruff check` fails on them (FIX rules). Track deferred work in `docs/specs/`, the candidate ledger, or RBI manifests instead.
 - Use `snake_case` for functions/variables, `PascalCase` for classes.
 - Line length: 100 characters (configured in `pyproject.toml`).
 
 ### Linting & Formatting
 
 - **Formatter**: `ruff format` (canonical)
-- **Linter**: `ruff check` (pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade)
+- **Linter**: `ruff check` (pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade, fixme)
 - **Type checker**: `mypy` (optional, not part of CI)
 - **Pre-commit hooks**: ruff (with auto-fix), ruff-format, trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-added-large-files, debug-statements, check-merge-conflict
 - CI runs `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pytest -v`.

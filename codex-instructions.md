@@ -37,6 +37,7 @@ See `CLAUDE.md` for the full protocol. Key points:
 - Branch for non-trivial work: `feat/<short-description>`
 - Stage specific files, not `git add -A`.
 - All tests must pass before committing.
+- No `TODO`/`FIXME` comments — `ruff check` fails on them. Track deferred work in `docs/specs/` instead.
 
 ## Module map
 
