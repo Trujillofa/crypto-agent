@@ -1,6 +1,6 @@
 # Probe #2: Fee-marginal retest post-#94/#140
 
-**Status:** NOT ADMITTED
+**Status:** CLOSED — DELETED_NOT_NAMED
 **Budget position:** the second and final allowed edge probe in the 30-day evidence
 portfolio (see `README.md` and `NFP_PREREG.md`). There is no third probe.
 **Date pre-registered:** 2026-07-07
@@ -94,4 +94,6 @@ If expectancy ≤ 0, or if the result only appears after parameter sweeping, ver
 
 **YES**, **NO_PULSE**, or **DELETED_NOT_NAMED**
 
-Verdict: _[pending — probe not admitted]_
+Verdict: **DELETED_NOT_NAMED** (2026-07-09). No eligible family was named before
+the decision gate, and the documented candidates were already retested under corrected
+costs. This consumes no replacement probe budget.

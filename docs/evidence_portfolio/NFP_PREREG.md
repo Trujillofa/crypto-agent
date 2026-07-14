@@ -1,6 +1,6 @@
 # Probe #1: NFP good-news-is-good OOS
 
-**Status:** PRE-REGISTERED, not yet run
+**Status:** APPROVED, data gate pending
 **Budget position:** one of only **two** allowed edge probes in the 30-day evidence
 portfolio (see `README.md` and `FEE_MARGINAL_PREREG.md`). There is no third probe.
 **Date pre-registered:** 2026-07-07
@@ -37,7 +37,9 @@ strictly before the in-sample archive (2024-01-05 → 2026-05-08), so no overlap
 data the hypothesis was formed on. NFP releases after 2026-05-08 may be appended as
 forward confirmation as they occur, but the verdict is decided on the 2021–2023 window.
 Releases where point-in-time consensus cannot be recovered are excluded and the
-exclusion count reported.
+exclusion count reported. At least **19 data-aligned events** (a strict majority of
+the 36 scheduled releases) are required; otherwise the result is
+`BLOCKED_ON_DATA`, not `YES` or `NO_PULSE`.
 
 ## Entry rule
 
@@ -67,8 +69,8 @@ post-#94 realistic backtest defaults. Spot only — no funding.
 
 - Net expectancy > 0 after all costs
 - Profit factor ≥ 1.10
-- Drawdown acceptable under intended risk model
-- Result not dependent on one outlier event
+- Maximum drawdown ≤ 10%
+- Removing any one trade leaves net expectancy > 0
 
 ## Kill criterion
 
@@ -85,10 +87,15 @@ the data, verdict = **NO_PULSE**.
 
 ## Verdict
 
-**YES** or **NO_PULSE**
+**YES**, **NO_PULSE**, or **BLOCKED_ON_DATA**
 
-Verdict: _[pending]_
+Verdict: _[pending data gate]_
 
 ## Lock sign-off
 
-Parameters locked by: _[human signature + date required before the probe script runs]_
+Parameters locked by: Yderf via Codex approval, 2026-07-09
+
+Implementation: `scripts/probe_nfp_good_news_oos.py`. It consumes only frozen CSV
+inputs, writes input hashes into both JSON and Markdown output, and never queries the
+production database. See
+`data/macro_events/NFP_GOOD_NEWS_OOS_SOURCES.md` for the per-row source contract.

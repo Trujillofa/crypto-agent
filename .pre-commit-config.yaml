@@ -19,6 +19,6 @@ repos:
       - id: check-json
       - id: check-added-large-files
         args: ['--maxkb=1000']
-        exclude: ^(data/(tradfi|polymarket)/|research/a1-incentive-farming/snapshots/.*\.raw$)
+        exclude: ^(data/(tradfi|polymarket|macro_events)/|research/a1-incentive-farming/snapshots/.*\.raw$)
       - id: debug-statements
       - id: check-merge-conflict
