@@ -3,7 +3,6 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # Add project root to path
@@ -11,14 +10,12 @@ sys.path.append(os.getcwd())
 
 import yaml
 
-from scripts.experiment_autopilot import _resolve_global_trend_filter
-from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.backtest.artifacts import create_manifest, git_revision, write_manifest
+from src.backtest.engine import BacktestEngine
+from src.backtest.factory import BacktestRequest, build_backtest_config
 from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
-from src.strategy.basis_premium_filter import parse_basis_premium_filter
-from src.strategy.cross_venue_dislocation import parse_cross_venue_dislocation
-from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger
 
 
@@ -79,6 +76,18 @@ async def main():
         default=None,
         help="Max age in hours for replayed sentiment lookup before falling back to neutral",
     )
+    parser.add_argument(
+        "--artifact-dir",
+        type=Path,
+        default=None,
+        help="Write an immutable JSON run manifest to this directory",
+    )
+    parser.add_argument(
+        "--execution-profile",
+        choices=("legacy_v1", "execution_parity_v2"),
+        default="legacy_v1",
+        help="Execution semantics; legacy remains the default for reproducibility",
+    )
 
     args = parser.parse_args()
 
@@ -106,8 +115,6 @@ async def main():
     take_profit_pct = settings.trading_execution.take_profit_pct if args.tp is None else args.tp
     with Path(args.config).open("r", encoding="utf-8") as file_handle:
         raw_config = yaml.safe_load(file_handle) or {}
-    trading_exec = raw_config.get("trading_execution", {})
-    exit_rules = trading_exec.get("exit_rules", {}) or {}
     futures_mode = bool(
         settings.futures and settings.futures.enabled and args.symbol in settings.futures.symbols
     )
@@ -116,64 +123,31 @@ async def main():
         args.min_notional if args.min_notional is not None else (20.0 if futures_mode else 0.0)
     )
 
-    strategy_section = raw_config.get("strategy", {})
-    if not isinstance(strategy_section, dict):
-        strategy_section = {}
-    apply_trend_filter, trend_filter_source, config_trend_filter = _resolve_global_trend_filter(
+    config = build_backtest_config(
+        request=BacktestRequest(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            start=args.start,
+            end=args.end,
+            initial_capital=args.capital,
+            allow_short=args.allow_short,
+            disable_trend_filter=args.disable_trend_filter,
+            replay_sentiment_path=args.replay_sentiment_log,
+            replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+            fixed_notional_usdt=settings.trading_execution.order_size_usdt,
+            quantity_step_size=args.quantity_step_size,
+            min_notional_usdt=min_notional_usdt,
+            execution_profile=args.execution_profile,
+        ),
+        settings=settings,
         raw_config=raw_config,
-        disable_trend_filter=args.disable_trend_filter,
-        cost_profile=None,
-    )
-
-    config = BacktestConfig(
-        symbol=args.symbol,
-        timeframe=args.timeframe,
-        start_date=datetime.fromisoformat(args.start),
-        end_date=datetime.fromisoformat(args.end),
-        initial_capital=args.capital,
-        fee_rate=fee_rate,
-        stop_loss_pct=stop_loss_pct,
-        take_profit_pct=take_profit_pct,
-        sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
-        tp_atr_multiplier=float(trading_exec.get("tp_atr_multiplier", 4.5)),
-        trailing_activate_atr=float(trading_exec.get("trailing_activate_atr", 1.5)),
-        trailing_offset_atr=float(trading_exec.get("trailing_offset_atr", 1.0)),
-        use_atr_sizing=settings.trading_execution.use_atr_sizing,
-        atr_multiplier=settings.trading_execution.atr_multiplier,
-        risk_per_trade=settings.trading_execution.risk_per_trade_pct,
-        apply_global_trend_filter=apply_trend_filter,
-        global_trend_filter_buffer_pct=float(
-            strategy_section.get("global_trend_filter_buffer_pct", 0.05)
-        ),
-        global_trend_filter_source=trend_filter_source,
-        config_global_trend_filter_enabled=config_trend_filter,
-        session_liquidity_router=parse_session_liquidity_router(
-            raw_config.get("strategy", {}).get("session_liquidity_router")
-        ),
-        basis_premium_filter=parse_basis_premium_filter(
-            raw_config.get("strategy", {}).get("basis_premium_filter")
-        ),
-        cross_venue_dislocation=parse_cross_venue_dislocation(
-            raw_config.get("strategy", {}).get("cross_venue_dislocation")
-        ),
-        time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
-        use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
-        ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
-        allow_short=args.allow_short,
-        replay_sentiment_path=args.replay_sentiment_log,
-        replay_sentiment_max_age_seconds=(
-            args.replay_sentiment_max_age_hours * 3600
-            if args.replay_sentiment_max_age_hours is not None
-            else None
-        ),
+        fee_rate=fee_rate,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
         futures_mode=futures_mode,
-        futures_leverage=settings.futures.default_leverage if futures_mode else 1,
-        fixed_notional_usdt=settings.trading_execution.order_size_usdt,
-        quantity_step_size=args.quantity_step_size,
-        min_notional_usdt=min_notional_usdt,
     )
 
     print(f"Starting backtest for {args.symbol} from {args.start} to {args.end}...")
@@ -218,6 +192,7 @@ async def main():
         f"quantity_step={config.quantity_step_size:g}, "
         f"min_notional=${config.min_notional_usdt:.2f}"
     )
+    print(f"Execution Profile: {config.execution_profile}")
     print(f"Allow Short: {args.allow_short}")
     print(f"Replay Sentiment Log: {args.replay_sentiment_log or 'disabled'}")
     print(
@@ -229,7 +204,8 @@ async def main():
     try:
         reader = IndicatorReader(db_config)
         async with reader:
-            result = await BacktestEngine(config, reader).run()
+            engine = BacktestEngine(config, reader)
+            result = await engine.run()
     finally:
         await close_pool()
 
@@ -250,6 +226,18 @@ async def main():
     pf = sum(wins) / sum(losses) if sum(losses) > 0 else float("inf")
     print(f"Profit Factor: {pf:.2f}")
     print("=" * 40)
+
+    if args.artifact_dir is not None:
+        manifest = create_manifest(
+            config=config,
+            result=result,
+            data_fingerprint=engine.data_fingerprint,
+            funding_fingerprint=engine.funding_fingerprint,
+            source_config=str(Path(args.config)),
+            revision=git_revision(Path.cwd()),
+            semantics_version=config.execution_profile,
+        )
+        print(f"Run Manifest: {write_manifest(args.artifact_dir, manifest)}")
 
     if result.trades:
         print("\nLast 5 Trades:")

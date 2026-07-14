@@ -25,6 +25,7 @@ import yaml
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.backtest.factory import BacktestRequest, build_backtest_config
 from src.db import close_pool, get_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
@@ -246,31 +247,22 @@ def _build_backtest_config(
     apply_trend_filter: bool,
     allow_short: bool,
 ) -> BacktestConfig:
-    trading_exec = raw_config.get("trading_execution", {})
-    exit_rules = trading_exec.get("exit_rules", {}) or {}
-    return BacktestConfig(
-        symbol=symbol,
-        timeframe=timeframe,
-        start_date=start,
-        end_date=end,
-        initial_capital=10_000.0,
-        fee_rate=0.001,
-        stop_loss_pct=settings.trading_execution.stop_loss_pct,
-        take_profit_pct=settings.trading_execution.take_profit_pct,
-        sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
-        tp_atr_multiplier=float(trading_exec.get("tp_atr_multiplier", 4.5)),
-        trailing_activate_atr=float(trading_exec.get("trailing_activate_atr", 1.5)),
-        trailing_offset_atr=float(trading_exec.get("trailing_offset_atr", 1.0)),
-        use_atr_sizing=settings.trading_execution.use_atr_sizing,
-        atr_multiplier=settings.trading_execution.atr_multiplier,
-        risk_per_trade=settings.trading_execution.risk_per_trade_pct,
-        apply_global_trend_filter=apply_trend_filter,
-        allow_short=allow_short,
-        use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
-        ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
+    return build_backtest_config(
+        request=BacktestRequest(
+            symbol=symbol,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            allow_short=allow_short,
+            trend_filter_override=apply_trend_filter,
+            execution_profile="execution_parity_v2",
+        ),
+        settings=settings,
+        raw_config=raw_config,
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
+        fee_rate=0.001,
     )
 
 

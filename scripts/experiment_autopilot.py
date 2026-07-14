@@ -18,13 +18,7 @@ import yaml
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.backtest.cost_overrides import (
-    DEFAULT_FUTURES_FUNDING_RATE,
-    REALISTIC_FEE_RATE,
-    REALISTIC_SLIPPAGE_PCT,
-    CostProfile,
-    FundingCadence,
-)
+from src.backtest.cost_overrides import CostProfile
 from src.backtest.engine import BacktestConfig, BacktestEngine, BacktestResult
 from src.backtest.experiment_autopilot import (  # noqa: E402
     ExperimentSummary,
@@ -36,6 +30,12 @@ from src.backtest.experiment_autopilot import (  # noqa: E402
     evaluate_gates,
     profit_concentration_pct,
 )
+from src.backtest.factory import (
+    BacktestRequest,
+    build_backtest_config,
+    resolve_global_trend_filter,
+)
+from src.backtest.models import ExecutionProfile
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
@@ -43,14 +43,26 @@ from src.strategy.basis_premium_filter import (
     BasisPremiumFilterConfig,
     compute_positive_tail_threshold,
     parse_basis_premium_filter,
-    with_calibrated_threshold,
 )
 from src.strategy.cross_venue_dislocation import (
     CrossVenueDislocationConfig,
     parse_cross_venue_dislocation,
 )
-from src.strategy.session_liquidity import parse_session_liquidity_router
 from src.utils.logger import configure_logger  # noqa: E402
+
+
+def _resolve_global_trend_filter(
+    *,
+    raw_config: dict[str, object],
+    disable_trend_filter: bool,
+    cost_profile: CostProfile | None,
+) -> tuple[bool, str, bool | None]:
+    """Compatibility import path for existing research scripts and audit tests."""
+    return resolve_global_trend_filter(
+        raw_config=raw_config,
+        disable_trend_filter=disable_trend_filter,
+        cost_profile=cost_profile,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,6 +112,12 @@ def parse_args() -> argparse.Namespace:
         help="Max age in hours for replayed sentiment lookup before neutral fallback",
     )
     parser.add_argument("--disable-trend-filter", action="store_true")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("legacy_v1", "execution_parity_v2"),
+        default="execution_parity_v2",
+        help="New research defaults to next-open execution parity",
+    )
     return parser.parse_args()
 
 
@@ -136,35 +154,6 @@ def _futures_mode_from_raw(raw_config: dict[str, object]) -> bool:
     return bool(futures.get("enabled", False))
 
 
-def _config_explicit_trend_filter(raw_config: dict[str, object]) -> bool | None:
-    strategy = raw_config.get("strategy", {})
-    if not isinstance(strategy, dict):
-        return None
-    if "global_trend_filter_enabled" not in strategy:
-        return None
-    return bool(strategy["global_trend_filter_enabled"])
-
-
-def _resolve_global_trend_filter(
-    *,
-    raw_config: dict[str, object],
-    disable_trend_filter: bool,
-    cost_profile: CostProfile | None,
-) -> tuple[bool, str, bool | None]:
-    config_explicit = _config_explicit_trend_filter(raw_config)
-    if cost_profile is not None:
-        return cost_profile.apply_global_trend_filter, "cost_profile_override", config_explicit
-    if disable_trend_filter:
-        return False, "cli_override", config_explicit
-    # Mirror live behavior (src/main.py): the strategy config decides; the
-    # engine default only applies when the config is silent. Previously the
-    # config value was recorded for audit but ignored, so a backtest of a
-    # filter-off config still silently blocked below-trend buys.
-    if config_explicit is not None:
-        return config_explicit, "config", config_explicit
-    return True, "engine_default", config_explicit
-
-
 def _build_backtest_config(
     *,
     settings: object,
@@ -183,82 +172,29 @@ def _build_backtest_config(
     basis_calibrated_threshold: float | None = None,
     cross_venue_dislocation: CrossVenueDislocationConfig | None = None,
     cost_profile: CostProfile | None = None,
+    execution_profile: ExecutionProfile = "legacy_v1",
 ) -> BacktestConfig:
-    trading_exec = raw_config.get("trading_execution", {})
-    if not isinstance(trading_exec, dict):
-        trading_exec = {}
-
-    exit_rules = trading_exec.get("exit_rules", {})
-    if not isinstance(exit_rules, dict):
-        exit_rules = {}
-
-    fee_rate = cost_profile.fee_rate if cost_profile is not None else REALISTIC_FEE_RATE
-    slippage_pct = cost_profile.slippage_pct if cost_profile is not None else REALISTIC_SLIPPAGE_PCT
-    apply_global_trend_filter, trend_filter_source, config_trend_filter = (
-        _resolve_global_trend_filter(
-            raw_config=raw_config,
+    return build_backtest_config(
+        request=BacktestRequest(
+            symbol=symbol,
+            timeframe=timeframe,
+            start=start,
+            end=end,
+            initial_capital=initial_capital,
             disable_trend_filter=disable_trend_filter,
-            cost_profile=cost_profile,
-        )
-    )
-
-    futures_mode = _futures_mode_from_raw(raw_config)
-    futures_settings = getattr(settings, "futures", None)
-    futures_leverage = int(getattr(futures_settings, "default_leverage", 5))
-    futures_funding_rate = DEFAULT_FUTURES_FUNDING_RATE
-    funding_cadence: FundingCadence = "scaled_8h"
-    if cost_profile is not None:
-        futures_funding_rate = cost_profile.base_futures_funding_rate
-        funding_cadence = cost_profile.funding_cadence
-
-    return BacktestConfig(
-        symbol=symbol,
-        timeframe=timeframe,
-        start_date=start,
-        end_date=end,
-        initial_capital=initial_capital,
-        fee_rate=fee_rate,
-        stop_loss_pct=settings.trading_execution.stop_loss_pct,
-        take_profit_pct=settings.trading_execution.take_profit_pct,
-        sl_atr_multiplier=float(trading_exec.get("sl_atr_multiplier", 2.0)),
-        tp_atr_multiplier=float(trading_exec.get("tp_atr_multiplier", 4.5)),
-        trailing_activate_atr=float(trading_exec.get("trailing_activate_atr", 1.5)),
-        trailing_offset_atr=float(trading_exec.get("trailing_offset_atr", 1.0)),
-        slippage_pct=slippage_pct,
-        use_atr_sizing=settings.trading_execution.use_atr_sizing,
-        atr_multiplier=settings.trading_execution.atr_multiplier,
-        risk_per_trade=settings.trading_execution.risk_per_trade_pct,
-        apply_global_trend_filter=apply_global_trend_filter,
-        global_trend_filter_buffer_pct=float(
-            raw_config.get("strategy", {}).get("global_trend_filter_buffer_pct", 0.0)
+            replay_sentiment_path=replay_sentiment_path,
+            replay_sentiment_max_age_hours=replay_sentiment_max_age_hours,
+            execution_profile=execution_profile,
         ),
-        global_trend_filter_source=trend_filter_source,
-        config_global_trend_filter_enabled=config_trend_filter,
-        session_liquidity_router=parse_session_liquidity_router(
-            raw_config.get("strategy", {}).get("session_liquidity_router")
-        ),
-        basis_premium_filter=with_calibrated_threshold(
-            parse_basis_premium_filter(raw_config.get("strategy", {}).get("basis_premium_filter")),
-            basis_calibrated_threshold,
-        ),
-        cross_venue_dislocation=cross_venue_dislocation or CrossVenueDislocationConfig(),
-        allow_short=False,
-        use_executor_exit_model=bool(exit_rules.get("backtest_use_executor_exit_model", False)),
-        ignore_signal_sells=bool(exit_rules.get("backtest_ignore_signal_sells", False)),
-        time_stop_minutes=float(exit_rules.get("time_stop_minutes", 0)),
-        replay_sentiment_path=replay_sentiment_path,
-        replay_sentiment_max_age_seconds=(
-            replay_sentiment_max_age_hours * 3600
-            if replay_sentiment_max_age_hours is not None
-            else None
-        ),
-        futures_mode=futures_mode,
-        futures_leverage=futures_leverage,
-        futures_funding_rate=futures_funding_rate,
-        funding_cadence=funding_cadence,
+        settings=settings,
+        raw_config=raw_config,
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
+        cost_profile=cost_profile,
+        basis_calibrated_threshold=basis_calibrated_threshold,
+        cross_venue_dislocation=cross_venue_dislocation,
+        futures_mode=_futures_mode_from_raw(raw_config),
     )
 
 
@@ -408,6 +344,7 @@ async def run_experiment_evaluation(
     cost_profile: CostProfile | None = None,
     db_config: dict[str, object] | None = None,
     manage_pool: bool = True,
+    execution_profile: ExecutionProfile = "legacy_v1",
 ) -> tuple[ExperimentSummary, GateConfig, list[WfoWindowResult], BacktestConfig, dict[str, object]]:
     """Run baseline + WFO + bootstrap gates; return summary and resolved baseline config."""
     settings = load_settings(settings_path)
@@ -475,6 +412,7 @@ async def run_experiment_evaluation(
             basis_calibrated_threshold=baseline_threshold,
             cross_venue_dislocation=cross_venue_disloc,
             cost_profile=cost_profile,
+            execution_profile=execution_profile,
         )
 
         reader = IndicatorReader(resolved_db)
@@ -509,6 +447,7 @@ async def run_experiment_evaluation(
                     basis_calibrated_threshold=window_threshold,
                     cross_venue_dislocation=cross_venue_disloc,
                     cost_profile=cost_profile,
+                    execution_profile=execution_profile,
                 )
                 window_backtest = await _run_backtest(reader, window_config)
                 window_results.append(
@@ -610,7 +549,7 @@ async def main() -> None:
         max_profit_concentration_pct=args.max_profit_concentration_pct,
     )
 
-    summary, gates, window_results, _, _ = await run_experiment_evaluation(
+    summary, gates, window_results, base_config, audit_payload = await run_experiment_evaluation(
         settings_path=settings_path,
         symbol=args.symbol,
         timeframe=args.timeframe,
@@ -625,6 +564,7 @@ async def main() -> None:
         disable_trend_filter=args.disable_trend_filter,
         replay_sentiment_path=args.replay_sentiment_log,
         replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+        execution_profile=args.execution_profile,
     )
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -637,6 +577,8 @@ async def main() -> None:
         "summary": asdict(summary),
         "gates": asdict(gates),
         "windows": [asdict(window) for window in window_results],
+        "execution_profile": base_config.execution_profile,
+        "audit": audit_payload,
     }
     with json_path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
