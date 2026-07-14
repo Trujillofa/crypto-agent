@@ -1,9 +1,9 @@
 run_id: baseline-20260630T222523Z
-status: RUNNING
+status: COMPLETE
 created_at_utc: '2026-06-30T22:25:23Z'
 started_at_utc: '2026-06-30T22:25:23Z'
 planned_end_at_utc: '2026-07-11T22:25:23Z'
-actual_end_at_utc: null
+actual_end_at_utc: '2026-07-14T16:58:25Z'
 duration_days: 11
 starting_git_sha: 9f1bfcce23f81df726f64c4d81c9377bad2f0fb1
 tooling_sha256: 661d2c2b5d41d152ebfcbfdb85f1c14f28b2a439360218a9a38ee6bcae874d20
