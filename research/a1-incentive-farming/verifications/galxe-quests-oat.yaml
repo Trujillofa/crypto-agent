@@ -1,10 +1,10 @@
 id: galxe-quests-oat
 verified_at: null
-snapshot_sha256: 1fe74dc85fa2f5fbdc5488d8c6abdfe314ac871c21901a71b75cca12e5af912c
+snapshot_sha256: f85eb931a72a6587e648e9b4c4d13fe6a4bc397eb94917d60bedb1f2a3abb339
 terms_match_snapshot: false
 live_round_open: false
 reviewer_decision: PENDING
-raw_evidence_path: research/a1-incentive-farming/snapshots/galxe-quests-oat/20260713T060001Z_1fe74dc85fa2f5fb.raw
+raw_evidence_path: research/a1-incentive-farming/snapshots/galxe-quests-oat/20260714T060000Z_f85eb931a72a6587.raw
 official_round_terms_url: https://docs.galxe.com/about/introduction
 captured_source_url: https://docs.galxe.com/about/introduction
 jurisdiction_status: UNKNOWN
