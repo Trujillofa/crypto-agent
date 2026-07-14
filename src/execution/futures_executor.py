@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import math
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from src.backtest.sizing import calculate_futures_order_quantity
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
 from src.execution.futures_client import (
@@ -1263,14 +1263,12 @@ class FuturesTradingExecutor:
         if price <= 0:
             self._logger.warning("Invalid price %.4f for %s", price, symbol)
             return 0.0
-        raw_qty = self._config.order_size_usdt / price
-        step = self._client.get_step_size(symbol)
-        if step > 0:
-            truncated = math.floor(raw_qty / step) * step
-            if truncated * price < _MIN_NOTIONAL:
-                return truncated + step
-            return truncated
-        return raw_qty
+        return calculate_futures_order_quantity(
+            order_size_usdt=self._config.order_size_usdt,
+            price=price,
+            quantity_step_size=self._client.get_step_size(symbol),
+            min_notional_usdt=_MIN_NOTIONAL,
+        )
 
     async def _place_exchange_conditional(
         self,

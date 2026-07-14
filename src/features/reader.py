@@ -2,10 +2,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from src.db.pool import get_pool
 from src.utils.logger import get_logger
+
+
+@dataclass(frozen=True)
+class FundingSettlement:
+    """A recorded perpetual-futures funding payment."""
+
+    funding_time: datetime
+    funding_rate: float
+    mark_price: float | None = None
 
 
 class IndicatorReader:
@@ -47,6 +57,31 @@ class IndicatorReader:
         async with self._db_lock:
             return await self._fetch_range_rows(symbol, timeframe, start_time, end_time)
 
+    async def fetch_funding_settlements(
+        self, symbol: str, start_time: str, end_time: str
+    ) -> list[FundingSettlement]:
+        """Return exact recorded funding settlements in chronological order."""
+        query = """
+            SELECT funding_time, funding_rate, mark_price
+            FROM funding_rates
+            WHERE symbol = $1 AND funding_time > $2 AND funding_time <= $3
+            ORDER BY funding_time ASC
+        """
+        start = datetime.fromisoformat(start_time)
+        end = datetime.fromisoformat(end_time)
+        async with self._db_lock:
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(query, symbol, start, end)
+        return [
+            FundingSettlement(
+                funding_time=row["funding_time"],
+                funding_rate=float(row["funding_rate"]),
+                mark_price=float(row["mark_price"]) if row["mark_price"] is not None else None,
+            )
+            for row in rows
+        ]
+
     async def fetch_latest_multi_timeframe(
         self,
         symbol: str,
@@ -85,6 +120,7 @@ class IndicatorReader:
                 i.time,
                 i.ema_12,
                 i.ema_26,
+                o.open_price,
                 o.close_price,
                 i.rsi_14,
                 i.rsi_7,
@@ -173,6 +209,7 @@ class IndicatorReader:
                     "time": row["time"],
                     "ema_12": (float(row["ema_12"]) if row["ema_12"] is not None else 0.0),
                     "ema_26": (float(row["ema_26"]) if row["ema_26"] is not None else 0.0),
+                    "open_price": float(row.get("open_price", row["close_price"])),
                     "close_price": float(row["close_price"]),
                     "rsi_14": (float(row["rsi_14"]) if row["rsi_14"] is not None else None),
                     "rsi_7": float(row["rsi_7"]) if row["rsi_7"] is not None else None,
@@ -272,6 +309,7 @@ class IndicatorReader:
                 i.time,
                 i.ema_12,
                 i.ema_26,
+                o.open_price,
                 o.close_price,
                 i.rsi_14,
                 i.rsi_7,
@@ -356,6 +394,7 @@ class IndicatorReader:
                     "time": row["time"],
                     "ema_12": (float(row["ema_12"]) if row["ema_12"] is not None else 0.0),
                     "ema_26": (float(row["ema_26"]) if row["ema_26"] is not None else 0.0),
+                    "open_price": float(row.get("open_price", row["close_price"])),
                     "close_price": float(row["close_price"]),
                     "rsi_14": (float(row["rsi_14"]) if row["rsi_14"] is not None else None),
                     "rsi_7": float(row["rsi_7"]) if row["rsi_7"] is not None else None,

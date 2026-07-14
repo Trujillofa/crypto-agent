@@ -1,121 +1,32 @@
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from src.backtest.cost_overrides import (
-    DEFAULT_FUTURES_FUNDING_RATE,
-    REALISTIC_FEE_RATE,
-    REALISTIC_SLIPPAGE_PCT,
-    FundingCadence,
     effective_futures_funding_rate_per_bar,
 )
+from src.backtest.metrics import calculate_backtest_metrics
+from src.backtest.models import BacktestConfig, BacktestResult, Trade
 from src.backtest.sentiment_replay import ReplaySentimentScorer
-from src.features.reader import IndicatorReader
+from src.backtest.sizing import calculate_futures_order_quantity
+from src.features.reader import FundingSettlement, IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
-from src.strategy.basis_premium_filter import (
-    BasisPremiumFilterConfig,
-    apply_basis_premium_gate,
-)
-from src.strategy.cross_venue_dislocation import (
-    CrossVenueDislocationConfig,
-    apply_cross_venue_dislocation_gate,
-)
+from src.strategy.basis_premium_filter import apply_basis_premium_gate
+from src.strategy.cross_venue_dislocation import apply_cross_venue_dislocation_gate
 from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
-from src.strategy.session_liquidity import (
-    SessionLiquidityRouterConfig,
-    apply_session_liquidity_gate,
-)
+from src.strategy.session_liquidity import apply_session_liquidity_gate
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
 
-@dataclass
-class BacktestConfig:
-    """Configuration for a backtest run."""
-
-    symbol: str
-    timeframe: str
-    start_date: str  # ISO 8601
-    end_date: str  # ISO 8601
-    initial_capital: float = 10000.0
-    fee_rate: float = REALISTIC_FEE_RATE  # 0.04% per side (Binance USDT-perp taker)
-    stop_loss_pct: float = 0.0  # 0.0 = disabled
-    take_profit_pct: float = 0.0  # 0.0 = disabled
-    sl_atr_multiplier: float = 2.0
-    tp_atr_multiplier: float = 4.5
-    trailing_activate_atr: float = 1.5
-    trailing_offset_atr: float = 1.0
-    slippage_pct: float = REALISTIC_SLIPPAGE_PCT  # 0.02% per side
-    risk_per_trade: float = 0.02  # 2% risk of equity per trade (used if use_atr_sizing=True)
-    use_atr_sizing: bool = False
-    atr_multiplier: float = 1.5  # Stop distance = 1.5 * ATR
-    apply_global_trend_filter: bool = True
-    global_trend_filter_buffer_pct: float = 0.0
-    global_trend_filter_source: str = "engine_default"
-    config_global_trend_filter_enabled: bool | None = None
-    session_liquidity_router: SessionLiquidityRouterConfig = field(
-        default_factory=SessionLiquidityRouterConfig
-    )
-    basis_premium_filter: BasisPremiumFilterConfig = field(default_factory=BasisPremiumFilterConfig)
-    cross_venue_dislocation: CrossVenueDislocationConfig = field(
-        default_factory=CrossVenueDislocationConfig
-    )
-    allow_short: bool = False
-    use_executor_exit_model: bool = False
-    ignore_signal_sells: bool = False
-    strategy_classes: list[type[BaseStrategy]] = field(default_factory=list)
-    strategy_configs: list[Mapping[str, object] | None] = field(default_factory=list)
-    aggregator_config: Mapping[str, object] = field(default_factory=dict)
-    time_stop_minutes: float = 0  # 0 = disabled
-    replay_sentiment_path: str | None = None
-    replay_sentiment_max_age_seconds: float | None = None
-    futures_mode: bool = False
-    futures_leverage: int = 5
-    futures_funding_rate: float = DEFAULT_FUTURES_FUNDING_RATE
-    funding_cadence: FundingCadence = "scaled_8h"
-    fixed_notional_usdt: float = 0.0  # 0 = size from available capital
-    quantity_step_size: float = 0.0  # 0 = ideal fractional quantity
-    min_notional_usdt: float = 0.0  # 0 = disabled
-
-
-@dataclass
-class Trade:
-    """Record of a simulated trade."""
-
-    entry_time: str
-    exit_time: str
-    side: str
-    entry_price: float
-    exit_price: float
-    quantity: float
-    pnl: float
-    return_pct: float
-    exit_reason: str = "SIGNAL"
-    margin_used: float = 0.0
-
-
-@dataclass
-class BacktestResult:
-    """Results of a backtest."""
-
-    total_return: float
-    total_return_pct: float
-    max_drawdown: float
-    win_rate: float
-    total_trades: int
-    trades: list[Trade]
-    final_equity: float
-    sharpe_ratio: float
-    sortino_ratio: float
-    profit_factor: float
-    avg_win_loss_ratio: float
-    blocked_buy_count: int = 0
-    basis_blocked_buy_count: int = 0
-    dislocation_blocked_buy_count: int = 0
+@dataclass(frozen=True)
+class _PendingSignal:
+    signal: Signal
+    signal_time: str
+    atr: float
 
 
 class BacktestEngine:
@@ -138,11 +49,46 @@ class BacktestEngine:
         self._position_high_water_mark = 0.0
         self._position_margin_used = 0.0
         self._position_funding_paid = 0.0
+        self._position_signal_time: str | None = None
+        self._position_fill_source = "signal_close"
         self._equity_curve: list[float] = []
         self._trades: list[Trade] = []
         self._blocked_buy_count = 0
         self._basis_blocked_buy_count = 0
         self._dislocation_blocked_buy_count = 0
+        self._queued_signal_count = 0
+        self._unfilled_signal_count = 0
+        self._funding_settlement_count = 0
+        self._last_data: list[Mapping[str, object]] = []
+        self._last_settlements: list[FundingSettlement] = []
+
+    @property
+    def data_fingerprint(self) -> str | None:
+        """Fingerprint the exact ordered input rows from the most recent run."""
+        if not self._last_data:
+            return None
+        # Delayed to avoid making the simulator depend on artifact I/O.
+        from src.backtest.artifacts import fingerprint_rows
+
+        return fingerprint_rows(self._last_data)
+
+    @property
+    def funding_fingerprint(self) -> str | None:
+        """Fingerprint exact funding events consumed by the latest v2 run."""
+        if not self._last_settlements:
+            return None
+        from src.backtest.artifacts import fingerprint_rows
+
+        return fingerprint_rows(
+            [
+                {
+                    "funding_time": settlement.funding_time,
+                    "funding_rate": settlement.funding_rate,
+                    "mark_price": settlement.mark_price,
+                }
+                for settlement in self._last_settlements
+            ]
+        )
 
     @staticmethod
     def _get_required_timeframes(strategy: BaseStrategy) -> dict[str, str]:
@@ -194,6 +140,7 @@ class BacktestEngine:
             "futures_funding_rate_base": self._config.futures_funding_rate,
             "effective_futures_funding_rate_per_bar": effective_funding,
             "futures_mode": self._config.futures_mode,
+            "execution_profile": self._config.execution_profile,
             "apply_global_trend_filter": self._config.apply_global_trend_filter,
             "global_trend_filter_active": self._config.apply_global_trend_filter,
             "global_trend_filter_buffer_pct": self._config.global_trend_filter_buffer_pct,
@@ -252,7 +199,23 @@ class BacktestEngine:
             self._logger.warning("No data found for backtest range")
             return self._create_empty_result()
 
+        self._last_data = data
         self._logger.info(f"Loaded {len(data)} data points")
+
+        if self._config.execution_profile == "execution_parity_v2":
+            if self._config.allow_short and not self._config.futures_mode:
+                raise ValueError("execution_parity_v2 does not support synthetic spot shorts")
+            settlements = (
+                await self._reader.fetch_funding_settlements(
+                    self._config.symbol,
+                    self._config.start_date,
+                    self._config.end_date,
+                )
+                if self._config.futures_mode
+                else []
+            )
+            self._last_settlements = settlements
+            return await self._run_execution_parity_v2(data, strategies, settlements, replay_scorer)
 
         for row in data:
             current_time = str(row["time"])
@@ -365,6 +328,205 @@ class BacktestEngine:
             )
 
         return self._calculate_metrics()
+
+    async def _run_execution_parity_v2(
+        self,
+        data: list[Mapping[str, object]],
+        strategies: list[BaseStrategy],
+        settlements: list[FundingSettlement],
+        replay_scorer: ReplaySentimentScorer | None,
+    ) -> BacktestResult:
+        """Evaluate at bar close and fill actionable market orders at the next open."""
+        self._validate_funding_settlements(data, settlements)
+        pending: _PendingSignal | None = None
+        settlement_index = 0
+
+        for row in data:
+            current_time = str(row["time"])
+            current_dt = datetime.fromisoformat(current_time)
+            open_price = float(row.get("open_price", row["close_price"]))
+            close_price = float(row["close_price"])
+            high_price = float(row.get("high_price", close_price))
+            low_price = float(row.get("low_price", close_price))
+
+            while (
+                settlement_index < len(settlements)
+                and settlements[settlement_index].funding_time <= current_dt
+            ):
+                self._apply_funding_settlement(settlements[settlement_index], open_price)
+                settlement_index += 1
+
+            if pending is not None:
+                self._process_queued_signal(pending, current_time, open_price)
+                pending = None
+
+            if self._position_qty != 0:
+                if self._check_liquidation(current_time, open_price):
+                    self._equity_curve.append(self._calculate_equity(close_price))
+                    continue
+                if self._config.use_executor_exit_model:
+                    self._check_executor_exit(current_time, high_price, low_price)
+                else:
+                    self._check_fixed_exit(current_time, high_price, low_price)
+                if self._position_qty != 0:
+                    self._check_time_stop(current_time, close_price)
+
+            final_signal = await self._evaluate_signal(strategies, row, current_time, close_price)
+            if self._is_actionable_signal(final_signal):
+                pending = _PendingSignal(
+                    signal=final_signal,
+                    signal_time=current_time,
+                    atr=float(row.get("atr_14") or 0.0),
+                )
+                self._queued_signal_count += 1
+
+            self._equity_curve.append(self._calculate_equity(close_price))
+
+        if pending is not None:
+            self._unfilled_signal_count += 1
+        if self._position_qty != 0:
+            last_row = data[-1]
+            self._close_position(
+                str(last_row["time"]),
+                float(last_row["close_price"]),
+                reason="END_OF_DATA",
+            )
+
+        if replay_scorer is not None:
+            stats = replay_scorer.stats()
+            self._logger.info(
+                "Replay sentiment coverage: hits=%d misses=%d stale=%d loaded_obs=%d loaded_symbols=%d",
+                stats["hits"],
+                stats["misses"],
+                stats["stale_misses"],
+                stats["loaded_observations"],
+                stats["loaded_symbols"],
+            )
+        return self._calculate_metrics()
+
+    async def _evaluate_signal(
+        self,
+        strategies: list[BaseStrategy],
+        row: Mapping[str, object],
+        current_time: str,
+        current_price: float,
+    ) -> Signal:
+        signals: list[Signal] = []
+        for strategy in strategies:
+            try:
+                signals.append(await strategy.evaluate(self._config.symbol, row))
+            except Exception as exc:  # noqa: BLE001
+                self._logger.error("Strategy error at %s: %s", current_time, exc)
+
+        final_signal = self._aggregator.aggregate(
+            self._config.symbol, signals, ema_200=row.get("ema_200")
+        )
+        if self._config.apply_global_trend_filter and final_signal.type == SignalType.BUY:
+            ema_200 = row.get("ema_200")
+            buffer_pct = self._config.global_trend_filter_buffer_pct
+            if isinstance(ema_200, (int, float)) and current_price < ema_200 * (1 - buffer_pct):
+                final_signal = Signal(
+                    type=SignalType.HOLD,
+                    symbol=final_signal.symbol,
+                    price=final_signal.price,
+                    confidence=0.0,
+                    reason=f"Blocked by Global Trend Filter (Price < {buffer_pct * 100:.1f}% below EMA200)",
+                    indicators=final_signal.indicators,
+                    trading_mode=final_signal.trading_mode,
+                )
+
+        if final_signal.type == SignalType.BUY:
+            final_signal, blocked = apply_session_liquidity_gate(
+                final_signal, row["time"], self._config.session_liquidity_router
+            )
+            if blocked:
+                self._blocked_buy_count += 1
+        if final_signal.type == SignalType.BUY:
+            final_signal, blocked = apply_basis_premium_gate(
+                final_signal, row, self._config.basis_premium_filter
+            )
+            if blocked:
+                self._basis_blocked_buy_count += 1
+        if final_signal.type == SignalType.BUY:
+            final_signal, blocked = apply_cross_venue_dislocation_gate(
+                final_signal, row, self._config.cross_venue_dislocation
+            )
+            if blocked:
+                self._dislocation_blocked_buy_count += 1
+        return final_signal
+
+    def _is_actionable_signal(self, signal: Signal) -> bool:
+        if signal.type == SignalType.BUY:
+            return self._position_qty <= 0
+        if signal.type == SignalType.SELL:
+            return (self._position_qty > 0 and not self._config.ignore_signal_sells) or (
+                self._position_qty == 0 and self._config.allow_short
+            )
+        return False
+
+    def _process_queued_signal(
+        self, pending: _PendingSignal, timestamp: str, open_price: float
+    ) -> None:
+        signal = pending.signal
+        if signal.type == SignalType.BUY:
+            if self._position_qty == 0:
+                self._open_long(
+                    timestamp,
+                    open_price,
+                    pending.atr,
+                    signal_time=pending.signal_time,
+                    fill_source="next_bar_open",
+                )
+            elif self._position_qty < 0:
+                self._close_position(timestamp, open_price, reason="SIGNAL")
+        elif signal.type == SignalType.SELL:
+            if self._position_qty > 0 and not self._config.ignore_signal_sells:
+                self._close_position(timestamp, open_price, reason="SIGNAL")
+            elif self._position_qty == 0 and self._config.allow_short:
+                self._open_short(
+                    timestamp,
+                    open_price,
+                    pending.atr,
+                    signal_time=pending.signal_time,
+                    fill_source="next_bar_open",
+                )
+
+    def _validate_funding_settlements(
+        self, data: list[Mapping[str, object]], settlements: list[FundingSettlement]
+    ) -> None:
+        if not self._config.futures_mode:
+            return
+        start = datetime.fromisoformat(str(data[0]["time"]))
+        end = datetime.fromisoformat(str(data[-1]["time"]))
+        expected: set[datetime] = set()
+        cursor = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        while cursor <= start:
+            cursor += timedelta(hours=8)
+        while cursor <= end:
+            expected.add(cursor)
+            cursor += timedelta(hours=8)
+        actual = {settlement.funding_time for settlement in settlements}
+        missing = sorted(expected - actual)
+        if missing:
+            raise ValueError(
+                f"Missing historical funding settlements: {', '.join(item.isoformat() for item in missing)}"
+            )
+
+    def _apply_funding_settlement(
+        self, settlement: FundingSettlement, fallback_price: float
+    ) -> None:
+        if self._position_qty == 0:
+            return
+        price = settlement.mark_price or fallback_price
+        signed_cost = (
+            abs(self._position_qty)
+            * price
+            * settlement.funding_rate
+            * (1 if self._position_qty > 0 else -1)
+        )
+        self._cash -= signed_cost
+        self._position_funding_paid += signed_cost
+        self._funding_settlement_count += 1
 
     def _process_signal(
         self, signal: Signal, timestamp: str, price: float, atr: float = 0.0
@@ -515,15 +677,24 @@ class BacktestEngine:
         return self._apply_quantity_step(capped_quantity, entry_price)
 
     def _apply_quantity_step(self, quantity: float, entry_price: float) -> float:
-        step = self._config.quantity_step_size
-        if step <= 0:
+        if self._config.quantity_step_size <= 0:
             return quantity
-        truncated = math.floor(quantity / step) * step
-        if truncated * entry_price < self._config.min_notional_usdt:
-            return truncated + step
-        return truncated
+        return calculate_futures_order_quantity(
+            order_size_usdt=quantity * entry_price,
+            price=entry_price,
+            quantity_step_size=self._config.quantity_step_size,
+            min_notional_usdt=self._config.min_notional_usdt,
+        )
 
-    def _open_long(self, timestamp: str, price: float, atr: float) -> None:
+    def _open_long(
+        self,
+        timestamp: str,
+        price: float,
+        atr: float,
+        *,
+        signal_time: str | None = None,
+        fill_source: str = "signal_close",
+    ) -> None:
         entry_price = price * (1 + self._config.slippage_pct)
         qty = self._calculate_entry_qty(entry_price, atr)
         notional = qty * entry_price
@@ -540,6 +711,8 @@ class BacktestEngine:
         self._position_entry_price = entry_price
         self._position_entry_fee = fee
         self._position_entry_time = timestamp
+        self._position_signal_time = signal_time or timestamp
+        self._position_fill_source = fill_source
         self._position_atr = atr if atr > 0 else 0.0
         self._position_high_water_mark = entry_price
         if self._config.use_executor_exit_model and atr > 0:
@@ -557,7 +730,15 @@ class BacktestEngine:
                 else 0.0
             )
 
-    def _open_short(self, timestamp: str, price: float, atr: float) -> None:
+    def _open_short(
+        self,
+        timestamp: str,
+        price: float,
+        atr: float,
+        *,
+        signal_time: str | None = None,
+        fill_source: str = "signal_close",
+    ) -> None:
         entry_price = price * (1 - self._config.slippage_pct)
         qty = self._calculate_entry_qty(entry_price, atr)
         notional = qty * entry_price
@@ -574,6 +755,8 @@ class BacktestEngine:
         self._position_entry_price = entry_price
         self._position_entry_fee = fee
         self._position_entry_time = timestamp
+        self._position_signal_time = signal_time or timestamp
+        self._position_fill_source = fill_source
         self._position_atr = atr if atr > 0 else 0.0
         self._position_high_water_mark = entry_price
         if self._config.use_executor_exit_model and atr > 0:
@@ -629,6 +812,9 @@ class BacktestEngine:
             return_pct=return_pct,
             exit_reason=reason,
             margin_used=margin_used,
+            signal_time=self._position_signal_time,
+            fill_source=self._position_fill_source,
+            funding_paid=self._position_funding_paid,
         )
 
         self._trades.append(trade)
@@ -645,6 +831,8 @@ class BacktestEngine:
         self._position_high_water_mark = 0.0
         self._position_margin_used = 0.0
         self._position_funding_paid = 0.0
+        self._position_signal_time = None
+        self._position_fill_source = "signal_close"
 
     def _calculate_margin(self, notional: float) -> float:
         leverage = max(self._config.futures_leverage, 1)
@@ -702,114 +890,16 @@ class BacktestEngine:
         return True
 
     def _calculate_metrics(self) -> BacktestResult:
-        import math
-
-        final_equity = (
-            self._equity_curve[-1] if self._equity_curve else self._config.initial_capital
-        )
-        total_return = final_equity - self._config.initial_capital
-        total_return_pct = (total_return / self._config.initial_capital) * 100
-
-        # Trade Stats
-        wins = [t for t in self._trades if t.pnl > 0]
-        losses = [t for t in self._trades if t.pnl <= 0]
-
-        win_rate = (len(wins) / len(self._trades)) * 100 if self._trades else 0.0
-
-        gross_profit = sum(t.pnl for t in wins)
-        gross_loss = abs(sum(t.pnl for t in losses))
-        if gross_loss > 0:
-            profit_factor = gross_profit / gross_loss
-        elif gross_profit > 0:
-            profit_factor = float("inf")
-        else:
-            profit_factor = 0.0
-
-        avg_win = (gross_profit / len(wins)) if wins else 0.0
-        avg_loss = (gross_loss / len(losses)) if losses else 0.0
-        avg_win_loss_ratio = (
-            (avg_win / avg_loss) if avg_loss > 0 else float("inf") if avg_win > 0 else 0.0
-        )
-
-        # Drawdown
-        peak = self._config.initial_capital
-        max_dd = 0.0
-        for equity in self._equity_curve:
-            if equity > peak:
-                peak = equity
-            dd = (peak - equity) / peak
-            if dd > max_dd:
-                max_dd = dd
-
-        # Advanced Metrics (Sharpe/Sortino)
-        # Calculate periodic returns from equity curve
-        sharpe_ratio = 0.0
-        sortino_ratio = 0.0
-
-        if len(self._equity_curve) > 1:
-            returns = []
-            for i in range(1, len(self._equity_curve)):
-                prev = self._equity_curve[i - 1]
-                curr = self._equity_curve[i]
-                if prev > 0:
-                    returns.append((curr - prev) / prev)
-                else:
-                    returns.append(0.0)
-
-            if returns:
-                # Calculate mean and std manually to avoid numpy dependency
-                mean_return = sum(returns) / len(returns)
-                variance = sum((x - mean_return) ** 2 for x in returns) / len(returns)
-                std_return = math.sqrt(variance)
-
-                # Annualize based on configured timeframe
-                _tf_minutes = {
-                    "1m": 1,
-                    "3m": 3,
-                    "5m": 5,
-                    "15m": 15,
-                    "30m": 30,
-                    "1h": 60,
-                    "2h": 120,
-                    "4h": 240,
-                    "6h": 360,
-                    "8h": 480,
-                    "12h": 720,
-                    "1d": 1440,
-                    "3d": 4320,
-                    "1w": 10080,
-                }
-                tf_min = _tf_minutes.get(self._config.timeframe, 1)
-                periods_per_year = int(365 * 24 * 60 / tf_min)
-
-                if std_return > 0:
-                    sharpe_ratio = (mean_return / std_return) * math.sqrt(periods_per_year)
-
-                # Sortino (Downside deviation)
-                negative_returns = [r for r in returns if r < 0]
-                if negative_returns:
-                    downside_variance = sum(x**2 for x in negative_returns) / len(
-                        returns
-                    )  # Downside deviation uses total N
-                    downside_std = math.sqrt(downside_variance)
-                    if downside_std > 0:
-                        sortino_ratio = (mean_return / downside_std) * math.sqrt(periods_per_year)
-
-        return BacktestResult(
-            total_return=total_return,
-            total_return_pct=total_return_pct,
-            max_drawdown=max_dd,
-            win_rate=win_rate,
-            total_trades=len(self._trades),
+        return calculate_backtest_metrics(
+            config=self._config,
+            equity_curve=self._equity_curve,
             trades=self._trades,
-            final_equity=final_equity,
-            sharpe_ratio=sharpe_ratio,
-            sortino_ratio=sortino_ratio,
-            profit_factor=profit_factor,
-            avg_win_loss_ratio=avg_win_loss_ratio,
             blocked_buy_count=self._blocked_buy_count,
             basis_blocked_buy_count=self._basis_blocked_buy_count,
             dislocation_blocked_buy_count=self._dislocation_blocked_buy_count,
+            queued_signal_count=self._queued_signal_count,
+            unfilled_signal_count=self._unfilled_signal_count,
+            funding_settlement_count=self._funding_settlement_count,
         )
 
     def _create_empty_result(self) -> BacktestResult:
@@ -828,4 +918,7 @@ class BacktestEngine:
             blocked_buy_count=self._blocked_buy_count,
             basis_blocked_buy_count=self._basis_blocked_buy_count,
             dislocation_blocked_buy_count=self._dislocation_blocked_buy_count,
+            queued_signal_count=self._queued_signal_count,
+            unfilled_signal_count=self._unfilled_signal_count,
+            funding_settlement_count=self._funding_settlement_count,
         )
