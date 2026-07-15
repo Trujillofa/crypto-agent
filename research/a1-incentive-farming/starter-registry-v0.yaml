@@ -226,7 +226,11 @@ programs:
     selection_criteria: {c1_fixed_or_capped: na, c2_terms_documented: true, c3_eligibility_public: true,
                          c4_capital_bounded: true, c5_tail_named: true, c6_reward_rationale: maybe}
     verification_status: MECHANISM_VERIFIED_2026-06-27
-    live_round_status: UNVERIFIED
+    # Phase-0 verdict 2026-07-14: Kill (zero realizable value — OAT/NFT rewards cannot
+    # produce positive EV under the locked formula). Kept as IN_CONDITIONAL classifier
+    # fixture; NOT_LIVE_REFERENCE_ONLY routes it to controls in any future baseline.
+    # See docs/reports/a1-phase0-final-report-2026-07-14.md
+    live_round_status: NOT_LIVE_REFERENCE_ONLY
     review_expiry: 2026-07-11
 
   - id: testnet-incentive-archetype

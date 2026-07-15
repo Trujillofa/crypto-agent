@@ -1,7 +1,10 @@
 # A1 Phase-0 Final Report — 2026-07-14
 
 **Baseline:** `baseline-20260630T222523Z` (COMPLETE)
-**Window:** 2026-06-30 → 2026-07-14 (13 days, 17 observations + Day-0)
+**Window:** 2026-06-30 → 2026-07-14 (19 observations: Day-0 + 17 daily ticks + close tick)
+**Note:** pre-registered end was 2026-07-11 (`planned_end_at_utc`); actual close ran 3 days
+over. The extra ticks only reinforced the null result (no program changed status), but the
+overrun is recorded here for prereg hygiene.
 **Git SHA at start:** `9f1bfcc` — all 5 frozen artifacts validated at baseline open
 
 ---
@@ -155,9 +158,9 @@ No program clears verification + promotion + EV. Deploying capital now would vio
 
 For any program type that shows a live round: replace the generic doc URL with the specific sale/round page. This is the minimum to make verification meaningful.
 
-### 3. Add content-stripping for HTML captures
+### 3. Content-stripping for HTML captures — deferred, build only when needed
 
-The tooling should strip nonces, scripts, meta tags, and analytics tokens before hashing HTML captures. This would make Coinlist's FAQ hashes stable (all 21 captures are semantically identical — the FAQ hasn't changed). Without this, web-page verification is noise, not signal.
+Stripping nonces, scripts, meta tags, and analytics tokens before hashing would make HTML captures stable (all 21 Coinlist FAQ captures are semantically identical — the FAQ hasn't changed). But with zero live rounds and no new-edge budget, building hash-normalization tooling now optimizes something that isn't running. Build it if and when a live HTML-based round enters a baseline; the primary fix remains round-specific URLs (#2).
 
 ### 4. Watch Legion for a sale announcement
 
@@ -171,9 +174,9 @@ OAT rewards have no realizable market value. This program cannot produce positiv
 
 The A1 thesis (inverse scale, per-identity-capped, capital-independent rewards) is sound. The registry has 5 IN_CORE programs but only 2 were active. The 17-program universe is comprehensive — the constraint is not program discovery but **live, measurable rounds**. Run a periodic sweep (weekly) against the registry to check which programs have active rounds.
 
-### 7. Wait for next systemd tick or re-enable
+### 7. Tick timer disabled
 
-The baseline is closed — the `systemd` timer at 06:00 UTC will now fail on `baseline status` (no RUNNING baseline exists). No new observations will be captured until a new baseline is started. This is correct — Phase-0 observation is complete.
+The baseline is closed. Verified post-close (2026-07-15 tick): the timer does **not** fail — the tick script no-ops cleanly (`no RUNNING baseline; nothing to tick`, exit 0). Since a daily no-op that auto-commits to main serves no purpose without a RUNNING baseline, the user timer (`crypto-agent-incentive-ops-tick.timer`) was disabled 2026-07-15. Re-enable it when starting a new baseline.
 
 ---
 
@@ -183,7 +186,7 @@ The baseline is closed — the `systemd` timer at 06:00 UTC will now fail on `ba
 2. **Watch Legion for a sale announcement** — check `app.legion.cc` periodically for specific sale rounds
 3. **Update registry URLs** when concrete rounds appear — edit `research/a1-incentive-farming/starter-registry-v0.yaml` and freeze a new baseline
 4. **Do not deploy capital** — Phase-1 is not authorized from this baseline
-5. **Decision: keep tooling running?** The `systemd` timer will fail silently until a new baseline is started. Either: (a) disable the timer, (b) start a new baseline with updated URLs, or (c) leave it to fail silently
+5. **Tooling paused** — the tick timer was disabled 2026-07-15 (it no-ops without a RUNNING baseline, so nothing was failing; it was just purposeless). Re-enable with `systemctl --user enable --now crypto-agent-incentive-ops-tick.timer` when a new baseline starts
 
 ---
 

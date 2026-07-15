@@ -122,8 +122,10 @@ def test_split_universe_active_vs_control():
     assert "coinbase-learning-rewards" in split.control_program_ids
     # binance-learn-and-earn is reference-only (no GET-able terms page) -> control
     assert "binance-learn-and-earn" in split.control_program_ids
-    assert len(split.active_research_program_ids) == 5
-    assert len(split.control_program_ids) == 12
+    # galxe-quests-oat killed at Phase-0 (zero realizable OAT value) -> control
+    assert "galxe-quests-oat" in split.control_program_ids
+    assert len(split.active_research_program_ids) == 4
+    assert len(split.control_program_ids) == 13
 
 
 @patch("tools.incentive_ops.baseline.fetch_raw")
