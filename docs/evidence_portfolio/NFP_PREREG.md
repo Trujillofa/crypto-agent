@@ -89,7 +89,12 @@ the data, verdict = **NO_PULSE**.
 
 **YES**, **NO_PULSE**, or **BLOCKED_ON_DATA**
 
-Verdict: _[pending data gate]_
+Verdict: **YES** (2026-07-16). 33/36 releases recovered (excluded: 2021-03-05,
+2022-01-07, 2023-12-08 — no matching-date Wayback capture). 21 hot-surprise trades:
+net expectancy +0.7040%, profit factor 2.18, max drawdown 6.29%, all leave-one-out
+expectancies positive (min +0.2834%). All four pass gates met with no parameter
+changes. Full report: `docs/reports/nfp-good-news-oos-probe.md`; JSON:
+`research/nfp_good_news_oos/report.json`.
 
 ## Lock sign-off
 

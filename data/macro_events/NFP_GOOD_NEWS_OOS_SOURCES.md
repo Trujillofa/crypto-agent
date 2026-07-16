@@ -38,5 +38,11 @@ authorize trading.
 
 ## Current State
 
-The OHLCV input is committed. No OOS surprise CSV is committed until every included
-row satisfies the evidence requirements above. The probe therefore has no verdict yet.
+Both inputs are committed. `nfp_good_news_oos_2021_2023.csv` (SHA-256
+`d2a0dd45242f428ff55c5c305485f09bdf37ff39947eb45b20f4d8e17d58699d`) contains 33 of
+the 36 scheduled releases; 2021-03-05, 2022-01-07, and 2023-12-08 are excluded
+because no Wayback capture shows them as `Latest Release`. Every committed row
+carries its exact snapshot URL, and all 33 actuals were cross-checked against the
+archived BLS release documents with zero discrepancies. The probe ran 2026-07-16
+with verdict **YES** — see `docs/reports/nfp-good-news-oos-probe.md` (collection
+appendix included) and `docs/evidence_portfolio/NFP_PREREG.md`.
