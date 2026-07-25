@@ -18,6 +18,16 @@ display_name: sentiment-macro-1h-multiasset
 # Do NOT re-arm without a new pre-registered validation at corrected costs.
 mode: paper
 
+# Record OHLCV + indicators for non-traded symbols so historical data remains
+# available for backtesting even though the strategy only trades SOLUSDT.
+# The BTC/ETH recording containers were removed when the agent was disarmed;
+# this keeps their data pipelines alive without resurrecting dead strategies.
+ingest:
+  use_websocket: true
+  recording_symbols:
+    - BTCUSDT
+    - ETHUSDT
+
 trading:
   pairs:
     - SOLUSDT

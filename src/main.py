@@ -165,6 +165,7 @@ class Settings:
     telegram: TelegramConfig
     ai: AISettings
     use_websocket: bool
+    recording_symbols: list[str] = field(default_factory=list)
     futures: FuturesSettings | None = None
     exit_rules: Mapping[str, object] = field(default_factory=dict)
     reconciliation: ReconciliationConfig = field(default_factory=ReconciliationConfig)
@@ -590,6 +591,7 @@ def load_settings(config_path: Path) -> Settings:
         telegram=telegram_config,
         ai=ai_settings,
         use_websocket=_as_bool(ingest.get("use_websocket"), "ingest.use_websocket", default=False),
+        recording_symbols=_as_str_list(ingest.get("recording_symbols"), "ingest.recording_symbols"),
         futures=futures_config,
         exit_rules=exit_rules,
         reconciliation=recon_config,
@@ -953,12 +955,28 @@ async def run() -> None:
     # they need without manual intervention or extra processes.
     writer = TimescaleWriter(settings.database, ingest_metrics)
 
+    # Symbols to ingest: trading pairs + any extra recording-only symbols that should
+    # have OHLCV/indicator data stored for backtesting even though they are not traded.
+    # Decouples data recording from strategy execution so disarming a strategy doesn't
+    # kill its historical data pipeline.
+    ingest_symbols: list[str] = list(
+        dict.fromkeys([*settings.trading_pairs, *settings.recording_symbols])
+    )
+    if len(ingest_symbols) > len(settings.trading_pairs):
+        get_logger("main").info(
+            "Ingesting %d symbols (%d trading + %d recording-only): %s",
+            len(ingest_symbols),
+            len(settings.trading_pairs),
+            len(ingest_symbols) - len(settings.trading_pairs),
+            ingest_symbols,
+        )
+
     ingestors: dict[str, BinanceIngestor | BinanceWebSocketIngestor] = {}
     for tf in sorted(required_timeframes):
         if settings.use_websocket:
-            ing = BinanceWebSocketIngestor(settings.trading_pairs, tf, ingest_metrics)
+            ing = BinanceWebSocketIngestor(ingest_symbols, tf, ingest_metrics)
         else:
-            ing = BinanceIngestor(settings.trading_pairs, tf, ingest_metrics)
+            ing = BinanceIngestor(ingest_symbols, tf, ingest_metrics)
         ingestors[tf] = ing
 
     # Initialize indicator pipeline (writer shared across TFs; computers per TF)
@@ -967,7 +985,7 @@ async def run() -> None:
     for tf in sorted(required_timeframes):
         comp = IndicatorComputer(
             config=settings.database,
-            symbols=settings.trading_pairs,
+            symbols=ingest_symbols,
             timeframe=tf,
             writer=indicator_writer,
             metrics=indicator_metrics,
