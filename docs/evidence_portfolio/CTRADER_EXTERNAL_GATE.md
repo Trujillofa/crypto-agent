@@ -94,17 +94,43 @@ unexercised. The journal shows 20 partial-TP and 13 trailing-stop live closes da
 - Rows carry real commissions, and `exit_price` ≠ `filled_exit_price` (modeled trigger
   vs actual fill).
 
-**Open human decision (not made by tooling):** whether those 33 retroactively-identified
-executions count as gate evidence, or whether the ≥5 threshold must be met with
-write-time-tagged rows from here on. Two paths clear the threshold on the inferred
-evidence; `time_stop`, `stale_exit`, and `weekend_flatten` remain genuinely unexercised
-live either way. Going forward the ambiguity is gone — every new exit is tagged.
+### Decision 1 (2026-07-27): inferred executions accepted, replay still required
 
-**Taxonomy mismatch to resolve:** the "Exit paths to validate" list above does not map
-1:1 onto the code's `ExitReason` values. `time_stop` and `stale_exit` are real exit
-reasons absent from the list; "break-even move" is not a distinct exit reason; and
-"broker SL/TP handling" / "reconciliation after fill" are broker-side paths, not
-agent-managed ones. The gate should be restated against the actual taxonomy.
+The 33 retroactively-identified executions **count toward the ≥5 execution threshold**.
+Each path must **still pass deterministic replay** before it is production-ready —
+execution count alone does not make a path ready.
 
-Deciding and restating both points belongs in `ctrader-trading-agent` per the ownership
-rule above; this entry only records the measurement.
+Reported by `scripts/exit_path_gate_report.py --accept-inferred` (opt-in, so the strict
+reading remains the default view). Going forward the ambiguity is gone: every new exit is
+tagged at write time.
+
+### Decision 2 (2026-07-27): exit paths restated against the code taxonomy
+
+The original "Exit paths to validate" list did not map onto the code's `ExitReason`
+values. It is superseded by the following. **Agent-managed** (what the ≥5 threshold and
+the replay requirement apply to):
+
+| path | live executions | deterministic replay | ready? |
+|---|---:|---|---|
+| `partial_tp` | 20 ✅ | dedicated parity test ✅ | **yes** |
+| `trailing_stop` | 13 ✅ | only incidental, inside the partial_tp scenario ⚠️ | no — needs its own scenario |
+| `time_stop` | 0 ❌ | none ❌ | no |
+| `stale_exit` | 0 ❌ | none ❌ | no |
+| `weekend_flatten` | 0 ❌ | none — `flatten_all` is mocked, never replayed ❌ | no |
+
+**Broker-side paths** (not agent-managed; the threshold does not apply): broker SL
+handling, broker TP handling, reconciliation after fill. Reconciliation emits these with
+a `"(broker)"` suffix, which is what keeps them out of the agent-managed counts.
+
+**Dropped:** "break-even move" — not a distinct exit reason in the code.
+
+**Replay coverage is thinner than assumed.** `tests/test_backtest_paper_tracker_parity.py`
+contains a single test (`test_backtest_and_paper_tracker_agree_on_partial_tp_bar_exit_count`).
+That file exists because of the 2026-04-08 shelving, caused by silent drift between two
+re-implementations of exit logic — so the missing scenarios are guarding against a failure
+mode that has already happened once. Writing parity scenarios for `trailing_stop`,
+`time_stop`, `stale_exit`, and `weekend_flatten` is outstanding work in
+`ctrader-trading-agent`.
+
+Implementation and remaining work belong in `ctrader-trading-agent` per the ownership rule
+above; this entry records the measurement and the two decisions.
