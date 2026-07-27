@@ -60,3 +60,51 @@ repository. Do not implement, validate, or close those tasks in `crypto-agent`.
 This file is only a boundary note so `crypto-agent` agents do not mistake the
 cTrader gate for local work. The canonical checklist and evidence must live in
 `ctrader-trading-agent`.
+
+---
+
+## Update 2026-07-27 — the "unexercised" premise is stale
+
+Exit-path telemetry was built in `ctrader-trading-agent`
+(PR #48, `feat/exit-path-gate-telemetry`): exits are now tagged at write time with
+`execution` (live/paper) and `agent_initiated`, aggregated by
+`PaperPnLLog.get_exit_path_stats()`, and reported by
+`scripts/exit_path_gate_report.py`. Until this existed the gate was **unmeasurable**
+without hand-grepping the P&L journal — nothing aggregated exit reasons.
+
+Run against a read-only copy of the production journal (146 exits):
+
+| path | live (tagged) | inferred live | paper | status |
+|---|---:|---:|---:|---|
+| partial_tp | 0 | **20** | 26 | SHORT |
+| trailing_stop | 0 | **13** | 25 | SHORT |
+| time_stop | 0 | 0 | 3 | UNEXERCISED |
+| stale_exit | 0 | 0 | 7 | UNEXERCISED |
+| weekend_flatten | 0 | 0 | 1 | UNEXERCISED |
+
+**This contradicts the boundary note above**, which records that every live close has
+been a broker bracket fill caught by the reconciler and that agent-initiated paths are
+unexercised. The journal shows 20 partial-TP and 13 trailing-stop live closes dated
+**2026-06-09 → 2026-07-27**. Verified, not assumed:
+
+- `apply_live_fill` — the only writer of `filled_exit_price` — is called at exactly two
+  sites, both agent-initiated live paths (`cli.py:1815`, `cli.py:1956`).
+- Reconciliation **suffixes** its reasons `"(broker)"`, so a bare `partial_tp` /
+  `trailing_stop` cannot originate there.
+- Rows carry real commissions, and `exit_price` ≠ `filled_exit_price` (modeled trigger
+  vs actual fill).
+
+**Open human decision (not made by tooling):** whether those 33 retroactively-identified
+executions count as gate evidence, or whether the ≥5 threshold must be met with
+write-time-tagged rows from here on. Two paths clear the threshold on the inferred
+evidence; `time_stop`, `stale_exit`, and `weekend_flatten` remain genuinely unexercised
+live either way. Going forward the ambiguity is gone — every new exit is tagged.
+
+**Taxonomy mismatch to resolve:** the "Exit paths to validate" list above does not map
+1:1 onto the code's `ExitReason` values. `time_stop` and `stale_exit` are real exit
+reasons absent from the list; "break-even move" is not a distinct exit reason; and
+"broker SL/TP handling" / "reconciliation after fill" are broker-side paths, not
+agent-managed ones. The gate should be restated against the actual taxonomy.
+
+Deciding and restating both points belongs in `ctrader-trading-agent` per the ownership
+rule above; this entry only records the measurement.
