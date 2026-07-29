@@ -139,10 +139,28 @@ These are the whole reason this needs a memo and not a trade:
 It does not decay like a prediction edge. You are being paid a risk premium to warehouse
 a real risk — which is durable as long as you are honestly priced for that risk.
 
-### Verdict
-**Write the Gate-0 memo unconditionally** (it costs hours). **Commit capital only if
-excess-over-risk-free is clearly positive after honest haircuts** for depeg and
-unbonding.
+### Verdict — CLOSED same day, no memo written
+Checking staking yield against the banked v1 durability table
+(`docs/specs/funding-carry-neutral-probe-v0.md`, "v1 durability result") answered the
+question without a memo. Staking does **not** rescue forward excess over risk-free:
+
+| Symbol | Fwd excess vs RF (v1) | Cap factor | Generous staking, on capital | **Fwd excess + staking** |
+|---|---:|---:|---:|---:|
+| ETH | −3.69% | 1.43 | 3% ÷ 1.43 = +2.10% | **−1.59%** |
+| SOL | −6.39% | 1.42 | 7% ÷ 1.42 = +4.93% | **−1.46%** |
+| BTC | −3.27% | 1.25 | no staking exists | **−3.27%** |
+
+Even 8% on SOL only reaches −0.76%, against a gate requiring **+1.0%**. Full-period
+numbers do flip positive (ETH +1.45%, SOL +2.72%) — but forward was the decisive cut in
+v1, and forward still fails. Note also that the deepest, most liquid leg (BTC) has no
+staking yield at all, so the variant only exists on the two assets with worse forward
+carry.
+
+**If ever revisited:** treat unbonding-vs-margin-call as a **Gate-0 disqualifier
+sub-gate**, in the style of the Path 2 sub-gates. v1's margin stress found worst 72h
+adverse up-moves of 23–43%; the short leg needs cash on that timescale while a staked
+spot leg sits in an unstaking queue for days. That mismatch can kill the lane on its own,
+independent of any yield arithmetic.
 
 ---
 
@@ -273,7 +291,7 @@ not less.
 |---|------|-------|--------------|-------|---------|--------|
 | 1 | NFP forward capture | Measured | ~0 — **deadline 2026-08-06** | **YES (passed OOS)** | Low but real | **Build now** |
 | 2 | Conditional-CPI analog | Unpriced | Days, $0 | Moderate | Low-mid | Defer behind #1 |
-| 3 | Staking carry | Unpriced | Hours (memo) | Moderate | Mid, capped | Write memo |
+| 3 | Staking carry | Unpriced | &mdash; | **CLOSED 07-27** | &mdash; | Forward excess still negative |
 | 4 | Access / size-is-edge | Structural | ~0 (built) | Real but episodic | Mid, lumpy | Keep watching |
 | 5 | Scale cTrader FX | Measured | Capital only | **Proven live** | Mid-high | Close exit-path gate, then scale |
 | 6 | Maker-rebate MM | Structural | High (a business) | Only durable trading prior | High | Deliberate decision only |
