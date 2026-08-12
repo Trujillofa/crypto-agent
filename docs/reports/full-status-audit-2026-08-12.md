@@ -186,15 +186,15 @@ low-severity hygiene.
 | Later prints | 2026-10-02, 2026-11-06, 2026-12-04 |
 | Kill risk | ≥3 `MISSED_CAPTURE` rows cap the sample. Aug-7 consumed **1 of 3**. |
 
-### Required human actions
+### Already done (do not re-run)
 
-1. **Miss booked** (2026-08-12):
+Aug-7 is booked as `NFP_MISSED_CAPTURE` in `data/macro_events/nfp_good_news_forward.csv`
+(commit `6860d13`). `append_row()` refuses a second row for the same date.
 
-   ```bash
-   uv run python scripts/nfp_forward_capture.py miss --release-date 2026-08-07 \
-     --note "pre failed 2026-08-06T12:32Z: Wayback Save Page Now Connection reset by peer"
-   # -> 0 captured, 1 missed
-   ```
+### Required human actions (next print only)
+
+1. **Verify 2026-09-04** on the [BLS empsit schedule](https://www.bls.gov/schedule/news_release/empsit.htm).
+   Smoke-test Wayback *before* the window (the Aug-6 failure was archive, not the local tool).
 
 2. **Before 2026-09-04 12:30 UTC**, after the window opens on **2026-09-03**:
 
@@ -202,16 +202,13 @@ low-severity hygiene.
    uv run python scripts/nfp_forward_capture.py pre
    ```
 
-   The Aug-6 failure was Wayback, not the local tool. Confirm archive path works
-   (retry / alternate snapshot) *before* the window, not during it.
-
 3. After the BLS print:
 
    ```bash
    uv run python scripts/nfp_forward_capture.py post --actual <n> --consensus <n>
    ```
 
-4. If pre fails again:
+4. If Sep-4 pre fails:
 
    ```bash
    uv run python scripts/nfp_forward_capture.py miss --release-date 2026-09-04
@@ -407,7 +404,7 @@ Independent parallel scanners (crypto-agent · cTrader · Hetzner · research-ga
 
 | Surface | Workflow status | Why |
 |---|---|---|
-| research-gates | `critical` | Aug-7 print unrecorded (gate ledger) |
+| research-gates | `critical` at scan | Aug-7 then unrecorded; miss booked after scan (1/3) |
 | hetzner-production | `degraded` | xAI 403 + phantom loop + swap watch; containers themselves healthy |
 | crypto-agent-local-github | `watch` | same NFP fact, no outage |
 | ctrader-local-github | `healthy` | mains green, PRs landed |
@@ -421,8 +418,8 @@ is three weeks out, production is not broken.
    treats it as **P1 ledger**, not a production outage.
 2. **Day-30:** local says stale vs missed print; research says READY FOR
    RATIFICATION / sign without editing locked gates. Both true: sign is allowed,
-   but the NFP track row is factually stale until the miss is booked and the
-   sentence is updated *or* the human signs knowing the print was missed.
+   but the NFP track row is still the Aug-5 “first clean print pending” sentence;
+   the miss is now booked in the forward CSV.
 3. **xAI 403 and phantom loop** appear only on Hetzner (prod logs), not in the
    local GitHub scans — expected.
 4. **cTrader CI red on #48/#49** is historical. `origin/main` is green.
