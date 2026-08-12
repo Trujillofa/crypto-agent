@@ -326,6 +326,13 @@ Run one final revalidation with bootstrap=1000. This is the real promotion filte
 Near-misses at bootstrap=100 are not deployable. Prior AVAX/ETH near-misses collapsed at
 bootstrap=1000; treat that as the default expectation.
 
+### Gate 4b: Synthetic-path stress
+
+Historical WFO and bootstrap only resample realised history. After that filter and before
+paper/live, a synthetic-path gate can reject a candidate that fails regime-switching paths
+or three scripted stresses (March-2020 gap, funding blowout, flat wide spread).
+`min_synthetic_pass_rate_pct` defaults to 0.0 (disabled) and must be set non-zero to enforce.
+
 ### Gate 5: Independence and Portfolio Impact
 
 Before paper/live promotion:

@@ -10,12 +10,13 @@ All changes to the main branch must go through the PR review process. Direct pus
 
 The `main` branch has the following protection rules:
 
-- **Require PR reviews**: At least 1 approval required before merging
-- **Dismiss stale reviews**: New commits dismiss previous approvals
-- **Require status checks**: CI checks must pass (if configured)
-- **Restrict pushes**: Only maintainers can push (admins included)
-- **Block force pushes**: Force pushes are prohibited
-- **Block deletions**: Branch deletion is blocked
+- **Require a pull request before merging**: yes
+- **Required approvals**: 0 — solo maintainer; GitHub forbids self-approval. Raise to 1 when a second collaborator exists.
+- **Dismiss stale reviews**: enabled (takes effect once approvals are required)
+- **Required status checks**: lint, test, docker-test. Branches are NOT required to be up to date before merging.
+- **Enforce for admins**: yes — admins cannot bypass
+- **Block force pushes**: yes
+- **Block deletions**: yes
 
 ## Workflow
 
