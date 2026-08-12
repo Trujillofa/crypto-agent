@@ -11,7 +11,9 @@ class GateConfig:
 
     The sentinel value 0.0 for max_mc_drawdown_p95_pct means the equity-path
     drawdown Monte Carlo gate is disabled (default). Non-zero enables the check
-    against summary.mc_drawdown_p95_pct.
+    against summary.mc_drawdown_p95_pct. The same sentinel 0.0 disables
+    min_synthetic_pass_rate_pct (default); a non-zero value enables the check
+    against summary.synthetic_pass_rate_pct.
     """
 
     min_trades: int = 0
@@ -22,6 +24,7 @@ class GateConfig:
     min_oos_return_pct: float = 0.0
     max_profit_concentration_pct: float = 50.0
     max_mc_drawdown_p95_pct: float = 0.0
+    min_synthetic_pass_rate_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,7 @@ class ExperimentSummary:
     bootstrap_p_loss_pct: float
     mc_drawdown_p95_pct: float = 0.0
     mc_drawdown_p50_pct: float = 0.0
+    synthetic_pass_rate_pct: float = 0.0
     profit_concentration_pct: float = 0.0
     passes_gates: bool = False
     failure_reasons: list[str] = field(default_factory=list)
@@ -292,6 +296,13 @@ def evaluate_gates(summary: ExperimentSummary, gates: GateConfig) -> list[str]:
             failures.append(
                 "max_mc_drawdown_p95_pct failed "
                 f"({summary.mc_drawdown_p95_pct:.2f}% > {gates.max_mc_drawdown_p95_pct:.2f}%)"
+            )
+
+    if gates.min_synthetic_pass_rate_pct > 0:
+        if summary.synthetic_pass_rate_pct < gates.min_synthetic_pass_rate_pct:
+            failures.append(
+                "min_synthetic_pass_rate_pct failed "
+                f"({summary.synthetic_pass_rate_pct:.2f}% < {gates.min_synthetic_pass_rate_pct:.2f}%)"
             )
 
     if summary.wfo_total_return_pct < gates.min_oos_return_pct:
