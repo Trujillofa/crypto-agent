@@ -142,7 +142,10 @@ def test_synthetic_pass_rate_helper() -> None:
 
 
 def test_gate_inert_at_zero() -> None:
-    summary = _passing_summary(synthetic_pass_rate_pct=5.0)
+    summary = _passing_summary(
+        synthetic_pass_rate_pct=5.0,
+        synthetic_eval_status="inconclusive",
+    )
     for gates in (GateConfig(), GateConfig(min_synthetic_pass_rate_pct=0.0)):
         failures = evaluate_gates(summary, gates)
         assert not any("min_synthetic_pass_rate_pct failed" in reason for reason in failures)

@@ -36,7 +36,7 @@ from src.backtest.factory import (
     resolve_global_trend_filter,
 )
 from src.backtest.models import ExecutionProfile
-from src.backtest.synthetic_eval import evaluate_synthetic_pass_rate
+from src.backtest.synthetic_eval import bars_from_range, evaluate_synthetic_pass_rate
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
@@ -276,7 +276,13 @@ def _render_markdown(
     lines.append(f"| Mean OOS Sharpe | {summary.wfo_mean_sharpe:.2f} |")
     lines.append(f"| Compound OOS return | {summary.wfo_total_return_pct:.2f}% |")
     lines.append(f"| Bootstrap P(loss) | {summary.bootstrap_p_loss_pct:.2f}% |")
-    lines.append(f"| Synthetic pass rate | {summary.synthetic_pass_rate_pct:.2f}% |")
+    if summary.synthetic_eval_status == "inconclusive":
+        lines.append(
+            "| Synthetic pass rate | INCONCLUSIVE "
+            f"({summary.synthetic_scored_paths}/{summary.synthetic_total_paths} paths traded) |"
+        )
+    else:
+        lines.append(f"| Synthetic pass rate | {summary.synthetic_pass_rate_pct:.2f}% |")
     lines.append(f"| Profit concentration | {summary.profit_concentration_pct:.2f}% |")
     lines.append(f"| Blocked BUY (session router) | {summary.blocked_buy_count} |")
     lines.append(f"| Blocked BUY (basis filter) | {summary.basis_blocked_buy_count} |")
@@ -474,7 +480,12 @@ async def run_experiment_evaluation(
             seed=seed,
         )
 
-        synthetic_rate = await evaluate_synthetic_pass_rate(base_config, seed=seed)
+        synthetic_result = await evaluate_synthetic_pass_rate(
+            base_config,
+            seed=seed,
+            historical_trades=baseline.total_trades,
+            historical_bars=bars_from_range(resolved_start, resolved_end, resolved_timeframe),
+        )
 
         oos_returns = [window.total_return_pct for window in window_results]
         oos_sharpes = [window.sharpe_ratio for window in window_results]
@@ -497,7 +508,10 @@ async def run_experiment_evaluation(
             bootstrap_p_loss_pct=path_metrics["p_loss_pct"],
             mc_drawdown_p95_pct=path_metrics["drawdown_p95_pct"],
             mc_drawdown_p50_pct=path_metrics["drawdown_p50_pct"],
-            synthetic_pass_rate_pct=synthetic_rate,
+            synthetic_pass_rate_pct=synthetic_result.pass_rate_pct,
+            synthetic_eval_status=synthetic_result.status,
+            synthetic_scored_paths=synthetic_result.scored_paths,
+            synthetic_total_paths=synthetic_result.total_paths,
             profit_concentration_pct=profit_concentration_pct(oos_returns),
             blocked_buy_count=baseline.blocked_buy_count,
             basis_blocked_buy_count=baseline.basis_blocked_buy_count,
