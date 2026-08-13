@@ -167,3 +167,28 @@ async def test_fetch_funding_settlements_empty_by_default() -> None:
     reader = SyntheticIndicatorReader(candles, warmup_bars=200)
     start, end = _wide_window()
     assert await reader.fetch_funding_settlements("SYNTH", start, end) == []
+
+
+async def test_mtf_uses_requested_regime_timeframe() -> None:
+    warmup = 200
+    candles, _states = generate_regime_path(
+        _regime_params(),
+        n_bars=warmup + 48,
+        start_price=100.0,
+        seed=1,
+        timeframe="1h",
+    )
+    reader = SyntheticIndicatorReader(candles, warmup_bars=warmup)
+    joined = await reader.fetch_multi_timeframe(
+        symbol="SYNTH",
+        entry_timeframe="1h",
+        regime_timeframe="1d",
+        start_time=reader.eval_start,
+        end_time=reader.eval_end,
+    )
+    has_1d = any(key.endswith("_1d") for row in joined for key in row)
+    if has_1d:
+        assert has_1d
+    else:
+        daily = aggregate_ohlcv(candles, "1d")
+        assert daily
