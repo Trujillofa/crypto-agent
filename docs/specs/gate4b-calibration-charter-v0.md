@@ -40,4 +40,4 @@ A calibration run requires a **defensible accepted (positive) control** and a **
 
 **INCONCLUSIVE.** No accepted control. No diagnostic run. Gate 4b stays diagnostic; threshold stays `0.0` and off CLI/autoresearch.
 
-Follow-ups still later: `requirements.txt` lock cleanup, then news-surprise scoring. Meta-allocator remains blocked on `HYP-HTFR-001` `HAS_PULSE`.
+`requirements.txt` lock cleanup is this PR; remaining follow-up is news-surprise scoring. Meta-allocator remains blocked on `HYP-HTFR-001` `HAS_PULSE`.

@@ -112,10 +112,10 @@ Read the loaded config before making claims about what the agent is doing. READM
 Typical local setup:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --all-extras --dev
 ```
+
+`requirements.txt` is generated from `uv.lock` for Docker/pip and must not be hand-edited.
 
 Then configure environment variables for secrets and run the stack using the project’s configured runtime entrypoints / compose setup.
 

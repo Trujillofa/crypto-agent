@@ -68,9 +68,7 @@ Prometheus Metrics + Telegram Alerts
 
 2. **Create Python virtual environment:**
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   uv sync --all-extras --dev
    ```
 
 3. **Set up environment variables:**
@@ -599,7 +597,7 @@ The bot sends alerts for:
 source .venv/bin/activate
 
 # Reinstall dependencies
-pip install -r requirements.txt
+uv sync --all-extras --dev
 
 # Run tests with verbose output
 pytest -v --tb=short
