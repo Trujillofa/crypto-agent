@@ -17,6 +17,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies
+# generated from uv.lock via `uv export --frozen --no-dev --no-hashes --no-emit-project`; do not hand-edit
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt

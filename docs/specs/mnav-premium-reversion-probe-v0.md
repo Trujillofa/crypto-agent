@@ -49,7 +49,7 @@ firms are ~pure crypto holders; debt-heavy names like MSTR are a known caveat, f
 
 | Field | Source | Notes |
 |-------|--------|-------|
-| Daily equity close | `yfinance` or `stooq` (free) | builder picks; document choice + add to `requirements.txt` only if not present |
+| Daily equity close | `yfinance` or `stooq` (free) | builder picks; document choice + add to `pyproject.toml` only if not present |
 | Crypto daily close | Binance public klines | reuse `scripts/download_historical.py::download_klines` (1d) — already in repo |
 | `holdings_units` (time series) | filings / disclosures | hand-seeded static CSV, **with filing dates** (see seed schema) |
 | `shares_outstanding` (time series) | filings | same static CSV, point-in-time |
