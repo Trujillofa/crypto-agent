@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import inspect
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from src.backtest.experiment_autopilot import ExperimentSummary, GateConfig, evaluate_gates
+from src.backtest.models import BacktestConfig
 from src.backtest.synthetic_eval import (
     MAX_EVAL_BARS,
     MIN_EVAL_BARS,
+    SyntheticEvalResult,
     _rate_from_outcomes,
     eval_bars_from_trade_rate,
+    evaluate_synthetic_pass_rate,
+    maybe_evaluate_synthetic_pass_rate,
     score_path,
 )
+from src.strategy.simple_ma import SimpleMACrossoverStrategy
 
 
 def _passing_summary(**overrides: object) -> ExperimentSummary:
@@ -93,3 +104,100 @@ def test_gate_inconclusive_fires_when_enabled() -> None:
     gates = GateConfig(min_synthetic_pass_rate_pct=50.0)
     failures = evaluate_gates(summary, gates)
     assert "min_synthetic_pass_rate_pct failed (inconclusive coverage)" in failures
+
+
+def _dummy_config() -> BacktestConfig:
+    return BacktestConfig(
+        symbol="SYNTH",
+        timeframe="1h",
+        start_date="2020-01-01T00:00:00+00:00",
+        end_date="2020-02-01T00:00:00+00:00",
+    )
+
+
+async def test_disabled_skips_compute() -> None:
+    with patch(
+        "src.backtest.synthetic_eval.evaluate_synthetic_pass_rate",
+        new_callable=AsyncMock,
+    ) as mock_evaluate:
+        result = await maybe_evaluate_synthetic_pass_rate(_dummy_config(), enabled=False)
+
+    mock_evaluate.assert_not_awaited()
+    mock_evaluate.assert_not_called()
+    assert result.status == "not_run"
+    assert result.pass_rate_pct == 0.0
+
+
+async def test_enabled_forwards_to_evaluate() -> None:
+    scored = SyntheticEvalResult(
+        status="scored",
+        pass_rate_pct=80.0,
+        scored_paths=5,
+        total_paths=6,
+        zero_trade_paths=1,
+    )
+    with patch(
+        "src.backtest.synthetic_eval.evaluate_synthetic_pass_rate",
+        new_callable=AsyncMock,
+        return_value=scored,
+    ) as mock_evaluate:
+        result = await maybe_evaluate_synthetic_pass_rate(_dummy_config(), enabled=True)
+
+    mock_evaluate.assert_awaited_once()
+    assert result is scored
+
+
+def test_render_not_run_is_not_zero_percent() -> None:
+    from scripts.experiment_autopilot import _render_markdown
+
+    summary = _passing_summary(synthetic_eval_status="not_run", synthetic_pass_rate_pct=0.0)
+    markdown = _render_markdown(
+        summary=summary,
+        windows=[],
+        gates=GateConfig(),
+        config_path=Path("config/settings.yaml"),
+    )
+    assert "not_run" in markdown
+    synth_lines = [line for line in markdown.splitlines() if "Synthetic pass rate" in line]
+    assert synth_lines
+    assert "0.00%" not in synth_lines[0]
+
+
+def test_gate_not_run_inert_when_disabled() -> None:
+    summary = _passing_summary(synthetic_eval_status="not_run", synthetic_pass_rate_pct=0.0)
+    for gates in (GateConfig(), GateConfig(min_synthetic_pass_rate_pct=0.0)):
+        failures = evaluate_gates(summary, gates)
+        assert not any("min_synthetic_pass_rate_pct failed" in reason for reason in failures)
+
+
+def test_gate_not_run_fails_when_enabled() -> None:
+    gates = GateConfig(min_synthetic_pass_rate_pct=50.0)
+    for status in ("not_run", ""):
+        summary = _passing_summary(synthetic_eval_status=status)
+        failures = evaluate_gates(summary, gates)
+        assert "min_synthetic_pass_rate_pct failed (not_run)" in failures
+
+
+async def test_futures_v2_synthetic_eval_requires_settlements() -> None:
+    config = BacktestConfig(
+        symbol="SYNTH",
+        timeframe="1h",
+        start_date="2020-01-01T00:00:00+00:00",
+        end_date="2020-02-01T00:00:00+00:00",
+        execution_profile="execution_parity_v2",
+        futures_mode=True,
+        strategy_classes=[SimpleMACrossoverStrategy],
+        strategy_configs=[None],
+        apply_global_trend_filter=False,
+    )
+    with pytest.raises(ValueError, match="Missing historical funding settlements"):
+        await evaluate_synthetic_pass_rate(config, eval_bars=80, warmup_bars=200)
+
+
+def test_cli_has_no_synthetic_threshold() -> None:
+    from scripts.run_autoresearch import _gate_config_from_profile
+
+    autopilot = Path("scripts/experiment_autopilot.py").read_text(encoding="utf-8")
+    assert "--min-synthetic" not in autopilot
+    construction = inspect.getsource(_gate_config_from_profile)
+    assert "min_synthetic_pass_rate" not in construction

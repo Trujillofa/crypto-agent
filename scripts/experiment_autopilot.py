@@ -36,7 +36,7 @@ from src.backtest.factory import (
     resolve_global_trend_filter,
 )
 from src.backtest.models import ExecutionProfile
-from src.backtest.synthetic_eval import bars_from_range, evaluate_synthetic_pass_rate
+from src.backtest.synthetic_eval import bars_from_range, maybe_evaluate_synthetic_pass_rate
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
@@ -276,7 +276,9 @@ def _render_markdown(
     lines.append(f"| Mean OOS Sharpe | {summary.wfo_mean_sharpe:.2f} |")
     lines.append(f"| Compound OOS return | {summary.wfo_total_return_pct:.2f}% |")
     lines.append(f"| Bootstrap P(loss) | {summary.bootstrap_p_loss_pct:.2f}% |")
-    if summary.synthetic_eval_status == "inconclusive":
+    if summary.synthetic_eval_status == "not_run":
+        lines.append("| Synthetic pass rate | not_run |")
+    elif summary.synthetic_eval_status == "inconclusive":
         lines.append(
             "| Synthetic pass rate | INCONCLUSIVE "
             f"({summary.synthetic_scored_paths}/{summary.synthetic_total_paths} paths traded) |"
@@ -480,8 +482,9 @@ async def run_experiment_evaluation(
             seed=seed,
         )
 
-        synthetic_result = await evaluate_synthetic_pass_rate(
+        synthetic_result = await maybe_evaluate_synthetic_pass_rate(
             base_config,
+            enabled=gates.min_synthetic_pass_rate_pct > 0,
             seed=seed,
             historical_trades=baseline.total_trades,
             historical_bars=bars_from_range(resolved_start, resolved_end, resolved_timeframe),

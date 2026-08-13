@@ -39,11 +39,20 @@ STRESS_SCENARIOS = ("march_2020_gap", "funding_blowout", "flat_wide_spread")
 
 @dataclass(frozen=True)
 class SyntheticEvalResult:
-    status: str  # 'scored' | 'inconclusive'
-    pass_rate_pct: float  # 0.0 when inconclusive — not a verdict
+    status: str  # 'not_run' | 'scored' | 'inconclusive'
+    pass_rate_pct: float  # 0.0 when inconclusive or not_run — not a verdict
     scored_paths: int
     total_paths: int
     zero_trade_paths: int
+
+
+NOT_RUN_RESULT = SyntheticEvalResult(
+    status="not_run",
+    pass_rate_pct=0.0,
+    scored_paths=0,
+    total_paths=0,
+    zero_trade_paths=0,
+)
 
 
 def _parse_iso(value: str) -> datetime:
@@ -175,3 +184,38 @@ async def evaluate_synthetic_pass_rate(
             )
 
     return _rate_from_outcomes(outcomes)
+
+
+async def maybe_evaluate_synthetic_pass_rate(
+    config: BacktestConfig,
+    *,
+    enabled: bool,
+    n_regime_paths: int = 3,
+    include_stress: bool = True,
+    warmup_bars: int = DEFAULT_WARMUP_BARS,
+    eval_bars: int | None = None,
+    historical_trades: int = 0,
+    historical_bars: int = 0,
+    seed: int = 42,
+    start_price: float = 100.0,
+    regime_params: RegimeParams | None = None,
+    max_drawdown_pct: float = 10.0,
+    min_return_pct: float = 0.0,
+) -> SyntheticEvalResult:
+    """Skip path generation when the synthetic gate is disabled."""
+    if not enabled:
+        return NOT_RUN_RESULT
+    return await evaluate_synthetic_pass_rate(
+        config,
+        n_regime_paths=n_regime_paths,
+        include_stress=include_stress,
+        warmup_bars=warmup_bars,
+        eval_bars=eval_bars,
+        historical_trades=historical_trades,
+        historical_bars=historical_bars,
+        seed=seed,
+        start_price=start_price,
+        regime_params=regime_params,
+        max_drawdown_pct=max_drawdown_pct,
+        min_return_pct=min_return_pct,
+    )
