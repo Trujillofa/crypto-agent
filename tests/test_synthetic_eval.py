@@ -2,25 +2,31 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.backtest.artifacts import fingerprint_rows
 from src.backtest.engine import BacktestEngine
 from src.backtest.experiment_autopilot import ExperimentSummary, GateConfig, evaluate_gates
-from src.backtest.models import BacktestConfig
-from src.backtest.synthetic import generate_regime_path, generate_stress_path
+from src.backtest.models import BacktestConfig, BacktestResult
+from src.backtest.synthetic import fit_two_state_regime, generate_regime_path, generate_stress_path
 from src.backtest.synthetic_eval import (
     DEFAULT_REGIME_PARAMS,
     MAX_EVAL_BARS,
     MIN_EVAL_BARS,
     SyntheticEvalResult,
+    SyntheticPathRecord,
+    _rate_from_named,
     _rate_from_outcomes,
     _run_path,
+    decimal_close_returns,
     eval_bars_from_trade_rate,
     evaluate_synthetic_pass_rate,
     maybe_evaluate_synthetic_pass_rate,
+    score_engine_result,
     score_path,
 )
 from src.backtest.synthetic_reader import (
@@ -302,3 +308,184 @@ def test_cli_has_no_synthetic_threshold() -> None:
     assert "--min-synthetic" not in autopilot
     construction = inspect.getsource(_gate_config_from_profile)
     assert "min_synthetic_pass_rate" not in construction
+
+
+def _engine_result(
+    *,
+    total_trades: int,
+    total_return_pct: float,
+    max_drawdown: float,
+) -> BacktestResult:
+    return BacktestResult(
+        total_return=0.0,
+        total_return_pct=total_return_pct,
+        max_drawdown=max_drawdown,
+        win_rate=0.0,
+        total_trades=total_trades,
+        trades=[],
+        final_equity=10000.0,
+        sharpe_ratio=0.0,
+        sortino_ratio=0.0,
+        profit_factor=0.0,
+        avg_win_loss_ratio=0.0,
+    )
+
+
+def _named_path(
+    *,
+    name: str,
+    kind: str,
+    outcome: str,
+    seed: int = 0,
+) -> SyntheticPathRecord:
+    return SyntheticPathRecord(
+        name=name,
+        kind=kind,
+        seed=seed,
+        trades=0 if outcome == "skip" else 1,
+        total_return_pct=1.0 if outcome == "pass" else -1.0,
+        max_drawdown_pct=1.0,
+        outcome=outcome,
+    )
+
+
+def test_decimal_close_returns() -> None:
+    assert decimal_close_returns([]) == []
+    assert decimal_close_returns([100.0]) == []
+    returns = decimal_close_returns([100, 110, 99])
+    assert returns[0] == 0.1
+    assert returns[1] == float(Decimal("99") / Decimal("110") - 1)
+    assert decimal_close_returns([0.0, 10.0]) == [0.0]
+
+
+def test_score_engine_regime_uses_total_return() -> None:
+    empty = _engine_result(total_trades=0, total_return_pct=5.0, max_drawdown=0.5)
+    assert score_engine_result(empty, kind="regime") is None
+    passed = score_engine_result(
+        _engine_result(total_trades=2, total_return_pct=1.0, max_drawdown=0.5),
+        kind="regime",
+    )
+    failed = score_engine_result(
+        _engine_result(total_trades=2, total_return_pct=-1.0, max_drawdown=0.01),
+        kind="regime",
+    )
+    assert passed is True
+    assert failed is False
+
+
+def test_score_engine_stress_uses_max_drawdown() -> None:
+    passed = score_engine_result(
+        _engine_result(total_trades=2, total_return_pct=-50.0, max_drawdown=0.05),
+        kind="stress",
+        max_drawdown_pct=10.0,
+    )
+    failed = score_engine_result(
+        _engine_result(total_trades=2, total_return_pct=50.0, max_drawdown=0.20),
+        kind="stress",
+        max_drawdown_pct=10.0,
+    )
+    assert passed is True
+    assert failed is False
+
+
+def test_separate_coverage_inconclusive() -> None:
+    records = [
+        _named_path(name="regime_0", kind="regime", outcome="pass"),
+        _named_path(name="regime_1", kind="regime", outcome="pass"),
+        _named_path(name="regime_2", kind="regime", outcome="pass"),
+    ]
+    result = _rate_from_named(records)
+    assert result.status == "inconclusive"
+    assert result.pass_rate_pct == 0.0
+    assert result.regime_scored == 3
+    assert result.stress_scored == 0
+    assert result.regime_pass_rate_pct == 100.0
+
+
+def test_separate_coverage_scored() -> None:
+    records = [
+        _named_path(name="regime_0", kind="regime", outcome="pass"),
+        _named_path(name="regime_1", kind="regime", outcome="pass"),
+        _named_path(name="march_2020_gap", kind="stress", outcome="pass"),
+        _named_path(name="funding_blowout", kind="stress", outcome="pass"),
+    ]
+    result = _rate_from_named(records)
+    assert result.status == "scored"
+    assert result.pass_rate_pct == 100.0
+    assert result.regime_scored == 2
+    assert result.stress_scored == 2
+
+
+async def test_evaluate_requires_fit_when_require_fit() -> None:
+    with pytest.raises(ValueError, match="require_fit"):
+        await evaluate_synthetic_pass_rate(_dummy_config(), require_fit=True)
+
+
+async def test_evaluate_fits_two_state() -> None:
+    fit_closes = [100.0, 100.2, 100.1, 99.8, 95.0, 93.5, 94.0, 100.5, 101.0]
+    result = await evaluate_synthetic_pass_rate(
+        _dummy_config(),
+        require_fit=True,
+        fit_start="2020-01-01T00:00:00+00:00",
+        fit_end="2020-06-01T00:00:00+00:00",
+        fit_closes=fit_closes,
+        eval_bars=80,
+        n_regime_paths=1,
+        include_stress=False,
+    )
+    assert result.status == "inconclusive"
+    assert result.fit is not None
+    expected = fit_two_state_regime(decimal_close_returns(fit_closes))
+    assert result.fit.params["mu_calm"] == expected.mu_calm
+    assert result.fit.params["sigma_calm"] == expected.sigma_calm
+    assert result.fit.params["mu_stress"] == expected.mu_stress
+    assert result.fit.params["sigma_stress"] == expected.sigma_stress
+    assert result.fit.params["p_calm_to_stress"] == expected.p_calm_to_stress
+    assert result.fit.params["p_stress_to_calm"] == expected.p_stress_to_calm
+    assert result.fit.params["p_start_stress"] == expected.p_start_stress
+    assert result.fit.row_fingerprint == fingerprint_rows(
+        [{"close": close} for close in fit_closes]
+    )
+    assert result.fit.fit_start == "2020-01-01T00:00:00+00:00"
+    assert result.fit.fit_end == "2020-06-01T00:00:00+00:00"
+
+
+async def test_runtime_evidence_records_bounds() -> None:
+    result = await evaluate_synthetic_pass_rate(
+        _dummy_config(),
+        require_fit=True,
+        fit_start="2020-01-01T00:00:00+00:00",
+        fit_end="2020-06-01T00:00:00+00:00",
+        fit_closes=[100.0, 101.0, 99.0, 102.0, 90.0, 91.0],
+        eval_bars=80,
+        n_regime_paths=1,
+        include_stress=False,
+    )
+    assert result.runtime is not None
+    assert result.runtime.min_eval_bars == MIN_EVAL_BARS
+    assert result.runtime.max_eval_bars == MAX_EVAL_BARS
+    assert result.runtime.min_eval_bars == 480
+    assert result.runtime.max_eval_bars == 4000
+    assert result.runtime.generate_min_ms >= 0.0
+    assert result.runtime.generate_max_ms >= 0.0
+
+
+def test_diagnostic_does_not_affect_passes_gates() -> None:
+    scored_zero = _passing_summary(
+        synthetic_eval_status="scored",
+        synthetic_pass_rate_pct=0,
+    )
+    failures = evaluate_gates(scored_zero, GateConfig())
+    assert not any("min_synthetic" in reason for reason in failures)
+
+    passing = _passing_summary()
+    passing_failures = evaluate_gates(passing, GateConfig())
+    assert passing_failures == []
+    assert not any("min_synthetic" in reason for reason in passing_failures)
+
+
+def test_cli_has_synthetic_diagnostic_not_threshold() -> None:
+    autopilot = Path("scripts/experiment_autopilot.py").read_text(encoding="utf-8")
+    assert "--synthetic-diagnostic" in autopilot
+    assert "--synthetic-fit-start" in autopilot
+    assert "--min-synthetic" not in autopilot

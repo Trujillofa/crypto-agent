@@ -330,9 +330,10 @@ bootstrap=1000; treat that as the default expectation.
 
 Gate 4b is a **diagnostic**, pending readiness. It is NOT a promotion gate.
 When disabled (threshold 0.0, not on CLI), synthetic eval is not run and the
-report records `not_run` (not 0.00%). Readiness still missing: futures-v2
-funding settlements, training-only regime fit, split coverage. Do not treat
-the field as a robustness verdict.
+report records `not_run` (not 0.00%). Optional `--synthetic-diagnostic` with
+an explicit frozen `--synthetic-fit-start`/`--synthetic-fit-end` records
+path/fit/runtime evidence; it does not affect promotion or `passes_gates`.
+The threshold stays 0.0.
 
 ### Gate 5: Independence and Portfolio Impact
 

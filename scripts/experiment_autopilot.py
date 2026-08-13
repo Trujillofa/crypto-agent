@@ -36,7 +36,11 @@ from src.backtest.factory import (
     resolve_global_trend_filter,
 )
 from src.backtest.models import ExecutionProfile
-from src.backtest.synthetic_eval import bars_from_range, maybe_evaluate_synthetic_pass_rate
+from src.backtest.synthetic_eval import (  # noqa: E402
+    SyntheticEvalResult,
+    bars_from_range,
+    maybe_evaluate_synthetic_pass_rate,
+)
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
@@ -119,7 +123,25 @@ def parse_args() -> argparse.Namespace:
         default="execution_parity_v2",
         help="New research defaults to next-open execution parity",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--synthetic-diagnostic",
+        action="store_true",
+        help="Record synthetic-path diagnostic evidence (does not affect gates)",
+    )
+    parser.add_argument(
+        "--synthetic-fit-start",
+        help="Frozen ISO start for diagnostic regime fit",
+    )
+    parser.add_argument(
+        "--synthetic-fit-end",
+        help="Frozen ISO end for diagnostic regime fit",
+    )
+    args = parser.parse_args()
+    if args.synthetic_diagnostic and (not args.synthetic_fit_start or not args.synthetic_fit_end):
+        parser.error(
+            "--synthetic-diagnostic requires --synthetic-fit-start and --synthetic-fit-end"
+        )
+    return args
 
 
 def _db_config_from_settings(settings: object) -> dict[str, object]:
@@ -292,6 +314,9 @@ def _render_markdown(
         f"| Blocked BUY (cross-venue dislocation) | {summary.dislocation_blocked_buy_count} |"
     )
     lines.append("")
+    if summary.synthetic_eval_status != "not_run":
+        lines.append("diagnostic only; does not affect Gate result")
+        lines.append("")
 
     if windows:
         lines.append("## WFO Windows")
@@ -335,6 +360,14 @@ def _render_markdown(
     return "\n".join(lines)
 
 
+def _synthetic_audit_payload(result: SyntheticEvalResult) -> dict[str, object]:
+    payload = asdict(result)
+    payload["path_definitions"] = [
+        {"name": rec.name, "kind": rec.kind, "seed": rec.seed} for rec in result.paths
+    ]
+    return payload
+
+
 async def run_experiment_evaluation(
     *,
     settings_path: Path,
@@ -355,8 +388,15 @@ async def run_experiment_evaluation(
     db_config: dict[str, object] | None = None,
     manage_pool: bool = True,
     execution_profile: ExecutionProfile = "legacy_v1",
+    synthetic_diagnostic: bool = False,
+    synthetic_fit_start: str | None = None,
+    synthetic_fit_end: str | None = None,
 ) -> tuple[ExperimentSummary, GateConfig, list[WfoWindowResult], BacktestConfig, dict[str, object]]:
     """Run baseline + WFO + bootstrap gates; return summary and resolved baseline config."""
+    if synthetic_diagnostic and (not synthetic_fit_start or not synthetic_fit_end):
+        raise ValueError(
+            "--synthetic-diagnostic requires --synthetic-fit-start and --synthetic-fit-end"
+        )
     settings = load_settings(settings_path)
 
     result = _resolve_strategy_config(settings.strategy)
@@ -425,6 +465,8 @@ async def run_experiment_evaluation(
             execution_profile=execution_profile,
         )
 
+        fit_closes: list[float] | None = None
+        fit_rows = None
         reader = IndicatorReader(resolved_db)
         async with reader:
             baseline = await _run_backtest(reader, base_config)
@@ -475,6 +517,18 @@ async def run_experiment_evaluation(
                     )
                 )
 
+            if synthetic_diagnostic:
+                fit_start = str(synthetic_fit_start)
+                fit_end = str(synthetic_fit_end)
+                fetched = await reader.fetch_range(
+                    resolved_symbol,
+                    resolved_timeframe,
+                    fit_start,
+                    fit_end,
+                )
+                fit_rows = list(fetched)
+                fit_closes = [float(row["close_price"]) for row in fetched]
+
         trade_returns = [trade.return_pct for trade in baseline.trades]
         path_metrics = bootstrap_trade_path_metrics(
             trade_returns_pct=trade_returns,
@@ -484,10 +538,14 @@ async def run_experiment_evaluation(
 
         synthetic_result = await maybe_evaluate_synthetic_pass_rate(
             base_config,
-            enabled=gates.min_synthetic_pass_rate_pct > 0,
+            enabled=synthetic_diagnostic,
             seed=seed,
             historical_trades=baseline.total_trades,
             historical_bars=bars_from_range(resolved_start, resolved_end, resolved_timeframe),
+            fit_start=synthetic_fit_start,
+            fit_end=synthetic_fit_end,
+            fit_closes=fit_closes,
+            fit_rows=fit_rows,
         )
 
         oos_returns = [window.total_return_pct for window in window_results]
@@ -548,6 +606,7 @@ async def run_experiment_evaluation(
                 "source": base_config.global_trend_filter_source,
                 "config_explicit": base_config.config_global_trend_filter_enabled,
             },
+            "synthetic_diagnostic": _synthetic_audit_payload(synthetic_result),
         }
         return summary, gates, window_results, base_config, audit_payload
     finally:
@@ -587,6 +646,9 @@ async def main() -> None:
         replay_sentiment_path=args.replay_sentiment_log,
         replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
         execution_profile=args.execution_profile,
+        synthetic_diagnostic=args.synthetic_diagnostic,
+        synthetic_fit_start=args.synthetic_fit_start,
+        synthetic_fit_end=args.synthetic_fit_end,
     )
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
