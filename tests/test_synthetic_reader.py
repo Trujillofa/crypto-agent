@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from src.backtest.models import BacktestConfig
 from src.backtest.synthetic import RegimeParams, generate_regime_path
-from src.backtest.synthetic_eval import evaluate_synthetic_pass_rate, path_passes
+from src.backtest.synthetic_eval import evaluate_synthetic_pass_rate, score_path
 from src.backtest.synthetic_reader import (
     SyntheticIndicatorReader,
     aggregate_ohlcv,
@@ -135,7 +135,7 @@ async def test_engine_yields_pass_rate() -> None:
         apply_global_trend_filter=False,
         initial_capital=10000,
     )
-    rate = await evaluate_synthetic_pass_rate(
+    result = await evaluate_synthetic_pass_rate(
         config,
         n_regime_paths=2,
         include_stress=True,
@@ -143,17 +143,18 @@ async def test_engine_yields_pass_rate() -> None:
         eval_bars=80,
         seed=7,
     )
-    assert isinstance(rate, float)
-    assert 0.0 <= rate <= 100.0
+    assert result.status in {"scored", "inconclusive"}
+    assert 0.0 <= result.pass_rate_pct <= 100.0
 
 
-def test_path_passes_empty_is_false() -> None:
-    assert path_passes([]) is False
+def test_path_passes_empty() -> None:
+    assert score_path([], kind="regime") is None
+    assert score_path([], kind="stress") is None
 
 
 def test_path_passes_known_sequence() -> None:
-    assert path_passes([1.0, 1.0, 1.0]) is True
-    assert path_passes([-20.0], max_drawdown_pct=10.0) is False
+    assert score_path([1.0, 1.0, 1.0], kind="regime") is True
+    assert score_path([-20.0], kind="stress", max_drawdown_pct=10.0) is False
 
 
 async def test_fetch_funding_settlements_empty_by_default() -> None:

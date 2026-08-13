@@ -331,7 +331,13 @@ bootstrap=1000; treat that as the default expectation.
 Historical WFO and bootstrap only resample realised history. After that filter and before
 paper/live, a synthetic-path gate can reject a candidate that fails regime-switching paths
 or three scripted stresses (March-2020 gap, funding blowout, flat wide spread).
-`min_synthetic_pass_rate_pct` defaults to 0.0 (disabled) and must be set non-zero to enforce.
+The pass rate is **not** a robustness verdict when coverage is thin: zero-trade paths
+leave the denominator (they are not scored as FAIL), and fewer than 3 scored paths is
+**INCONCLUSIVE** — the report prints INCONCLUSIVE, not 0%. If the gate is later
+enabled, inconclusive is a coverage failure, not a scored 0%. The eval window is sized
+from historical trades-per-bar, not a fixed short window. Regime paths use a return
+floor; stress paths use drawdown containment only. `min_synthetic_pass_rate_pct` stays
+0.0 (disabled) and must be set non-zero to enforce.
 
 ### Gate 5: Independence and Portfolio Impact
 
