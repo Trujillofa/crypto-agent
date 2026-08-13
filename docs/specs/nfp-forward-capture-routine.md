@@ -25,13 +25,18 @@
 ## Suggested implementation (small)
 
 - `scripts/nfp_forward_capture.py` with two subcommands:
-  - `pre` — POST/GET `https://web.archive.org/save/https://www.investing.com/economic-calendar/nonfarm-payrolls-227`,
-    verify the snapshot resolves and its "Latest Release" date is the *previous*
-    release (i.e., the page predates the upcoming print), print the snapshot URL, and
-    stash it in `research/nfp_forward/pending_capture.json`.
+  - `pre` — GET `https://web.archive.org/save/...` with bounded retries (transient
+    network failures such as `ECONNRESET`), verify the snapshot resolves and its
+    "Latest Release" date is the *previous* release (i.e., the page predates the
+    upcoming print), print the snapshot URL, and stash it in
+    `research/nfp_forward/pending_capture.json`. If Save Page Now still fails,
+    capture a PIT mirror manually and pass `--snapshot-url <url>` (Wayback or
+    archive.ph); verification still runs.
   - `post --actual <n> --consensus <n>` — validate against the pending snapshot,
     compute surprise/z (full float precision — the OOS loader rejects rounded z),
     append the CSV row, clear the pending file.
+- Per-print checklist + portable runner under `research/nfp_forward/`
+  (`CHECKLIST_YYYY-MM-DD.md`, `run_pre_YYYY-MM-DD.sh`).
 - Reuse the validation logic pattern from
   `scripts/probe_nfp_good_news_oos.py::load_surprises` for self-checks.
 - No cron/systemd automation of the *decision*; scheduling the `pre` call before each

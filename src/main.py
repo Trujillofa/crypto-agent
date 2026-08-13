@@ -831,9 +831,16 @@ def _wire_optional_strategy_dependencies(
     async def _record_sentiment_observation(payload: dict[str, object]) -> None:
         if event_log is None:
             return
+        source = str(payload.get("source", ""))
+        if source == "deepseek_fallback":
+            provider = "deepseek"
+        elif source.startswith("xai") or source == "neutral_fallback":
+            provider = "xai" if xai_client is not None else "none"
+        else:
+            provider = "xai" if xai_client is not None else "none"
         enriched_payload = {
             **payload,
-            "provider": "xai" if xai_client is not None else "none",
+            "provider": provider,
             "model": ai_model,
         }
         await event_log.log("sentiment_score", enriched_payload)

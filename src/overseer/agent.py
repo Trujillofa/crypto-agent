@@ -272,11 +272,12 @@ class OverseerAgent:
         ]
 
         try:
-            answer = await self._xai_client.chat(messages)
+            result = await self._xai_client.chat(messages)
         except Exception as exc:
             self._logger.error("xAI request failed: %s", exc)
             return "AI request failed. Try again in a few seconds."
 
+        answer = result.content if hasattr(result, "content") else str(result)
         self._append_history(chat_id, "user", query)
         self._append_history(chat_id, "assistant", answer)
         return answer
