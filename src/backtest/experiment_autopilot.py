@@ -13,8 +13,10 @@ class GateConfig:
     drawdown Monte Carlo gate is disabled (default). Non-zero enables the check
     against summary.mc_drawdown_p95_pct. The same sentinel 0.0 disables
     min_synthetic_pass_rate_pct (default); a non-zero value enables the check
-    against summary.synthetic_pass_rate_pct. Enabled checks treat
-    synthetic_eval_status == "inconclusive" as coverage failure, not a 0% verdict.
+    against summary.synthetic_pass_rate_pct. The threshold stays 0.0 and is
+    not wired through CLI/autoresearch; compute is skipped when disabled.
+    Enabled checks treat synthetic_eval_status == "inconclusive" as coverage
+    failure, not a 0% verdict, and treat "not_run" or "" as not_run failure.
     """
 
     min_trades: int = 0
@@ -75,7 +77,7 @@ class ExperimentSummary:
     mc_drawdown_p95_pct: float = 0.0
     mc_drawdown_p50_pct: float = 0.0
     synthetic_pass_rate_pct: float = 0.0
-    synthetic_eval_status: str = ""  # "" | "scored" | "inconclusive"
+    synthetic_eval_status: str = "not_run"  # not_run | scored | inconclusive
     synthetic_scored_paths: int = 0
     synthetic_total_paths: int = 0
     profit_concentration_pct: float = 0.0
@@ -303,7 +305,9 @@ def evaluate_gates(summary: ExperimentSummary, gates: GateConfig) -> list[str]:
             )
 
     if gates.min_synthetic_pass_rate_pct > 0:
-        if summary.synthetic_eval_status == "inconclusive":
+        if summary.synthetic_eval_status in {"not_run", ""}:
+            failures.append("min_synthetic_pass_rate_pct failed (not_run)")
+        elif summary.synthetic_eval_status == "inconclusive":
             failures.append("min_synthetic_pass_rate_pct failed (inconclusive coverage)")
         elif summary.synthetic_pass_rate_pct < gates.min_synthetic_pass_rate_pct:
             failures.append(

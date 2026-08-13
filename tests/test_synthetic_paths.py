@@ -152,7 +152,7 @@ def test_gate_inert_at_zero() -> None:
 
 
 def test_gate_fires_when_enabled() -> None:
-    summary = _passing_summary(synthetic_pass_rate_pct=20.0)
+    summary = _passing_summary(synthetic_pass_rate_pct=20.0, synthetic_eval_status="scored")
     gates = GateConfig(min_synthetic_pass_rate_pct=50.0)
     failures = evaluate_gates(summary, gates)
     assert "min_synthetic_pass_rate_pct failed (20.00% < 50.00%)" in failures
