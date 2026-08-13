@@ -17,7 +17,13 @@ _SIGMA_FLOOR = 1e-12
 _PRICE_FLOOR = 1e-12
 _BASE_VOLUME = 1000.0
 
-_STRESS_SCENARIOS = frozenset({"march_2020_gap", "funding_blowout", "flat_wide_spread"})
+SUPPORTED_TIMEFRAMES = {
+    "15m": timedelta(minutes=15),
+    "1h": timedelta(hours=1),
+    "4h": timedelta(hours=4),
+    "1d": timedelta(days=1),
+}
+_STRESS_SCENARIOS = frozenset({"march_2020_gap", "funding_blowout", "flat_wide_range"})
 
 
 @dataclass(frozen=True)
@@ -33,12 +39,11 @@ class RegimeParams:
     p_start_stress: float = 0.0
 
 
-def _bar_delta(timeframe: str) -> timedelta:
-    if timeframe == "4h":
-        return timedelta(hours=4)
-    if timeframe == "1d":
-        return timedelta(days=1)
-    return timedelta(hours=1)
+def bar_delta(timeframe: str) -> timedelta:
+    try:
+        return SUPPORTED_TIMEFRAMES[timeframe]
+    except KeyError:
+        raise ValueError(f"unsupported timeframe: {timeframe}") from None
 
 
 def _mean_sigma(values: Sequence[float]) -> tuple[float, float]:
@@ -156,7 +161,7 @@ def generate_regime_path(
     """Two-state Markov Gaussian path. Returns (candles, per-bar calm/stress labels)."""
     rng = random.Random(seed)
     origin = start_time if start_time is not None else datetime(2020, 1, 1, tzinfo=UTC)
-    delta = _bar_delta(timeframe)
+    delta = bar_delta(timeframe)
     state = "stress" if rng.random() < params.p_start_stress else "calm"
     candles: list[Ohlcv] = []
     states: list[str] = []
@@ -207,7 +212,7 @@ def _march_2020_gap(
         n_crash = max(3, n_bars - n_quiet - 2)
     n_recovery = max(0, n_bars - n_quiet - 1 - n_crash)
 
-    delta = _bar_delta(timeframe)
+    delta = bar_delta(timeframe)
     candles: list[Ohlcv] = []
     prev_close = start_price
     open_time = start_time
@@ -264,7 +269,7 @@ def _funding_blowout(
     n_grind = n_bars // 3
     n_blowout = n_bars // 3
     n_chop = n_bars - n_grind - n_blowout
-    delta = _bar_delta(timeframe)
+    delta = bar_delta(timeframe)
     candles: list[Ohlcv] = []
     prev_close = start_price
     open_time = start_time
@@ -309,7 +314,7 @@ def _funding_blowout(
     return candles
 
 
-def _flat_wide_spread(
+def _flat_wide_range(
     rng: random.Random,
     *,
     n_bars: int,
@@ -318,7 +323,7 @@ def _flat_wide_spread(
     timeframe: str,
     start_time: datetime,
 ) -> list[Ohlcv]:
-    delta = _bar_delta(timeframe)
+    delta = bar_delta(timeframe)
     candles: list[Ohlcv] = []
     prev_close = start_price
     open_time = start_time
@@ -382,7 +387,7 @@ def generate_stress_path(
             timeframe=timeframe,
             start_time=origin,
         )
-    return _flat_wide_spread(
+    return _flat_wide_range(
         rng,
         n_bars=n_bars,
         start_price=start_price,

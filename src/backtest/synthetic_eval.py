@@ -10,13 +10,19 @@ from typing import Literal
 
 from src.backtest.engine import BacktestEngine
 from src.backtest.experiment_autopilot import compound_returns_pct, max_drawdown_from_returns
-from src.backtest.models import BacktestConfig
+from src.backtest.models import BacktestConfig, BacktestResult
 from src.backtest.synthetic import (
     RegimeParams,
     generate_regime_path,
     generate_stress_path,
 )
-from src.backtest.synthetic_reader import DEFAULT_WARMUP_BARS, SyntheticIndicatorReader
+from src.backtest.synthetic_reader import (
+    DEFAULT_WARMUP_BARS,
+    SyntheticIndicatorReader,
+    blowout_funding_settlements,
+    eight_hour_settlements,
+)
+from src.features.reader import FundingSettlement
 from src.ingest.models import Ohlcv
 
 DEFAULT_EVAL_BARS = 240
@@ -34,7 +40,7 @@ DEFAULT_REGIME_PARAMS = RegimeParams(
     p_stress_to_calm=0.2,
     p_start_stress=0.15,
 )
-STRESS_SCENARIOS = ("march_2020_gap", "funding_blowout", "flat_wide_spread")
+STRESS_SCENARIOS = ("march_2020_gap", "funding_blowout", "flat_wide_range")
 
 
 @dataclass(frozen=True)
@@ -118,11 +124,27 @@ async def _run_path(
     config: BacktestConfig,
     candles: Sequence[Ohlcv],
     warmup_bars: int,
-) -> list[float]:
-    reader = SyntheticIndicatorReader(candles, warmup_bars=warmup_bars)
+    *,
+    settlements: Sequence[FundingSettlement] | None = None,
+) -> BacktestResult:
+    reader = SyntheticIndicatorReader(candles, warmup_bars=warmup_bars, funding=settlements)
     cfg = _config_for_window(config, reader.eval_start.isoformat(), reader.eval_end.isoformat())
-    result = await BacktestEngine(cfg, reader).run()
-    return [trade.return_pct for trade in result.trades]
+    return await BacktestEngine(cfg, reader).run()
+
+
+def _settlements_for(
+    config: BacktestConfig,
+    candles: Sequence[Ohlcv],
+    warmup_bars: int,
+    scenario: str | None,
+) -> list[FundingSettlement]:
+    if not (config.futures_mode and config.execution_profile == "execution_parity_v2"):
+        return []
+    eval_candles = candles[warmup_bars:]
+    start, end = eval_candles[0].open_time, eval_candles[-1].open_time
+    if scenario == "funding_blowout":
+        return blowout_funding_settlements(eval_candles)
+    return eight_hour_settlements(start, end, rate=0.0)
 
 
 async def evaluate_synthetic_pass_rate(
@@ -149,6 +171,9 @@ async def evaluate_synthetic_pass_rate(
     params = regime_params if regime_params is not None else DEFAULT_REGIME_PARAMS
     n_bars = warmup_bars + eval_bars
     outcomes: list[bool | None] = []
+    path_symbol = config.symbol
+    path_timeframe = config.timeframe
+    path_start = _parse_iso(config.start_date)
 
     for i in range(n_regime_paths):
         candles, _states = generate_regime_path(
@@ -156,10 +181,15 @@ async def evaluate_synthetic_pass_rate(
             n_bars=n_bars,
             start_price=start_price,
             seed=seed + i,
+            symbol=path_symbol,
+            timeframe=path_timeframe,
+            start_time=path_start,
         )
+        settlements = _settlements_for(config, candles, warmup_bars, None)
+        result = await _run_path(config, candles, warmup_bars, settlements=settlements)
         outcomes.append(
             score_path(
-                await _run_path(config, candles, warmup_bars),
+                [trade.return_pct for trade in result.trades],
                 kind="regime",
                 max_drawdown_pct=max_drawdown_pct,
                 min_return_pct=min_return_pct,
@@ -173,10 +203,15 @@ async def evaluate_synthetic_pass_rate(
                 n_bars=n_bars,
                 start_price=start_price,
                 seed=seed + 100 + j,
+                symbol=path_symbol,
+                timeframe=path_timeframe,
+                start_time=path_start,
             )
+            settlements = _settlements_for(config, candles, warmup_bars, scenario)
+            result = await _run_path(config, candles, warmup_bars, settlements=settlements)
             outcomes.append(
                 score_path(
-                    await _run_path(config, candles, warmup_bars),
+                    [trade.return_pct for trade in result.trades],
                     kind="stress",
                     max_drawdown_pct=max_drawdown_pct,
                     min_return_pct=min_return_pct,

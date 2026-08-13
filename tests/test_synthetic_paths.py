@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import statistics
+from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from src.backtest.experiment_autopilot import ExperimentSummary, GateConfig, evaluate_gates
 from src.backtest.synthetic import (
@@ -123,14 +126,16 @@ def test_march_2020_has_gap() -> None:
     assert has_gap
 
 
-def test_flat_wide_spread_range() -> None:
+def test_flat_wide_range() -> None:
     start_price = 100.0
-    candles = generate_stress_path("flat_wide_spread", n_bars=30, start_price=start_price, seed=5)
+    candles = generate_stress_path("flat_wide_range", n_bars=30, start_price=start_price, seed=5)
     assert all(abs(candle.close_price / start_price - 1.0) <= 0.0015 for candle in candles)
     mean_range = statistics.fmean(
         (candle.high_price - candle.low_price) / candle.close_price for candle in candles
     )
     assert mean_range >= 0.015
+    with pytest.raises(ValueError, match="unknown scenario"):
+        generate_stress_path("flat_wide_spread", n_bars=30, start_price=start_price, seed=5)
 
 
 def test_synthetic_pass_rate_helper() -> None:
@@ -156,3 +161,64 @@ def test_gate_fires_when_enabled() -> None:
     gates = GateConfig(min_synthetic_pass_rate_pct=50.0)
     failures = evaluate_gates(summary, gates)
     assert "min_synthetic_pass_rate_pct failed (20.00% < 50.00%)" in failures
+
+
+def _spacing_params() -> RegimeParams:
+    return RegimeParams(
+        mu_calm=0.0,
+        sigma_calm=0.004,
+        mu_stress=0.0,
+        sigma_stress=0.02,
+        p_calm_to_stress=0.1,
+        p_stress_to_calm=0.2,
+    )
+
+
+def test_bar_spacing_4h_and_15m() -> None:
+    params = _spacing_params()
+    for timeframe, expected in (("4h", timedelta(hours=4)), ("15m", timedelta(minutes=15))):
+        candles, _states = generate_regime_path(
+            params, n_bars=8, start_price=100.0, seed=1, timeframe=timeframe
+        )
+        deltas = [
+            later.open_time - earlier.open_time
+            for earlier, later in zip(candles, candles[1:], strict=False)
+        ]
+        assert deltas
+        assert all(delta == expected for delta in deltas)
+
+
+def test_unsupported_timeframe_rejected() -> None:
+    params = _spacing_params()
+    for timeframe in ("2h", "1w"):
+        with pytest.raises(ValueError, match="unsupported timeframe"):
+            generate_regime_path(params, n_bars=8, start_price=100.0, seed=1, timeframe=timeframe)
+
+
+def test_symbol_timeframe_start_propagate() -> None:
+    params = _spacing_params()
+    start_time = datetime(2024, 6, 1, tzinfo=UTC)
+    candles, _states = generate_regime_path(
+        params,
+        n_bars=8,
+        start_price=100.0,
+        seed=1,
+        symbol="SOLUSDT",
+        timeframe="4h",
+        start_time=start_time,
+    )
+    assert candles[0].symbol == "SOLUSDT"
+    assert candles[0].timeframe == "4h"
+    assert candles[0].open_time == start_time
+    stress = generate_stress_path(
+        "march_2020_gap",
+        n_bars=8,
+        start_price=100.0,
+        seed=1,
+        symbol="SOLUSDT",
+        timeframe="4h",
+        start_time=start_time,
+    )
+    assert stress[0].symbol == "SOLUSDT"
+    assert stress[0].timeframe == "4h"
+    assert stress[0].open_time == start_time

@@ -7,25 +7,18 @@ reuse ``IndicatorReader._join_timeframes`` so lookahead rules stay identical.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
+from src.backtest.synthetic import bar_delta
 from src.features.reader import FundingSettlement, IndicatorReader
 from src.features.technical import OhlcvSeries, TechnicalIndicators, compute_indicators
 from src.ingest.models import Ohlcv
 
 DEFAULT_WARMUP_BARS = 200
 MIN_INDICATOR_BARS = 30
-
-
-def _bar_delta(timeframe: str) -> timedelta:
-    if timeframe == "4h":
-        return timedelta(hours=4)
-    if timeframe == "1d":
-        return timedelta(days=1)
-    return timedelta(hours=1)
 
 
 def _parse_dt(val: str | datetime) -> datetime:
@@ -40,8 +33,8 @@ def aggregate_ohlcv(candles: Sequence[Ohlcv], target_timeframe: str) -> list[Ohl
     """Resample non-overlapping target bars. Drops a trailing incomplete group."""
     if not candles:
         return []
-    source_delta = _bar_delta(candles[0].timeframe)
-    target_delta = _bar_delta(target_timeframe)
+    source_delta = bar_delta(candles[0].timeframe)
+    target_delta = bar_delta(target_timeframe)
     ratio_float = target_delta / source_delta
     ratio = int(ratio_float)
     if ratio < 1 or float(ratio) != ratio_float:
@@ -132,6 +125,48 @@ def _apply_funding_rates(
             row["funding_rate"] = last.funding_rate
 
 
+def eight_hour_funding_times(start: str | datetime, end: str | datetime) -> Iterator[datetime]:
+    """8h marks strictly after start and inclusive of end (engine validation)."""
+    start_dt = start if isinstance(start, datetime) else datetime.fromisoformat(start)
+    end_dt = end if isinstance(end, datetime) else datetime.fromisoformat(end)
+    cursor = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    while cursor <= start_dt:
+        cursor += timedelta(hours=8)
+    while cursor <= end_dt:
+        yield cursor
+        cursor += timedelta(hours=8)
+
+
+def eight_hour_settlements(
+    start: str | datetime,
+    end: str | datetime,
+    *,
+    rate: float = 0.0,
+    mark_price: float | None = None,
+) -> list[FundingSettlement]:
+    return [
+        FundingSettlement(funding_time=mark, funding_rate=rate, mark_price=mark_price)
+        for mark in eight_hour_funding_times(start, end)
+    ]
+
+
+def blowout_funding_settlements(
+    candles: Sequence[Ohlcv],
+    *,
+    rate: float = 0.03,
+) -> list[FundingSettlement]:
+    start = candles[0].open_time
+    end = candles[-1].open_time
+    span = end - start
+    lo = start + span / 3
+    hi = start + 2 * span / 3
+    settlements: list[FundingSettlement] = []
+    for mark in eight_hour_funding_times(start, end):
+        mark_rate = rate if lo <= mark <= hi else 0.0
+        settlements.append(FundingSettlement(funding_time=mark, funding_rate=mark_rate))
+    return settlements
+
+
 class SyntheticIndicatorReader:
     """Duck-typed ``IndicatorReader`` over a generated OHLCV path."""
 
@@ -151,19 +186,20 @@ class SyntheticIndicatorReader:
             )
 
         self._warmup_bars = warmup_bars
-        self._eval_candles = list(candles[warmup_bars:])
+        self._all_candles = list(candles)
+        self._eval_candles = self._all_candles[warmup_bars:]
         self._funding = list(funding) if funding is not None else []
+        self._regime_cache: dict[str, list[dict[str, object]]] = {}
+        self._provided_regime_rows: list[dict[str, object]] | None = None
 
-        computed = candles_to_indicator_rows(candles)
+        computed = candles_to_indicator_rows(self._all_candles)
         skip = MIN_INDICATOR_BARS - 1
         self._rows = computed[warmup_bars - skip :]
         if self._funding:
             _apply_funding_rates(self._rows, self._funding)
 
-        if regime_candles is None:
-            regime_candles = aggregate_ohlcv(candles, "4h")
-        # Full regime series: join enforces no-lookahead via close-time.
-        self._regime_rows = candles_to_indicator_rows(regime_candles)
+        if regime_candles is not None:
+            self._provided_regime_rows = candles_to_indicator_rows(regime_candles)
 
     @property
     def warmup_bars(self) -> int:
@@ -176,6 +212,17 @@ class SyntheticIndicatorReader:
     @property
     def eval_end(self) -> datetime:
         return self._eval_candles[-1].open_time
+
+    def _regime_rows_for(self, regime_timeframe: str) -> list[dict[str, object]]:
+        if self._provided_regime_rows is not None:
+            return self._provided_regime_rows
+        cached = self._regime_cache.get(regime_timeframe)
+        if cached is not None:
+            return cached
+        aggregated = aggregate_ohlcv(self._all_candles, regime_timeframe)
+        rows = candles_to_indicator_rows(aggregated)
+        self._regime_cache[regime_timeframe] = rows
+        return rows
 
     async def fetch_range(
         self,
@@ -209,7 +256,7 @@ class SyntheticIndicatorReader:
         regime_start = start - timedelta(hours=24)
         regime_rows = [
             dict(row)
-            for row in self._regime_rows
+            for row in self._regime_rows_for(regime_timeframe)
             if regime_start <= _parse_dt(row["time"]) <= end  # type: ignore[arg-type]
         ]
         joined = IndicatorReader._join_timeframes(entry_rows, regime_rows, regime_timeframe)
