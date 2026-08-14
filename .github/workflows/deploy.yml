@@ -50,68 +50,14 @@ jobs:
           echo "Pinging $SSH_HOST via Tailscale..."
           tailscale ping --timeout 10s "$SSH_HOST" || { echo "Tailscale cannot reach $SSH_HOST — check HETZNER_TAILSCALE_HOST secret and server Tailscale status"; exit 1; }
 
-          # NOTE: the heredoc delimiter is quoted ('DEPLOY'), so the body runs
-          # verbatim on the remote host — no $ expansion on the runner. The
-          # requested SHA is passed as REQUESTED_SHA on the remote command line
-          # (validated as 40 lowercase hex before this step).
-          DEPLOY_LOG=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
-            root@$SSH_HOST "REQUESTED_SHA=$DEPLOY_SHA bash -s" << 'DEPLOY'
-          set -eo pipefail
-          cd /opt/crypto-agent
-
-          # 1) Sync code. --ff-only refuses to clobber server-side hotfixes; if it
-          #    fails, stop and surface the divergence instead of deploying stale code.
-          git fetch origin main
-          git pull --ff-only origin main
-
-          # 2) Assert we landed on the explicitly requested SHA and on origin/main.
-          LOCAL=$(git rev-parse HEAD)
-          REMOTE=$(git rev-parse origin/main)
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "ERROR: after pull, HEAD ($LOCAL) != origin/main ($REMOTE)"
-            exit 1
-          fi
-          if [ "$LOCAL" != "$REQUESTED_SHA" ]; then
-            echo "ERROR: after pull, HEAD ($LOCAL) != requested deploy_sha ($REQUESTED_SHA)"
-            exit 1
-          fi
-
-          # 3) Derive the agent service set dynamically so new/removed agents are
-          #    picked up without editing this workflow (the prior hardcoded list
-          #    still named agent_avax long after it was removed).
-          AGENTS=$(docker compose -f docker-compose.prod.yml config --services | grep '^agent_' | sort | tr '\n' ' ')
-          if [ -z "$AGENTS" ]; then
-            echo "ERROR: no agent_* services found in docker-compose.prod.yml"
-            exit 1
-          fi
-          echo "Deploying agents: $AGENTS"
-
-          # 4) Rebuild THEN roll. A plain restart will not pick up code/config
-          #    changes baked into Dockerfile.prod (per AGENTS.md).
-          docker compose -f docker-compose.prod.yml build $AGENTS
-          docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS
-
-          # 5) Wait for healthchecks to settle, then require EVERY agent to be
-          #    "(healthy)". This catches unhealthy, restarting, exited, and
-          #    still-starting containers — the old check only matched the literal
-          #    string "unhealthy" and would pass a crash loop.
-          sleep 120
-          NOT_READY=$(docker compose -f docker-compose.prod.yml ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE '\(healthy\)$' || true)
-          if [ -n "$NOT_READY" ]; then
-            echo "ERROR: agents not healthy after 120s:"
-            echo "$NOT_READY"
-            docker compose -f docker-compose.prod.yml ps $AGENTS
-            exit 1
-          fi
-
-          docker image prune -f
-
-          # 6) Report the healthy agent list back to the runner (sorted,
-          #    comma-joined) so the Telegram message reflects what actually
-          #    deployed instead of a hardcoded string.
-          HEALTHY=$(echo "$AGENTS" | tr ' ' '\n' | grep . | sort | paste -sd, -)
-          echo "deploy_services=$HEALTHY"
-          DEPLOY
+          # Scripts are piped from this runner checkout so a stale server tree
+          # cannot skip the pre-pull SHA check. REQUESTED_SHA is 40-hex already.
+          DEPLOY_LOG=$(
+            {
+              cat scripts/align_prod_checkout.sh
+              cat scripts/rebuild_prod_agents.sh
+            } | ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+              root@$SSH_HOST "REQUESTED_SHA=$DEPLOY_SHA bash -s"
           )
 
           # Surface the full remote log in the Actions UI, then forward the

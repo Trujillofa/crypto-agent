@@ -391,14 +391,12 @@ Config and code changes only take effect after an explicit build + up cycle.
 git fetch origin main
 SHA=$(git rev-parse origin/main)
 gh workflow run Deploy --ref main -f deploy_sha="$SHA"
-
-# Emergency SSH path (does not replace the approval gate)
-ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose -f docker-compose.prod.yml build agent && docker compose -f docker-compose.prod.yml up -d agent"
-
-# Verify
-ssh crypto-agent "docker compose -f docker-compose.prod.yml ps"
-ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20"
 ```
+
+There is no single `agent` service. Production agents are the `agent_*` services
+in `docker-compose.prod.yml`. Break-glass SSH (Actions down only) must use
+`scripts/align_prod_checkout.sh` then rebuild **all** `agent_*` with a 120s
+all-healthy check — see `AGENTS.md`. Do not `docker compose up` the dev file.
 
 **Why prod compose?**
 - No `./:/app` bind mount — live code cannot be mutated by agents working in the repo

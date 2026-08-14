@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,8 @@ import yaml
 from scripts.validate_deploy_sha import main, validate_deploy_sha
 
 WORKFLOW = Path(".github/workflows/deploy.yml")
+ALIGN = Path("scripts/align_prod_checkout.sh")
+REBUILD = Path("scripts/rebuild_prod_agents.sh")
 VALID_SHA = "a" * 40
 OTHER_SHA = "b" * 40
 
@@ -83,13 +87,121 @@ def test_workflow_invokes_fail_closed_sha_validator() -> None:
 
 def test_coordinated_rebuild_and_health_checks_remain() -> None:
     raw = _raw()
+    rebuild = REBUILD.read_text(encoding="utf-8")
+    align = ALIGN.read_text(encoding="utf-8")
     assert "tailscale/github-action@" in raw
-    assert "git pull --ff-only origin main" in raw
-    assert "grep '^agent_'" in raw
-    assert "docker compose -f docker-compose.prod.yml build $AGENTS" in raw
-    assert "docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS" in raw
-    assert "sleep 120" in raw
-    assert r"grep -vE '\(healthy\)$'" in raw
+    assert "cat scripts/align_prod_checkout.sh" in raw
+    assert "cat scripts/rebuild_prod_agents.sh" in raw
+    assert "git fetch origin main" in align
+    assert "git pull --ff-only origin main" in align
+    assert "grep '^agent_'" in rebuild
+    assert "docker compose -f docker-compose.prod.yml build $AGENTS" in rebuild
+    assert "docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS" in rebuild
+    assert "sleep 120" in rebuild
+    assert r"grep -vE '\(healthy\)$'" in rebuild
     assert "appleboy/telegram-action@" in raw
     assert "inputs.deploy_sha" in raw
     assert "github.event.workflow_run" not in raw
+
+
+def test_align_compares_requested_sha_before_pull() -> None:
+    align = ALIGN.read_text(encoding="utf-8")
+    fetch_at = align.index("git fetch origin main")
+    compare_at = align.index("origin/main ($REMOTE) != requested deploy_sha")
+    pull_at = align.index("git pull --ff-only origin main")
+    reverify_at = align.index("after pull, HEAD")
+    assert fetch_at < compare_at < pull_at < reverify_at
+    assert "aborting before pull" in align
+
+
+def _git(cwd: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _bare_and_clones(tmp_path: Path) -> tuple[Path, Path, str]:
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "--bare", str(origin)], check=True, capture_output=True)
+    work = tmp_path / "work"
+    work.mkdir()
+    _git(work, "init")
+    _git(work, "config", "user.email", "deploy-test@example.com")
+    _git(work, "config", "user.name", "deploy-test")
+    (work / "marker").write_text("a\n", encoding="utf-8")
+    _git(work, "add", "marker")
+    _git(work, "commit", "-m", "a")
+    _git(work, "branch", "-M", "main")
+    _git(work, "remote", "add", "origin", str(origin))
+    _git(work, "push", "-u", "origin", "main")
+    server = tmp_path / "server"
+    subprocess.run(
+        ["git", "clone", "--branch", "main", str(origin), str(server)],
+        check=True,
+        capture_output=True,
+    )
+    sha_a = _git(server, "rev-parse", "HEAD")
+    return work, server, sha_a
+
+
+def test_align_aborts_before_pull_when_main_advanced(tmp_path: Path) -> None:
+    """A stale dispatch must not move the server checkout when origin/main moved."""
+    work, server, sha_a = _bare_and_clones(tmp_path)
+    (work / "marker").write_text("b\n", encoding="utf-8")
+    _git(work, "add", "marker")
+    _git(work, "commit", "-m", "b")
+    _git(work, "push", "origin", "main")
+
+    env = {**os.environ, "REQUESTED_SHA": sha_a, "DEPLOY_ROOT": str(server)}
+    proc = subprocess.run(
+        ["bash", str(ALIGN)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 1
+    assert "aborting before pull" in proc.stdout + proc.stderr
+    assert _git(server, "rev-parse", "HEAD") == sha_a
+    assert (server / "marker").read_text(encoding="utf-8") == "a\n"
+
+
+def test_align_pulls_when_requested_sha_is_current_main(tmp_path: Path) -> None:
+    work, server, sha_a = _bare_and_clones(tmp_path)
+    (work / "marker").write_text("b\n", encoding="utf-8")
+    _git(work, "add", "marker")
+    _git(work, "commit", "-m", "b")
+    _git(work, "push", "origin", "main")
+    sha_b = _git(work, "rev-parse", "HEAD")
+    assert sha_b != sha_a
+
+    env = {**os.environ, "REQUESTED_SHA": sha_b, "DEPLOY_ROOT": str(server)}
+    proc = subprocess.run(
+        ["bash", str(ALIGN)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _git(server, "rev-parse", "HEAD") == sha_b
+    assert (server / "marker").read_text(encoding="utf-8") == "b\n"
+
+
+def test_docs_do_not_bypass_deploy_contract() -> None:
+    agents = Path("AGENTS.md").read_text(encoding="utf-8")
+    claude = Path("CLAUDE.md").read_text(encoding="utf-8")
+    deployment = Path("docs/DEPLOYMENT.md").read_text(encoding="utf-8")
+    combined = agents + claude + deployment
+    assert "build <service>" not in agents
+    assert "build agent &&" not in claude
+    assert "docker-compose up -d --build" not in combined
+    assert "align_prod_checkout.sh" in agents
+    assert "sleep 120" in agents
+    assert "docker-compose.prod.yml" in agents
+    assert 'grep "^agent_"' in agents or "grep '^agent_'" in agents
