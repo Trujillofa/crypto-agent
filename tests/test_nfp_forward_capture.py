@@ -9,6 +9,7 @@ import csv
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import httpx
 import pytest
 
 from scripts.nfp_forward_capture import (
@@ -25,6 +26,7 @@ from scripts.nfp_forward_capture import (
     page_mentions_date,
     previous_scheduled_release,
     release_timestamp_utc,
+    resolve_snapshot_timestamp,
     snapshot_timestamp,
     verify_snapshot_is_point_in_time,
 )
@@ -93,6 +95,58 @@ def test_snapshot_timestamp_parsed_from_wayback_url():
 def test_snapshot_timestamp_rejects_non_wayback_url():
     with pytest.raises(CaptureError):
         snapshot_timestamp("https://www.investing.com/economic-calendar/nonfarm-payrolls-227")
+
+
+def test_resolve_snapshot_timestamp_uses_wayback_ts_when_present():
+    url = "https://web.archive.org/web/20260903124500/https://www.investing.com/x"
+    captured = datetime(2026, 9, 3, 12, 50, tzinfo=UTC)
+    assert resolve_snapshot_timestamp(url, captured_at=captured) == datetime(
+        2026, 9, 3, 12, 45, tzinfo=UTC
+    )
+
+
+def test_resolve_snapshot_timestamp_falls_back_to_capture_time_for_manual_mirrors(
+    capsys: pytest.CaptureFixture[str],
+):
+    url = "https://archive.ph/abcd1234"
+    captured = datetime(2026, 9, 3, 13, 0, tzinfo=UTC)
+    assert resolve_snapshot_timestamp(url, captured_at=captured) == captured
+    assert "not a Wayback" in capsys.readouterr().out
+
+
+def test_http_get_with_retries_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    calls = {"n": 0}
+
+    def flaky(_url: str, _timeout: float):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise httpx.ConnectError("Connection reset by peer")
+        return httpx.Response(200, text="ok")
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(mod, "_http_get", flaky)
+    monkeypatch.setattr(mod.time, "sleep", sleeps.append)
+
+    response = mod._http_get_with_retries("https://example.test", 1.0, label="Wayback")
+    assert response.text == "ok"
+    assert calls["n"] == 3
+    assert sleeps == [2.0, 5.0]
+
+
+def test_http_get_with_retries_raises_after_exhaustion(monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    monkeypatch.setattr(
+        mod,
+        "_http_get",
+        lambda _url, _timeout: (_ for _ in ()).throw(httpx.ConnectError("boom")),
+    )
+    monkeypatch.setattr(mod.time, "sleep", lambda _delay: None)
+
+    with pytest.raises(httpx.ConnectError, match="boom"):
+        mod._http_get_with_retries("https://example.test", 1.0, attempts=2)
 
 
 def test_build_row_keeps_full_float_precision():

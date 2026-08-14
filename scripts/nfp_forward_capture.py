@@ -27,6 +27,7 @@ import csv
 import json
 import re
 import sys
+import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -75,6 +76,9 @@ DEFAULT_PENDING_JSON = Path("research/nfp_forward/pending_capture.json")
 USER_AGENT = "crypto-agent-nfp-forward-capture/1.0 (research; read-only)"
 SAVE_TIMEOUT_SECONDS = 180.0
 FETCH_TIMEOUT_SECONDS = 60.0
+SAVE_MAX_ATTEMPTS = 3
+# Delays after attempt 1 and 2 (Aug-7 miss was a single ECONNRESET with no retry).
+SAVE_RETRY_DELAYS_SECONDS = (2.0, 5.0)
 
 
 class CaptureError(RuntimeError):
@@ -201,6 +205,32 @@ def _http_get(url: str, timeout: float) -> httpx.Response:
         return client.get(url)
 
 
+def _http_get_with_retries(
+    url: str,
+    timeout: float,
+    *,
+    attempts: int = SAVE_MAX_ATTEMPTS,
+    label: str = "request",
+) -> httpx.Response:
+    """GET with bounded retries for transient network failures (e.g. ECONNRESET)."""
+    last_exc: httpx.HTTPError | None = None
+    for attempt in range(attempts):
+        try:
+            return _http_get(url, timeout)
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            if attempt >= attempts - 1:
+                break
+            delay = SAVE_RETRY_DELAYS_SECONDS[min(attempt, len(SAVE_RETRY_DELAYS_SECONDS) - 1)]
+            print(
+                f"[pre] {label} failed (attempt {attempt + 1}/{attempts}): {exc}; "
+                f"retrying in {delay:.0f}s"
+            )
+            time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
 def _snapshot_url_from_response(response: httpx.Response) -> str:
     candidates = [str(response.url)]
     content_location = response.headers.get("content-location")
@@ -221,6 +251,19 @@ def snapshot_timestamp(snapshot_url: str) -> datetime:
     if match is None:
         raise CaptureError(f"cannot read a Wayback timestamp from {snapshot_url!r}")
     return datetime.strptime(match.group(1), "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+
+
+def resolve_snapshot_timestamp(snapshot_url: str, *, captured_at: datetime) -> datetime:
+    """Wayback URLs yield the archive timestamp; other PIT URLs use capture time."""
+    if SNAPSHOT_TS_RE.search(snapshot_url):
+        return snapshot_timestamp(snapshot_url)
+    if not snapshot_url.startswith(("http://", "https://")):
+        raise CaptureError(f"snapshot URL must be http(s): {snapshot_url!r}")
+    print(
+        "[pre] snapshot URL is not a Wayback /web/<ts>/ URL; "
+        f"using capture time {captured_at.strftime('%Y-%m-%dT%H:%M:%SZ')} as snapshot timestamp"
+    )
+    return captured_at.astimezone(UTC)
 
 
 def read_pending(path: Path) -> PendingCapture | None:
@@ -336,21 +379,40 @@ def cmd_pre(args: argparse.Namespace) -> int:
             "run `post` (or `miss`) first, or pass --force to replace it"
         )
 
-    print(f"[pre] requesting Wayback Save Page Now for {CONSENSUS_URL}")
-    response = _http_get(WAYBACK_SAVE_URL, SAVE_TIMEOUT_SECONDS)
-    snapshot_url = _snapshot_url_from_response(response)
-    snapshot_ts = snapshot_timestamp(snapshot_url)
-    print(f"[pre] snapshot: {snapshot_url}")
+    body = ""
+    if args.snapshot_url:
+        snapshot_url = str(args.snapshot_url).strip()
+        print("[pre] using manual --snapshot-url (skipped Wayback Save Page Now)")
+        print(f"[pre] snapshot: {snapshot_url}")
+        snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
+        body = _http_get_with_retries(
+            snapshot_url,
+            FETCH_TIMEOUT_SECONDS,
+            label="snapshot fetch",
+        ).text
+    else:
+        print(f"[pre] requesting Wayback Save Page Now for {CONSENSUS_URL}")
+        response = _http_get_with_retries(
+            WAYBACK_SAVE_URL,
+            SAVE_TIMEOUT_SECONDS,
+            label="Wayback Save Page Now",
+        )
+        snapshot_url = _snapshot_url_from_response(response)
+        snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
+        print(f"[pre] snapshot: {snapshot_url}")
+        body = response.text
+        if not body.strip():
+            body = _http_get_with_retries(
+                snapshot_url,
+                FETCH_TIMEOUT_SECONDS,
+                label="snapshot fetch",
+            ).text
 
     if snapshot_ts >= release_ts:
         raise CaptureError(
             f"snapshot timestamp {snapshot_ts.isoformat()} is not before the release "
             f"{release_ts.isoformat()}"
         )
-
-    body = response.text
-    if not body.strip():
-        body = _http_get(snapshot_url, FETCH_TIMEOUT_SECONDS).text
 
     verified, detail = verify_snapshot_is_point_in_time(body, release_date)
     if verified:
@@ -484,6 +546,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     pre = subparsers.add_parser("pre", help="freeze the pre-release consensus via Wayback")
     pre.add_argument("--release-date", help="ISO release date; defaults to the next first Friday")
+    pre.add_argument(
+        "--snapshot-url",
+        help=(
+            "skip Save Page Now and stash this already-captured PIT URL "
+            "(Wayback or archive.ph / manual mirror); still verifies the page"
+        ),
+    )
     pre.add_argument(
         "--allow-unverified", action="store_true", help="stash despite a failed page check"
     )
