@@ -1,6 +1,8 @@
 # Higher-TF Regime Allocator — Lane Brief v0
 
-**Status:** Brief created; cheap probe (Gate 0/1) required before any strategy code, manifest, or autoresearch.
+> **CLOSED NO_PULSE.** Probe failed Gate 1 on all six symbol/timeframe scenarios. Do not reopen without a new primitive. No autoresearch.
+
+**Status:** CLOSED NO_PULSE (real-DB Gate 1, 2026-06-15)
 **Date:** 2026-06-14
 **Related:** [research-reset-2026-06-06.md](../reports/research-reset-2026-06-06.md), [RBI_AUTORESEARCH_LOOP.md](../RBI_AUTORESEARCH_LOOP.md), [cross-venue-dislocation-event-strategy-v0.md](./cross-venue-dislocation-event-strategy-v0.md) (prior lane, closed post-probe).
 

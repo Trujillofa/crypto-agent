@@ -40,4 +40,4 @@ A calibration run requires a **defensible accepted (positive) control** and a **
 
 **INCONCLUSIVE.** No accepted control. No diagnostic run. Gate 4b stays diagnostic; threshold stays `0.0` and off CLI/autoresearch.
 
-`requirements.txt` lock cleanup is this PR; remaining follow-up is news-surprise scoring. Meta-allocator remains blocked on `HYP-HTFR-001` `HAS_PULSE`.
+Gate 4b remains parked (no accepted control; do not run the diagnostic). Meta-allocator HYP-HTFR-001 is CLOSED NO_PULSE — real-DB Gate 1 failed separation on all six symbol x TF scenarios. Remaining follow-up is news-surprise scoring in manual-trading-agent.
