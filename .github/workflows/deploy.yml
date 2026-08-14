@@ -1,17 +1,32 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: Exact 40-character lowercase SHA of current origin/main
+        required: true
+        type: string
 
 jobs:
   deploy:
     name: Deploy to Production
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    environment: production
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Validate deploy_sha equals origin/main
+        env:
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+        run: |
+          git fetch origin main
+          python3 scripts/validate_deploy_sha.py "$DEPLOY_SHA" "$(git rev-parse origin/main)"
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
         with:
@@ -25,6 +40,7 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.HETZNER_TAILSCALE_HOST }}
           SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_ed25519
@@ -35,10 +51,11 @@ jobs:
           tailscale ping --timeout 10s "$SSH_HOST" || { echo "Tailscale cannot reach $SSH_HOST — check HETZNER_TAILSCALE_HOST secret and server Tailscale status"; exit 1; }
 
           # NOTE: the heredoc delimiter is quoted ('DEPLOY'), so the body runs
-          # verbatim on the remote host — no $ expansion on the runner. Capture
-          # remote stdout on the runner so we can forward the result to a step
-          # output for the Telegram message.
-          DEPLOY_LOG=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 root@$SSH_HOST << 'DEPLOY'
+          # verbatim on the remote host — no $ expansion on the runner. The
+          # requested SHA is passed as REQUESTED_SHA on the remote command line
+          # (validated as 40 lowercase hex before this step).
+          DEPLOY_LOG=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 \
+            root@$SSH_HOST "REQUESTED_SHA=$DEPLOY_SHA bash -s" << 'DEPLOY'
           set -eo pipefail
           cd /opt/crypto-agent
 
@@ -47,11 +64,15 @@ jobs:
           git fetch origin main
           git pull --ff-only origin main
 
-          # 2) Assert we actually landed on the expected commit.
+          # 2) Assert we landed on the explicitly requested SHA and on origin/main.
           LOCAL=$(git rev-parse HEAD)
           REMOTE=$(git rev-parse origin/main)
           if [ "$LOCAL" != "$REMOTE" ]; then
             echo "ERROR: after pull, HEAD ($LOCAL) != origin/main ($REMOTE)"
+            exit 1
+          fi
+          if [ "$LOCAL" != "$REQUESTED_SHA" ]; then
+            echo "ERROR: after pull, HEAD ($LOCAL) != requested deploy_sha ($REQUESTED_SHA)"
             exit 1
           fi
 
@@ -108,7 +129,7 @@ jobs:
           message: |
             ✅ Deployment Successful!
             Repo: ${{ github.repository }}
-            Commit: ${{ github.event.workflow_run.head_sha }}
+            Requested SHA: ${{ inputs.deploy_sha }}
             Agents healthy: ${{ steps.deploy.outputs.services }}
 
       - name: Send Telegram Notification on Failure
@@ -120,5 +141,5 @@ jobs:
           message: |
             ❌ Deployment Failed!
             Repo: ${{ github.repository }}
-            Commit: ${{ github.event.workflow_run.head_sha }}
+            Requested SHA: ${{ inputs.deploy_sha }}
             Check GitHub Actions logs. Production may be in a partial state — verify with: docker compose -f docker-compose.prod.yml ps

@@ -1,5 +1,18 @@
 # Production Deployment Runbook
 
+**Merging to `main` does not deploy.** Production updates go through the GitHub
+`Deploy` workflow (`.github/workflows/deploy.yml`), which is **manual only**:
+
+```bash
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+gh workflow run Deploy --ref main -f deploy_sha="$SHA"
+```
+
+`deploy_sha` must be the exact 40-character lowercase SHA of current `origin/main`.
+Mismatch or a non-hex SHA fails closed. The job uses `environment: production`.
+Do not trigger Deploy from CI. Telegram reports the requested SHA.
+
 This document describes the steps required to deploy the Crypto Trading AI Agent to a production environment.
 
 ## Prerequisites

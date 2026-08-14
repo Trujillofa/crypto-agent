@@ -31,8 +31,20 @@ uv run mypy src/
 
 Dev uses `docker-compose.yml` (bind-mounts `./:/app`, so live code changes take effect instantly). **Production uses `docker-compose.prod.yml`** (`Dockerfile.prod`), which bakes `src/` and `config/` into the image at build time. Code and config changes on the server do NOT affect the running agent until you rebuild.
 
+**Merging to `main` does not authorize or trigger a production deploy.** Deploy is a
+manual `workflow_dispatch` of `.github/workflows/deploy.yml` with the exact current
+`origin/main` SHA. CI success and documentation merges must not launch Deploy.
+
 ```bash
-# Production deploy (correct)
+# Required: pin the SHA you intend to ship (must equal origin/main right now)
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+echo "$SHA"   # 40 lowercase hex chars
+
+# Manual production deploy (GitHub Actions, environment: production)
+gh workflow run Deploy --ref main -f deploy_sha="$SHA"
+
+# Emergency SSH path (same rebuild+health rules as the workflow; still not auto)
 ssh crypto-agent "cd /opt/crypto-agent && git pull"
 ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build <service>"
 ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d <service>"

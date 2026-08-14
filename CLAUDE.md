@@ -383,11 +383,16 @@ pytest
 bind mount. This means editing files on the server does NOT affect the running agent.
 Config and code changes only take effect after an explicit build + up cycle.
 
-```bash
-# On local machine
-git push origin main
+**Merging to `main` does not deploy.** Production Deploy requires a manual
+`workflow_dispatch` with `deploy_sha` equal to the current `origin/main` SHA
+(40 lowercase hex). A CI-green merge is not authorization.
 
-# On server
+```bash
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+gh workflow run Deploy --ref main -f deploy_sha="$SHA"
+
+# Emergency SSH path (does not replace the approval gate)
 ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose -f docker-compose.prod.yml build agent && docker compose -f docker-compose.prod.yml up -d agent"
 
 # Verify
