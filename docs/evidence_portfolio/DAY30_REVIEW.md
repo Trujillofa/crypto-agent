@@ -1,11 +1,11 @@
 # Day-30 Portfolio Review — 2026-08-06 (template, pre-drafted 2026-07-21)
 
-**Status:** DRAFT until ratified on or about 2026-08-06
+**Status:** DRAFT — NFP row refreshed 2026-08-13; awaiting human ratification
 **Purpose:** close the 30-day evidence portfolio (2026-07-07 → ~2026-08-06) with a
 15-minute ratification. All track verdicts are already determinate; blanks below are
 for anything that changes between drafting and review day.
 
-## Track outcomes (as of drafting, 2026-07-21)
+## Track outcomes (refreshed 2026-08-13; originally drafted 2026-07-21)
 
 | Track | Verdict | Evidence |
 |-------|---------|----------|
@@ -13,7 +13,7 @@ for anything that changes between drafting and review day.
 | Edge probe #2 (fee-marginal) | **DELETED_NOT_NAMED** (2026-07-09) | `FEE_MARGINAL_PREREG.md` — no eligible family; budget slot consumed, not replaced |
 | A1 incentive farming | **CLOSED, no Scale** (2026-07-14) | `A1_THRESHOLD_LOCK.md` — Legion = weekly watch only; galxe → controls; tick timer disabled |
 | cTrader FX (external) | _[fill at review: challenge status vs `CTRADER_EXTERNAL_GATE.md`]_ | external repo |
-| NFP forward gate | **SIGNED, in force** (2026-07-21) | `NFP_FORWARD_GATE.md`, PR #155 — first clean print 2026-08-07 |
+| NFP forward gate | **SIGNED, in force** (2026-07-21) | `NFP_FORWARD_GATE.md`, PR #155 — first print 2026-08-07 = `MISSED_CAPTURE` (1/3); booked in `data/macro_events/nfp_good_news_forward.csv` (commit `6860d13`). Next print 2026-09-04. |
 
 ## Kill-gate check
 
