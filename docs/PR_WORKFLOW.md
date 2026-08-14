@@ -80,6 +80,10 @@ Once approved and CI passes:
 gh pr merge --squash
 ```
 
+**Merging does not authorize production deployment.** `.github/workflows/deploy.yml`
+runs only via manual `workflow_dispatch` with a required `deploy_sha` that must
+equal the current `origin/main` SHA. See `AGENTS.md` for the exact invocation.
+
 Or use the GitHub web interface.
 
 ## Review Guidelines

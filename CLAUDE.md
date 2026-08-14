@@ -383,17 +383,20 @@ pytest
 bind mount. This means editing files on the server does NOT affect the running agent.
 Config and code changes only take effect after an explicit build + up cycle.
 
+**Merging to `main` does not deploy.** Production Deploy requires a manual
+`workflow_dispatch` with `deploy_sha` equal to the current `origin/main` SHA
+(40 lowercase hex). A CI-green merge is not authorization.
+
 ```bash
-# On local machine
-git push origin main
-
-# On server
-ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose -f docker-compose.prod.yml build agent && docker compose -f docker-compose.prod.yml up -d agent"
-
-# Verify
-ssh crypto-agent "docker compose -f docker-compose.prod.yml ps"
-ssh crypto-agent "docker compose -f docker-compose.prod.yml logs agent --tail=20"
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+gh workflow run Deploy --ref main -f deploy_sha="$SHA"
 ```
+
+There is no single `agent` service. Production agents are the `agent_*` services
+in `docker-compose.prod.yml`. Break-glass SSH (Actions down only) must use
+`scripts/align_prod_checkout.sh` then rebuild **all** `agent_*` with a 120s
+all-healthy check — see `AGENTS.md`. Do not `docker compose up` the dev file.
 
 **Why prod compose?**
 - No `./:/app` bind mount — live code cannot be mutated by agents working in the repo

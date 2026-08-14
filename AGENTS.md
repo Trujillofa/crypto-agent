@@ -31,23 +31,41 @@ uv run mypy src/
 
 Dev uses `docker-compose.yml` (bind-mounts `./:/app`, so live code changes take effect instantly). **Production uses `docker-compose.prod.yml`** (`Dockerfile.prod`), which bakes `src/` and `config/` into the image at build time. Code and config changes on the server do NOT affect the running agent until you rebuild.
 
+**Merging to `main` does not authorize or trigger a production deploy.** Deploy is a
+manual `workflow_dispatch` of `.github/workflows/deploy.yml` with the exact current
+`origin/main` SHA. CI success and documentation merges must not launch Deploy.
+
 ```bash
-# Production deploy (correct)
-ssh crypto-agent "cd /opt/crypto-agent && git pull"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build <service>"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d <service>"
+# Required: pin the SHA you intend to ship (must equal origin/main right now)
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+echo "$SHA"   # 40 lowercase hex chars
 
-# Active strategy services in prod right now:
-# - agent_sol_1h_trend_pullback_overlay_live  (only deployable technical agent)
-# - agent_sentiment_macro
-# - agent_sol_sparse                          (paper)
-# - agent_sol_panic_block_paper               (paper)
+# Manual production deploy (GitHub Actions, environment: production)
+gh workflow run Deploy --ref main -f deploy_sha="$SHA"
 
-# WRONG — this is the dev command, NOT production:
-ssh crypto-agent "cd /opt/crypto-agent && git pull && docker compose up -d --build agent"
-
-# Check logs
+# Check logs (read-only; not a deploy)
 ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs <service> --tail=100 --no-log-prefix"
+```
+
+**Break-glass SSH** (GitHub Actions unavailable only). Same contract as the workflow:
+pin SHA, abort before pull on mismatch, rebuild **all** `agent_*` via
+`docker-compose.prod.yml`, wait 120s, fail closed unless every agent is healthy.
+Do not build a single service. Do not use `docker-compose.yml`.
+
+```bash
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+ssh crypto-agent "REQUESTED_SHA=$SHA DEPLOY_ROOT=/opt/crypto-agent bash -s" \
+  < scripts/align_prod_checkout.sh
+ssh crypto-agent 'set -euo pipefail
+cd /opt/crypto-agent
+AGENTS=$(docker compose -f docker-compose.prod.yml config --services | grep "^agent_" | sort | tr "\n" " ")
+docker compose -f docker-compose.prod.yml build $AGENTS
+docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS
+sleep 120
+NOT_READY=$(docker compose -f docker-compose.prod.yml ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE "\(healthy\)$" || true)
+if [ -n "$NOT_READY" ]; then echo "$NOT_READY"; exit 1; fi'
 ```
 
 ## Architecture Surprises

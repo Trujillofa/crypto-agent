@@ -1,5 +1,18 @@
 # Production Deployment Runbook
 
+**Merging to `main` does not deploy.** Production updates go through the GitHub
+`Deploy` workflow (`.github/workflows/deploy.yml`), which is **manual only**:
+
+```bash
+git fetch origin main
+SHA=$(git rev-parse origin/main)
+gh workflow run Deploy --ref main -f deploy_sha="$SHA"
+```
+
+`deploy_sha` must be the exact 40-character lowercase SHA of current `origin/main`.
+Mismatch or a non-hex SHA fails closed. The job uses `environment: production`.
+Do not trigger Deploy from CI. Telegram reports the requested SHA.
+
 This document describes the steps required to deploy the Crypto Trading AI Agent to a production environment.
 
 ## Prerequisites
@@ -53,20 +66,22 @@ docker-compose up -d timescaledb
 docker-compose exec -T timescaledb psql -U trading marketdata < migrations/001_initial_schema.sql
 ```
 
-### 5. Launch Services
+### 5. Launch / update production services
 
-Deploy using the production compose file (if created) or the default one:
-
-```bash
-docker-compose up -d --build
-```
+Do **not** use `docker-compose.yml` (dev bind-mount). Production is
+`docker-compose.prod.yml` via the manual Deploy workflow above, or the
+break-glass procedure in `AGENTS.md` (pinned SHA, all `agent_*`, 120s health).
 
 ### 6. Verify Deployment
 
-- Check agent logs: `docker-compose logs -f agent`
-- Verify metrics: `curl http://localhost:8000/metrics`
-- Check Grafana: `http://localhost:3000` (Default: admin/admin)
-- Check Prometheus: `http://localhost:9090`
+```bash
+ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml ps"
+```
+
+- Every `agent_*` status must end in `(healthy)`.
+- Metrics: `curl http://localhost:8000/metrics` (per-agent in prod).
+- Grafana: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
 
 ## Maintenance
 
@@ -82,10 +97,8 @@ docker-compose up -d --build
 
 ### Updating
 
-```bash
-git pull
-docker-compose up -d --build
-```
+Merging is not a deploy. Use `gh workflow run Deploy --ref main -f deploy_sha=…`
+with the current `origin/main` SHA. See the top of this file and `AGENTS.md`.
 
 ## Troubleshooting
 
