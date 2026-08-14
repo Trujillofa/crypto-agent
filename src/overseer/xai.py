@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import openai
 from openai import AsyncOpenAI
@@ -14,7 +15,19 @@ _RETRYABLE_ERRORS = (
     openai.APIConnectionError,
     openai.APITimeoutError,
 )
+_AUTH_ERRORS = (
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+)
 _MAX_ATTEMPTS = 3
+
+
+@dataclass(frozen=True)
+class ChatResult:
+    """LLM reply plus which provider actually answered."""
+
+    content: str
+    provider: str  # "xai" | "deepseek"
 
 
 class XAIClient:
@@ -45,24 +58,34 @@ class XAIClient:
             )
         self._logger = get_logger(self.__class__.__name__)
 
-    async def chat(self, messages: Sequence[dict[str, str]]) -> str:
+    async def chat(self, messages: Sequence[dict[str, str]]) -> ChatResult:
         try:
-            return await self._chat_with_client(
+            content = await self._chat_with_client(
                 self._client,
                 self._model,
                 messages,
                 provider_name="xAI",
             )
+            return ChatResult(content=content, provider="xai")
+        except _AUTH_ERRORS as exc:
+            if self._fallback_client is None:
+                raise
+            self._logger.warning(
+                "xAI auth/permission denied (%s); trying DeepSeek fallback",
+                exc,
+            )
         except Exception:
             if self._fallback_client is None:
                 raise
             self._logger.warning("xAI unavailable after retries; trying DeepSeek fallback")
-            return await self._chat_with_client(
-                self._fallback_client,
-                self._fallback_model,
-                messages,
-                provider_name="DeepSeek",
-            )
+
+        content = await self._chat_with_client(
+            self._fallback_client,
+            self._fallback_model,
+            messages,
+            provider_name="DeepSeek",
+        )
+        return ChatResult(content=content, provider="deepseek")
 
     async def _chat_with_client(
         self,

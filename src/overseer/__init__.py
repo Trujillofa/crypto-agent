@@ -1,4 +1,4 @@
 from src.overseer.agent import OverseerAgent
-from src.overseer.xai import XAIClient
+from src.overseer.xai import ChatResult, XAIClient
 
-__all__ = ["OverseerAgent", "XAIClient"]
+__all__ = ["ChatResult", "OverseerAgent", "XAIClient"]
