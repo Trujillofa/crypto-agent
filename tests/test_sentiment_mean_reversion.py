@@ -300,6 +300,39 @@ class TestSentimentScorer:
             }
         ]
 
+    @pytest.mark.asyncio
+    async def test_records_deepseek_fallback_when_provider_is_deepseek(self):
+        """DeepSeek answers must not be mislabeled as xai_live."""
+        from src.overseer.xai import ChatResult
+
+        class FallbackClient:
+            async def chat(self, messages):
+                return ChatResult(
+                    content='{"score": 55, "reason": "deepseek path"}',
+                    provider="deepseek",
+                )
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=FallbackClient(),
+            observation_recorder=recorder,
+        )
+
+        score = await scorer.get_score("SOLUSDT")
+
+        assert score == 55.0
+        assert observations == [
+            {
+                "symbol": "SOLUSDT",
+                "score": 55.0,
+                "source": "deepseek_fallback",
+            }
+        ]
+
 
 class TestDegradationAlert:
     @pytest.mark.asyncio

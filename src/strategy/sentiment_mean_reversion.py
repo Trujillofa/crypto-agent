@@ -79,9 +79,10 @@ class SentimentScorer:
             return score
 
         try:
-            score = await self._query_llm(symbol)
+            score, provider = await self._query_llm(symbol)
             self._cache[symbol] = (now, score)
-            await self._record_observation(symbol, score, source="xai_live")
+            source = "deepseek_fallback" if provider == "deepseek" else "xai_live"
+            await self._record_observation(symbol, score, source=source)
             return score
         except Exception as exc:
             self._logger.warning("Sentiment query failed for %s: %s", symbol, exc)
@@ -159,8 +160,12 @@ class SentimentScorer:
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Degradation alert failed: %s", exc)
 
-    async def _query_llm(self, symbol: str) -> float:
-        """Query xAI/Grok for sentiment analysis."""
+    async def _query_llm(self, symbol: str) -> tuple[float, str]:
+        """Query the configured LLM for sentiment analysis.
+
+        Returns ``(score, provider)`` where provider is ``xai`` or ``deepseek``.
+        Test doubles that return a bare string are treated as ``xai``.
+        """
         base_asset = symbol.replace("USDT", "").replace("BUSD", "")
         prompt = (
             f"Analyze the current market sentiment for {base_asset} ({symbol}) cryptocurrency. "
@@ -176,15 +181,21 @@ class SentimentScorer:
             {"role": "user", "content": prompt},
         ]
 
-        response = await self._xai_client.chat(messages)  # type: ignore[union-attr]
+        result = await self._xai_client.chat(messages)  # type: ignore[union-attr]
+        if hasattr(result, "content") and hasattr(result, "provider"):
+            response = str(result.content)
+            provider = str(result.provider)
+        else:
+            response = str(result)
+            provider = "xai"
 
         try:
             data = json.loads(response)
             score = float(data.get("score", 50))
-            return max(0.0, min(100.0, score))
+            return max(0.0, min(100.0, score)), provider
         except (json.JSONDecodeError, ValueError, TypeError):
             self._logger.warning("Could not parse sentiment response: %s", response[:200])
-            return 50.0
+            return 50.0, provider
 
 
 class SentimentMeanReversionStrategy(BaseStrategy):
