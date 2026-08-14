@@ -274,6 +274,70 @@ async def test_wire_optional_strategy_dependencies_records_enriched_sentiment_ev
 
 
 @pytest.mark.asyncio
+async def test_wire_records_deepseek_fallback_model_from_chat_result():
+    """End-to-end: DeepSeek ChatResult model is persisted, not the xAI model."""
+    from src.overseer.xai import ChatResult
+
+    class FallbackClient:
+        async def chat(self, messages):
+            return ChatResult(
+                content='{"score": 58, "reason": "fallback"}',
+                provider="deepseek",
+                model="deepseek-v4-pro",
+            )
+
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    reader = MagicMock()
+    engine = StrategyEngine(
+        EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[SentimentMeanReversionStrategy],
+            strategy_configs=[{}],
+        ),
+        reader,
+    )
+    event_log = FakeEventLog()
+
+    _wire_optional_strategy_dependencies(
+        engine,
+        xai_client=FallbackClient(),
+        event_log=event_log,
+        ai_model="grok-4-1-fast-reasoning",
+    )
+
+    strategy = engine._strategies["BTCUSDT"][0]  # pylint: disable=protected-access
+    await strategy.evaluate(
+        "BTCUSDT",
+        {
+            "rsi_14": 25.0,
+            "bb_lower_dist": 0.001,
+            "bb_upper_dist": 0.05,
+            "close_price": 50000.0,
+        },
+    )
+
+    assert event_log.events == [
+        (
+            "sentiment_score",
+            {
+                "symbol": "BTCUSDT",
+                "score": 58.0,
+                "source": "deepseek_fallback",
+                "model": "deepseek-v4-pro",
+                "provider": "deepseek",
+            },
+        )
+    ]
+    assert event_log.events[0][1]["model"] != "grok-4-1-fast-reasoning"
+
+
+@pytest.mark.asyncio
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""
     from src.features.reader import IndicatorReader

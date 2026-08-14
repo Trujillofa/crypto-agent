@@ -79,10 +79,10 @@ class SentimentScorer:
             return score
 
         try:
-            score, provider = await self._query_llm(symbol)
+            score, provider, answering_model = await self._query_llm(symbol)
             self._cache[symbol] = (now, score)
             source = "deepseek_fallback" if provider == "deepseek" else "xai_live"
-            await self._record_observation(symbol, score, source=source)
+            await self._record_observation(symbol, score, source=source, model=answering_model)
             return score
         except Exception as exc:
             self._logger.warning("Sentiment query failed for %s: %s", symbol, exc)
@@ -101,6 +101,7 @@ class SentimentScorer:
         *,
         source: str,
         error: str | None = None,
+        model: str | None = None,
     ) -> None:
         # Track for degradation detection regardless of recorder
         self._recent_sources.append(source)
@@ -114,6 +115,8 @@ class SentimentScorer:
             "score": round(float(score), 4),
             "source": source,
         }
+        if model:
+            payload["model"] = model
         if error:
             payload["error"] = error[:500]
         try:
@@ -160,11 +163,11 @@ class SentimentScorer:
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Degradation alert failed: %s", exc)
 
-    async def _query_llm(self, symbol: str) -> tuple[float, str]:
+    async def _query_llm(self, symbol: str) -> tuple[float, str, str | None]:
         """Query the configured LLM for sentiment analysis.
 
-        Returns ``(score, provider)`` where provider is ``xai`` or ``deepseek``.
-        Test doubles that return a bare string are treated as ``xai``.
+        Returns ``(score, provider, model)``. Bare-string test doubles are
+        treated as ``xai`` with no model (the recorder may fall back).
         """
         base_asset = symbol.replace("USDT", "").replace("BUSD", "")
         prompt = (
@@ -185,17 +188,19 @@ class SentimentScorer:
         if hasattr(result, "content") and hasattr(result, "provider"):
             response = str(result.content)
             provider = str(result.provider)
+            answering_model = str(getattr(result, "model", "") or "") or None
         else:
             response = str(result)
             provider = "xai"
+            answering_model = None
 
         try:
             data = json.loads(response)
             score = float(data.get("score", 50))
-            return max(0.0, min(100.0, score)), provider
+            return max(0.0, min(100.0, score)), provider, answering_model
         except (json.JSONDecodeError, ValueError, TypeError):
             self._logger.warning("Could not parse sentiment response: %s", response[:200])
-            return 50.0, provider
+            return 50.0, provider, answering_model
 
 
 class SentimentMeanReversionStrategy(BaseStrategy):

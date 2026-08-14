@@ -24,10 +24,11 @@ _MAX_ATTEMPTS = 3
 
 @dataclass(frozen=True)
 class ChatResult:
-    """LLM reply plus which provider actually answered."""
+    """LLM reply plus which provider and model actually answered."""
 
     content: str
     provider: str  # "xai" | "deepseek"
+    model: str
 
 
 class XAIClient:
@@ -66,7 +67,7 @@ class XAIClient:
                 messages,
                 provider_name="xAI",
             )
-            return ChatResult(content=content, provider="xai")
+            return ChatResult(content=content, provider="xai", model=self._model)
         except _AUTH_ERRORS as exc:
             if self._fallback_client is None:
                 raise
@@ -85,7 +86,7 @@ class XAIClient:
             messages,
             provider_name="DeepSeek",
         )
-        return ChatResult(content=content, provider="deepseek")
+        return ChatResult(content=content, provider="deepseek", model=self._fallback_model)
 
     async def _chat_with_client(
         self,

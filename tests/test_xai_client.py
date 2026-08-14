@@ -42,7 +42,7 @@ async def test_chat_returns_trimmed_content() -> None:
         messages=[{"role": "user", "content": "status?"}],
         temperature=0.2,
     )
-    assert response == ChatResult(content="market regime stable", provider="xai")
+    assert response == ChatResult(content="market regime stable", provider="xai", model="grok-3")
 
 
 @pytest.mark.asyncio
@@ -58,6 +58,7 @@ async def test_chat_returns_fallback_when_content_missing() -> None:
     assert response == ChatResult(
         content="No response content returned by xAI API.",
         provider="xai",
+        model="grok-3",
     )
 
 
@@ -72,7 +73,7 @@ async def test_chat_retries_on_transient_error_then_succeeds() -> None:
             client = XAIClient(api_key="test-key", model="grok-3")
             response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(content="recovered", provider="xai")
+    assert response == ChatResult(content="recovered", provider="xai", model="grok-3")
     assert create.await_count == 2
     mock_sleep.assert_awaited_once_with(1)  # 2**0 = 1s after first failure
 
@@ -125,7 +126,7 @@ async def test_chat_uses_fallback_provider_after_xai_retries_exhausted() -> None
             )
             response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(content="fallback-ok", provider="deepseek")
+    assert response == ChatResult(content="fallback-ok", provider="deepseek", model="deepseek-chat")
     assert primary_create.await_count == 3
     fallback_create.assert_awaited_once()
     assert mock_openai.call_count == 2
@@ -174,10 +175,13 @@ async def test_chat_falls_back_on_permission_denied_without_retry() -> None:
                 api_key="xai-key",
                 model="grok-3",
                 fallback_api_key="deepseek-key",
+                fallback_model="deepseek-v4-pro",
             )
             response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(content="deepseek-ok", provider="deepseek")
+    assert response == ChatResult(
+        content="deepseek-ok", provider="deepseek", model="deepseek-v4-pro"
+    )
     assert primary_create.await_count == 1
     fallback_create.assert_awaited_once()
     mock_sleep.assert_not_awaited()
