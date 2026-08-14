@@ -1,0 +1,306 @@
+{
+  "summary": {
+    "symbol": "ETHUSDT",
+    "timeframe": "4h",
+    "start": "2024-01-01",
+    "end": "2026-06-01",
+    "total_trades": 147,
+    "win_rate": 48.29931972789115,
+    "total_return_pct": -71.44203492623396,
+    "max_drawdown_pct": 73.79998788413137,
+    "sharpe_ratio": -1.5465199018039466,
+    "wfo_windows": 4,
+    "wfo_total_trades": 74,
+    "wfo_mean_sharpe": -2.1562821713272693,
+    "wfo_total_return_pct": -47.20070021727927,
+    "bootstrap_p_loss_pct": 99.6,
+    "mc_drawdown_p95_pct": 88.43708650597392,
+    "mc_drawdown_p50_pct": 74.89693182982016,
+    "synthetic_pass_rate_pct": 0.0,
+    "synthetic_eval_status": "inconclusive",
+    "synthetic_scored_paths": 4,
+    "synthetic_total_paths": 6,
+    "profit_concentration_pct": 100.0,
+    "passes_gates": false,
+    "failure_reasons": [
+      "min_wfo_sharpe failed (-2.16 < 0.50)",
+      "max_drawdown_pct failed (73.80% > 10.00%)",
+      "max_bootstrap_p_loss_pct failed (99.60% > 25.00%)",
+      "min_oos_return_pct failed (-47.20% < 0.00%)",
+      "max_profit_concentration_pct failed (100.00% > 50.00%)"
+    ],
+    "blocked_buy_count": 0,
+    "basis_blocked_buy_count": 0,
+    "dislocation_blocked_buy_count": 0
+  },
+  "gates": {
+    "min_trades": 0,
+    "min_wfo_trades": 20,
+    "min_wfo_sharpe": 0.5,
+    "max_drawdown_pct": 10.0,
+    "max_bootstrap_p_loss_pct": 25.0,
+    "min_oos_return_pct": 0.0,
+    "max_profit_concentration_pct": 50.0,
+    "max_mc_drawdown_p95_pct": 0.0,
+    "min_synthetic_pass_rate_pct": 0.0
+  },
+  "windows": [
+    {
+      "window_index": 1,
+      "train_start": "2024-01-01T00:00:00",
+      "train_end": "2024-07-01T00:00:00",
+      "test_start": "2024-07-01T00:00:00",
+      "test_end": "2024-10-01T00:00:00",
+      "total_trades": 25,
+      "win_rate": 52.0,
+      "total_return_pct": -11.218179544182258,
+      "max_drawdown_pct": 19.918067263392878,
+      "sharpe_ratio": -1.2402799390521375
+    },
+    {
+      "window_index": 2,
+      "train_start": "2024-07-01T00:00:00",
+      "train_end": "2025-01-01T00:00:00",
+      "test_start": "2025-01-01T00:00:00",
+      "test_end": "2025-04-01T00:00:00",
+      "total_trades": 20,
+      "win_rate": 40.0,
+      "total_return_pct": -9.556780417842601,
+      "max_drawdown_pct": 17.502741612758708,
+      "sharpe_ratio": -0.7406396213807562
+    },
+    {
+      "window_index": 3,
+      "train_start": "2025-01-01T00:00:00",
+      "train_end": "2025-07-01T00:00:00",
+      "test_start": "2025-07-01T00:00:00",
+      "test_end": "2025-10-01T00:00:00",
+      "total_trades": 14,
+      "win_rate": 64.28571428571429,
+      "total_return_pct": 0.7275788582748829,
+      "max_drawdown_pct": 9.623121691926926,
+      "sharpe_ratio": 0.24116197492447095
+    },
+    {
+      "window_index": 4,
+      "train_start": "2025-07-01T00:00:00",
+      "train_end": "2026-01-01T00:00:00",
+      "test_start": "2026-01-01T00:00:00",
+      "test_end": "2026-04-01T00:00:00",
+      "total_trades": 15,
+      "win_rate": 40.0,
+      "total_return_pct": -34.72006578803252,
+      "max_drawdown_pct": 39.30378624045129,
+      "sharpe_ratio": -6.885371099800654
+    }
+  ],
+  "execution_profile": "execution_parity_v2",
+  "audit": {
+    "backtest_config": {
+      "symbol": "ETHUSDT",
+      "timeframe": "4h",
+      "start_date": "2024-01-01",
+      "end_date": "2026-06-01",
+      "initial_capital": 10000.0,
+      "fee_rate": 0.0004,
+      "stop_loss_pct": 0.01,
+      "take_profit_pct": 0.03,
+      "sl_atr_multiplier": 2.1,
+      "tp_atr_multiplier": 3.0,
+      "trailing_activate_atr": 1.6,
+      "trailing_offset_atr": 0.8,
+      "slippage_pct": 0.0002,
+      "risk_per_trade": 0.02,
+      "use_atr_sizing": false,
+      "atr_multiplier": 1.0,
+      "apply_global_trend_filter": false,
+      "global_trend_filter_buffer_pct": 0.0025,
+      "global_trend_filter_source": "cli_override",
+      "config_global_trend_filter_enabled": null,
+      "session_liquidity_router": {
+        "enabled": false,
+        "allowed_windows": [
+          "americas"
+        ],
+        "block_entries_outside_windows": true
+      },
+      "basis_premium_filter": {
+        "enabled": false,
+        "exchange": "binance_usdm",
+        "tail_metric": "basis_bps",
+        "positive_tail_pct": 0.05,
+        "block_positive_tail_longs": true,
+        "missing_data_policy": "allow",
+        "calibrated_positive_threshold": null
+      },
+      "cross_venue_dislocation": {
+        "enabled": false,
+        "metric": "basis_spread",
+        "mode": "require",
+        "min_spread_bps": 5.0,
+        "side": "both",
+        "missing_data_policy": "allow"
+      },
+      "allow_short": false,
+      "use_executor_exit_model": true,
+      "ignore_signal_sells": false,
+      "strategy_configs": [
+        {
+          "band_distance_threshold": 0.0045,
+          "rsi_oversold": 38,
+          "rsi_overbought": 62
+        }
+      ],
+      "aggregator_config": {
+        "buy_threshold": 0.6,
+        "buy_threshold_uptrend": 0.55,
+        "sell_threshold": -0.58,
+        "btc_regime_filter_enabled": true,
+        "btc_reference_symbol": "BTCUSDT",
+        "btc_dump_threshold_pct": -1.0,
+        "btc_dump_require_below_ema200": true,
+        "min_confidence": 0.1
+      },
+      "time_stop_minutes": 4320.0,
+      "replay_sentiment_path": null,
+      "replay_sentiment_max_age_seconds": null,
+      "futures_mode": false,
+      "futures_leverage": 5,
+      "futures_funding_rate": 0.0001,
+      "funding_cadence": "scaled_8h",
+      "fixed_notional_usdt": 0.0,
+      "quantity_step_size": 0.0,
+      "min_notional_usdt": 0.0,
+      "execution_profile": "execution_parity_v2"
+    },
+    "cost_profile": null,
+    "global_trend_filter": {
+      "active": false,
+      "buffer_pct": 0.0025,
+      "source": "cli_override",
+      "config_explicit": null
+    },
+    "synthetic_diagnostic": {
+      "status": "inconclusive",
+      "pass_rate_pct": 0.0,
+      "scored_paths": 4,
+      "total_paths": 6,
+      "zero_trade_paths": 2,
+      "regime_scored": 3,
+      "stress_scored": 1,
+      "regime_pass_rate_pct": 100.0,
+      "stress_pass_rate_pct": 0.0,
+      "paths": [
+        {
+          "name": "regime_0",
+          "kind": "regime",
+          "seed": 42,
+          "trades": 16,
+          "total_return_pct": 4.0678086841851835,
+          "max_drawdown_pct": 8.71537969385701,
+          "outcome": "pass"
+        },
+        {
+          "name": "regime_1",
+          "kind": "regime",
+          "seed": 43,
+          "trades": 12,
+          "total_return_pct": 4.469847405877517,
+          "max_drawdown_pct": 5.354409046396079,
+          "outcome": "pass"
+        },
+        {
+          "name": "regime_2",
+          "kind": "regime",
+          "seed": 44,
+          "trades": 9,
+          "total_return_pct": 9.083826384529766,
+          "max_drawdown_pct": 4.585678534751246,
+          "outcome": "pass"
+        },
+        {
+          "name": "march_2020_gap",
+          "kind": "stress",
+          "seed": 142,
+          "trades": 0,
+          "total_return_pct": 0.0,
+          "max_drawdown_pct": 0.0,
+          "outcome": "skip"
+        },
+        {
+          "name": "funding_blowout",
+          "kind": "stress",
+          "seed": 143,
+          "trades": 11,
+          "total_return_pct": -10.387806864720824,
+          "max_drawdown_pct": 12.241212779429016,
+          "outcome": "fail"
+        },
+        {
+          "name": "flat_wide_range",
+          "kind": "stress",
+          "seed": 144,
+          "trades": 0,
+          "total_return_pct": 0.0,
+          "max_drawdown_pct": 0.0,
+          "outcome": "skip"
+        }
+      ],
+      "fit": {
+        "fit_start": "2024-01-01T00:00:00",
+        "fit_end": "2024-07-01T00:00:00",
+        "row_count": 895,
+        "row_fingerprint": "2e0f482a023759820528f59e68f625c33d420d15c071b88058bcc55353fa6511",
+        "params": {
+          "mu_calm": -0.00010646176055880938,
+          "sigma_calm": 0.0029640526292995877,
+          "mu_stress": 0.0012051734956772114,
+          "sigma_stress": 0.01868464738139956,
+          "p_calm_to_stress": 0.4439461883408072,
+          "p_stress_to_calm": 0.4429530201342282,
+          "p_start_stress": 0.5
+        }
+      },
+      "seed": 42,
+      "eval_bars_used": 480,
+      "runtime": {
+        "min_eval_bars": 480,
+        "max_eval_bars": 4000,
+        "generate_min_ms": 1.067418954335153,
+        "generate_max_ms": 9.305040002800524
+      },
+      "path_definitions": [
+        {
+          "name": "regime_0",
+          "kind": "regime",
+          "seed": 42
+        },
+        {
+          "name": "regime_1",
+          "kind": "regime",
+          "seed": 43
+        },
+        {
+          "name": "regime_2",
+          "kind": "regime",
+          "seed": 44
+        },
+        {
+          "name": "march_2020_gap",
+          "kind": "stress",
+          "seed": 142
+        },
+        {
+          "name": "funding_blowout",
+          "kind": "stress",
+          "seed": 143
+        },
+        {
+          "name": "flat_wide_range",
+          "kind": "stress",
+          "seed": 144
+        }
+      ]
+    }
+  }
+}
