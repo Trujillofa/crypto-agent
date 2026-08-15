@@ -310,6 +310,7 @@ class TestSentimentScorer:
                 return ChatResult(
                     content='{"score": 55, "reason": "deepseek path"}',
                     provider="deepseek",
+                    model="deepseek-v4-pro",
                 )
 
         observations: list[dict[str, object]] = []
@@ -330,8 +331,41 @@ class TestSentimentScorer:
                 "symbol": "SOLUSDT",
                 "score": 55.0,
                 "source": "deepseek_fallback",
+                "model": "deepseek-v4-pro",
             }
         ]
+
+    @pytest.mark.asyncio
+    async def test_ten_deepseek_observations_degrade_and_suppress_buy(self):
+        """Ten DeepSeek answers remain non-xai_live and block new BUY entries."""
+        from src.overseer.xai import ChatResult
+
+        class FallbackClient:
+            async def chat(self, messages):
+                return ChatResult(
+                    content='{"score": 70, "reason": "deepseek"}',
+                    provider="deepseek",
+                    model="deepseek-v4-pro",
+                )
+
+        scorer = SentimentScorer(
+            xai_client=FallbackClient(),
+            cache_ttl_seconds=0,
+            degradation_window=10,
+        )
+        for i in range(10):
+            await scorer.get_score(f"SYM{i}USDT")
+
+        assert scorer.degraded is True
+
+        strategy = _make_strategy()
+        strategy.set_scorer(scorer)
+        signal = await strategy.evaluate(
+            "BTCUSDT",
+            _indicators(rsi=25.0, bb_lower_dist=0.001),
+        )
+        assert signal.type == SignalType.HOLD
+        assert "SentimentDegraded" in signal.reason
 
 
 class TestDegradationAlert:

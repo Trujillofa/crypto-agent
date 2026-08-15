@@ -834,14 +834,13 @@ def _wire_optional_strategy_dependencies(
         source = str(payload.get("source", ""))
         if source == "deepseek_fallback":
             provider = "deepseek"
-        elif source.startswith("xai") or source == "neutral_fallback":
-            provider = "xai" if xai_client is not None else "none"
         else:
             provider = "xai" if xai_client is not None else "none"
+        supplied_model = str(payload.get("model") or "").strip()
         enriched_payload = {
             **payload,
             "provider": provider,
-            "model": ai_model,
+            "model": supplied_model or (ai_model if source == "xai_live" else "none"),
         }
         await event_log.log("sentiment_score", enriched_payload)
 
