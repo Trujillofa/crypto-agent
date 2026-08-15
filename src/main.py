@@ -840,7 +840,7 @@ def _wire_optional_strategy_dependencies(
         enriched_payload = {
             **payload,
             "provider": provider,
-            "model": supplied_model or ai_model,
+            "model": supplied_model or (ai_model if source == "xai_live" else "none"),
         }
         await event_log.log("sentiment_score", enriched_payload)
 

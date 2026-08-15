@@ -337,6 +337,99 @@ async def test_wire_records_deepseek_fallback_model_from_chat_result():
     assert event_log.events[0][1]["model"] != "grok-4-1-fast-reasoning"
 
 
+def _wired_sentiment_engine(xai_client, event_log):
+    reader = MagicMock()
+    engine = StrategyEngine(
+        EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[SentimentMeanReversionStrategy],
+            strategy_configs=[{}],
+        ),
+        reader,
+    )
+    _wire_optional_strategy_dependencies(
+        engine,
+        xai_client=xai_client,
+        event_log=event_log,
+        ai_model="grok-4-1-fast-reasoning",
+    )
+    return engine._strategies["BTCUSDT"][0]  # pylint: disable=protected-access
+
+
+@pytest.mark.asyncio
+async def test_wire_neutral_fallback_does_not_claim_grok_model():
+    """No-client scores are not attributed to the configured xAI model."""
+
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    event_log = FakeEventLog()
+    strategy = _wired_sentiment_engine(None, event_log)
+    await strategy.evaluate(
+        "BTCUSDT",
+        {
+            "rsi_14": 25.0,
+            "bb_lower_dist": 0.001,
+            "bb_upper_dist": 0.05,
+            "close_price": 50000.0,
+        },
+    )
+
+    assert event_log.events == [
+        (
+            "sentiment_score",
+            {
+                "symbol": "BTCUSDT",
+                "score": 50.0,
+                "source": "neutral_fallback",
+                "provider": "none",
+                "model": "none",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_wire_error_fallback_does_not_claim_grok_model():
+    """Failed LLM calls are not attributed to the configured xAI model."""
+
+    class FailingClient:
+        async def chat(self, messages):
+            raise RuntimeError("API timeout")
+
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    event_log = FakeEventLog()
+    strategy = _wired_sentiment_engine(FailingClient(), event_log)
+    await strategy.evaluate(
+        "BTCUSDT",
+        {
+            "rsi_14": 25.0,
+            "bb_lower_dist": 0.001,
+            "bb_upper_dist": 0.05,
+            "close_price": 50000.0,
+        },
+    )
+
+    assert len(event_log.events) == 1
+    payload = event_log.events[0][1]
+    assert event_log.events[0][0] == "sentiment_score"
+    assert payload["source"] == "xai_error_fallback"
+    assert payload["provider"] == "xai"
+    assert payload["model"] == "none"
+    assert payload["score"] == 30.0
+    assert "API timeout" in str(payload["error"])
+
+
 @pytest.mark.asyncio
 async def test_full_flow_engine_to_executor():
     """Test full flow: IndicatorReader → StrategyEngine → Signal → Executor."""
