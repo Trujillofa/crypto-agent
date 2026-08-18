@@ -32,7 +32,6 @@ class SentimentScorer:
         degradation_window: int = 10,
         degradation_error_pct: float = 0.5,
         degradation_stuck_pct: float = 0.8,
-        degradation_cooldown: float = 3600.0,
         error_fallback_score: float = 30.0,
     ) -> None:
         self._xai_client = xai_client
@@ -46,10 +45,8 @@ class SentimentScorer:
         self._degradation_window = degradation_window
         self._degradation_error_pct = degradation_error_pct
         self._degradation_stuck_pct = degradation_stuck_pct
-        self._degradation_cooldown = degradation_cooldown
         self._recent_sources: deque[str] = deque(maxlen=degradation_window)
         self._recent_scores: deque[float] = deque(maxlen=degradation_window)
-        self._last_alert_time: float = -degradation_cooldown
         self._degraded = False
         self._error_fallback_score = max(0.0, min(100.0, error_fallback_score))
 
@@ -125,7 +122,11 @@ class SentimentScorer:
             self._logger.warning("Sentiment observation recorder failed for %s: %s", symbol, exc)
 
     async def _check_degradation(self) -> None:
-        """Check recent observations for degradation patterns and alert once per cooldown."""
+        """Update degraded state; Telegram only on the rising edge.
+
+        Only no-answer sources (error/neutral fallback) count. A working
+        DeepSeek reply is not an outage. Do not re-page while still degraded.
+        """
         if len(self._recent_sources) < self._degradation_window:
             self._degraded = False
             return
@@ -133,8 +134,9 @@ class SentimentScorer:
         n = len(self._recent_sources)
         issues: list[str] = []
 
-        # High error/fallback rate
-        error_count = sum(1 for s in self._recent_sources if s != "xai_live")
+        # No-answer rate. A working DeepSeek reply is an answer, not an outage.
+        no_answer = {"xai_error_fallback", "neutral_fallback"}
+        error_count = sum(1 for s in self._recent_sources if s in no_answer)
         error_pct = error_count / n
         if error_pct >= self._degradation_error_pct:
             live_pct = (1 - error_pct) * 100
@@ -146,15 +148,11 @@ class SentimentScorer:
         if stuck_pct >= self._degradation_stuck_pct:
             issues.append(f"{stuck_pct * 100:.0f}% of scores are 50.0 (likely fallback)")
 
+        was_degraded = self._degraded
         self._degraded = bool(issues)
-        if not issues or self._degradation_alert is None:
+        if not issues or was_degraded or self._degradation_alert is None:
             return
 
-        now = time.monotonic()
-        if now - self._last_alert_time < self._degradation_cooldown:
-            return
-
-        self._last_alert_time = now
         detail = "; ".join(issues)
         message = f"Grok sentiment degraded: {detail}"
         self._logger.warning(message)

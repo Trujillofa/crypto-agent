@@ -1,4 +1,3 @@
-import time
 from datetime import UTC, datetime
 
 import pytest
@@ -336,8 +335,8 @@ class TestSentimentScorer:
         ]
 
     @pytest.mark.asyncio
-    async def test_ten_deepseek_observations_degrade_and_suppress_buy(self):
-        """Ten DeepSeek answers remain non-xai_live and block new BUY entries."""
+    async def test_ten_deepseek_observations_do_not_degrade(self):
+        """A working DeepSeek answer is not an outage and does not block BUY."""
         from src.overseer.xai import ChatResult
 
         class FallbackClient:
@@ -356,7 +355,7 @@ class TestSentimentScorer:
         for i in range(10):
             await scorer.get_score(f"SYM{i}USDT")
 
-        assert scorer.degraded is True
+        assert scorer.degraded is False
 
         strategy = _make_strategy()
         strategy.set_scorer(scorer)
@@ -364,8 +363,8 @@ class TestSentimentScorer:
             "BTCUSDT",
             _indicators(rsi=25.0, bb_lower_dist=0.001),
         )
-        assert signal.type == SignalType.HOLD
-        assert "SentimentDegraded" in signal.reason
+        assert signal.type == SignalType.BUY
+        assert "SentimentDegraded" not in signal.reason
 
 
 class TestDegradationAlert:
@@ -448,8 +447,8 @@ class TestDegradationAlert:
         assert scorer.degraded is False
 
     @pytest.mark.asyncio
-    async def test_cooldown_prevents_repeated_alerts(self):
-        """Alert fires once, then cooldown prevents another."""
+    async def test_standing_outage_does_not_repage(self):
+        """A still-degraded window pages once, even after the old hourly cooldown."""
         alerts: list[str] = []
 
         async def on_alert(msg: str) -> None:
@@ -460,40 +459,56 @@ class TestDegradationAlert:
             degradation_alert=on_alert,
             degradation_window=3,
             degradation_error_pct=0.5,
-            degradation_cooldown=3600.0,
         )
-        # First batch → triggers alert
         for sym in ["A", "B", "C"]:
             await scorer.get_score(sym)
         assert len(alerts) == 1
+        assert scorer.degraded is True
 
-        # More obs → cooldown blocks second alert
         for sym in ["D", "E", "F"]:
             await scorer.get_score(sym)
         assert len(alerts) == 1
+        assert scorer.degraded is True
 
     @pytest.mark.asyncio
-    async def test_alert_fires_again_after_cooldown(self):
-        """After cooldown expires, alert can fire again."""
+    async def test_alert_fires_again_only_after_recovery(self):
+        """A new outage after a healthy window may page again."""
         alerts: list[str] = []
 
         async def on_alert(msg: str) -> None:
             alerts.append(msg)
 
+        class SwitchableClient:
+            live = False
+
+            async def chat(self, messages):
+                if not self.live:
+                    raise RuntimeError("timeout")
+                return '{"score": 62, "reason": "ok"}'
+
+        client = SwitchableClient()
         scorer = SentimentScorer(
-            xai_client=None,
+            xai_client=client,
             degradation_alert=on_alert,
             degradation_window=3,
             degradation_error_pct=0.5,
-            degradation_cooldown=3600.0,
+            cache_ttl_seconds=0,
         )
-        for sym in ["A", "B", "C"]:
-            await scorer.get_score(sym)
+        for i in range(3):
+            await scorer.get_score(f"DOWN{i}")
+        assert len(alerts) == 1
+        assert scorer.degraded is True
+
+        client.live = True
+        for i in range(3):
+            await scorer.get_score(f"UP{i}")
+        assert scorer.degraded is False
         assert len(alerts) == 1
 
-        # Simulate cooldown expired
-        scorer._last_alert_time = time.monotonic() - 3601
-        await scorer.get_score("D")
+        client.live = False
+        for i in range(3):
+            await scorer.get_score(f"DOWN2{i}")
+        assert scorer.degraded is True
         assert len(alerts) == 2
 
     @pytest.mark.asyncio

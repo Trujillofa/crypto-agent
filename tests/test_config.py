@@ -99,6 +99,15 @@ class TestLoadSettings:
             assert settings.ai.api_key == "xai_env_key"
             assert settings.ai.fallback_api_key == "deepseek_env_key"
 
+    def test_accepts_deepseek_provider(self, config_file: Path) -> None:
+        """DeepSeek may be the configured primary when xAI is not usable."""
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {"enabled": True, "provider": "deepseek", "fallback_model": "deepseek-v4-pro"}
+        config_file.write_text(yaml.dump(raw))
+        settings = load_settings(config_file)
+        assert settings.ai.provider == "deepseek"
+        assert settings.ai.fallback_model == "deepseek-v4-pro"
+
     def test_invalid_type_raises_error(self) -> None:
         """Test that invalid types in config raise ValueError."""
         config = {
