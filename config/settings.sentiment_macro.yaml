@@ -38,8 +38,9 @@ telegram:
 
 ai:
   enabled: true
+  # xAI 403'd on exhausted credits (2026-08-18). DeepSeek is the answering path.
+  provider: deepseek
   polling_interval: 60.0
-  # DeepSeek V4 Pro fallback if xAI is unavailable.
   fallback_model: deepseek-v4-pro
 
 trading_execution:

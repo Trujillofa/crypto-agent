@@ -124,9 +124,8 @@ class SentimentScorer:
     async def _check_degradation(self) -> None:
         """Update degraded state; Telegram only on the rising edge.
 
-        Persistent non-xai_live windows (DeepSeek fallback after xAI 403,
-        error/neutral fallbacks) keep ``degraded=True`` so new BUYs stay
-        blocked. They must not re-page while the same condition holds.
+        Only no-answer sources (error/neutral fallback) count. A working
+        DeepSeek reply is not an outage. Do not re-page while still degraded.
         """
         if len(self._recent_sources) < self._degradation_window:
             self._degraded = False
@@ -135,8 +134,9 @@ class SentimentScorer:
         n = len(self._recent_sources)
         issues: list[str] = []
 
-        # High error/fallback rate
-        error_count = sum(1 for s in self._recent_sources if s != "xai_live")
+        # No-answer rate. A working DeepSeek reply is an answer, not an outage.
+        no_answer = {"xai_error_fallback", "neutral_fallback"}
+        error_count = sum(1 for s in self._recent_sources if s in no_answer)
         error_pct = error_count / n
         if error_pct >= self._degradation_error_pct:
             live_pct = (1 - error_pct) * 100

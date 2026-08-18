@@ -185,3 +185,60 @@ async def test_chat_falls_back_on_permission_denied_without_retry() -> None:
     assert primary_create.await_count == 1
     fallback_create.assert_awaited_once()
     mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_skips_xai_after_permission_denied() -> None:
+    """A 403 disables the xAI hop for later calls in this process."""
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    fallback_create = AsyncMock(side_effect=[_make_completion("first"), _make_completion("second")])
+    fallback_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create))
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, fallback_client],
+    ):
+        client = XAIClient(
+            api_key="xai-key",
+            model="grok-3",
+            fallback_api_key="deepseek-key",
+            fallback_model="deepseek-v4-pro",
+        )
+        first = await client.chat([{"role": "user", "content": "one"}])
+        second = await client.chat([{"role": "user", "content": "two"}])
+
+    assert first == ChatResult(content="first", provider="deepseek", model="deepseek-v4-pro")
+    assert second == ChatResult(content="second", provider="deepseek", model="deepseek-v4-pro")
+    assert primary_create.await_count == 1
+    assert fallback_create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_deepseek_primary_does_not_call_xai() -> None:
+    """Configured DeepSeek primary talks only to the DeepSeek base URL."""
+    create = AsyncMock(return_value=_make_completion("deepseek-primary"))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client) as mock_openai:
+        client = XAIClient(
+            api_key="deepseek-key",
+            model="deepseek-v4-pro",
+            base_url="https://api.deepseek.com/v1",
+            provider="deepseek",
+        )
+        response = await client.chat([{"role": "user", "content": "status?"}])
+
+    mock_openai.assert_called_once_with(
+        api_key="deepseek-key",
+        base_url="https://api.deepseek.com/v1",
+        timeout=30.0,
+        max_retries=0,
+    )
+    assert response == ChatResult(
+        content="deepseek-primary", provider="deepseek", model="deepseek-v4-pro"
+    )

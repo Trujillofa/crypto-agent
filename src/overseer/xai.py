@@ -40,10 +40,15 @@ class XAIClient:
         fallback_api_key: str = "",
         fallback_model: str = "deepseek-chat",
         fallback_base_url: str = "https://api.deepseek.com/v1",
+        base_url: str = "https://api.x.ai/v1",
+        provider: str = "xai",
     ) -> None:
+        self._provider = provider
+        self._primary_name = "DeepSeek" if provider == "deepseek" else "xAI"
+        self._skip_primary = False
         self._client = AsyncOpenAI(
             api_key=api_key,
-            base_url="https://api.x.ai/v1",
+            base_url=base_url,
             timeout=timeout_seconds,
             max_retries=0,  # we manage retries ourselves
         )
@@ -60,25 +65,36 @@ class XAIClient:
         self._logger = get_logger(self.__class__.__name__)
 
     async def chat(self, messages: Sequence[dict[str, str]]) -> ChatResult:
-        try:
-            content = await self._chat_with_client(
-                self._client,
-                self._model,
-                messages,
-                provider_name="xAI",
+        if not self._skip_primary:
+            try:
+                content = await self._chat_with_client(
+                    self._client,
+                    self._model,
+                    messages,
+                    provider_name=self._primary_name,
+                )
+                return ChatResult(content=content, provider=self._provider, model=self._model)
+            except _AUTH_ERRORS as exc:
+                self._skip_primary = True
+                if self._fallback_client is None:
+                    raise
+                self._logger.warning(
+                    "%s auth/permission denied (%s); skipping primary on later calls",
+                    self._primary_name,
+                    exc,
+                )
+            except Exception:
+                if self._fallback_client is None:
+                    raise
+                self._logger.warning(
+                    "%s unavailable after retries; trying DeepSeek fallback",
+                    self._primary_name,
+                )
+
+        if self._fallback_client is None:
+            raise RuntimeError(
+                f"{self._primary_name} is disabled and no fallback provider is configured"
             )
-            return ChatResult(content=content, provider="xai", model=self._model)
-        except _AUTH_ERRORS as exc:
-            if self._fallback_client is None:
-                raise
-            self._logger.warning(
-                "xAI auth/permission denied (%s); trying DeepSeek fallback",
-                exc,
-            )
-        except Exception:
-            if self._fallback_client is None:
-                raise
-            self._logger.warning("xAI unavailable after retries; trying DeepSeek fallback")
 
         content = await self._chat_with_client(
             self._fallback_client,

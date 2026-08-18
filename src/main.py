@@ -403,8 +403,8 @@ def load_settings(config_path: Path) -> Settings:
         ai_allowed_chat_ids = [telegram_chat_id]
 
     ai_provider = _as_str(ai.get("provider"), "ai.provider", default="xai")
-    if ai_provider != "xai":
-        raise ValueError(f"ai.provider='{ai_provider}' is invalid. Must be 'xai'.")
+    if ai_provider not in {"xai", "deepseek"}:
+        raise ValueError(f"ai.provider='{ai_provider}' is invalid. Must be 'xai' or 'deepseek'.")
 
     ai_settings = AISettings(
         enabled=_as_bool(ai.get("enabled"), "ai.enabled", default=False),
@@ -832,7 +832,7 @@ def _wire_optional_strategy_dependencies(
         if event_log is None:
             return
         source = str(payload.get("source", ""))
-        if source == "deepseek_fallback":
+        if source.startswith("deepseek"):
             provider = "deepseek"
         else:
             provider = "xai" if xai_client is not None else "none"
@@ -1008,7 +1008,20 @@ async def run() -> None:
     xai_client = None
     if settings.ai.enabled:
         logger = get_logger("main")
-        if settings.ai.api_key:
+        if settings.ai.provider == "deepseek":
+            if settings.ai.fallback_api_key:
+                xai_client = XAIClient(
+                    api_key=settings.ai.fallback_api_key,
+                    model=settings.ai.fallback_model,
+                    base_url=settings.ai.fallback_base_url,
+                    provider="deepseek",
+                )
+            else:
+                logger.warning(
+                    "AI provider is deepseek but DEEPSEEK_API_KEY is empty; "
+                    "sentiment falls back to neutral"
+                )
+        elif settings.ai.api_key:
             xai_client = XAIClient(
                 api_key=settings.ai.api_key,
                 model=settings.ai.model,
