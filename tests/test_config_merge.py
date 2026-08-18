@@ -139,7 +139,7 @@ telegram:
 
 ai:
   enabled: true
-  provider: xai
+  provider: deepseek
   model: grok-4-1-fast-reasoning
   polling_interval: 60.0
   max_history: 10
