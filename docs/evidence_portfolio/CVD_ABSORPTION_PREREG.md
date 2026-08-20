@@ -1,6 +1,6 @@
 # Probe: Binance spot CVD absorption v1
 
-**Status:** LOCKED, data pending — parameters filled before any develop tape fetch
+**Status:** SCREEN_FAIL — develop 2026-06-09→2026-07-15 ranked; 0/16 soft-pass; holdout sealed; `promote=no`
 **Budget position:** not a third 30-day portfolio probe. Named changed input after
 (1) closed OFI decile → forward-return **NO_PULSE** on 2026-05-23 → 2026-06-06 and
 (2) MT5 Path 2 `timescale_true_cvd_v1` DISQUALIFY (FP `CopyTicks` quote-only).
