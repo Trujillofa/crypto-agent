@@ -20,9 +20,16 @@ from src.strategy.session_liquidity import SessionLiquidityRouterConfig
 ExecutionProfile = Literal["legacy_v1", "execution_parity_v2"]
 
 
-@dataclass
+@dataclass(frozen=True)
 class BacktestConfig:
-    """Configuration for a single historical simulator run."""
+    """Configuration for a single historical simulator run.
+
+    Cost fields (frozen; units are fractions unless noted):
+    - ``fee_rate``: commission per side of notional (0.0004 = 4 bps)
+    - ``slippage_pct``: per-side price concession / spread+slip (0.0002 = 2 bps)
+    - ``futures_funding_rate``: 8h settlement rate of notional
+    - ``fixed_notional_usdt``: USDT size cap; 0 = uncapped
+    """
 
     symbol: str
     timeframe: str

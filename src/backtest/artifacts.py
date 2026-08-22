@@ -90,6 +90,8 @@ def create_manifest(
     """Create a deterministic manifest for a completed run."""
     config_payload = _normalise(config)
     result_payload = _normalise(result)
+    if isinstance(result_payload, dict):
+        result_payload.pop("trades", None)
     identity = {
         "semantics_version": semantics_version,
         "git_revision": revision,

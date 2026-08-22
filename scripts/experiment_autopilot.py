@@ -36,6 +36,7 @@ from src.backtest.factory import (
     resolve_global_trend_filter,
 )
 from src.backtest.models import ExecutionProfile
+from src.backtest.research_safety import refuse_live_go
 from src.backtest.synthetic_eval import (  # noqa: E402
     SyntheticEvalResult,
     bars_from_range,
@@ -137,6 +138,7 @@ def parse_args() -> argparse.Namespace:
         help="Frozen ISO end for diagnostic regime fit",
     )
     args = parser.parse_args()
+    refuse_live_go(argv=sys.argv[1:], flags=vars(args))
     if args.synthetic_diagnostic and (not args.synthetic_fit_start or not args.synthetic_fit_end):
         parser.error(
             "--synthetic-diagnostic requires --synthetic-fit-start and --synthetic-fit-end"

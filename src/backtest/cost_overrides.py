@@ -1,6 +1,16 @@
 """Per-run backtest cost profiles for cost-realism experiments.
 
 Does not change BacktestConfig defaults; callers pass an explicit CostProfile.
+
+Cost units (all fractions unless noted):
+- ``fee_rate``: commission per side as a fraction of fill notional
+  (0.0004 = 4 bps). Applied on entry and exit.
+- ``slippage_pct``: per-side price concession as a fraction of fill price
+  (0.0002 = 2 bps). This is the all-in spread + slip model; there is no
+  separate spread field.
+- ``base_futures_funding_rate``: 8-hour settlement rate as a fraction of
+  notional (0.0001 = 1 bp / 8h).
+- ``fixed_notional_usdt``: optional size cap in USDT; 0 means uncapped.
 """
 
 from __future__ import annotations
@@ -8,21 +18,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
-TIMEFRAME_HOURS: dict[str, float] = {
-    "1m": 1.0 / 60.0,
-    "5m": 5.0 / 60.0,
-    "15m": 0.25,
-    "30m": 0.5,
-    "1h": 1.0,
-    "2h": 2.0,
-    "4h": 4.0,
-    "6h": 6.0,
-    "8h": 8.0,
-    "12h": 12.0,
-    "1d": 24.0,
-    "3d": 72.0,
-    "1w": 168.0,
-}
+from src.backtest.timeframes import timeframe_hours
 
 FundingCadence = Literal["per_bar", "scaled_8h"]
 CostPassName = Literal["legacy", "realistic", "corrected"]
@@ -83,10 +79,25 @@ def effective_futures_funding_rate_per_bar(
     """
     if cadence == "per_bar":
         return base_rate
-    tf_hours = TIMEFRAME_HOURS.get(timeframe)
-    if tf_hours is None:
-        raise ValueError(f"Unsupported timeframe for funding scale: {timeframe}")
+    tf_hours = timeframe_hours(timeframe)
     return base_rate * (tf_hours / 8.0)
+
+
+@dataclass(frozen=True)
+class CostBook:
+    """Frozen all-in cost snapshot the engine uses after construction.
+
+    Mutating ``BacktestConfig`` cost fields after ``BacktestEngine`` is created
+    must not change fills: the engine reads this book, not the live config.
+    """
+
+    fee_rate: float
+    slippage_pct: float
+    futures_funding_rate: float
+    funding_cadence: FundingCadence
+    fixed_notional_usdt: float = 0.0
+    quantity_step_size: float = 0.0
+    min_notional_usdt: float = 0.0
 
 
 def legacy_cost_profile(*, apply_global_trend_filter: bool = True) -> CostProfile:

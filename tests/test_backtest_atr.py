@@ -6,21 +6,6 @@ from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 
 
-class AlwaysBuyStrategy(BaseStrategy):
-    def get_name(self):
-        return "AlwaysBuy"
-
-    async def evaluate(self, symbol, indicators):
-        price = indicators["close_price"]
-
-        if price == 101.0:
-            return Signal(SignalType.BUY, symbol, price, 1.0, "Buy Trigger", indicators)
-        elif price == 103.0:
-            return Signal(SignalType.SELL, symbol, price, 1.0, "Sell Trigger", indicators)
-
-        return Signal(SignalType.HOLD, symbol, price, 0.0, "Hold", indicators)
-
-
 class BuyOnceStrategy(BaseStrategy):
     def get_name(self):
         return "BuyOnce"
@@ -58,7 +43,7 @@ class TestBacktestATR:
             use_atr_sizing=True,
             risk_per_trade=0.02,  # 2% = $200
             atr_multiplier=2.0,  # Stop = 4.0
-            strategy_classes=[AlwaysBuyStrategy],
+            strategy_classes=[BuyOnceStrategy],
             aggregator_config={"min_agreement": 1, "buy_threshold": 0.5},
         )
 
@@ -67,7 +52,6 @@ class TestBacktestATR:
         # Add a second candle to close it
         data.append({"time": "2023-01-01T00:01:00", "close_price": 105.0, "atr_14": 2.0})
 
-        config.strategy_classes = [BuyOnceStrategy]
         result = await engine.run()
 
         assert len(result.trades) == 1

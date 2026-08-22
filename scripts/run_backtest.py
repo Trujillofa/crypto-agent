@@ -13,6 +13,7 @@ import yaml
 from src.backtest.artifacts import create_manifest, git_revision, write_manifest
 from src.backtest.engine import BacktestEngine
 from src.backtest.factory import BacktestRequest, build_backtest_config
+from src.backtest.research_safety import refuse_live_go
 from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
@@ -31,7 +32,7 @@ async def main():
         "--fee",
         type=float,
         default=None,
-        help="Trading fee rate override (defaults to 0.0004 futures / 0.001 spot)",
+        help="Trading fee rate override (fraction of notional per side; default 0.0004)",
     )
     parser.add_argument(
         "--quantity-step-size",
@@ -90,6 +91,7 @@ async def main():
     )
 
     args = parser.parse_args()
+    refuse_live_go(argv=sys.argv[1:], flags=vars(args))
 
     # Load settings from config file
     try:
@@ -118,7 +120,7 @@ async def main():
     futures_mode = bool(
         settings.futures and settings.futures.enabled and args.symbol in settings.futures.symbols
     )
-    fee_rate = args.fee if args.fee is not None else (0.0004 if futures_mode else 0.001)
+    fee_rate = args.fee
     min_notional_usdt = (
         args.min_notional if args.min_notional is not None else (20.0 if futures_mode else 0.0)
     )
