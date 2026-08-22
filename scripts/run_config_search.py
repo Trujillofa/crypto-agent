@@ -21,7 +21,7 @@ import yaml
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine, BacktestResult
-from src.backtest.experiment_autopilot import build_wfo_windows
+from src.backtest.experiment_autopilot import build_wfo_windows, wfo_inclusive_fetch_bounds
 from src.backtest.factory import BacktestRequest, build_backtest_config
 from src.backtest.ranking import RankedCandidate, rank_by_selection_score
 from src.backtest.research_safety import refuse_live_go
@@ -614,6 +614,7 @@ async def _run_wfo_windows(
     window_trade_counts: list[int] = []
 
     for window in windows:
+        _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
         cfg = _build_backtest_config(
             settings,
             strategy_classes,
@@ -622,8 +623,8 @@ async def _run_wfo_windows(
             raw_config,
             symbol,
             timeframe,
-            window.test_start,
-            window.test_end,
+            test_start,
+            test_end,
             apply_global_trend_filter,
         )
         result = await _run_backtest(cfg, reader)
@@ -692,6 +693,7 @@ async def _evaluate_candidate(
         full_result = await _run_backtest(full_config, reader)
         windows = build_wfo_windows(start, end, train_months, test_months)
         if windows:
+            train_start, train_end, _, _ = wfo_inclusive_fetch_bounds(windows[0])
             train_config = _build_backtest_config(
                 settings,
                 strategy_classes,
@@ -700,8 +702,8 @@ async def _evaluate_candidate(
                 updated_raw_config,
                 symbol,
                 timeframe,
-                windows[0].train_start,
-                windows[0].train_end,
+                train_start,
+                train_end,
                 candidate.apply_global_trend_filter,
             )
             train_result = await _run_backtest(train_config, reader)

@@ -10,7 +10,11 @@ import pytest
 
 from src.backtest.artifacts import create_manifest, write_manifest
 from src.backtest.engine import BacktestConfig, BacktestEngine
-from src.backtest.experiment_autopilot import WfoWindow, build_wfo_windows
+from src.backtest.experiment_autopilot import (
+    WfoWindow,
+    build_wfo_windows,
+    wfo_inclusive_fetch_bounds,
+)
 from src.backtest.factory import BacktestRequest, build_backtest_config
 from src.backtest.metrics import calculate_backtest_metrics
 from src.backtest.models import BacktestResult, Trade
@@ -386,14 +390,39 @@ def test_wfo_train_and_test_intervals_are_disjoint() -> None:
     _assert_windows_disjoint(windows)
 
 
+def _inclusive_reader_contains(row_time: str, start: str, end: str) -> bool:
+    """Mirror IndicatorReader SQL: i.time >= start AND i.time <= end."""
+    value = _parse_iso(row_time)
+    return _parse_iso(start) <= value <= _parse_iso(end)
+
+
+def _inclusive_sql_reader(rows: list[dict[str, object]]) -> IndicatorReader:
+    reader = IndicatorReader({})
+    fetched: list[list[dict[str, object]]] = []
+
+    async def fetch_range(
+        _symbol: str, _timeframe: str, start_time: str, end_time: str
+    ) -> list[dict[str, object]]:
+        selected = [
+            row
+            for row in rows
+            if _inclusive_reader_contains(str(row["time"]), start_time, end_time)
+        ]
+        fetched.append(selected)
+        return selected
+
+    reader.fetch_range = fetch_range  # type: ignore[method-assign]
+    reader.fetched_ranges = fetched  # type: ignore[attr-defined]
+    return reader
+
+
 def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
     config_src = Path("scripts/run_config_search.py").read_text(encoding="utf-8")
     mtf_src = Path("scripts/run_mtf_search.py").read_text(encoding="utf-8")
     for src in (config_src, mtf_src):
         assert "build_wfo_windows(start, end, train_months, test_months)" in src
+        assert "wfo_inclusive_fetch_bounds(" in src
         assert "for window in windows:" in src
-        assert "window.test_start" in src
-        assert "window.test_end" in src
         assert "timedelta(days=" not in src
         assert "months * 30" not in src
         assert "train_months * 30" not in src
@@ -432,6 +461,77 @@ def test_leap_year_and_month_end_wfo_windows_remain_disjoint() -> None:
                 if stamp.startswith("2024-02-29"):
                     covering_feb29 = True
     assert covering_feb29
+
+
+def test_indicator_reader_sql_range_is_inclusive() -> None:
+    source = Path("src/features/reader.py").read_text(encoding="utf-8")
+    assert "i.time >= $3 AND i.time <= $4" in source
+
+
+def test_raw_shared_window_end_leaks_under_inclusive_reader() -> None:
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    window = windows[0]
+    boundary = "2024-07-01T00:00:00"
+    assert window.train_end.startswith("2024-07-01")
+    assert window.test_start.startswith("2024-07-01")
+    train_inclusive = _inclusive_reader_contains(boundary, window.train_start, window.train_end)
+    test_inclusive = _inclusive_reader_contains(boundary, window.test_start, window.test_end)
+    assert train_inclusive is True
+    assert test_inclusive is True
+
+
+@pytest.mark.asyncio
+async def test_boundary_bar_appears_only_in_wfo_test_dataset() -> None:
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    window = windows[0]
+    boundary = "2024-07-01T00:00:00"
+    rows = [
+        {"time": "2024-06-30T23:00:00", "open_price": 1.0, "close_price": 1.0},
+        {"time": boundary, "open_price": 2.0, "close_price": 2.0},
+        {"time": "2024-07-01T01:00:00", "open_price": 3.0, "close_price": 3.0},
+    ]
+    train_start, train_end, test_start, test_end = wfo_inclusive_fetch_bounds(window)
+    train_inclusive = _inclusive_reader_contains(boundary, train_start, train_end)
+    test_inclusive = _inclusive_reader_contains(boundary, test_start, test_end)
+    assert train_inclusive is False
+    assert test_inclusive is True
+
+    reader = _inclusive_sql_reader(rows)
+    train_rows = await reader.fetch_range("SOLUSDT", "1h", train_start, train_end)
+    test_rows = await reader.fetch_range("SOLUSDT", "1h", test_start, test_end)
+    train_times = [row["time"] for row in train_rows]
+    test_times = [row["time"] for row in test_rows]
+    assert boundary not in train_times
+    assert boundary in test_times
+    assert "2024-06-30T23:00:00" in train_times
+    assert "2024-06-30T23:00:00" not in test_times
+    assert "2024-07-01T01:00:00" not in train_times
+    assert "2024-07-01T01:00:00" in test_times
+
+    train_reader = _inclusive_sql_reader(rows)
+    test_reader = _inclusive_sql_reader(rows)
+    await BacktestEngine(
+        BacktestConfig(
+            symbol="SOLUSDT",
+            timeframe="1h",
+            start_date=train_start,
+            end_date=train_end,
+        ),
+        train_reader,
+    ).run()
+    await BacktestEngine(
+        BacktestConfig(
+            symbol="SOLUSDT",
+            timeframe="1h",
+            start_date=test_start,
+            end_date=test_end,
+        ),
+        test_reader,
+    ).run()
+    engine_train_times = [str(row["time"]) for row in train_reader.fetched_ranges[0]]
+    engine_test_times = [str(row["time"]) for row in test_reader.fetched_ranges[0]]
+    assert boundary not in engine_train_times
+    assert boundary in engine_test_times
 
 
 def test_identical_trade_traces_share_fingerprint_and_payload() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 @dataclass(frozen=True)
@@ -148,6 +148,31 @@ def build_wfo_windows(
         current = train_end
 
     return windows
+
+
+def half_open_inclusive_end(end: str) -> str:
+    """Last timestamp an inclusive reader may include for a half-open window end.
+
+    ``IndicatorReader.fetch_range`` uses ``i.time >= start AND i.time <= end``.
+    WFO windows are ``[start, end)``, so passing ``end`` through unchanged would
+    fetch the boundary bar in both train and test. Step back one microsecond
+    (Postgres timestamp precision) to keep the exclusive end out of the fetch.
+    """
+    return (datetime.fromisoformat(end) - timedelta(microseconds=1)).isoformat()
+
+
+def wfo_inclusive_fetch_bounds(window: WfoWindow) -> tuple[str, str, str, str]:
+    """Inclusive reader bounds for one half-open WFO window.
+
+    Returns ``(train_start, train_end, test_start, test_end)`` to pass into
+    ``fetch_range``. The shared calendar boundary stays in the test window only.
+    """
+    return (
+        window.train_start,
+        half_open_inclusive_end(window.train_end),
+        window.test_start,
+        half_open_inclusive_end(window.test_end),
+    )
 
 
 def compound_returns_pct(returns_pct: list[float]) -> float:
