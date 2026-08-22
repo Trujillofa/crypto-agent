@@ -12,6 +12,7 @@ from src.backtest.metrics import calculate_backtest_metrics
 from src.backtest.models import BacktestConfig, BacktestResult, Trade
 from src.backtest.sentiment_replay import ReplaySentimentScorer
 from src.backtest.sizing import calculate_futures_order_quantity
+from src.backtest.timeframes import timeframe_hours
 from src.features.reader import FundingSettlement, IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
@@ -162,6 +163,7 @@ class BacktestEngine:
 
     async def run(self) -> BacktestResult:
         """Execute the backtest."""
+        timeframe_hours(self._config.timeframe)
         self._logger.info(f"Starting backtest for {self._config.symbol}...")
         self._logger.info("Resolved backtest config audit: %s", self._resolved_cost_audit())
 
@@ -188,6 +190,8 @@ class BacktestEngine:
             # Multi-timeframe backtest
             entry_tf = mtf_timeframes.get("entry", self._config.timeframe)
             regime_tf = mtf_timeframes.get("regime", "4h")
+            timeframe_hours(entry_tf)
+            timeframe_hours(regime_tf)
 
             self._logger.info(f"Multi-timeframe mode: entry={entry_tf}, regime={regime_tf}")
 

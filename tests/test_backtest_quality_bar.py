@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields, replace
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from src.backtest.artifacts import create_manifest
+from src.backtest.artifacts import create_manifest, write_manifest
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.backtest.experiment_autopilot import WfoWindow, build_wfo_windows
 from src.backtest.factory import BacktestRequest, build_backtest_config
 from src.backtest.metrics import calculate_backtest_metrics
+from src.backtest.models import BacktestResult, Trade
 from src.backtest.ranking import RankedCandidate, rank_by_selection_score
 from src.backtest.research_safety import (
     LiveGoRefused,
@@ -60,6 +63,108 @@ def _reader(rows: list[dict[str, object]]) -> IndicatorReader:
 
     reader.fetch_range = fetch_range  # type: ignore[method-assign]
     return reader
+
+
+def _tracking_reader(rows: list[dict[str, object]]) -> tuple[IndicatorReader, list[str]]:
+    reader = IndicatorReader({})
+    calls: list[str] = []
+
+    async def fetch_range(*_args: object) -> list[dict[str, object]]:
+        calls.append("fetch_range")
+        return rows
+
+    async def fetch_multi_timeframe(**_kwargs: object) -> list[dict[str, object]]:
+        calls.append("fetch_multi_timeframe")
+        return rows
+
+    reader.fetch_range = fetch_range  # type: ignore[method-assign]
+    reader.fetch_multi_timeframe = fetch_multi_timeframe  # type: ignore[method-assign]
+    return reader, calls
+
+
+def _parse_iso(value: str) -> datetime:
+    return datetime.fromisoformat(value)
+
+
+def _assert_half_open_disjoint(
+    left_start: datetime, left_end: datetime, right_start: datetime, right_end: datetime
+) -> None:
+    """[start, end) intervals share a boundary instant without interior overlap."""
+    assert left_start < left_end
+    assert right_start < right_end
+    assert left_end <= right_start or right_end <= left_start
+
+
+def _assert_windows_disjoint(windows: list[WfoWindow]) -> None:
+    assert windows
+    for window in windows:
+        train_start = _parse_iso(window.train_start)
+        train_end = _parse_iso(window.train_end)
+        test_start = _parse_iso(window.test_start)
+        test_end = _parse_iso(window.test_end)
+        assert train_end == test_start
+        _assert_half_open_disjoint(train_start, train_end, test_start, test_end)
+    for previous, current in zip(windows, windows[1:], strict=False):
+        prev_train_end = _parse_iso(previous.train_end)
+        next_train_start = _parse_iso(current.train_start)
+        assert prev_train_end == next_train_start
+        _assert_half_open_disjoint(
+            _parse_iso(previous.train_start),
+            prev_train_end,
+            next_train_start,
+            _parse_iso(current.train_end),
+        )
+        _assert_half_open_disjoint(
+            _parse_iso(previous.test_start),
+            _parse_iso(previous.test_end),
+            _parse_iso(current.test_start),
+            _parse_iso(current.test_end),
+        )
+
+
+def _base_trade(**overrides: object) -> Trade:
+    payload: dict[str, object] = {
+        "entry_time": "2024-01-01T00:00:00",
+        "exit_time": "2024-01-01T01:00:00",
+        "side": "BUY",
+        "entry_price": 100.0,
+        "exit_price": 101.0,
+        "quantity": 1.0,
+        "pnl": 1.0,
+        "return_pct": 1.0,
+        "exit_reason": "SIGNAL",
+        "margin_used": 0.0,
+        "signal_time": "2024-01-01T00:00:00",
+        "fill_source": "signal_close",
+        "funding_paid": 0.0,
+    }
+    payload.update(overrides)
+    return Trade(**payload)  # type: ignore[arg-type]
+
+
+def _result_from_trades(trades: list[Trade], *, total_return: float = 1.0) -> BacktestResult:
+    return BacktestResult(
+        total_return=total_return,
+        total_return_pct=0.1,
+        max_drawdown=0.0,
+        win_rate=100.0 if trades else 0.0,
+        total_trades=len(trades),
+        trades=trades,
+        final_equity=10_001.0,
+        sharpe_ratio=0.0,
+        sortino_ratio=0.0,
+        profit_factor=1.0,
+        avg_win_loss_ratio=1.0,
+    )
+
+
+def _sample_config() -> BacktestConfig:
+    return BacktestConfig(
+        symbol="SOLUSDT",
+        timeframe="1h",
+        start_date="2024-01-01",
+        end_date="2024-01-02",
+    )
 
 
 def _settings() -> object:
@@ -247,15 +352,8 @@ def test_factory_uses_realistic_fee_when_override_omitted() -> None:
 
 
 def test_manifest_omits_trade_dump() -> None:
-    from src.backtest.models import BacktestResult, Trade
-
-    result = BacktestResult(
-        total_return=1.0,
-        total_return_pct=0.1,
-        max_drawdown=0.0,
-        win_rate=100.0,
-        total_trades=1,
-        trades=[
+    result = _result_from_trades(
+        [
             Trade(
                 entry_time="2024-01-01",
                 exit_time="2024-01-02",
@@ -266,21 +364,238 @@ def test_manifest_omits_trade_dump() -> None:
                 pnl=1.0,
                 return_pct=100.0,
             )
-        ],
-        final_equity=10_001.0,
-        sharpe_ratio=0.0,
-        sortino_ratio=0.0,
-        profit_factor=1.0,
-        avg_win_loss_ratio=1.0,
+        ]
     )
-    manifest = create_manifest(
-        config=BacktestConfig(
-            symbol="SOLUSDT",
-            timeframe="1h",
-            start_date="2024-01-01",
-            end_date="2024-01-02",
-        ),
-        result=result,
-    )
+    manifest = create_manifest(config=_sample_config(), result=result)
     assert "trades" not in manifest.result
     assert manifest.result["total_trades"] == 1
+    assert manifest.trades_fingerprint
+    assert len(manifest.trades_fingerprint) == 64
+
+
+def test_selection_train_end_equals_first_wfo_test_start() -> None:
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    assert windows
+    assert windows[0].train_end.startswith("2024-07-01")
+    assert windows[0].test_start.startswith("2024-07-01")
+    assert windows[0].train_end == windows[0].test_start
+
+
+def test_wfo_train_and_test_intervals_are_disjoint() -> None:
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    _assert_windows_disjoint(windows)
+
+
+def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
+    config_src = Path("scripts/run_config_search.py").read_text(encoding="utf-8")
+    mtf_src = Path("scripts/run_mtf_search.py").read_text(encoding="utf-8")
+    for src in (config_src, mtf_src):
+        assert "build_wfo_windows(start, end, train_months, test_months)" in src
+        assert "for window in windows:" in src
+        assert "window.test_start" in src
+        assert "window.test_end" in src
+        assert "timedelta(days=" not in src
+        assert "months * 30" not in src
+        assert "train_months * 30" not in src
+        assert "test_months * 30" not in src
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    sequence = [(window.test_start, window.test_end) for window in windows]
+    assert sequence
+    assert sequence[0][0].startswith("2024-07-01")
+    assert sequence[0][1].startswith("2024-10-01")
+    assert sequence == [
+        (window.test_start, window.test_end)
+        for window in build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    ]
+
+
+def test_leap_year_and_month_end_wfo_windows_remain_disjoint() -> None:
+    cases = [
+        ("2024-01-31", "2025-01-31", 3, 1),
+        ("2023-11-30", "2025-01-31", 3, 1),
+    ]
+    covering_feb29 = False
+    for start, end, train_months, test_months in cases:
+        windows = build_wfo_windows(start, end, train_months, test_months)
+        _assert_windows_disjoint(windows)
+        for window in windows:
+            train_start = _parse_iso(window.train_start)
+            test_end = _parse_iso(window.test_end)
+            if train_start <= datetime(2024, 2, 29) < test_end:
+                covering_feb29 = True
+            for stamp in (
+                window.train_start,
+                window.train_end,
+                window.test_start,
+                window.test_end,
+            ):
+                if stamp.startswith("2024-02-29"):
+                    covering_feb29 = True
+    assert covering_feb29
+
+
+def test_identical_trade_traces_share_fingerprint_and_payload() -> None:
+    trades = [_base_trade()]
+    first = create_manifest(config=_sample_config(), result=_result_from_trades(trades))
+    second = create_manifest(config=_sample_config(), result=_result_from_trades([_base_trade()]))
+    assert first.trades_fingerprint == second.trades_fingerprint
+    assert first.run_id == second.run_id
+    from src.backtest.artifacts import canonical_json
+
+    assert canonical_json(first) == canonical_json(second)
+
+
+def test_divergent_traces_keep_run_id_and_conflict_on_write(tmp_path: Path) -> None:
+    config = _sample_config()
+    first = create_manifest(
+        config=config,
+        result=_result_from_trades(
+            [
+                _base_trade(
+                    fill_source="signal_close",
+                    signal_time="2024-01-01T00:00:00",
+                    entry_price=100.0,
+                    exit_price=101.0,
+                )
+            ]
+        ),
+        revision="abc123",
+        data_fingerprint="data",
+        seed=7,
+        source_config="config/settings.yaml",
+    )
+    second = create_manifest(
+        config=config,
+        result=_result_from_trades(
+            [
+                _base_trade(
+                    fill_source="next_bar_open",
+                    signal_time="2024-01-01T00:00:01",
+                    entry_price=100.5,
+                    exit_price=101.5,
+                )
+            ]
+        ),
+        revision="abc123",
+        data_fingerprint="data",
+        seed=7,
+        source_config="config/settings.yaml",
+    )
+    assert first.run_id == second.run_id
+    assert first.trades_fingerprint != second.trades_fingerprint
+    write_manifest(tmp_path, first)
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        write_manifest(tmp_path, second)
+
+
+def test_reordering_trades_changes_fingerprint() -> None:
+    first = _base_trade(entry_time="2024-01-01T00:00:00", exit_time="2024-01-01T01:00:00")
+    second = _base_trade(entry_time="2024-01-02T00:00:00", exit_time="2024-01-02T01:00:00")
+    ordered = create_manifest(config=_sample_config(), result=_result_from_trades([first, second]))
+    reversed_order = create_manifest(
+        config=_sample_config(), result=_result_from_trades([second, first])
+    )
+    assert ordered.trades_fingerprint != reversed_order.trades_fingerprint
+
+
+def test_empty_trade_list_fingerprint_is_stable() -> None:
+    first = create_manifest(config=_sample_config(), result=_result_from_trades([]))
+    second = create_manifest(config=_sample_config(), result=_result_from_trades([]))
+    nonempty = create_manifest(config=_sample_config(), result=_result_from_trades([_base_trade()]))
+    assert first.trades_fingerprint == second.trades_fingerprint
+    assert first.trades_fingerprint != nonempty.trades_fingerprint
+    assert len(first.trades_fingerprint) == 64
+
+
+def test_trades_fingerprint_covers_every_trade_field() -> None:
+    base = _base_trade()
+    base_fp = create_manifest(
+        config=_sample_config(), result=_result_from_trades([base])
+    ).trades_fingerprint
+    variants: dict[str, object] = {
+        "entry_time": "2024-02-01T00:00:00",
+        "exit_time": "2024-02-01T02:00:00",
+        "side": "SELL",
+        "entry_price": 200.0,
+        "exit_price": 180.0,
+        "quantity": 2.0,
+        "pnl": -20.0,
+        "return_pct": -10.0,
+        "exit_reason": "STOP",
+        "margin_used": 50.0,
+        "signal_time": "2024-01-31T23:00:00",
+        "fill_source": "next_bar_open",
+        "funding_paid": 0.25,
+    }
+    covered = {field.name for field in fields(Trade)}
+    assert covered == set(variants)
+    for name, value in variants.items():
+        mutated = replace(base, **{name: value})
+        fingerprint = create_manifest(
+            config=_sample_config(), result=_result_from_trades([mutated])
+        ).trades_fingerprint
+        assert fingerprint != base_fp, name
+
+
+@pytest.mark.asyncio
+async def test_engine_rejects_unknown_timeframe_before_empty_data_success() -> None:
+    reader, calls = _tracking_reader([])
+    config = BacktestConfig(
+        symbol="SOLUSDT",
+        timeframe="97m",
+        start_date="2024-01-01",
+        end_date="2024-01-02",
+    )
+    with pytest.raises(ValueError, match="Unsupported timeframe: 97m"):
+        await BacktestEngine(config, reader).run()
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_engine_empty_data_still_returns_zero_trade_result() -> None:
+    result = await BacktestEngine(_sample_config(), _reader([])).run()
+    assert result.total_trades == 0
+    assert result.trades == []
+    assert result.total_return == 0.0
+    assert result.final_equity == _sample_config().initial_capital
+
+
+@pytest.mark.asyncio
+async def test_engine_completes_one_bar_and_multi_bar_runs() -> None:
+    one_bar = [{"time": "2024-01-01T00:00:00", "open_price": 99.0, "close_price": 100.0}]
+    multi_bar = [
+        {"time": "2024-01-01T00:00:00", "open_price": 99.0, "close_price": 100.0},
+        {"time": "2024-01-01T01:00:00", "open_price": 100.0, "close_price": 101.0},
+        {"time": "2024-01-01T02:00:00", "open_price": 101.0, "close_price": 102.0},
+    ]
+    one = await BacktestEngine(_sample_config(), _reader(one_bar)).run()
+    many = await BacktestEngine(_sample_config(), _reader(multi_bar)).run()
+    assert one.total_trades == 0
+    assert many.total_trades == 0
+
+
+class _InvalidMtfStrategy(BaseStrategy):
+    REQUIRED_TIMEFRAMES = {"entry": "97m", "regime": "4h"}
+
+    def get_name(self) -> str:
+        return "InvalidMtf"
+
+    async def evaluate(self, symbol: str, indicators: dict[str, object]) -> Signal:
+        price = float(indicators["close_price"])
+        return Signal(SignalType.HOLD, symbol, price, 0.0, "hold", indicators)
+
+
+@pytest.mark.asyncio
+async def test_engine_rejects_invalid_mtf_timeframe_before_fetch() -> None:
+    reader, calls = _tracking_reader([])
+    config = BacktestConfig(
+        symbol="SOLUSDT",
+        timeframe="1h",
+        start_date="2024-01-01",
+        end_date="2024-01-02",
+        strategy_classes=[_InvalidMtfStrategy],
+    )
+    with pytest.raises(ValueError, match="Unsupported timeframe: 97m"):
+        await BacktestEngine(config, reader).run()
+    assert "fetch_range" not in calls
+    assert "fetch_multi_timeframe" not in calls

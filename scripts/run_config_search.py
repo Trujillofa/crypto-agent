@@ -13,7 +13,7 @@ import os
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -608,17 +608,12 @@ async def _run_wfo_windows(
     reader: IndicatorReader,
 ) -> tuple[int, float, float, float]:
     """Run rolling out-of-sample windows and return summary metrics."""
-    start_dt = datetime.fromisoformat(start)
-    end_dt = datetime.fromisoformat(end)
-    current = start_dt
+    windows = build_wfo_windows(start, end, train_months, test_months)
     window_returns: list[float] = []
     window_sharpes: list[float] = []
     window_trade_counts: list[int] = []
 
-    while current + timedelta(days=(train_months + test_months) * 30 + 1) < end_dt:
-        train_end = current + timedelta(days=train_months * 30)
-        test_start = train_end
-        test_end = min(test_start + timedelta(days=test_months * 30), end_dt)
+    for window in windows:
         cfg = _build_backtest_config(
             settings,
             strategy_classes,
@@ -627,15 +622,14 @@ async def _run_wfo_windows(
             raw_config,
             symbol,
             timeframe,
-            test_start.isoformat(),
-            test_end.isoformat(),
+            window.test_start,
+            window.test_end,
             apply_global_trend_filter,
         )
         result = await _run_backtest(cfg, reader)
         window_returns.append(result.total_return_pct)
         window_sharpes.append(result.sharpe_ratio)
         window_trade_counts.append(result.total_trades)
-        current = train_end
 
     if not window_returns:
         return 0, 0, 0.0, 0.0, 100.0
