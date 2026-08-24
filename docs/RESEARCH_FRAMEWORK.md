@@ -106,10 +106,9 @@ sweeping further.
 ### Tools
 
 ```bash
-python scripts/run_backtest.py           # single config backtest
-python scripts/run_full_backtest.py      # full parameter backtest
-python scripts/run_wfo.py               # walk-forward optimization
-python scripts/run_wfo_sweep.py          # WFO across param grid
+python scripts/run_backtest.py              # single-window simulator (not live)
+python scripts/experiment_autopilot.py      # canonical WFO + gates (not live)
+python scripts/run_config_search.py         # gated search; rank on train only
 ```
 
 ### Required tests (in order)

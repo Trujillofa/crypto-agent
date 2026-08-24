@@ -17,7 +17,7 @@ import os
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -25,7 +25,10 @@ import yaml
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.backtest.experiment_autopilot import build_wfo_windows, wfo_inclusive_fetch_bounds
 from src.backtest.factory import BacktestRequest, build_backtest_config
+from src.backtest.ranking import RankedCandidate, rank_by_selection_score
+from src.backtest.research_safety import refuse_live_go
 from src.db import close_pool, get_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
@@ -78,6 +81,8 @@ class MTFMetrics:
     wfo_total_trades: int
     wfo_mean_sharpe: float
     wfo_total_return_pct: float
+    selection_return_pct: float
+    selection_sharpe: float
     passes_gates: bool
     failure_reasons: str
 
@@ -262,7 +267,6 @@ def _build_backtest_config(
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
-        fee_rate=0.001,
     )
 
 
@@ -283,17 +287,13 @@ async def _run_wfo_windows(
     reader: IndicatorReader,
 ) -> tuple[int, int, float, float]:
     """Run walk-forward out-of-sample windows."""
-    start_dt = datetime.fromisoformat(start)
-    end_dt = datetime.fromisoformat(end)
-    current = start_dt
+    windows = build_wfo_windows(start, end, train_months, test_months)
     window_returns: list[float] = []
     window_sharpes: list[float] = []
     window_trade_counts: list[int] = []
 
-    while current + timedelta(days=(train_months + test_months) * 30 + 1) < end_dt:
-        train_end = current + timedelta(days=train_months * 30)
-        test_start = train_end
-        test_end = min(test_start + timedelta(days=test_months * 30), end_dt)
+    for window in windows:
+        _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
         cfg = _build_backtest_config(
             settings,
             strategy_classes,
@@ -302,8 +302,8 @@ async def _run_wfo_windows(
             raw_config,
             symbol,
             timeframe,
-            test_start.isoformat(),
-            test_end.isoformat(),
+            test_start,
+            test_end,
             apply_trend_filter,
             allow_short,
         )
@@ -311,7 +311,6 @@ async def _run_wfo_windows(
         window_returns.append(result.total_return_pct)
         window_sharpes.append(result.sharpe_ratio)
         window_trade_counts.append(result.total_trades)
-        current = train_end
 
     if not window_returns:
         return 0, 0, 0.0, 0.0
@@ -366,6 +365,28 @@ async def _evaluate_candidate(
             candidate.allow_short,
         )
         full_result = await BacktestEngine(full_cfg, reader).run()
+        windows = build_wfo_windows(start, end, train_months, test_months)
+        if windows:
+            train_start, train_end, _, _ = wfo_inclusive_fetch_bounds(windows[0])
+            train_cfg = _build_backtest_config(
+                settings,
+                strategy_classes,
+                strategy_configs,
+                aggregator_config,
+                updated,
+                symbol,
+                timeframe,
+                train_start,
+                train_end,
+                candidate.apply_global_trend_filter,
+                candidate.allow_short,
+            )
+            train_result = await BacktestEngine(train_cfg, reader).run()
+            selection_return_pct = train_result.total_return_pct
+            selection_sharpe = train_result.sharpe_ratio
+        else:
+            selection_return_pct = 0.0
+            selection_sharpe = 0.0
 
         # Walk-forward
         (
@@ -418,6 +439,8 @@ async def _evaluate_candidate(
             wfo_total_trades=wfo_total_trades,
             wfo_mean_sharpe=wfo_mean_sharpe,
             wfo_total_return_pct=wfo_total_return_pct,
+            selection_return_pct=selection_return_pct,
+            selection_sharpe=selection_sharpe,
             passes_gates=not failures,
             failure_reasons=",".join(failures),
         )
@@ -449,7 +472,9 @@ def _write_artifacts(output_prefix: str, metrics: list[MTFMetrics]) -> tuple[Pat
 
 async def main() -> None:
     configure_logger("WARNING")
+    refuse_live_go(argv=sys.argv[1:])
     args = parse_args()
+    refuse_live_go(flags=vars(args))
 
     config_path = Path(args.config)
     base_settings = load_settings(config_path)
@@ -528,21 +553,27 @@ async def main() -> None:
         await close_pool()
 
     passing = [m for m in metrics if m.passes_gates]
-    ranking = sorted(
-        metrics,
-        key=lambda m: (
-            m.passes_gates,
-            m.wfo_total_return_pct,
-            m.wfo_mean_sharpe,
-            m.total_return_pct,
-        ),
-        reverse=True,
-    )
+    metric_by_name = {metric.name: metric for metric in metrics}
+    ranking = [
+        metric_by_name[item.name]
+        for item in rank_by_selection_score(
+            [
+                RankedCandidate(
+                    name=metric.name,
+                    selection_score=metric.selection_sharpe,
+                    holdout_score=metric.wfo_mean_sharpe,
+                )
+                for metric in metrics
+            ]
+        )
+    ]
 
-    print("\nTop 10 candidates:")
+    print("\nTop 10 candidates (selection-window rank; holdout reported only):")
     for m in ranking[:10]:
         print(
             f"  {m.name}: pass={m.passes_gates} "
+            f"sel_sharpe={m.selection_sharpe:.2f} "
+            f"sel_return={m.selection_return_pct:.2f}% "
             f"trades={m.total_trades} "
             f"wfo_trades={m.wfo_total_trades} "
             f"return={m.total_return_pct:.2f}% "

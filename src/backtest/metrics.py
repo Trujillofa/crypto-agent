@@ -5,23 +5,7 @@ from __future__ import annotations
 import math
 
 from src.backtest.models import BacktestConfig, BacktestResult, Trade
-
-_TIMEFRAME_MINUTES = {
-    "1m": 1,
-    "3m": 3,
-    "5m": 5,
-    "15m": 15,
-    "30m": 30,
-    "1h": 60,
-    "2h": 120,
-    "4h": 240,
-    "6h": 360,
-    "8h": 480,
-    "12h": 720,
-    "1d": 1440,
-    "3d": 4320,
-    "1w": 10080,
-}
+from src.backtest.timeframes import periods_per_year
 
 
 def calculate_backtest_metrics(
@@ -68,14 +52,14 @@ def calculate_backtest_metrics(
         mean_return = sum(returns) / len(returns)
         variance = sum((value - mean_return) ** 2 for value in returns) / len(returns)
         std_return = math.sqrt(variance)
-        periods_per_year = int(365 * 24 * 60 / _TIMEFRAME_MINUTES.get(config.timeframe, 1))
+        annualization = periods_per_year(config.timeframe)
         if std_return > 0:
-            sharpe_ratio = mean_return / std_return * math.sqrt(periods_per_year)
+            sharpe_ratio = mean_return / std_return * math.sqrt(annualization)
         negative_returns = [value for value in returns if value < 0]
         if negative_returns:
             downside_std = math.sqrt(sum(value**2 for value in negative_returns) / len(returns))
             if downside_std > 0:
-                sortino_ratio = mean_return / downside_std * math.sqrt(periods_per_year)
+                sortino_ratio = mean_return / downside_std * math.sqrt(annualization)
 
     return BacktestResult(
         total_return=total_return,

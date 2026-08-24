@@ -2,6 +2,9 @@
 
 `experiment_autopilot` combines baseline backtest, walk-forward validation, bootstrap uncertainty, and explicit acceptance gates in one command.
 
+This is **not a live-go**. See [`BACKTEST_AND_WFO.md`](BACKTEST_AND_WFO.md) for
+the clock, cost book, and paper→live boundary.
+
 For the higher-level RBI loop that decides when to run autoresearch, when to stop,
 and when a result can advance toward implementation or deployment, see
 [`RBI_AUTORESEARCH_LOOP.md`](RBI_AUTORESEARCH_LOOP.md).

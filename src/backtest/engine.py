@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from src.backtest.cost_overrides import (
+    CostBook,
     effective_futures_funding_rate_per_bar,
 )
 from src.backtest.metrics import calculate_backtest_metrics
 from src.backtest.models import BacktestConfig, BacktestResult, Trade
 from src.backtest.sentiment_replay import ReplaySentimentScorer
 from src.backtest.sizing import calculate_futures_order_quantity
+from src.backtest.timeframes import timeframe_hours
 from src.features.reader import FundingSettlement, IndicatorReader
 from src.strategy.aggregator import SignalAggregator
 from src.strategy.base import BaseStrategy
@@ -34,6 +36,15 @@ class BacktestEngine:
 
     def __init__(self, config: BacktestConfig, reader: IndicatorReader) -> None:
         self._config = config
+        self._cost_book = CostBook(
+            fee_rate=config.fee_rate,
+            slippage_pct=config.slippage_pct,
+            futures_funding_rate=config.futures_funding_rate,
+            funding_cadence=config.funding_cadence,
+            fixed_notional_usdt=config.fixed_notional_usdt,
+            quantity_step_size=config.quantity_step_size,
+            min_notional_usdt=config.min_notional_usdt,
+        )
         self._reader = reader
         self._logger = get_logger(self.__class__.__name__)
         self._aggregator = SignalAggregator(config.aggregator_config)
@@ -122,22 +133,24 @@ class BacktestEngine:
         return first
 
     def _resolved_cost_audit(self) -> dict[str, object]:
-        round_trip_cost_pct = 2.0 * (self._config.fee_rate + self._config.slippage_pct) * 100.0
+        round_trip_cost_pct = (
+            2.0 * (self._cost_book.fee_rate + self._cost_book.slippage_pct) * 100.0
+        )
         effective_funding = (
             effective_futures_funding_rate_per_bar(
-                self._config.futures_funding_rate,
+                self._cost_book.futures_funding_rate,
                 self._config.timeframe,
-                cadence=self._config.funding_cadence,
+                cadence=self._cost_book.funding_cadence,
             )
             if self._config.futures_mode
             else 0.0
         )
         return {
-            "fee_rate": self._config.fee_rate,
-            "slippage_pct": self._config.slippage_pct,
+            "fee_rate": self._cost_book.fee_rate,
+            "slippage_pct": self._cost_book.slippage_pct,
             "round_trip_cost_pct": round_trip_cost_pct,
-            "funding_cadence": self._config.funding_cadence,
-            "futures_funding_rate_base": self._config.futures_funding_rate,
+            "funding_cadence": self._cost_book.funding_cadence,
+            "futures_funding_rate_base": self._cost_book.futures_funding_rate,
             "effective_futures_funding_rate_per_bar": effective_funding,
             "futures_mode": self._config.futures_mode,
             "execution_profile": self._config.execution_profile,
@@ -150,6 +163,7 @@ class BacktestEngine:
 
     async def run(self) -> BacktestResult:
         """Execute the backtest."""
+        timeframe_hours(self._config.timeframe)
         self._logger.info(f"Starting backtest for {self._config.symbol}...")
         self._logger.info("Resolved backtest config audit: %s", self._resolved_cost_audit())
 
@@ -176,6 +190,8 @@ class BacktestEngine:
             # Multi-timeframe backtest
             entry_tf = mtf_timeframes.get("entry", self._config.timeframe)
             regime_tf = mtf_timeframes.get("regime", "4h")
+            timeframe_hours(entry_tf)
+            timeframe_hours(regime_tf)
 
             self._logger.info(f"Multi-timeframe mode: entry={entry_tf}, regime={regime_tf}")
 
@@ -649,7 +665,7 @@ class BacktestEngine:
 
         if self._config.futures_mode:
             leverage = max(self._config.futures_leverage, 1)
-            max_qty = self._cash / (entry_price * ((1 / leverage) + self._config.fee_rate))
+            max_qty = self._cash / (entry_price * ((1 / leverage) + self._cost_book.fee_rate))
             if self._config.use_atr_sizing and atr > 0:
                 risk_amount = self._cash * self._config.risk_per_trade
                 stop_distance = atr * self._config.atr_multiplier
@@ -663,27 +679,27 @@ class BacktestEngine:
             risk_amount = self._cash * self._config.risk_per_trade
             stop_distance = atr * self._config.atr_multiplier
             target_qty = risk_amount / stop_distance if stop_distance > 0 else 0.0
-            max_qty = (self._cash * (1 - self._config.fee_rate)) / entry_price
+            max_qty = (self._cash * (1 - self._cost_book.fee_rate)) / entry_price
             return self._cap_fixed_notional(min(target_qty, max_qty), entry_price)
 
-        quantity = (self._cash * (1 - self._config.fee_rate)) / entry_price
+        quantity = (self._cash * (1 - self._cost_book.fee_rate)) / entry_price
         return self._cap_fixed_notional(quantity, entry_price)
 
     def _cap_fixed_notional(self, quantity: float, entry_price: float) -> float:
-        if self._config.fixed_notional_usdt <= 0:
+        if self._cost_book.fixed_notional_usdt <= 0:
             capped_quantity = quantity
         else:
-            capped_quantity = min(quantity, self._config.fixed_notional_usdt / entry_price)
+            capped_quantity = min(quantity, self._cost_book.fixed_notional_usdt / entry_price)
         return self._apply_quantity_step(capped_quantity, entry_price)
 
     def _apply_quantity_step(self, quantity: float, entry_price: float) -> float:
-        if self._config.quantity_step_size <= 0:
+        if self._cost_book.quantity_step_size <= 0:
             return quantity
         return calculate_futures_order_quantity(
             order_size_usdt=quantity * entry_price,
             price=entry_price,
-            quantity_step_size=self._config.quantity_step_size,
-            min_notional_usdt=self._config.min_notional_usdt,
+            quantity_step_size=self._cost_book.quantity_step_size,
+            min_notional_usdt=self._cost_book.min_notional_usdt,
         )
 
     def _open_long(
@@ -695,10 +711,10 @@ class BacktestEngine:
         signal_time: str | None = None,
         fill_source: str = "signal_close",
     ) -> None:
-        entry_price = price * (1 + self._config.slippage_pct)
+        entry_price = price * (1 + self._cost_book.slippage_pct)
         qty = self._calculate_entry_qty(entry_price, atr)
         notional = qty * entry_price
-        fee = notional * self._config.fee_rate
+        fee = notional * self._cost_book.fee_rate
 
         if self._config.futures_mode:
             margin = self._calculate_margin(notional)
@@ -739,10 +755,10 @@ class BacktestEngine:
         signal_time: str | None = None,
         fill_source: str = "signal_close",
     ) -> None:
-        entry_price = price * (1 - self._config.slippage_pct)
+        entry_price = price * (1 - self._cost_book.slippage_pct)
         qty = self._calculate_entry_qty(entry_price, atr)
         notional = qty * entry_price
-        fee = notional * self._config.fee_rate
+        fee = notional * self._cost_book.fee_rate
 
         if self._config.futures_mode:
             margin = self._calculate_margin(notional)
@@ -780,16 +796,16 @@ class BacktestEngine:
         margin_used = self._position_margin_used
 
         if is_long:
-            exit_price = price * (1 - self._config.slippage_pct)
+            exit_price = price * (1 - self._cost_book.slippage_pct)
             gross_pnl = (exit_price - self._position_entry_price) * qty
             trade_side = "BUY"
         else:
-            exit_price = price * (1 + self._config.slippage_pct)
+            exit_price = price * (1 + self._cost_book.slippage_pct)
             gross_pnl = (self._position_entry_price - exit_price) * qty
             trade_side = "SELL"
 
         exit_notional = qty * exit_price
-        exit_fee = exit_notional * self._config.fee_rate
+        exit_fee = exit_notional * self._cost_book.fee_rate
 
         pnl = gross_pnl - self._position_entry_fee - exit_fee - self._position_funding_paid
         if self._config.futures_mode:
@@ -856,9 +872,9 @@ class BacktestEngine:
             return
 
         per_bar_rate = effective_futures_funding_rate_per_bar(
-            self._config.futures_funding_rate,
+            self._cost_book.futures_funding_rate,
             self._config.timeframe,
-            cadence=self._config.funding_cadence,
+            cadence=self._cost_book.funding_cadence,
         )
         funding_cost = abs(self._position_qty) * current_price * per_bar_rate
         self._cash -= funding_cost

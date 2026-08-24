@@ -13,7 +13,7 @@ import os
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -21,7 +21,10 @@ import yaml
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine, BacktestResult
+from src.backtest.experiment_autopilot import build_wfo_windows, wfo_inclusive_fetch_bounds
 from src.backtest.factory import BacktestRequest, build_backtest_config
+from src.backtest.ranking import RankedCandidate, rank_by_selection_score
+from src.backtest.research_safety import refuse_live_go
 from src.db import close_pool, get_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.main import _resolve_strategy_config, load_settings
@@ -77,6 +80,8 @@ class CandidateMetrics:
     wfo_total_return_pct: float
     bootstrap_p_loss_pct: float
     profit_concentration_pct: float
+    selection_return_pct: float
+    selection_sharpe: float
     passes_gates: bool
     failure_reasons: str
 
@@ -561,7 +566,6 @@ def _build_backtest_config(
         strategy_classes=strategy_classes,
         strategy_configs=strategy_configs,
         aggregator_config=aggregator_config,
-        fee_rate=0.001,
     )
 
 
@@ -604,17 +608,13 @@ async def _run_wfo_windows(
     reader: IndicatorReader,
 ) -> tuple[int, float, float, float]:
     """Run rolling out-of-sample windows and return summary metrics."""
-    start_dt = datetime.fromisoformat(start)
-    end_dt = datetime.fromisoformat(end)
-    current = start_dt
+    windows = build_wfo_windows(start, end, train_months, test_months)
     window_returns: list[float] = []
     window_sharpes: list[float] = []
     window_trade_counts: list[int] = []
 
-    while current + timedelta(days=(train_months + test_months) * 30 + 1) < end_dt:
-        train_end = current + timedelta(days=train_months * 30)
-        test_start = train_end
-        test_end = min(test_start + timedelta(days=test_months * 30), end_dt)
+    for window in windows:
+        _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
         cfg = _build_backtest_config(
             settings,
             strategy_classes,
@@ -623,15 +623,14 @@ async def _run_wfo_windows(
             raw_config,
             symbol,
             timeframe,
-            test_start.isoformat(),
-            test_end.isoformat(),
+            test_start,
+            test_end,
             apply_global_trend_filter,
         )
         result = await _run_backtest(cfg, reader)
         window_returns.append(result.total_return_pct)
         window_sharpes.append(result.sharpe_ratio)
         window_trade_counts.append(result.total_trades)
-        current = train_end
 
     if not window_returns:
         return 0, 0, 0.0, 0.0, 100.0
@@ -692,6 +691,27 @@ async def _evaluate_candidate(
             candidate.apply_global_trend_filter,
         )
         full_result = await _run_backtest(full_config, reader)
+        windows = build_wfo_windows(start, end, train_months, test_months)
+        if windows:
+            train_start, train_end, _, _ = wfo_inclusive_fetch_bounds(windows[0])
+            train_config = _build_backtest_config(
+                settings,
+                strategy_classes,
+                strategy_configs,
+                aggregator_config,
+                updated_raw_config,
+                symbol,
+                timeframe,
+                train_start,
+                train_end,
+                candidate.apply_global_trend_filter,
+            )
+            train_result = await _run_backtest(train_config, reader)
+            selection_return_pct = train_result.total_return_pct
+            selection_sharpe = train_result.sharpe_ratio
+        else:
+            selection_return_pct = 0.0
+            selection_sharpe = 0.0
         trade_returns = [trade.return_pct for trade in full_result.trades]
         bootstrap_p_loss_pct = _compute_bootstrap_loss_probability(
             trade_returns, bootstrap_iterations
@@ -751,6 +771,8 @@ async def _evaluate_candidate(
             wfo_total_return_pct=wfo_total_return_pct,
             bootstrap_p_loss_pct=bootstrap_p_loss_pct,
             profit_concentration_pct=profit_concentration_pct,
+            selection_return_pct=selection_return_pct,
+            selection_sharpe=selection_sharpe,
             passes_gates=not failure_reasons,
             failure_reasons=",".join(failure_reasons),
         )
@@ -784,7 +806,9 @@ def _write_artifacts(output_prefix: str, metrics: list[CandidateMetrics]) -> tup
 async def main() -> None:
     """Entry point."""
     configure_logger("WARNING")
+    refuse_live_go(argv=sys.argv[1:])
     args = parse_args()
+    refuse_live_go(flags=vars(args))
 
     config_path = Path(args.config)
     base_settings = load_settings(config_path)
@@ -861,22 +885,29 @@ async def main() -> None:
         await close_pool()
 
     passing = [metric for metric in metrics if metric.passes_gates]
-    ranking = sorted(
-        metrics,
-        key=lambda item: (
-            item.passes_gates,
-            item.wfo_total_return_pct,
-            item.wfo_mean_sharpe,
-            item.total_return_pct,
-            -item.bootstrap_p_loss_pct,
-        ),
-        reverse=True,
-    )
+    ranked_names = {
+        item.name: item
+        for item in rank_by_selection_score(
+            [
+                RankedCandidate(
+                    name=metric.name,
+                    selection_score=metric.selection_sharpe,
+                    holdout_score=metric.wfo_mean_sharpe,
+                )
+                for metric in metrics
+            ]
+        )
+    }
+    ranking = list(ranked_names.values())
+    metric_by_name = {metric.name: metric for metric in metrics}
 
-    print("\nTop candidates:")
-    for metric in ranking[:10]:
+    print("\nTop candidates (selection-window rank; holdout reported only):")
+    for ranked in ranking[:10]:
+        metric = metric_by_name[ranked.name]
         print(
             f"{metric.name}: pass={metric.passes_gates} "
+            f"sel_sharpe={metric.selection_sharpe:.2f} "
+            f"sel_return={metric.selection_return_pct:.2f}% "
             f"trades={metric.total_trades} "
             f"wfo_trades={metric.wfo_total_trades} "
             f"return={metric.total_return_pct:.2f}% "

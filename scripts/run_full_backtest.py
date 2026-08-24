@@ -8,6 +8,7 @@ import sys
 sys.path.append(os.getcwd())
 
 from src.backtest.engine import BacktestConfig, BacktestEngine
+from src.backtest.research_safety import refuse_live_go
 from src.db import close_pool, init_pool
 from src.features.reader import IndicatorReader
 from src.strategy.bollinger_strategy import BollingerBounceStrategy
@@ -16,6 +17,7 @@ from src.strategy.momentum_strategy import MomentumStrategy
 
 
 async def main():
+    refuse_live_go(argv=sys.argv[1:])
     parser = argparse.ArgumentParser(description="Run crypto strategy backtest")
     parser.add_argument("--symbol", type=str, required=True, help="Trading pair (e.g. BTCUSDT)")
     parser.add_argument("--timeframe", type=str, default="1m", help="Timeframe (e.g. 1m, 5m, 1h)")
@@ -25,6 +27,7 @@ async def main():
     parser.add_argument("--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)")
 
     args = parser.parse_args()
+    refuse_live_go(flags=vars(args))
 
     db_config = {
         "host": os.getenv("DB_HOST", "localhost"),

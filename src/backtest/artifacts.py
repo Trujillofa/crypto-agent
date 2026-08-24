@@ -74,6 +74,7 @@ class BacktestManifest:
     funding_fingerprint: str | None = None
     seed: int | None = None
     source_config: str | None = None
+    trades_fingerprint: str | None = None
 
 
 def create_manifest(
@@ -90,6 +91,13 @@ def create_manifest(
     """Create a deterministic manifest for a completed run."""
     config_payload = _normalise(config)
     result_payload = _normalise(result)
+    trades_payload: list[object] = []
+    if isinstance(result_payload, dict):
+        raw_trades = result_payload.get("trades", [])
+        if isinstance(raw_trades, list):
+            trades_payload = raw_trades
+        result_payload.pop("trades", None)
+    trades_fingerprint = hashlib.sha256(canonical_json(trades_payload).encode("utf-8")).hexdigest()
     identity = {
         "semantics_version": semantics_version,
         "git_revision": revision,
@@ -110,6 +118,7 @@ def create_manifest(
         funding_fingerprint=funding_fingerprint,
         seed=seed,
         source_config=source_config,
+        trades_fingerprint=trades_fingerprint,
     )
 
 
