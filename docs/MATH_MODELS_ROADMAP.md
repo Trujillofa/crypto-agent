@@ -46,18 +46,18 @@ surface is still unauthorized work.
 |-------|----------------------|
 | Validation | WFO + bootstrap + concentration gates live in `src/backtest/experiment_autopilot.py` (`GateConfig`, `WfoWindow`). Drive with `scripts/experiment_autopilot.py` / `scripts/run_wfo.py`. |
 | Primary technical stack | `TrendPullbackStrategy` plus MTF (`mtf_breakout`, `mtf_continuation`, `multi_timeframe_regime`, `regime_router`). Production agents on this stack are **paper / disarmed**; several configs emit zero fills at current aggregator thresholds. |
-| Engine | `src/backtest/engine.py` evaluates at bar close and fills at **next open** (`fill_source="next_bar_open"`). Futures qty is step-truncated in `src/backtest/sizing.py`. |
+| Engine | `execution_parity_v2` evaluates at bar close and fills at next-bar open (`fill_source="next_bar_open"`). `legacy_v1` remains the signal-close compatibility path. The `scripts/experiment_autopilot.py` CLI defaults to `execution_parity_v2`. Futures qty is step-truncated in `src/backtest/sizing.py`. |
 | Costs | `src/backtest/cost_overrides.py` (`CostProfile`: `legacy` / `realistic` / `corrected`). Corrected book: fee `0.0004`, slip `0.0002`, `scaled_8h` funding. Model work must not edit cost overrides. |
 | Funding | `FundingSettlement` via `src/features/reader.py`; v2 engine applies settlements and fingerprints them. Fees + funding move Sharpe; ignore them and the ranking is fiction. |
 | Features | `src/features/technical.py` already has ATR, `atr_pct`, `volatility_percentile`, `ema_slope_50`, `trend_consistency`. **No ADX. No GARCH. No HMM.** |
-| Sizing / stops today | Default is fixed `order_size_usdt`. `use_atr_sizing` is **implemented on both the paper and backtest paths but disabled in every active agent config**. Stops are ATR multiples (`sl_atr_multiplier` / `tp_atr_multiplier`). |
+| Sizing / stops today | Default is fixed `order_size_usdt`. `use_atr_sizing` is implemented on paper and backtest paths. `BacktestConfig` defaults `use_atr_sizing=false`. Active production configs are mixed: `settings.sol_1h_trend_pullback_overlay_live.yaml`, `settings.sol_trend_pullback_sparse.yaml`, and `settings.sentiment_macro.yaml` set `false`; `settings.sol_4h_panic_block_paper.yaml` omits the override and therefore inherits `use_atr_sizing=true` from `config/base.yaml`. Stops are ATR multiples (`sl_atr_multiplier` / `tp_atr_multiplier`). |
 | Risk caps (do not over-claim) | Live/paper `RiskManager` can cap `max_position_pct`. **`BacktestEngine` does not call `RiskManager`. `BacktestConfig` has no `max_position_pct`.** The simulator does **not** already apply RiskManager caps. |
 | Regime today | Heuristic router on slope / vol percentile / trend consistency. That is the **baseline a new ADX or HMM flag would have to beat**, not a green light to add another strategy. |
 | RL | `src/rl/agent.py` is a research `TradingGymEnv` (3-action long/flat, Sharpe-delta reward). Not wired into `src/main.py`. |
 | Synthetic MC | `src/backtest/synthetic.py` already has a two-state Gaussian + Markov path and stress scenarios. Autopilot already bootstraps trade returns. Do **not** reuse `fit_two_state_regime` for live classification. |
 
 A model that sizes a silent overlay (no WFO fills) cannot beat a baseline. Comparable
-exposure is a gate, not an afterthought — see [Winning by silence](#winning-by-silence).
+exposure is a gate, not an afterthought — see [Winning by silence](#3-winning-by-silence).
 
 ---
 
