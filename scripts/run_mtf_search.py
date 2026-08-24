@@ -572,6 +572,8 @@ async def main() -> None:
     for m in ranking[:10]:
         print(
             f"  {m.name}: pass={m.passes_gates} "
+            f"sel_sharpe={m.selection_sharpe:.2f} "
+            f"sel_return={m.selection_return_pct:.2f}% "
             f"trades={m.total_trades} "
             f"wfo_trades={m.wfo_total_trades} "
             f"return={m.total_return_pct:.2f}% "

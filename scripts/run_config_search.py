@@ -906,6 +906,8 @@ async def main() -> None:
         metric = metric_by_name[ranked.name]
         print(
             f"{metric.name}: pass={metric.passes_gates} "
+            f"sel_sharpe={metric.selection_sharpe:.2f} "
+            f"sel_return={metric.selection_return_pct:.2f}% "
             f"trades={metric.total_trades} "
             f"wfo_trades={metric.wfo_total_trades} "
             f"return={metric.total_return_pct:.2f}% "
