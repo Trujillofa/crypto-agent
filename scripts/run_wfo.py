@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import mean
 
+sys.path.append(os.getcwd())
+
 from src.backtest.research_safety import refuse_live_go
 
 
@@ -172,8 +174,9 @@ def parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    refuse_live_go(argv=sys.argv[1:])
     args = parse_args()
-    refuse_live_go(argv=sys.argv[1:], flags=vars(args))
+    refuse_live_go(flags=vars(args))
     asyncio.run(
         wfo(
             symbol=args.symbol,

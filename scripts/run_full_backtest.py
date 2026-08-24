@@ -27,6 +27,7 @@ async def main():
     parser.add_argument("--fee", type=float, default=0.001, help="Trading fee rate (0.001 = 0.1%%)")
 
     args = parser.parse_args()
+    refuse_live_go(flags=vars(args))
 
     db_config = {
         "host": os.getenv("DB_HOST", "localhost"),

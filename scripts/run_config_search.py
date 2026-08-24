@@ -806,8 +806,9 @@ def _write_artifacts(output_prefix: str, metrics: list[CandidateMetrics]) -> tup
 async def main() -> None:
     """Entry point."""
     configure_logger("WARNING")
+    refuse_live_go(argv=sys.argv[1:])
     args = parse_args()
-    refuse_live_go(argv=sys.argv[1:], flags=vars(args))
+    refuse_live_go(flags=vars(args))
 
     config_path = Path(args.config)
     base_settings = load_settings(config_path)

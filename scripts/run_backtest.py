@@ -90,8 +90,9 @@ async def main():
         help="Execution semantics; legacy remains the default for reproducibility",
     )
 
+    refuse_live_go(argv=sys.argv[1:])
     args = parser.parse_args()
-    refuse_live_go(argv=sys.argv[1:], flags=vars(args))
+    refuse_live_go(flags=vars(args))
 
     # Load settings from config file
     try:

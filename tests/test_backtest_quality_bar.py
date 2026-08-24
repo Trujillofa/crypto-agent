@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import FrozenInstanceError, fields, replace
 from datetime import datetime
 from pathlib import Path
@@ -699,3 +701,33 @@ async def test_engine_rejects_invalid_mtf_timeframe_before_fetch() -> None:
         await BacktestEngine(config, reader).run()
     assert "fetch_range" not in calls
     assert "fetch_multi_timeframe" not in calls
+
+
+RESEARCH_CLIS = [
+    "scripts/run_backtest.py",
+    "scripts/experiment_autopilot.py",
+    "scripts/run_wfo.py",
+    "scripts/run_config_search.py",
+    "scripts/run_mtf_search.py",
+    "scripts/run_full_backtest.py",
+]
+
+
+@pytest.mark.parametrize("script", RESEARCH_CLIS)
+def test_research_cli_refuses_live_flag_when_actually_invoked(script: str) -> None:
+    """The refusal must fire in a real process, not just in a unit call.
+
+    ``refuse_live_go`` used to run after ``parse_args()``, so argparse exited
+    with "unrecognized arguments: --live" and ``LiveGoRefused`` never raised.
+    The unit test still passed. Only invoking the script proves the guard is
+    reachable, so assert on the refusal message rather than on exit status.
+    """
+    completed = subprocess.run(
+        [sys.executable, script, "--live"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert completed.returncode != 0
+    assert "not a live-go" in completed.stderr, completed.stderr
+    assert "unrecognized arguments" not in completed.stderr

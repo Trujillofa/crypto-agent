@@ -137,8 +137,9 @@ def parse_args() -> argparse.Namespace:
         "--synthetic-fit-end",
         help="Frozen ISO end for diagnostic regime fit",
     )
+    refuse_live_go(argv=sys.argv[1:])
     args = parser.parse_args()
-    refuse_live_go(argv=sys.argv[1:], flags=vars(args))
+    refuse_live_go(flags=vars(args))
     if args.synthetic_diagnostic and (not args.synthetic_fit_start or not args.synthetic_fit_end):
         parser.error(
             "--synthetic-diagnostic requires --synthetic-fit-start and --synthetic-fit-end"
