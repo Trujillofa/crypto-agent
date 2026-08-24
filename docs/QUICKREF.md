@@ -54,7 +54,7 @@ curl http://localhost:8000/metrics  # Local metrics
 | Risk Manager | `src/risk/manager.py` |
 | Telegram | `src/notifications/telegram.py` |
 | Backtest | `scripts/run_backtest.py` |
-| Math models roadmap | `docs/MATH_MODELS_ROADMAP.md` |
+| Math models (PARKED contingency) | `docs/MATH_MODELS_ROADMAP.md` |
 
 ---
 
