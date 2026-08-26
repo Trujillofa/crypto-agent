@@ -29,6 +29,7 @@ from src.backtest.experiment_autopilot import (  # noqa: E402
     compound_returns_pct,
     evaluate_gates,
     profit_concentration_pct,
+    wfo_inclusive_fetch_bounds,
 )
 from src.backtest.factory import (
     BacktestRequest,
@@ -485,13 +486,14 @@ async def run_experiment_evaluation(
                         train_start=window.train_start,
                         train_end=window.train_end,
                     )
+                _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
                 window_config = _build_backtest_config(
                     settings=settings,
                     raw_config=raw_config,
                     symbol=resolved_symbol,
                     timeframe=resolved_timeframe,
-                    start=window.test_start,
-                    end=window.test_end,
+                    start=test_start,
+                    end=test_end,
                     strategy_classes=strategy_classes,
                     strategy_configs=strategy_configs,
                     aggregator_config=aggregator_config,

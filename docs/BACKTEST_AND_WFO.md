@@ -40,6 +40,11 @@ Bar `time` is the **open**. A `1h` bar at `10:00` is `[10:00, 11:00)`.
 Strategies see completed OHLCV for that bar. v2 queues the fill for the next
 open. Unknown timeframe labels raise; they are not treated as 1 minute.
 
+WFO test windows are `[start, end)`. `fetch_range` uses `time >= start AND
+time <= end`, so canonical autopilot (and the search CLIs) translate `end`
+with `wfo_inclusive_fetch_bounds()` before the fetch. Frozen historical
+artifacts stay as written; do not rerun them to “fix” old gates.
+
 ## Cost book
 
 Frozen snapshot: `fee_rate` (commission / side of notional), `slippage_pct`

@@ -13,7 +13,10 @@ and when a result can advance toward implementation or deployment, see
 
 - Runs baseline backtest on a full range
 - Builds rolling walk-forward windows (train/test month spans)
-- Runs out-of-sample backtests per test window
+- Runs out-of-sample backtests per test window. Windows are half-open
+  `[test_start, test_end)`; `IndicatorReader` is inclusive, so future runs
+  pass `wfo_inclusive_fetch_bounds()` into the engine. Existing JSON/Markdown
+  artifacts are not rewritten.
 - Estimates `P(loss)` with bootstrap trade-return resampling
 - Checks gates:
   - minimum trades
