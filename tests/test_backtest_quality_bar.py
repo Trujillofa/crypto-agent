@@ -421,6 +421,7 @@ def _inclusive_sql_reader(rows: list[dict[str, object]]) -> IndicatorReader:
 def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
     config_src = Path("scripts/run_config_search.py").read_text(encoding="utf-8")
     mtf_src = Path("scripts/run_mtf_search.py").read_text(encoding="utf-8")
+    autopilot_src = Path("scripts/experiment_autopilot.py").read_text(encoding="utf-8")
     for src in (config_src, mtf_src):
         assert "build_wfo_windows(start, end, train_months, test_months)" in src
         assert "wfo_inclusive_fetch_bounds(" in src
@@ -429,6 +430,10 @@ def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
         assert "months * 30" not in src
         assert "train_months * 30" not in src
         assert "test_months * 30" not in src
+    assert "wfo_inclusive_fetch_bounds(window)" in autopilot_src
+    assert "                    start=window.test_start," not in autopilot_src
+    assert "                    start=test_start," in autopilot_src
+    assert "                    end=test_end," in autopilot_src
     windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
     sequence = [(window.test_start, window.test_end) for window in windows]
     assert sequence
@@ -534,6 +539,54 @@ async def test_boundary_bar_appears_only_in_wfo_test_dataset() -> None:
     engine_test_times = [str(row["time"]) for row in test_reader.fetched_ranges[0]]
     assert boundary not in engine_train_times
     assert boundary in engine_test_times
+
+
+def _wfo_test_config(start: str, end: str) -> BacktestConfig:
+    return BacktestConfig(
+        symbol="SOLUSDT",
+        timeframe="1h",
+        start_date=start,
+        end_date=end,
+        fee_rate=0.0,
+        slippage_pct=0.0,
+        apply_global_trend_filter=False,
+        execution_profile="execution_parity_v2",
+        strategy_classes=[BuyOnClose100],
+        aggregator_config={"min_agreement": 1, "buy_threshold": 0.5, "sell_threshold": -0.5},
+    )
+
+
+@pytest.mark.asyncio
+async def test_canonical_wfo_excludes_exclusive_test_end_fill() -> None:
+    """A fill sitting on test_end is OOS contamination under inclusive SQL.
+
+    Autopilot used to pass raw window.test_end into fetch_range (time <= end).
+    v2 fills at the next bar open, so a signal on the last in-window bar plus a
+    bar exactly at test_end completes a trade that a half-open window would
+    leave unfilled.
+    """
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    window = windows[0]
+    signal_time = "2024-09-30T23:00:00"
+    fill_time = window.test_end
+    if "T" not in fill_time:
+        fill_time = f"{fill_time}T00:00:00"
+    rows = [
+        {"time": signal_time, "open_price": 99.0, "close_price": 100.0},
+        {"time": fill_time, "open_price": 101.0, "close_price": 102.0},
+    ]
+    raw = await BacktestEngine(
+        _wfo_test_config(window.test_start, window.test_end),
+        _inclusive_sql_reader(rows),
+    ).run()
+    _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
+    corrected = await BacktestEngine(
+        _wfo_test_config(test_start, test_end),
+        _inclusive_sql_reader(rows),
+    ).run()
+    assert raw.total_trades == 1
+    assert corrected.total_trades == 0
+    assert corrected.unfilled_signal_count == 1
 
 
 def test_identical_trade_traces_share_fingerprint_and_payload() -> None:
