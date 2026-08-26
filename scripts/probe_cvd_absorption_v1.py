@@ -459,20 +459,49 @@ def slim_row(row: dict) -> dict:
     }
 
 
-def render_table(title: str, ranked: dict, *, fetch_complete: bool, promote: bool) -> str:
+def terminal_rank_fields(*, fetch_complete: bool, ranked: dict, holdout: bool) -> dict:
+    """Terminal archive fields derived from ranking outcome, not metric values."""
+    if not fetch_complete:
+        return {"disposition": "BLOCKED_ON_DATA", "holdout_sealed": True}
+    if holdout:
+        return {"holdout_sealed": False}
+    if ranked.get("winner_id") is None:
+        return {"disposition": "SCREEN_FAIL", "holdout_sealed": True}
+    return {"holdout_sealed": False}
+
+
+def render_table(
+    title: str,
+    ranked: dict,
+    *,
+    fetch_complete: bool,
+    promote: bool,
+    disposition: str | None = None,
+    holdout_sealed: bool | None = None,
+) -> str:
     lines = [
         f"# {title}",
         "",
-        f"**promote:** `{str(promote).lower()}`",
-        "**live_go:** `false`",
-        f"**fetch_complete:** `{str(fetch_complete).lower()}`",
-        f"**eligible:** {ranked['eligible_ids'] or 'none'}",
-        f"**soft_pass:** {ranked['soft_pass_ids'] or 'none'}",
-        f"**winner_id:** {ranked['winner_id']}",
-        "",
-        "| id | N | div | side | n | NP | PF | E | DD | soft |",
-        "|---:|--:|-----|------|--:|---:|---:|--:|---:|:----:|",
     ]
+    if disposition is not None:
+        lines.append(f"**disposition:** `{disposition}`")
+    lines.append(f"**promote:** `{str(promote).lower()}`")
+    lines.append("**live_go:** `false`")
+    lines.append(f"**fetch_complete:** `{str(fetch_complete).lower()}`")
+    if holdout_sealed is not None:
+        lines.append(f"**holdout_sealed:** `{str(holdout_sealed).lower()}`")
+        if holdout_sealed:
+            lines.append("**holdout:** sealed")
+    lines.extend(
+        [
+            f"**eligible:** {ranked['eligible_ids'] or 'none'}",
+            f"**soft_pass:** {ranked['soft_pass_ids'] or 'none'}",
+            f"**winner_id:** {ranked['winner_id']}",
+            "",
+            "| id | N | div | side | n | NP | PF | E | DD | soft |",
+            "|---:|--:|-----|------|--:|---:|---:|--:|---:|:----:|",
+        ]
+    )
     for row in ranked["rows"]:
         pf = row["profit_factor"]
         pf_s = "inf" if math.isinf(pf) else f"{pf:.3f}"
@@ -615,8 +644,11 @@ def write_rank_artifacts(
     ranked: dict,
     lock: dict,
     extra: dict,
+    holdout: bool,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    fetch_complete = bool(extra.get("fetch_complete"))
+    terminal = terminal_rank_fields(fetch_complete=fetch_complete, ranked=ranked, holdout=holdout)
     payload = {
         "search_id": lock["search_id"],
         "promote": False,
@@ -626,14 +658,17 @@ def write_rank_artifacts(
         "soft_pass_ids": ranked["soft_pass_ids"],
         "rows": [slim_row(row) for row in ranked["rows"]],
         **extra,
+        **terminal,
     }
     (out_dir / f"{stem}.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     (out_dir / f"{stem}.md").write_text(
         render_table(
             f"CVD absorption v1 — {stem}",
             ranked,
-            fetch_complete=bool(extra.get("fetch_complete")),
+            fetch_complete=fetch_complete,
             promote=False,
+            disposition=payload.get("disposition"),
+            holdout_sealed=payload.get("holdout_sealed"),
         ),
         encoding="utf-8",
     )
@@ -705,8 +740,18 @@ def run_rank(lock: dict, cache_dir: Path, out_dir: Path, *, holdout: bool) -> di
             "winner_id": None,
             "rows": [],
         }
-        write_rank_artifacts(out_dir, stem=stem, ranked=empty, lock=lock, extra=extra)
-        return {**empty, **extra, "stem": stem}
+        terminal = terminal_rank_fields(fetch_complete=False, ranked=empty, holdout=holdout)
+        write_rank_artifacts(
+            out_dir, stem=stem, ranked=empty, lock=lock, extra=extra, holdout=holdout
+        )
+        return {
+            **empty,
+            **extra,
+            **terminal,
+            "promote": False,
+            "live_go": False,
+            "stem": stem,
+        }
 
     bars, half_spread, trade_count = load_closed_bars_from_cache(
         cache_path, bar_sec=int(lock["bar_sec"])
@@ -728,8 +773,16 @@ def run_rank(lock: dict, cache_dir: Path, out_dir: Path, *, holdout: bool) -> di
         "half_spread_bps": half_spread,
         "taker_fee_bps": 10.0,
     }
-    write_rank_artifacts(out_dir, stem=stem, ranked=ranked, lock=lock, extra=extra)
-    return {**ranked, **extra, "stem": stem}
+    terminal = terminal_rank_fields(fetch_complete=True, ranked=ranked, holdout=holdout)
+    write_rank_artifacts(out_dir, stem=stem, ranked=ranked, lock=lock, extra=extra, holdout=holdout)
+    return {
+        **ranked,
+        **extra,
+        **terminal,
+        "promote": False,
+        "live_go": False,
+        "stem": stem,
+    }
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

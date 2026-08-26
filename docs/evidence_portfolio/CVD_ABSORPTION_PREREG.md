@@ -125,7 +125,7 @@ No `mode: live`.
 
 **YES**, **NO_PULSE**, or **BLOCKED_ON_DATA**
 
-Verdict: **pending** (lock signed before data).
+Verdict: **NO_PULSE** — develop SCREEN_FAIL; 0/16 soft-pass; holdout sealed.
 
 ## Lock sign-off
 

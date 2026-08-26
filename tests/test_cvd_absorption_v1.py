@@ -334,3 +334,112 @@ def test_run_rank_complete_writes_logical_cache_path(
     assert payload["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
     assert result["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
     assert not Path(payload["cache_path"]).is_absolute()
+
+
+def _zero_soft_pass_ranked() -> dict:
+    return {
+        "winner_id": None,
+        "eligible_ids": [],
+        "soft_pass_ids": [],
+        "rows": [
+            {
+                "id": 1,
+                "lookback_n": 10,
+                "divergence": "price_ext_cvd_not",
+                "side_rule": "fade",
+                "n": 10,
+                "net_pnl": -1.0,
+                "profit_factor": 0.5,
+                "expectancy": -0.1,
+                "max_dd_pct": 0.01,
+                "soft_pass": False,
+                "eligible": False,
+            }
+        ],
+    }
+
+
+def _patch_complete_zero_soft_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "scripts.probe_cvd_absorption_v1.cache_covers_end",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "scripts.probe_cvd_absorption_v1.load_closed_bars_from_cache",
+        lambda *args, **kwargs: ([], 0.0008, 0),
+    )
+    monkeypatch.setattr(
+        "scripts.probe_cvd_absorption_v1.screen_window",
+        lambda *args, **kwargs: _zero_soft_pass_ranked(),
+    )
+
+
+def _assert_screen_fail_terminal(payload: dict) -> None:
+    assert payload["disposition"] == "SCREEN_FAIL"
+    assert payload["holdout_sealed"] is True
+    assert payload["promote"] is False
+    assert payload["live_go"] is False
+    assert payload["winner_id"] is None
+
+
+def test_run_rank_complete_zero_soft_pass_writes_screen_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _patch_complete_zero_soft_pass(monkeypatch)
+    cache_dir = tmp_path / "data" / "microstructure" / "cvd_absorption_v1"
+    out_dir = tmp_path / "out"
+    result = run_rank(LOCK, cache_dir, out_dir, holdout=False)
+    ranked = _zero_soft_pass_ranked()
+    assert result["winner_id"] is None
+    assert result["eligible_ids"] == []
+    assert result["soft_pass_ids"] == []
+    assert any(row["soft_pass"] is False for row in ranked["rows"])
+    payload = json.loads((out_dir / "develop_rank.json").read_text(encoding="utf-8"))
+    _assert_screen_fail_terminal(payload)
+    _assert_screen_fail_terminal(result)
+    assert payload["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
+    assert result["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
+    assert not Path(payload["cache_path"]).is_absolute()
+    markdown = (out_dir / "develop_rank.md").read_text(encoding="utf-8")
+    assert "SCREEN_FAIL" in markdown
+    assert "sealed" in markdown.lower()
+    assert "holdout" in markdown.lower()
+
+
+def test_run_rank_rerun_keeps_screen_fail_terminal_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _patch_complete_zero_soft_pass(monkeypatch)
+    cache_dir = tmp_path / "data" / "microstructure" / "cvd_absorption_v1"
+    out_dir = tmp_path / "out"
+    first = run_rank(LOCK, cache_dir, out_dir, holdout=False)
+    second = run_rank(LOCK, cache_dir, out_dir, holdout=False)
+    payload = json.loads((out_dir / "develop_rank.json").read_text(encoding="utf-8"))
+    _assert_screen_fail_terminal(first)
+    _assert_screen_fail_terminal(second)
+    _assert_screen_fail_terminal(payload)
+
+
+def test_run_rank_incomplete_writes_blocked_on_data_not_screen_fail(tmp_path: Path):
+    cache_dir = tmp_path / "data" / "microstructure" / "cvd_absorption_v1"
+    out_dir = tmp_path / "out"
+    result = run_rank(LOCK, cache_dir, out_dir, holdout=False)
+    payload = json.loads((out_dir / "develop_rank.json").read_text(encoding="utf-8"))
+    assert payload["fetch_complete"] is False
+    assert result["fetch_complete"] is False
+    assert payload["disposition"] == "BLOCKED_ON_DATA"
+    assert result["disposition"] == "BLOCKED_ON_DATA"
+    assert payload["disposition"] != "SCREEN_FAIL"
+    assert payload["holdout_sealed"] is True
+    assert result["holdout_sealed"] is True
+
+
+def test_run_rank_holdout_refused_without_develop_winner(tmp_path: Path):
+    cache_dir = tmp_path / "data" / "microstructure" / "cvd_absorption_v1"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True)
+    (out_dir / "develop_rank.json").write_text(json.dumps({"winner_id": None}), encoding="utf-8")
+    with pytest.raises(LockTamper, match="no develop winner"):
+        run_rank(LOCK, cache_dir, out_dir, holdout=True)
+    assert not (out_dir / "holdout_winner.json").exists()
+    assert not (out_dir / "holdout_winner.md").exists()
