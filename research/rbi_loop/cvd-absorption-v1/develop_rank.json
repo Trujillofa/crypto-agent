@@ -222,7 +222,7 @@
     "start": "2026-06-09T00:00:00+00:00",
     "end_exclusive": "2026-07-16T00:00:00+00:00"
   },
-  "cache_path": "/home/yderf/Projects/trading/TRADING/crypto-agent/data/microstructure/cvd_absorption_v1/BTCUSDT/aggtrades_20260609_20260715.jsonl",
+  "cache_path": "data/microstructure/cvd_absorption_v1/BTCUSDT/aggtrades_20260609_20260715.jsonl",
   "trade_count": 31352930,
   "bar_count": 53280,
   "half_spread_bps": 0.0008094805718621855,

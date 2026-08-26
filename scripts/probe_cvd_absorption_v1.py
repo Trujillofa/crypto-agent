@@ -179,6 +179,13 @@ def cache_path_for(cache_dir: Path, symbol: str, start: datetime, end_exclusive:
     return cache_dir / symbol / f"aggtrades_{label}.jsonl"
 
 
+def serialized_cache_path(lock: dict, symbol: str, start: datetime, end_exclusive: datetime) -> str:
+    cache_dir = Path(lock["cache_dir"])
+    if cache_dir.is_absolute():
+        raise IllegalCache(f"lock cache_dir must be repository-relative: {cache_dir}")
+    return cache_path_for(cache_dir, symbol, start, end_exclusive).as_posix()
+
+
 def read_last_jsonl_record(path: Path) -> dict | None:
     if not path.is_file() or path.stat().st_size == 0:
         return None
@@ -681,6 +688,7 @@ def run_rank(lock: dict, cache_dir: Path, out_dir: Path, *, holdout: bool) -> di
     assert_window_legal(start_ms, end_ms, lock)
     cache_path = cache_path_for(cache_dir, symbol, start, end)
     assert_legal_cache_path(cache_path, lock)
+    logical_cache_path = serialized_cache_path(lock, symbol, start, end)
     complete = cache_covers_end(cache_path, end_ms - 1)
     if not complete:
         extra = {
@@ -689,7 +697,7 @@ def run_rank(lock: dict, cache_dir: Path, out_dir: Path, *, holdout: bool) -> di
             "blocked_reason": "develop fetch incomplete"
             if not holdout
             else "holdout fetch incomplete",
-            "cache_path": str(cache_path),
+            "cache_path": logical_cache_path,
         }
         empty = {
             "eligible_ids": [],
@@ -714,7 +722,7 @@ def run_rank(lock: dict, cache_dir: Path, out_dir: Path, *, holdout: bool) -> di
     extra = {
         "fetch_complete": True,
         "window": {"start": start.isoformat(), "end_exclusive": end.isoformat()},
-        "cache_path": str(cache_path),
+        "cache_path": logical_cache_path,
         "trade_count": trade_count,
         "bar_count": len(bars),
         "half_spread_bps": half_spread,

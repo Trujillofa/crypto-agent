@@ -19,12 +19,18 @@ from scripts.probe_cvd_absorption_v1 import (
     grid_from_lock,
     load_and_validate_lock,
     rank_rows,
+    run_rank,
     screen_window,
+    serialized_cache_path,
     signal_side,
     simulate,
     slim_row,
 )
 from scripts.probe_orderflow_microstructure import AggTrade, sign_trade_qty
+
+EXPECTED_LOGICAL_CACHE_PATH = (
+    "data/microstructure/cvd_absorption_v1/BTCUSDT/aggtrades_20260609_20260715.jsonl"
+)
 
 LOCK = load_and_validate_lock(DEFAULT_LOCK)
 T0 = int(datetime(2026, 6, 20, 12, 0, tzinfo=UTC).timestamp() * 1000)
@@ -290,3 +296,41 @@ def test_script_source_has_no_mt5_or_agent_entry():
     assert "docker-compose" not in src
     assert "15432" not in src
     assert "taker_buy" not in src
+
+
+def test_serialized_cache_path_is_lock_relative_not_absolute():
+    start = datetime(2026, 6, 9, tzinfo=UTC)
+    end = datetime(2026, 7, 16, tzinfo=UTC)
+    path = serialized_cache_path(LOCK, "BTCUSDT", start, end)
+    assert path == EXPECTED_LOGICAL_CACHE_PATH
+    assert not Path(path).is_absolute()
+
+
+def test_run_rank_incomplete_writes_logical_cache_path(tmp_path: Path):
+    cache_dir = tmp_path / "data" / "microstructure" / "cvd_absorption_v1"
+    out_dir = tmp_path / "out"
+    result = run_rank(LOCK, cache_dir, out_dir, holdout=False)
+    payload = json.loads((out_dir / "develop_rank.json").read_text(encoding="utf-8"))
+    assert payload["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
+    assert result["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
+    assert not Path(payload["cache_path"]).is_absolute()
+
+
+def test_run_rank_complete_writes_logical_cache_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        "scripts.probe_cvd_absorption_v1.cache_covers_end",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "scripts.probe_cvd_absorption_v1.load_closed_bars_from_cache",
+        lambda *args, **kwargs: ([], 0.0008, 0),
+    )
+    cache_dir = tmp_path / "data" / "microstructure" / "cvd_absorption_v1"
+    out_dir = tmp_path / "out"
+    result = run_rank(LOCK, cache_dir, out_dir, holdout=False)
+    payload = json.loads((out_dir / "develop_rank.json").read_text(encoding="utf-8"))
+    assert payload["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
+    assert result["cache_path"] == EXPECTED_LOGICAL_CACHE_PATH
+    assert not Path(payload["cache_path"]).is_absolute()
