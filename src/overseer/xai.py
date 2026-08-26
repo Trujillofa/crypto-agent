@@ -44,7 +44,7 @@ class XAIClient:
         provider: str = "xai",
     ) -> None:
         self._provider = provider
-        self._primary_name = "DeepSeek" if provider == "deepseek" else "xAI"
+        self._primary_name = {"deepseek": "DeepSeek", "zai": "Z.AI"}.get(provider, "xAI")
         self._skip_primary = False
         self._client = AsyncOpenAI(
             api_key=api_key,

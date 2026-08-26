@@ -38,10 +38,12 @@ telegram:
 
 ai:
   enabled: true
-  # xAI 403'd on exhausted credits (2026-08-18). DeepSeek is the answering path.
-  provider: deepseek
+  # 2026-08-18: xAI 403'd on exhausted credits. DeepSeek carried sentiment until
+  # 2026-08-26; now Z.AI (GLM) is the primary via its OpenAI-compat endpoint
+  # (same provider family as the Hermes pre-NY briefing). Key: ZAI_API_KEY.
+  provider: zai
+  model: glm-5.3
   polling_interval: 60.0
-  fallback_model: deepseek-v4-pro
 
 trading_execution:
   enabled: false

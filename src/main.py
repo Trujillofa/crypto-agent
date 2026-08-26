@@ -148,6 +148,8 @@ class AISettings:
     fallback_api_key: str = ""
     fallback_model: str = "deepseek-chat"
     fallback_base_url: str = "https://api.deepseek.com/v1"
+    zai_api_key: str = ""
+    zai_base_url: str = "https://api.z.ai/api/paas/v4"
 
 
 @dataclass(frozen=True)
@@ -403,8 +405,14 @@ def load_settings(config_path: Path) -> Settings:
         ai_allowed_chat_ids = [telegram_chat_id]
 
     ai_provider = _as_str(ai.get("provider"), "ai.provider", default="xai")
-    if ai_provider not in {"xai", "deepseek"}:
-        raise ValueError(f"ai.provider='{ai_provider}' is invalid. Must be 'xai' or 'deepseek'.")
+    if ai_provider not in {"xai", "deepseek", "zai"}:
+        raise ValueError(
+            f"ai.provider='{ai_provider}' is invalid. Must be 'xai', 'deepseek', or 'zai'."
+        )
+
+    zai_api_key = _as_str(ai.get("zai_api_key"), "ai.zai_api_key", default="")
+    if not zai_api_key:
+        zai_api_key = os.getenv("ZAI_API_KEY", "").strip()
 
     ai_settings = AISettings(
         enabled=_as_bool(ai.get("enabled"), "ai.enabled", default=False),
@@ -440,6 +448,12 @@ def load_settings(config_path: Path) -> Settings:
             ai.get("fallback_base_url"),
             "ai.fallback_base_url",
             default="https://api.deepseek.com/v1",
+        ),
+        zai_api_key=zai_api_key,
+        zai_base_url=_as_str(
+            ai.get("zai_base_url"),
+            "ai.zai_base_url",
+            default="https://api.z.ai/api/paas/v4",
         ),
     )
 
@@ -1008,7 +1022,19 @@ async def run() -> None:
     xai_client = None
     if settings.ai.enabled:
         logger = get_logger("main")
-        if settings.ai.provider == "deepseek":
+        if settings.ai.provider == "zai":
+            if settings.ai.zai_api_key:
+                xai_client = XAIClient(
+                    api_key=settings.ai.zai_api_key,
+                    model=settings.ai.model,
+                    base_url=settings.ai.zai_base_url,
+                    provider="zai",
+                )
+            else:
+                logger.warning(
+                    "AI provider is zai but ZAI_API_KEY is empty; sentiment falls back to neutral"
+                )
+        elif settings.ai.provider == "deepseek":
             if settings.ai.fallback_api_key:
                 xai_client = XAIClient(
                     api_key=settings.ai.fallback_api_key,
