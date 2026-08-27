@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 from scripts.sentiment_report import parse_jsonl, print_report
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_REPORT_SCRIPT = _REPO_ROOT / "scripts" / "sentiment_report.py"
 
 
 def _event(
@@ -188,3 +195,58 @@ def test_historical_and_neutral_error_sources_still_parse_as_unanswered(capsys) 
     assert "xai_error_fallback" in out
     assert "error_fallback" in out
     assert "neutral_fallback" in out
+
+
+def _isolated_report_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = ""
+    env["PYTHONNOUSERSITE"] = "1"
+    return env
+
+
+def _assert_standalone_report(completed: subprocess.CompletedProcess[str]) -> None:
+    combined = completed.stdout + completed.stderr
+    assert completed.returncode == 0, combined
+    assert "SENTIMENT MONITORING REPORT" in completed.stdout
+    assert "Traceback" not in combined
+    assert "ModuleNotFoundError" not in combined
+    assert "src.strategy" not in combined
+
+
+def test_standalone_script_runs_from_tmp_dir_with_isolated_interpreter(tmp_path: Path) -> None:
+    fixture = tmp_path / "events.jsonl"
+    fixture.write_text(
+        _event("xai_live", score=72.0, provider="xai", model="grok-4-1-fast-reasoning") + "\n",
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [sys.executable, "-S", str(_REPORT_SCRIPT), str(fixture)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=_isolated_report_env(),
+        check=False,
+    )
+    _assert_standalone_report(completed)
+
+
+def test_standalone_script_reads_stdin_dash_from_tmp_dir(tmp_path: Path) -> None:
+    payload = _event(
+        "deepseek_fallback",
+        score=62.0,
+        provider="deepseek",
+        model="deepseek-v4-pro",
+    )
+    completed = subprocess.run(
+        [sys.executable, "-S", str(_REPORT_SCRIPT), "-"],
+        cwd=tmp_path,
+        input=payload + "\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=_isolated_report_env(),
+        check=False,
+    )
+    _assert_standalone_report(completed)
+    assert "deepseek_fallback" in completed.stdout

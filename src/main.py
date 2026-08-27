@@ -46,6 +46,7 @@ from src.risk.guards import (
     PositionLimitGuard,
 )
 from src.risk.manager import RiskManager
+from src.sentiment_sources import is_answered_sentiment_source
 from src.strategy import (
     BaseStrategy,
     BollingerBounceStrategy,
@@ -65,10 +66,7 @@ from src.strategy import (
     VWAPReversionStrategy,
 )
 from src.strategy.lifecycle import LifecycleManager
-from src.strategy.sentiment_mean_reversion import (
-    SentimentScorer,
-    is_answered_sentiment_source,
-)
+from src.strategy.sentiment_mean_reversion import SentimentScorer
 from src.strategy.session_liquidity import (
     SessionLiquidityRouterConfig,
     parse_session_liquidity_router,

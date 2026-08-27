@@ -22,7 +22,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from src.strategy.sentiment_mean_reversion import (
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.sentiment_sources import (  # noqa: E402
     SENTIMENT_ERROR_SOURCES,
     is_answered_sentiment_source,
 )

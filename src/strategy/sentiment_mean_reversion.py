@@ -5,20 +5,12 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
 
+from src.sentiment_sources import SENTIMENT_NO_ANSWER_SOURCES
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
-# Prospective writes use error_fallback. Historical xai_error_fallback remains no-answer.
-SENTIMENT_ANSWERED_SOURCES = frozenset({"xai_live", "deepseek_fallback", "zai_live"})
-SENTIMENT_ERROR_SOURCES = frozenset({"xai_error_fallback", "error_fallback"})
-SENTIMENT_NO_ANSWER_SOURCES = SENTIMENT_ERROR_SOURCES | frozenset({"neutral_fallback"})
 _PROVIDER_DISPLAY_NAMES = {"deepseek": "DeepSeek", "xai": "xAI", "zai": "Z.AI"}
-
-
-def is_answered_sentiment_source(source: str) -> bool:
-    """True for a provider answer (xAI, Z.AI, or successful DeepSeek), not a fallback."""
-    return source in SENTIMENT_ANSWERED_SOURCES
 
 
 def _client_str_attr(client: object | None, name: str) -> str | None:
