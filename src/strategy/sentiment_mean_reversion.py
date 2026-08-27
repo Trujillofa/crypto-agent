@@ -9,9 +9,37 @@ from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
+# Prospective writes use error_fallback. Historical xai_error_fallback remains no-answer.
+SENTIMENT_ANSWERED_SOURCES = frozenset({"xai_live", "deepseek_fallback", "zai_live"})
+SENTIMENT_ERROR_SOURCES = frozenset({"xai_error_fallback", "error_fallback"})
+SENTIMENT_NO_ANSWER_SOURCES = SENTIMENT_ERROR_SOURCES | frozenset({"neutral_fallback"})
+_PROVIDER_DISPLAY_NAMES = {"deepseek": "DeepSeek", "xai": "xAI", "zai": "Z.AI"}
+
+
+def is_answered_sentiment_source(source: str) -> bool:
+    """True for a provider answer (xAI, Z.AI, or successful DeepSeek), not a fallback."""
+    return source in SENTIMENT_ANSWERED_SOURCES
+
+
+def _client_str_attr(client: object | None, name: str) -> str | None:
+    if client is None:
+        return None
+    value = getattr(client, name, None)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def configured_sentiment_provider(client: object | None) -> str | None:
+    return _client_str_attr(client, "provider") or _client_str_attr(client, "_provider")
+
+
+def configured_sentiment_model(client: object | None) -> str | None:
+    return _client_str_attr(client, "model") or _client_str_attr(client, "_model")
+
 
 class SentimentScorer:
-    """Scores market sentiment using an LLM (xAI/Grok) with conservative fallback on errors.
+    """Scores market sentiment using the configured LLM with conservative fallback on errors.
 
     Provides a Context Score (0-100):
     - 0-30: Bearish (FUD, crashes, regulatory crackdowns)
@@ -91,8 +119,10 @@ class SentimentScorer:
             await self._record_observation(
                 symbol,
                 self._error_fallback_score,
-                source="xai_error_fallback",
+                source="error_fallback",
                 error=str(exc),
+                model=configured_sentiment_model(self._xai_client),
+                provider=configured_sentiment_provider(self._xai_client),
             )
             return self._error_fallback_score
 
@@ -104,6 +134,7 @@ class SentimentScorer:
         source: str,
         error: str | None = None,
         model: str | None = None,
+        provider: str | None = None,
     ) -> None:
         # Track for degradation detection regardless of recorder
         self._recent_sources.append(source)
@@ -119,6 +150,8 @@ class SentimentScorer:
         }
         if model:
             payload["model"] = model
+        if provider:
+            payload["provider"] = provider
         if error:
             payload["error"] = error[:500]
         try:
@@ -140,8 +173,7 @@ class SentimentScorer:
         issues: list[str] = []
 
         # No-answer rate. A working DeepSeek reply is an answer, not an outage.
-        no_answer = {"xai_error_fallback", "neutral_fallback"}
-        error_count = sum(1 for s in self._recent_sources if s in no_answer)
+        error_count = sum(1 for s in self._recent_sources if s in SENTIMENT_NO_ANSWER_SOURCES)
         error_pct = error_count / n
         if error_pct >= self._degradation_error_pct:
             live_pct = (1 - error_pct) * 100
@@ -159,12 +191,26 @@ class SentimentScorer:
             return
 
         detail = "; ".join(issues)
-        message = f"Grok sentiment degraded: {detail}"
+        message = self._degradation_message(detail)
         self._logger.warning(message)
         try:
             await self._degradation_alert(message)
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Degradation alert failed: %s", exc)
+
+    def _provider_display_name(self) -> str:
+        provider = configured_sentiment_provider(self._xai_client)
+        if provider in _PROVIDER_DISPLAY_NAMES:
+            return _PROVIDER_DISPLAY_NAMES[provider]
+        if self._xai_client is None:
+            return "Sentiment"
+        return "xAI"
+
+    def _degradation_message(self, detail: str) -> str:
+        label = self._provider_display_name()
+        if label == "Sentiment":
+            return f"Sentiment degraded: {detail}"
+        return f"{label} sentiment degraded: {detail}"
 
     async def _query_llm(self, symbol: str) -> tuple[float, str, str | None]:
         """Query the configured LLM for sentiment analysis.

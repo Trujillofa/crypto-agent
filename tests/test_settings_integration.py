@@ -425,11 +425,97 @@ async def test_wire_error_fallback_does_not_claim_grok_model():
     assert len(event_log.events) == 1
     payload = event_log.events[0][1]
     assert event_log.events[0][0] == "sentiment_score"
-    assert payload["source"] == "xai_error_fallback"
+    assert payload["source"] == "error_fallback"
     assert payload["provider"] == "xai"
     assert payload["model"] == "none"
     assert payload["score"] == 30.0
     assert "API timeout" in str(payload["error"])
+
+
+@pytest.mark.asyncio
+async def test_wire_records_deepseek_402_with_provider_and_model():
+    """DeepSeek HTTP 402 is stored as a provider-neutral error with deepseek identity."""
+
+    class DeepSeekFailingClient:
+        provider = "deepseek"
+        model = "deepseek-v4-pro"
+
+        async def chat(self, messages):
+            raise RuntimeError("Error code: 402 - Insufficient Balance")
+
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    event_log = FakeEventLog()
+    strategy = _wired_sentiment_engine(DeepSeekFailingClient(), event_log)
+    await strategy.evaluate(
+        "BTCUSDT",
+        {
+            "rsi_14": 25.0,
+            "bb_lower_dist": 0.001,
+            "bb_upper_dist": 0.05,
+            "close_price": 50000.0,
+        },
+    )
+
+    assert len(event_log.events) == 1
+    payload = event_log.events[0][1]
+    assert event_log.events[0][0] == "sentiment_score"
+    assert payload["source"] == "error_fallback"
+    assert payload["provider"] == "deepseek"
+    assert payload["model"] == "deepseek-v4-pro"
+    assert payload["score"] == 30.0
+    assert "402" in str(payload["error"])
+
+
+@pytest.mark.asyncio
+async def test_wire_records_zai_live_provider_from_chat_result():
+    """End-to-end: Z.AI ChatResult is persisted as zai, not xai."""
+    from src.overseer.xai import ChatResult
+
+    class ZaiClient:
+        async def chat(self, messages):
+            return ChatResult(
+                content='{"score": 63, "reason": "glm"}',
+                provider="zai",
+                model="glm-5.3",
+            )
+
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    event_log = FakeEventLog()
+    strategy = _wired_sentiment_engine(ZaiClient(), event_log)
+    await strategy.evaluate(
+        "BTCUSDT",
+        {
+            "rsi_14": 25.0,
+            "bb_lower_dist": 0.001,
+            "bb_upper_dist": 0.05,
+            "close_price": 50000.0,
+        },
+    )
+
+    assert event_log.events == [
+        (
+            "sentiment_score",
+            {
+                "symbol": "BTCUSDT",
+                "score": 63.0,
+                "source": "zai_live",
+                "model": "glm-5.3",
+                "provider": "zai",
+            },
+        )
+    ]
 
 
 @pytest.mark.asyncio

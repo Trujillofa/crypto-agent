@@ -40,14 +40,42 @@ def _indicators(
     bb_lower_dist: float = 0.05,
     bb_upper_dist: float = 0.05,
     close: float = 50000.0,
+    atr_pct: float | None = None,
 ) -> dict[str, float]:
-    return {
+    payload: dict[str, float] = {
         "rsi_14": rsi,
         "bb_lower_dist": bb_lower_dist,
         "bb_upper_dist": bb_upper_dist,
         "close_price": close,
         "time": datetime(2026, 3, 27, 12, 0, tzinfo=UTC),
     }
+    if atr_pct is not None:
+        payload["atr_pct"] = atr_pct
+    return payload
+
+
+class _DeepSeekFailingClient:
+    provider = "deepseek"
+    model = "deepseek-v4-pro"
+
+    async def chat(self, messages):
+        raise RuntimeError("Error code: 402 - Insufficient Balance")
+
+
+class _XAIFailingClient:
+    provider = "xai"
+    model = "grok-4-1-fast-reasoning"
+
+    async def chat(self, messages):
+        raise RuntimeError("API timeout")
+
+
+class _ZAIFailingClient:
+    provider = "zai"
+    model = "glm-5.3"
+
+    async def chat(self, messages):
+        raise RuntimeError("Error code: 1113")
 
 
 class TestSentimentMeanReversion:
@@ -184,6 +212,52 @@ class TestSentimentMeanReversion:
         assert scorer.calls[-1][0] == "BTCUSDT"
         assert scorer.calls[-1][1] == indicators["time"]
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("rsi", "bb_lower", "bb_upper", "sentiment", "degraded", "atr_pct", "expected"),
+        [
+            (50.0, 0.05, 0.05, 50.0, False, None, SignalType.HOLD),
+            (25.0, 0.001, 0.05, 60.0, False, None, SignalType.BUY),
+            (25.0, 0.001, 0.05, 25.0, False, None, SignalType.HOLD),
+            (25.0, 0.001, 0.05, 70.0, True, None, SignalType.HOLD),
+            (50.0, 0.05, 0.05, 15.0, False, None, SignalType.SELL),
+            (50.0, 0.05, 0.05, 15.0, True, None, SignalType.SELL),
+            (75.0, 0.05, 0.001, 60.0, False, None, SignalType.SELL),
+            (25.0, 0.001, 0.05, 60.0, False, 0.01, SignalType.HOLD),
+        ],
+    )
+    async def test_evaluate_trading_contract_is_unchanged(
+        self,
+        rsi: float,
+        bb_lower: float,
+        bb_upper: float,
+        sentiment: float,
+        degraded: bool,
+        atr_pct: float | None,
+        expected: SignalType,
+    ):
+        """Pin BUY/SELL/HOLD rules, fail-closed degraded BUYs, and panic SELL."""
+
+        class ContractScorer(FakeScorer):
+            @property
+            def degraded(self) -> bool:
+                return degraded
+
+        strategy = _make_strategy()
+        strategy.set_scorer(ContractScorer(score=sentiment))
+        signal = await strategy.evaluate(
+            "BTCUSDT",
+            _indicators(
+                rsi=rsi,
+                bb_lower_dist=bb_lower,
+                bb_upper_dist=bb_upper,
+                atr_pct=atr_pct,
+            ),
+        )
+        assert signal.type == expected
+        if degraded and expected is SignalType.HOLD and rsi < 35:
+            assert "SentimentDegraded" in signal.reason
+
 
 class TestSentimentScorer:
     @pytest.mark.asyncio
@@ -294,8 +368,35 @@ class TestSentimentScorer:
             {
                 "symbol": "BTCUSDT",
                 "score": 30.0,
-                "source": "xai_error_fallback",
+                "source": "error_fallback",
                 "error": "API timeout",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_records_deepseek_402_with_provider_and_model(self):
+        """Failed DeepSeek requests are attributed to deepseek and the attempted model."""
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=_DeepSeekFailingClient(),
+            observation_recorder=recorder,
+        )
+
+        score = await scorer.get_score("SOLUSDT")
+
+        assert score == 30.0
+        assert observations == [
+            {
+                "symbol": "SOLUSDT",
+                "score": 30.0,
+                "source": "error_fallback",
+                "provider": "deepseek",
+                "model": "deepseek-v4-pro",
+                "error": "Error code: 402 - Insufficient Balance",
             }
         ]
 
@@ -331,6 +432,68 @@ class TestSentimentScorer:
                 "score": 55.0,
                 "source": "deepseek_fallback",
                 "model": "deepseek-v4-pro",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_records_zai_live_when_provider_is_zai(self):
+        """Z.AI answers must be labeled zai_live, not xai_live."""
+        from src.overseer.xai import ChatResult
+
+        class ZaiClient:
+            async def chat(self, messages):
+                return ChatResult(
+                    content='{"score": 61, "reason": "glm"}',
+                    provider="zai",
+                    model="glm-5.3",
+                )
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=ZaiClient(),
+            observation_recorder=recorder,
+        )
+
+        score = await scorer.get_score("SOLUSDT")
+
+        assert score == 61.0
+        assert observations == [
+            {
+                "symbol": "SOLUSDT",
+                "score": 61.0,
+                "source": "zai_live",
+                "model": "glm-5.3",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_records_zai_error_with_provider_and_model(self):
+        """Failed Z.AI requests are attributed to zai and the attempted model."""
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=_ZAIFailingClient(),
+            observation_recorder=recorder,
+        )
+
+        score = await scorer.get_score("SOLUSDT")
+
+        assert score == 30.0
+        assert observations == [
+            {
+                "symbol": "SOLUSDT",
+                "score": 30.0,
+                "source": "error_fallback",
+                "provider": "zai",
+                "model": "glm-5.3",
+                "error": "Error code: 1113",
             }
         ]
 
@@ -388,6 +551,7 @@ class TestDegradationAlert:
 
         assert len(alerts) == 1
         assert "live" in alerts[0].lower() or "degraded" in alerts[0].lower()
+        assert "Grok" not in alerts[0]
         assert scorer.degraded is True
 
     @pytest.mark.asyncio
@@ -529,3 +693,152 @@ class TestDegradationAlert:
         for sym in ["A", "B", "C"]:
             await scorer.get_score(sym)
         assert alerts == []
+
+    @pytest.mark.asyncio
+    async def test_alert_names_deepseek_not_grok(self):
+        """Degradation pages the configured provider, not a hardcoded Grok label."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=_DeepSeekFailingClient(),
+            degradation_alert=on_alert,
+            degradation_window=4,
+            degradation_error_pct=0.5,
+            cache_ttl_seconds=0,
+        )
+        for i in range(4):
+            await scorer.get_score(f"SYM{i}")
+
+        assert len(alerts) == 1
+        assert "DeepSeek" in alerts[0]
+        assert "Grok" not in alerts[0]
+        assert scorer.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_alert_names_xai_not_grok(self):
+        """xAI outages name xAI rather than Grok."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=_XAIFailingClient(),
+            degradation_alert=on_alert,
+            degradation_window=4,
+            degradation_error_pct=0.5,
+            cache_ttl_seconds=0,
+        )
+        for i in range(4):
+            await scorer.get_score(f"SYM{i}")
+
+        assert len(alerts) == 1
+        assert "xAI" in alerts[0]
+        assert "Grok" not in alerts[0]
+        assert scorer.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_alert_names_zai_not_grok(self):
+        """Z.AI outages name Z.AI rather than Grok."""
+        alerts: list[str] = []
+
+        async def on_alert(msg: str) -> None:
+            alerts.append(msg)
+
+        scorer = SentimentScorer(
+            xai_client=_ZAIFailingClient(),
+            degradation_alert=on_alert,
+            degradation_window=4,
+            degradation_error_pct=0.5,
+            cache_ttl_seconds=0,
+        )
+        for i in range(4):
+            await scorer.get_score(f"SYM{i}")
+
+        assert len(alerts) == 1
+        assert "Z.AI" in alerts[0]
+        assert "Grok" not in alerts[0]
+        assert scorer.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_default_window_degrades_at_fifty_percent_no_answer(self):
+        """Default 10-observation window still trips at >= 50% no-answer."""
+
+        class MixedClient:
+            def __init__(self) -> None:
+                self.n = 0
+
+            async def chat(self, messages):
+                self.n += 1
+                if self.n <= 5:
+                    raise RuntimeError("timeout")
+                return '{"score": 70, "reason": "ok"}'
+
+        scorer = SentimentScorer(xai_client=MixedClient(), cache_ttl_seconds=0)
+        for i in range(9):
+            await scorer.get_score(f"SYM{i}")
+        assert scorer.degraded is False
+
+        await scorer.get_score("SYM9")
+        assert scorer.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_default_window_six_deepseek_answers_do_not_degrade(self):
+        """Six DeepSeek answers + four errors stay below the 50% no-answer trip."""
+        from src.overseer.xai import ChatResult
+
+        class MixedClient:
+            def __init__(self) -> None:
+                self.n = 0
+
+            async def chat(self, messages):
+                self.n += 1
+                if self.n <= 4:
+                    raise RuntimeError("timeout")
+                return ChatResult(
+                    content='{"score": 66, "reason": "deepseek"}',
+                    provider="deepseek",
+                    model="deepseek-v4-pro",
+                )
+
+        scorer = SentimentScorer(xai_client=MixedClient(), cache_ttl_seconds=0)
+        for i in range(10):
+            await scorer.get_score(f"SYM{i}")
+        assert scorer.degraded is False
+
+    @pytest.mark.asyncio
+    async def test_historical_xai_error_fallback_still_counts_as_no_answer(self):
+        """Persisted xai_error_fallback names remain no-answer for the 10/50 rule."""
+        scorer = SentimentScorer(xai_client=object(), cache_ttl_seconds=0)
+        for _ in range(5):
+            scorer._recent_sources.append("xai_error_fallback")
+            scorer._recent_scores.append(30.0)
+        for _ in range(5):
+            scorer._recent_sources.append("xai_live")
+            scorer._recent_scores.append(62.0)
+
+        await scorer._check_degradation()
+        assert scorer.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_deepseek_error_streak_blocks_new_buy_entries(self):
+        """Fail-closed: a DeepSeek 402 streak still blocks new BUY entries."""
+        scorer = SentimentScorer(
+            xai_client=_DeepSeekFailingClient(),
+            cache_ttl_seconds=0,
+        )
+        for i in range(10):
+            await scorer.get_score(f"SYM{i}")
+        assert scorer.degraded is True
+
+        strategy = _make_strategy()
+        strategy.set_scorer(scorer)
+        signal = await strategy.evaluate(
+            "BTCUSDT",
+            _indicators(rsi=25.0, bb_lower_dist=0.001),
+        )
+        assert signal.type == SignalType.HOLD
+        assert "SentimentDegraded" in signal.reason
