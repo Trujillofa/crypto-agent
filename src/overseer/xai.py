@@ -64,6 +64,14 @@ class XAIClient:
             )
         self._logger = get_logger(self.__class__.__name__)
 
+    @property
+    def provider(self) -> str:
+        return self._provider
+
+    @property
+    def model(self) -> str:
+        return self._model
+
     async def chat(self, messages: Sequence[dict[str, str]]) -> ChatResult:
         if not self._skip_primary:
             try:

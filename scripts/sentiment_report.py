@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sentiment monitoring report — reads event log JSONL and summarizes Grok activity.
+"""Sentiment monitoring report — reads event log JSONL and summarizes provider activity.
 
 Usage:
     # From a local JSONL file:
@@ -21,6 +21,15 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from src.sentiment_sources import (  # noqa: E402
+    SENTIMENT_ERROR_SOURCES,
+    is_answered_sentiment_source,
+)
 
 
 @dataclass
@@ -184,14 +193,21 @@ def print_report(report: Report) -> None:
     # Timeline (last 10 observations)
     print("── Latest Observations ─────────────────────────────────")
     for obs in report.observations[-10:]:
-        emoji = "🟢" if obs.source == "xai_live" else "🟡" if "fallback" in obs.source else "🔴"
+        if is_answered_sentiment_source(obs.source):
+            emoji = "🟢"
+        elif obs.source == "neutral_fallback":
+            emoji = "🟡"
+        else:
+            emoji = "🔴"
         print(f"  {emoji} {obs.ts:%H:%M}  {obs.symbol:<10} {obs.score:>5.0f}  ({obs.source})")
     print()
 
     # Health assessment
     print("── Health Assessment ───────────────────────────────────")
-    live_pct = sources.get("xai_live", 0) / report.total * 100
-    error_pct = sources.get("xai_error_fallback", 0) / report.total * 100
+    live_count = sum(1 for obs in report.observations if is_answered_sentiment_source(obs.source))
+    error_count = sum(1 for obs in report.observations if obs.source in SENTIMENT_ERROR_SOURCES)
+    live_pct = live_count / report.total * 100
+    error_pct = error_count / report.total * 100
     neutral_pct = sources.get("neutral_fallback", 0) / report.total * 100
 
     all_scores = [o.score for o in report.observations]
@@ -200,13 +216,17 @@ def print_report(report: Report) -> None:
 
     issues = []
     if live_pct < 80:
-        issues.append(f"Low live rate ({live_pct:.0f}%) — Grok may be degraded")
+        issues.append(f"Low live rate ({live_pct:.0f}%) — provider may be degraded")
     if error_pct > 10:
-        issues.append(f"High error rate ({error_pct:.0f}%) — check xAI API")
+        issues.append(f"High error rate ({error_pct:.0f}%) — check sentiment API")
     if neutral_pct > 50:
-        issues.append(f"Mostly neutral fallback ({neutral_pct:.0f}%) — xAI may not be configured")
+        issues.append(
+            f"Mostly neutral fallback ({neutral_pct:.0f}%) — provider may not be configured"
+        )
     if score_spread < 10:
-        issues.append(f"Low score variation (spread={score_spread:.0f}) — Grok may not be useful")
+        issues.append(
+            f"Low score variation (spread={score_spread:.0f}) — sentiment may not be useful"
+        )
     if stuck_at_50 > 30:
         issues.append(f"Scores stuck at 50 ({stuck_at_50:.0f}%) — likely fallback")
 

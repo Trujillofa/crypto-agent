@@ -46,6 +46,7 @@ from src.risk.guards import (
     PositionLimitGuard,
 )
 from src.risk.manager import RiskManager
+from src.sentiment_sources import is_answered_sentiment_source
 from src.strategy import (
     BaseStrategy,
     BollingerBounceStrategy,
@@ -846,8 +847,13 @@ def _wire_optional_strategy_dependencies(
         if event_log is None:
             return
         source = str(payload.get("source", ""))
-        if source.startswith("deepseek"):
+        supplied_provider = str(payload.get("provider") or "").strip()
+        if supplied_provider:
+            provider = supplied_provider
+        elif source.startswith("deepseek"):
             provider = "deepseek"
+        elif source.startswith("zai"):
+            provider = "zai"
         else:
             provider = "xai" if xai_client is not None else "none"
         supplied_model = str(payload.get("model") or "").strip()
@@ -1622,7 +1628,7 @@ async def run() -> None:
                         for e in recent_sentiment:
                             sym = e.payload.get("symbol", "unknown")
                             by_sym[sym] = by_sym.get(sym, 0) + 1
-                            if e.payload.get("source") == "xai_live":
+                            if is_answered_sentiment_source(str(e.payload.get("source", ""))):
                                 live_count += 1
                         sentiment_health = {
                             "total_24h": total_obs,
