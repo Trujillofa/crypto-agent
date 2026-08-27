@@ -139,8 +139,8 @@ telegram:
 
 ai:
   enabled: true
-  provider: deepseek
-  model: grok-4-1-fast-reasoning
+  provider: zai
+  model: glm-5.3
   polling_interval: 60.0
   max_history: 10
   allowed_chat_ids: []

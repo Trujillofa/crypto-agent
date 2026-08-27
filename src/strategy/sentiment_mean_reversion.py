@@ -78,7 +78,12 @@ class SentimentScorer:
         try:
             score, provider, answering_model = await self._query_llm(symbol)
             self._cache[symbol] = (now, score)
-            source = "deepseek_fallback" if provider == "deepseek" else "xai_live"
+            if provider == "zai":
+                source = "zai_live"
+            elif provider == "deepseek":
+                source = "deepseek_fallback"
+            else:
+                source = "xai_live"
             await self._record_observation(symbol, score, source=source, model=answering_model)
             return score
         except Exception as exc:

@@ -108,6 +108,18 @@ class TestLoadSettings:
         assert settings.ai.provider == "deepseek"
         assert settings.ai.fallback_model == "deepseek-v4-pro"
 
+    def test_accepts_zai_provider(self, config_file: Path, monkeypatch) -> None:
+        """Z.AI (GLM) may be the configured primary via its OpenAI-compat endpoint."""
+        monkeypatch.delenv("ZAI_API_KEY", raising=False)
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {"enabled": True, "provider": "zai", "model": "glm-5.3"}
+        config_file.write_text(yaml.dump(raw))
+        settings = load_settings(config_file)
+        assert settings.ai.provider == "zai"
+        assert settings.ai.model == "glm-5.3"
+        assert settings.ai.zai_base_url == "https://api.z.ai/api/paas/v4"
+        assert settings.ai.zai_api_key == ""  # empty unless ZAI_API_KEY is set
+
     def test_invalid_type_raises_error(self) -> None:
         """Test that invalid types in config raise ValueError."""
         config = {

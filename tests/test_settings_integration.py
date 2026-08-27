@@ -145,7 +145,8 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert settings.telegram.daily_summary_send_empty is False
     assert settings.display_name == "sentiment-macro-1h-multiasset"
     assert settings.ai.enabled is True
-    assert settings.ai.provider == "deepseek"
+    assert settings.ai.provider == "zai"
+    assert settings.ai.model == "glm-5.3"
     assert aggregator_config["buy_threshold"] == 0.6
 
 
