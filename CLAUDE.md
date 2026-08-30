@@ -547,7 +547,7 @@ loss_limits:
 |--------|---------|
 | `scripts/run_backtest.py` | Run single backtest |
 | `scripts/run_full_backtest.py` | Full parameter backtest |
-| `scripts/run_wfo.py` | Walk-forward optimization |
+| `scripts/run_wfo.py` | Fixed-config WFO OOS (same clock as `experiment_autopilot`; not optimization) |
 | `scripts/smoke_test.py` | Quick connectivity check |
 | `scripts/migrate.py` | Apply database migrations |
 | `scripts/config_doctor.py` | Validate configuration |

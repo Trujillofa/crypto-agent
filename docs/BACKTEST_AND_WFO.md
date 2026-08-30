@@ -41,9 +41,13 @@ Strategies see completed OHLCV for that bar. v2 queues the fill for the next
 open. Unknown timeframe labels raise; they are not treated as 1 minute.
 
 WFO test windows are `[start, end)`. `fetch_range` uses `time >= start AND
-time <= end`, so canonical autopilot (and the search CLIs) translate `end`
-with `wfo_inclusive_fetch_bounds()` before the fetch. Frozen historical
-artifacts stay as written; do not rerun them to “fix” old gates.
+time <= end`, so canonical autopilot, the search CLIs, `scripts/run_wfo.py`,
+`scripts/run_wfo_short_comparison.py`, and `scripts/analyze_entry_overlap.py`
+translate `end` with `wfo_inclusive_fetch_bounds()` before the fetch. Frozen
+historical artifacts stay as written; do not rerun them to “fix” old gates.
+
+`scripts/run_wfo.py` is a thin fixed-config OOS runner on that clock. It does
+not optimize parameters. Gated WFO is `scripts/experiment_autopilot.py`.
 
 ## Cost book
 

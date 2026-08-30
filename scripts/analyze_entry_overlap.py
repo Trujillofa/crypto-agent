@@ -25,7 +25,11 @@ from scripts.experiment_autopilot import (  # noqa: E402
     _run_backtest,
 )
 from scripts.run_autoresearch import _deep_merge, _read_yaml  # noqa: E402
-from src.backtest.experiment_autopilot import build_wfo_windows  # noqa: E402
+from src.backtest.experiment_autopilot import (  # noqa: E402
+    build_wfo_windows,
+    wfo_inclusive_fetch_bounds,
+)
+from src.backtest.research_safety import refuse_live_go  # noqa: E402
 from src.db import close_pool, get_pool, init_pool  # noqa: E402
 from src.features.reader import IndicatorReader  # noqa: E402
 from src.main import _resolve_strategy_config, load_settings  # noqa: E402
@@ -237,13 +241,14 @@ async def _collect_oos_entries(
         entries: list[datetime] = []
         async with reader:
             for window in windows:
+                _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
                 window_config = _build_backtest_config(
                     settings=settings,
                     raw_config=raw_config,
                     symbol=run_symbol,
                     timeframe=run_timeframe,
-                    start=window.test_start,
-                    end=window.test_end,
+                    start=test_start,
+                    end=test_end,
                     strategy_classes=strategy_classes,
                     strategy_configs=strategy_configs,
                     aggregator_config=aggregator_config,
@@ -251,6 +256,7 @@ async def _collect_oos_entries(
                     disable_trend_filter=False,
                     replay_sentiment_path=spec.replay_sentiment_log,
                     replay_sentiment_max_age_hours=spec.replay_sentiment_max_age_hours,
+                    execution_profile="execution_parity_v2",
                 )
                 result_bt = await _run_backtest(reader, window_config)
                 for trade in result_bt.trades:
@@ -388,7 +394,9 @@ def _interpret(report: dict[str, Any]) -> str:
 
 
 async def main() -> None:
+    refuse_live_go(argv=sys.argv[1:])
     args = parse_args()
+    refuse_live_go(flags=vars(args))
     configure_logger("INFO")
     manifest = _load_manifest(Path(args.manifest))
     specs = _parse_agents(manifest)

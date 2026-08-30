@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Walk-Forward Optimization runner."""
+"""Fixed-config walk-forward OOS runner.
+
+This is not parameter optimization. Calendar windows, half-open inclusive
+fetch bounds, and ``execution_parity_v2`` match
+``scripts/experiment_autopilot.py``. Use that script for gated WFO.
+Not a live-go.
+"""
+
+from __future__ import annotations
 
 import argparse
 import asyncio
@@ -7,13 +15,33 @@ import csv
 import os
 import subprocess
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import mean
 
 sys.path.append(os.getcwd())
 
-from src.backtest.research_safety import refuse_live_go
+from src.backtest.experiment_autopilot import (  # noqa: E402
+    WfoWindow,
+    build_wfo_windows,
+    wfo_inclusive_fetch_bounds,
+)
+from src.backtest.research_safety import refuse_live_go  # noqa: E402
+
+ExecutionProfile = str
+
+
+def oos_fetch_windows(
+    start: str,
+    end: str,
+    train_months: int,
+    test_months: int,
+) -> list[tuple[WfoWindow, str, str]]:
+    """Calendar WFO folds with inclusive reader bounds for the OOS test only."""
+    rows: list[tuple[WfoWindow, str, str]] = []
+    for window in build_wfo_windows(start, end, train_months, test_months):
+        _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
+        rows.append((window, test_start, test_end))
+    return rows
 
 
 def run_backtest(
@@ -24,6 +52,7 @@ def run_backtest(
     config_path: str,
     replay_sentiment_log: str | None = None,
     replay_sentiment_max_age_hours: float | None = None,
+    execution_profile: ExecutionProfile = "execution_parity_v2",
 ) -> dict[str, float] | None:
     cmd = [
         sys.executable,
@@ -38,6 +67,8 @@ def run_backtest(
         end,
         "--config",
         config_path,
+        "--execution-profile",
+        execution_profile,
     ]
     if replay_sentiment_log:
         cmd.extend(["--replay-sentiment-log", replay_sentiment_log])
@@ -70,52 +101,40 @@ async def wfo(
     config_path: str = "config/settings.yaml",
     replay_sentiment_log: str | None = None,
     replay_sentiment_max_age_hours: float | None = None,
+    execution_profile: ExecutionProfile = "execution_parity_v2",
 ) -> list[dict[str, str | float]]:
-    start_dt = datetime.fromisoformat(start)
-    end_dt = datetime.fromisoformat(end)
     results: list[dict[str, str | float]] = []
 
-    current = start_dt
-    while current + timedelta(days=test_months * 30 + 1) < end_dt:
-        train_end = current + timedelta(days=train_months * 30)
-        test_start = train_end
-        test_end = test_start + timedelta(days=test_months * 30)
-
-        if test_end > end_dt:
-            break
-
-        train_str = train_end.strftime("%Y-%m-%d")
-        test_str = test_end.strftime("%Y-%m-%d")
-
+    for window, test_start, test_end in oos_fetch_windows(start, end, train_months, test_months):
         print(
-            f"Train: {current.strftime('%Y-%m')} - {train_str} | Test: {train_end.strftime('%Y-%m')} - {test_str}"
+            f"Train: {window.train_start} - {window.train_end} | "
+            f"Test: {window.test_start} - {window.test_end}"
         )
 
         metrics = run_backtest(
             symbol,
             timeframe,
-            train_str,
-            test_str,
+            test_start,
+            test_end,
             config_path,
             replay_sentiment_log=replay_sentiment_log,
             replay_sentiment_max_age_hours=replay_sentiment_max_age_hours,
+            execution_profile=execution_profile,
         )
         if metrics:
             results.append(
                 {
                     "symbol": symbol,
                     "timeframe": timeframe,
-                    "train_start_month": current.strftime("%Y-%m"),
-                    "train_end_date": train_str,
-                    "test_start_month": train_end.strftime("%Y-%m"),
-                    "test_end_date": test_str,
+                    "train_start_month": window.train_start[:7],
+                    "train_end_date": window.train_end[:10],
+                    "test_start_month": window.test_start[:7],
+                    "test_end_date": window.test_end[:10],
                     "trades": metrics.get("trades", 0.0),
                     "win_rate": metrics.get("win_rate", 0.0),
                     "sharpe": metrics.get("sharpe", 0.0),
                 }
             )
-
-        current = train_end
 
     if results:
         sharpe_mean = mean(float(r["sharpe"]) for r in results)
@@ -146,7 +165,9 @@ async def wfo(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run walk-forward optimization")
+    parser = argparse.ArgumentParser(
+        description="Fixed-config walk-forward OOS (same clock as experiment_autopilot)"
+    )
     parser.add_argument("symbol", nargs="?", default="ETHUSDT")
     parser.add_argument("timeframe", nargs="?", default="5m")
     parser.add_argument("start", nargs="?", default="2023-01-01")
@@ -157,6 +178,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         default=os.getenv("SETTINGS_PATH", "config/settings.yaml"),
+    )
+    parser.add_argument(
+        "--execution-profile",
+        choices=("legacy_v1", "execution_parity_v2"),
+        default="execution_parity_v2",
+        help="Execution semantics; v2 is the canonical WFO default",
     )
     parser.add_argument(
         "--replay-sentiment-log",
@@ -189,5 +216,6 @@ if __name__ == "__main__":
             config_path=args.config,
             replay_sentiment_log=args.replay_sentiment_log,
             replay_sentiment_max_age_hours=args.replay_sentiment_max_age_hours,
+            execution_profile=args.execution_profile,
         )
     )

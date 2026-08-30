@@ -122,10 +122,17 @@ python scripts/run_config_search.py         # gated search; rank on train only
 WFO is the primary validation tool. Fixed-window backtests are insufficient alone.
 
 ```bash
-python scripts/run_wfo.py BTCUSDT 1h 2021-01-01 2022-01-01 --config <config>
+python scripts/experiment_autopilot.py \
+  --config <config> --symbol BTCUSDT --timeframe 1h \
+  --start 2021-01-01 --end 2022-01-01 \
+  --train-months 6 --test-months 3 \
+  --execution-profile execution_parity_v2
+# Thin OOS-only runner (same calendar + half-open fetch; no gates):
+# python scripts/run_wfo.py BTCUSDT 1h 2021-01-01 2022-01-01 --config <config>
 ```
 
-Acceptable result: OOS Sharpe ≥ 0.6 across ≥ 3 folds.
+Acceptable result: OOS Sharpe ≥ 0.6 across ≥ 3 folds. Use `experiment_autopilot`
+for gated WFO. `run_wfo.py` is not parameter optimization.
 
 #### 3b. Parameter stability check
 
