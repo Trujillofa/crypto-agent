@@ -38,14 +38,12 @@ telegram:
 
 ai:
   enabled: true
-  # 2026-08-18: xAI 403'd on exhausted credits. DeepSeek carried sentiment until
-  # 2026-08-26; now Z.AI (GLM) is the primary. The key is a Coding Plan
-  # subscription key — it only answers on the /api/coding/ endpoint (the
-  # pay-as-you-go /api/paas/v4 path returns error 1113 for it).
-  provider: zai
-  model: glm-5.3
-  zai_base_url: https://api.z.ai/api/coding/paas/v4
+  # Z.AI Coding Plan is not permitted for automated sentiment polling.
+  # DeepSeek is funded and remains the active provider. Z.AI implementation
+  # stays available for a future permitted general/API-package credential.
+  provider: deepseek
   polling_interval: 60.0
+  fallback_model: deepseek-v4-pro
 
 trading_execution:
   enabled: false
