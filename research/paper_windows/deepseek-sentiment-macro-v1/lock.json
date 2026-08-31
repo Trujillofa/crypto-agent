@@ -1,0 +1,119 @@
+{
+  "protocol_id": "deepseek-sentiment-macro-paper-window",
+  "version": 1,
+  "locked_at": "2026-08-31T16:00:00Z",
+  "locked_before_post_t0_performance_review": true,
+  "deployed_sha": "bc6ea9e1c62b36c82d27b96f2fb2c28d99f2f316",
+  "provider": "deepseek",
+  "model": "deepseek-v4-pro",
+  "window_start": "2026-08-31T15:26:51Z",
+  "agent_id": "sentiment-macro-bot",
+  "service": "agent_sentiment_macro",
+  "settings_path": "config/settings.sentiment_macro.yaml",
+  "event_log": "data/event_log_sentiment-macro-bot.jsonl",
+  "observation_event_type": "sentiment_score",
+  "trade_close_event_type": "order_filled",
+  "pre_t0_cadence": {
+    "measured_from": "event_log sentiment_score rows with ts < window_start",
+    "n_observations": 1970,
+    "first_ts": "2026-03-27T12:32:24.727187Z",
+    "last_ts": "2026-08-31T14:28:11.543308Z",
+    "median_gap_sec": 3605,
+    "obs_per_day": 12.541,
+    "answered_n": 1962,
+    "no_answer_n": 8,
+    "historical_paper_positions_excluded": 3,
+    "note": "Cadence only. Pre-T0 trades are excluded from validation and were not scored for this lock."
+  },
+  "review": {
+    "operational_horizon_days": 14,
+    "strategy_horizon_days": 30,
+    "min_n_observations": 140,
+    "min_eligible_trades_for_performance_decision": 4,
+    "denominator_choice": "min_n_observations = 14 days * 10 obs/day floor versus pre-T0 12.541 obs/day (median gap 3605s). min_eligible_trades_for_performance_decision = 4 is the repository sparse WFO minimum; 3 pre-T0 paper positions are excluded and do not count."
+  },
+  "degradation": {
+    "window": 10,
+    "no_answer_pct": 0.5,
+    "blocks_new_buy": true
+  },
+  "answered_sources": [
+    "xai_live",
+    "deepseek_fallback",
+    "zai_live"
+  ],
+  "no_answer_sources": [
+    "xai_error_fallback",
+    "error_fallback",
+    "neutral_fallback"
+  ],
+  "unknown_source_is_no_answer": true,
+  "exclusions": [
+    "every sentiment_score with ts < window_start",
+    "every position with entry_time < window_start, including if closed after T0",
+    "open positions (status != closed or missing exit_time)",
+    "the three historical paper positions already in the sentiment-macro book",
+    "live / Binance-executor fills"
+  ],
+  "inclusion_observations": {
+    "agent_id": "sentiment-macro-bot",
+    "type": "sentiment_score",
+    "ts_gte": "window_start"
+  },
+  "inclusion_trades": {
+    "agent_id": "sentiment-macro-bot",
+    "entry_time_gte": "window_start",
+    "status": "closed",
+    "exit_time_required": true,
+    "executor": "paper"
+  },
+  "operational_metrics": [
+    "answered_live_pct",
+    "no_answer_error_pct",
+    "source_provider_model_attribution",
+    "rolling_10_degradation_state",
+    "alert_transitions"
+  ],
+  "strategy_metrics": [
+    "eligible_trades",
+    "realized_pnl",
+    "profit_factor",
+    "win_rate",
+    "drawdown",
+    "symbol_breakdown",
+    "exit_reason_breakdown"
+  ],
+  "safety_invariants": {
+    "mode": "paper",
+    "executor": "PaperExecutor",
+    "no_binance_order_executor": true,
+    "degraded_blocks_new_buy": true
+  },
+  "interruptions": {
+    "provider_config_strategy_threshold_sizing_change": "terminate",
+    "restart_or_outage": "record_do_not_erase",
+    "operational_failures": "count_per_frozen_taxonomy",
+    "emergency_safety_action": "annotate_and_terminate"
+  },
+  "permitted_decisions": [
+    "CONTINUE_COLLECTING",
+    "STOP_OPERATIONAL_FAILURE",
+    "STOP_PERFORMANCE_FAILURE",
+    "EVIDENCE_COMPLETE"
+  ],
+  "performance_failure_when_denominator_met": {
+    "realized_pnl_lte": 0,
+    "profit_factor_lt": 1.1
+  },
+  "promote": false,
+  "live_go": false,
+  "prohibit_live_promotion": true,
+  "not_in_scope": [
+    "live promotion from this window",
+    "counting pre-T0 trades as validation",
+    "scoring the window in this lock PR",
+    "provider change",
+    "strategy/threshold/sizing edits",
+    "Deploy / Docker / migrations"
+  ]
+}
