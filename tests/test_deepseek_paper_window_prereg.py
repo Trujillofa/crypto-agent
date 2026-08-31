@@ -130,7 +130,10 @@ def test_lock_denominators_match_pre_t0_cadence() -> None:
     assert cadence["no_answer_n"] == 8
     assert POLICY["review"]["operational_horizon_days"] == 14
     assert POLICY["review"]["min_n_observations"] == 140
-    assert POLICY["operational_health"]["min_answered_pct"] == 50.0
+    assert POLICY["operational_health"]["min_answered_pct"] == 99.1187234014
+    assert POLICY["operational_health"]["interval"] == "clopper_pearson_one_sided_lower"
+    assert POLICY["operational_health"]["pre_t0_answered_n"] == 1962
+    assert POLICY["operational_health"]["pre_t0_n"] == 1970
     assert "min_eligible_trades_for_performance_decision" not in POLICY["review"]
     assert POLICY["degradation"]["window"] == 10
     assert POLICY["degradation"]["no_answer_pct"] == 0.5
@@ -304,6 +307,35 @@ def test_decide_all_no_answer_is_operational_failure() -> None:
     )
 
 
+def test_decide_half_no_answer_is_not_operational_health() -> None:
+    """70/70 is the old 50% floor and must not certify provider health."""
+    assert (
+        _healthy_decide(n_observations=140, answered_n=70, no_answer_n=70, degraded=False)
+        == "STOP_OPERATIONAL_FAILURE"
+    )
+
+
+def test_decide_rejects_negative_counters() -> None:
+    assert (
+        _healthy_decide(n_observations=140, answered_n=141, no_answer_n=-1)
+        == "STOP_OPERATIONAL_FAILURE"
+    )
+
+
+def test_decide_rejects_fractional_counters() -> None:
+    assert (
+        _healthy_decide(n_observations=140, answered_n=70.9, no_answer_n=70.1)
+        == "STOP_OPERATIONAL_FAILURE"
+    )
+
+
+def test_decide_pre_t0_bound_rejects_138_of_140() -> None:
+    assert (
+        _healthy_decide(n_observations=140, answered_n=138, no_answer_n=2)
+        == "STOP_OPERATIONAL_FAILURE"
+    )
+
+
 def test_decide_active_degradation_at_horizon_is_operational_failure() -> None:
     assert _healthy_decide(degraded=True) == "STOP_OPERATIONAL_FAILURE"
 
@@ -392,6 +424,10 @@ def test_decide_operational_failure_on_invariant_or_emergency() -> None:
         ),
         lambda p: p["decision_policy"].__setitem__("permitted_decisions", ["CONTINUE_COLLECTING"]),
         lambda p: p["decision_policy"].__setitem__("extra_decision_field", True),
+        lambda p: p["decision_policy"].__setitem__(
+            "operational_health",
+            {**p["decision_policy"]["operational_health"], "min_answered_pct": 50.0},
+        ),
     ],
 )
 def test_decision_mutations_raise_lock_tamper(tmp_path: Path, mutator) -> None:

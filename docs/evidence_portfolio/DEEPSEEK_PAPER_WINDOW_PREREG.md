@@ -65,11 +65,15 @@ Chosen from that pre-T0 rate, not from post-T0 results:
 - **Operational review:** 14 days. Expected ~175 observations at 12.541/day.
   `min_n_observations = 140` (14 × 10 obs/day floor under the measured 12.5).
 - **Strategy review:** 30 days. **No approved performance trade count.**
-- **Degradation:** rolling **10** observations, no-answer ≥ **50%**
-  (`SentimentScorer` defaults). ~10 hours at the pre-T0 median gap.
-- **Window-level operational fail:** `min_answered_pct = 50`. Same floor as
-  `degradation_error_pct`. Pre-T0 no-answer rate (0.406%) sat far above it.
-  Transient outages **remain in the denominator** (`no_answer_n` counts).
+- **Degradation (BUY-block, not health success):** rolling **10** observations,
+  no-answer ≥ **50%** (`SentimentScorer.degradation_error_pct`). ~10 hours at
+  the pre-T0 median gap. This is an emergency stop, not operational completion.
+- **Window-level operational health:** `min_answered_pct = 99.1187234014`.
+  One-sided 99% Clopper-Pearson lower bound on frozen pre-T0 answered rate
+  **1962/1970 = 99.593909%**. On a 140-obs floor that requires ≥139 answered
+  (138/140 = 98.57% fails). Transient outages **remain in the denominator**.
+  Counters must be exact nonnegative integers with
+  `answered_n + no_answer_n == n_observations`.
 
 If a horizon arrives under the observation minimum, the only allowed non-failure
 decision is `CONTINUE_COLLECTING`.
@@ -144,9 +148,9 @@ Evaluate in this order. Missing/invalid metrics never yield `EVIDENCE_COMPLETE`.
 
 | Decision | When |
 |----------|------|
-| `STOP_OPERATIONAL_FAILURE` | Emergency safety, invariant break, identity failure, provider/model mismatch, config/strategy interruption, unproven paper runtime, `n >= 140` with answered% `< 50`, all-no-answer window, active rolling-10 degradation at the operational horizon, or missing operational aggregates at that horizon |
+| `STOP_OPERATIONAL_FAILURE` | Emergency safety, invariant break, identity failure, provider/model mismatch, config/strategy interruption, unproven paper runtime, `n >= 140` with answered% below the pre-T0 Clopper-Pearson 99% floor (99.1187234014%), all-no-answer window, 50/50 split, active rolling-10 degradation at the operational horizon, non-integer/negative counters, or missing operational aggregates at that horizon |
 | `CONTINUE_COLLECTING` | Before operational pass |
-| `OPERATIONAL_EVIDENCE_COMPLETE` | Operational horizon + `n >= 140` + counts add up + answered% ≥ 50 + not degraded + invariants + no interruption. **Not** a performance verdict |
+| `OPERATIONAL_EVIDENCE_COMPLETE` | Operational horizon + `n >= 140` + exact nonnegative integer counts that add up + answered% ≥ 99.1187234014 + not degraded + invariants + no interruption. **Not** a performance verdict |
 | `INSUFFICIENT_EVIDENCE` | Strategy horizon after operational pass while `performance_denominator.approved == false`, or required performance aggregates invalid |
 | `STOP_PERFORMANCE_FAILURE` | Only if a future approved denominator exists and valid finite PF/P&L fail the frozen bars **and** concentration check passes as an input |
 | `EVIDENCE_COMPLETE` | Only if that future approved denominator exists **and** operational pass **and** strategy horizon **and** valid finite aggregates **and** concentration_ok **and** no degradation/interruption. Unreachable in this lock |

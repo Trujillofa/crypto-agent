@@ -17,8 +17,12 @@
       "min_n_observations": 140
     },
     "operational_health": {
-      "min_answered_pct": 50.0,
-      "derivation": "Same 50% no-answer floor as SentimentScorer.degradation_error_pct. Pre-T0 cadence 8/1970 no-answer (0.406%) sat far above this floor. Transient outages stay in the denominator. Not calibrated from post-T0 data."
+      "min_answered_pct": 99.1187234014,
+      "confidence_level": 0.99,
+      "interval": "clopper_pearson_one_sided_lower",
+      "pre_t0_answered_n": 1962,
+      "pre_t0_n": 1970,
+      "derivation": "Window-level health is the one-sided 99% Clopper-Pearson lower bound on the frozen pre-T0 answered rate 1962/1970 (99.593909%). Bound = 99.1187234014%. Rolling-10 50% remains the emergency BUY-block degradation rule only, not operational-health success. Transient outages stay in the denominator. Not calibrated from post-T0 data."
     },
     "degradation": {
       "window": 10,
@@ -127,7 +131,7 @@
       "terminal performance verdict without an approved denominator"
     ]
   },
-  "decision_policy_sha256": "bc64e6861d8e2b52e8e74ad23f19e2487c80f5812d18e36a119410bce5eb7589",
+  "decision_policy_sha256": "51c2f5103684a27314119b65bbe7d65b142e28ed7097fb0abca7f6597604c64e",
   "metadata": {
     "locked_at": "2026-08-31T16:00:00Z",
     "locked_before_post_t0_performance_review": true,
@@ -144,6 +148,6 @@
       "historical_paper_positions_excluded": 3,
       "note": "Cadence only. Pre-T0 trades are excluded from validation and were not scored for this lock."
     },
-    "denominator_notes": "min_n_observations = 14 days * 10 obs/day floor versus pre-T0 12.541 obs/day (median gap 3605s). min_answered_pct = 50 matches frozen degradation_error_pct; pre-T0 no-answer rate was 0.406%."
+    "denominator_notes": "min_n_observations = 14 days * 10 obs/day floor versus pre-T0 12.541 obs/day (median gap 3605s). min_answered_pct = 99.1187234014 is the one-sided 99% Clopper-Pearson lower bound on pre-T0 1962/1970. Rolling-10 50% is degradation-only, not window health."
   }
 }

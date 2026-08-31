@@ -19,7 +19,7 @@ DEFAULT_LOCK = REPO_ROOT / "research/paper_windows/deepseek-sentiment-macro-v1/l
 FROZEN_PROTOCOL_ID = "deepseek-sentiment-macro-paper-window"
 FROZEN_DEPLOYED_SHA = "bc6ea9e1c62b36c82d27b96f2fb2c28d99f2f316"
 FROZEN_WINDOW_START = "2026-08-31T15:26:51Z"
-FROZEN_DECISION_POLICY_SHA256 = "bc64e6861d8e2b52e8e74ad23f19e2487c80f5812d18e36a119410bce5eb7589"
+FROZEN_DECISION_POLICY_SHA256 = "51c2f5103684a27314119b65bbe7d65b142e28ed7097fb0abca7f6597604c64e"
 TOP_LEVEL_KEYS = frozenset({"decision_policy", "decision_policy_sha256", "metadata"})
 METADATA_KEYS = frozenset(
     {
@@ -166,6 +166,11 @@ def is_finite_number(value: object) -> bool:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return False
     return math.isfinite(float(value))
+
+
+def is_nonneg_int(value: object) -> bool:
+    """True only for exact nonnegative integers. Rejects bool, float, and negatives."""
+    return type(value) is int and value >= 0
 
 
 def profit_factor_is_valid(profit_factor: object, *, gross_loss: object | None = None) -> bool:
@@ -346,15 +351,14 @@ def decide(
         return "STOP_OPERATIONAL_FAILURE"
 
     operational_counts_ok = (
-        is_finite_number(n_observations)
-        and is_finite_number(answered_n)
-        and is_finite_number(no_answer_n)
-        and int(n_observations) == int(answered_n or 0) + int(no_answer_n or 0)
-        and int(n_observations) >= 0
+        is_nonneg_int(n_observations)
+        and is_nonneg_int(answered_n)
+        and is_nonneg_int(no_answer_n)
+        and answered_n + no_answer_n == n_observations
     )
     answered_pct = _answered_pct(answered_n, n_observations) if operational_counts_ok else None
 
-    if operational_counts_ok and int(n_observations) >= min_obs:
+    if operational_counts_ok and n_observations >= min_obs:
         if answered_pct is None or answered_pct < min_answered_pct:
             return "STOP_OPERATIONAL_FAILURE"
     if operational_due and degraded:
@@ -365,7 +369,7 @@ def decide(
     operational_pass = (
         operational_due
         and operational_counts_ok
-        and int(n_observations) >= min_obs
+        and n_observations >= min_obs
         and answered_pct is not None
         and answered_pct >= min_answered_pct
         and not degraded
