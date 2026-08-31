@@ -29,16 +29,21 @@ live orders.
 | Service | `agent_sentiment_macro` |
 | Config | `config/settings.sentiment_macro.yaml` |
 | Event log | `data/event_log_sentiment-macro-bot.jsonl` |
+| Decision-policy SHA-256 | `lock.json` `decision_policy_sha256` (canonical JSON of `decision_policy` only) |
+
+Taxonomy and every decision-affecting field live inside `decision_policy`. Metadata
+(`locked_at`, pre-T0 cadence notes) is outside the digest. Missing or extra
+decision fields, or a digest mismatch, are `LockTamper`.
 
 ## Hypothesis under measurement
 
-The deployed paper agent, answering on funded DeepSeek (`deepseek-v4-pro` at
-`https://api.deepseek.com/v1`), can be observed for operational health and
-paper-trade outcomes **after T0** without mixing in the pre-T0 xAI/DeepSeek
+The deployed paper agent, answering on funded DeepSeek (`deepseek-v4-pro`), can be
+observed for **operational** health after T0 without mixing pre-T0 xAI/DeepSeek
 history or the three historical paper positions.
 
-This window does **not** claim an edge. It records evidence. Live promotion is
-prohibited without a separate review and authorization.
+This window does **not** claim an edge and **cannot** complete a performance
+verdict until a separately approved trade denominator exists. Live promotion is
+prohibited.
 
 ## Pre-T0 cadence (denominator source)
 
@@ -50,94 +55,122 @@ Measured from `sentiment_score` events with `ts < T0` only:
 | First / last | 2026-03-27T12:32:24Z → 2026-08-31T14:28:11Z |
 | Median gap | 3605 s (~1h, matches `evaluation_interval_seconds: 3600`) |
 | Rate | 12.541 obs/day |
-| Historical paper positions | 3, all with `entry_time < T0` — **excluded**, not validation |
+| No-answer | 8 / 1970 = 0.406% |
+| Historical paper positions | 3, all `entry_time < T0` — **excluded**, not validation |
 
-## Horizons and minimum denominators
+## Horizons and operational denominator
 
 Chosen from that pre-T0 rate, not from post-T0 results:
 
 - **Operational review:** 14 days. Expected ~175 observations at 12.541/day.
   `min_n_observations = 140` (14 × 10 obs/day floor under the measured 12.5).
-- **Strategy review:** 30 days. `min_eligible_trades_for_performance_decision = 4`
-  (repository sparse WFO minimum). The 3 pre-T0 paper positions do not count.
-- **Degradation:** rolling **10** observations, no-answer ≥ **50%** (code defaults
-  in `SentimentScorer`). That is ~10 hours at the pre-T0 median gap.
+- **Strategy review:** 30 days. **No approved performance trade count.**
+- **Degradation:** rolling **10** observations, no-answer ≥ **50%**
+  (`SentimentScorer` defaults). ~10 hours at the pre-T0 median gap.
+- **Window-level operational fail:** `min_answered_pct = 50`. Same floor as
+  `degradation_error_pct`. Pre-T0 no-answer rate (0.406%) sat far above it.
+  Transient outages **remain in the denominator** (`no_answer_n` counts).
 
-If a horizon arrives with `n` below the frozen minimum, the only allowed
-non-failure decision is `CONTINUE_COLLECTING`.
+If a horizon arrives under the observation minimum, the only allowed non-failure
+decision is `CONTINUE_COLLECTING`.
+
+## Performance denominator — not approved
+
+Three pre-T0 paper positions cannot support a terminal PF/P&L sample (n=3, no
+concentration/outlier distribution). The sparse-WFO engineering minimum of 4 is
+**not** a prospective paper-performance denominator and is not used here.
+
+Until a **separately approved** denominator is written into `decision_policy`
+(new digest, new review):
+
+- `STOP_PERFORMANCE_FAILURE` is unreachable
+- `EVIDENCE_COMPLETE` is unreachable
+- strategy horizon + operational pass → `INSUFFICIENT_EVIDENCE`
+- any later performance-complete state must still require a concentration/outlier
+  check (`performance_denominator.concentration_check_required`)
+
+Zero-loss profit factor is **undefined, not valid**. Infinity, NaN, None, or
+`gross_loss == 0` cannot pass or fail performance.
 
 ## Inclusion — observations
 
-Include a JSONL event iff:
+A JSONL event is **in-window** iff:
 
 - `type == sentiment_score`
 - `ts >= 2026-08-31T15:26:51Z`
-- `agent_id` is `sentiment-macro-bot` or omitted on historical rows
+- `agent_id == sentiment-macro-bot` exactly (missing agent → fail closed)
 
-Classification uses `src/sentiment_sources.py`:
+A **valid DeepSeek answer** additionally requires:
 
-- **Answered / live:** `xai_live`, `deepseek_fallback`, `zai_live`
-- **No-answer / error:** `xai_error_fallback`, `error_fallback`, `neutral_fallback`
-- Unknown `source` counts as **no-answer** (fail-closed)
+- `payload.provider == deepseek`
+- `payload.model == deepseek-v4-pro`
+- `payload.source` in lock `valid_deepseek_sources` (`deepseek_fallback` only)
+
+Source class uses **lock lists only** (not `src.sentiment_sources`):
+
+- Historical answered labels: `xai_live`, `deepseek_fallback`, `zai_live`
+- No-answer: `xai_error_fallback`, `error_fallback`, `neutral_fallback`
+- Unknown source → no-answer
+- `xai_live` / `zai_live` after T0 are **not** valid DeepSeek answers; they are
+  provider mismatches and terminate (`interruptions.provider_model_mismatch`)
+- Missing provider or model → identity failure, fail closed
 
 Every pre-T0 `sentiment_score` is excluded.
 
 ## Inclusion — eligible closed paper trades
 
-Include a position iff:
+The `positions` table does **not** store executor provenance. An unverified
+position is **not** paper.
 
-- `agent_id == sentiment-macro-bot`
+Include iff all of:
+
+- `agent_id == sentiment-macro-bot` exactly (missing → ineligible)
 - `entry_time >= T0`
-- `status == closed` and `exit_time` is present
-- fill path is `PaperExecutor` (`order_filled` in this agent's event log)
+- `status == closed` and `exit_time` present
+- `executor` is not a live/Binance marker
+- caller passes `paper_runtime_verified=True` from overlapping
+  `system_startup` / startup-diagnostics for this agent covering `entry_time`
+  (`executor=paper`, “Paper mode: using internal PaperExecutor”)
+
+If provenance cannot be proven from existing event-log evidence, the row is
+ineligible. This PR does not add a DB column or change runtime.
 
 **Exclude** any position entered before T0 even if it closes afterward.
 **Exclude** the three historical paper positions. **Exclude** open positions.
-**Exclude** Binance/live executor fills.
 
-Exit-reason breakdown uses `order_filled.close_reason` (`STOP_LOSS`,
-`TAKE_PROFIT`, time-stop, signal, reconciliation, etc.).
+## Decision-state semantics
 
-## Metrics to collect (do not score in this PR)
+Evaluate in this order. Missing/invalid metrics never yield `EVIDENCE_COMPLETE`.
 
-Operational: answered/live %, no-answer/error %, source/provider/model
-attribution, rolling-10 degradation state, alert transitions (rising-edge
-degradation pages only).
+| Decision | When |
+|----------|------|
+| `STOP_OPERATIONAL_FAILURE` | Emergency safety, invariant break, identity failure, provider/model mismatch, config/strategy interruption, unproven paper runtime, `n >= 140` with answered% `< 50`, all-no-answer window, active rolling-10 degradation at the operational horizon, or missing operational aggregates at that horizon |
+| `CONTINUE_COLLECTING` | Before operational pass |
+| `OPERATIONAL_EVIDENCE_COMPLETE` | Operational horizon + `n >= 140` + counts add up + answered% ≥ 50 + not degraded + invariants + no interruption. **Not** a performance verdict |
+| `INSUFFICIENT_EVIDENCE` | Strategy horizon after operational pass while `performance_denominator.approved == false`, or required performance aggregates invalid |
+| `STOP_PERFORMANCE_FAILURE` | Only if a future approved denominator exists and valid finite PF/P&L fail the frozen bars **and** concentration check passes as an input |
+| `EVIDENCE_COMPLETE` | Only if that future approved denominator exists **and** operational pass **and** strategy horizon **and** valid finite aggregates **and** concentration_ok **and** no degradation/interruption. Unreachable in this lock |
 
-Strategy: eligible trades, realized P&L, profit factor, win rate, drawdown,
-symbol breakdown, exit-reason breakdown.
+`promote: false`. `live_go: false`. This window **cannot** authorize live trading.
 
 ## Safety invariants
 
 The window is valid only while all remain true:
 
 - `mode: paper`
-- `PaperExecutor` is the order path (`executor=paper` at startup)
+- `PaperExecutor` is the order path
 - no Binance order executor is constructed
 - degraded sentiment blocks new BUY entries
-  (`not sentiment_degraded` in `SentimentMeanReversionStrategy`)
 
 ## Interruption / censoring
 
 | Event | Rule |
 |-------|------|
-| Provider, config, strategy, threshold, or sizing change | **Terminate** the window |
-| Restart or outage | **Record** (`system_startup` / gap); do not erase |
-| Operational failures | Count with the frozen taxonomy |
+| Provider, config, strategy, threshold, or sizing change | **Terminate** |
+| Provider/model mismatch on in-window observations | **Terminate** |
+| Restart or outage | **Record**; do not erase; outages count in the no-answer denominator |
+| Operational failures | Count with the frozen lock taxonomy |
 | Emergency safety action | **Annotate and terminate** |
-
-## Permitted decisions
-
-- `CONTINUE_COLLECTING` — default; also when a horizon arrives under denominator
-- `STOP_OPERATIONAL_FAILURE` — invariant broken, provider/config change, or
-  emergency safety action
-- `STOP_PERFORMANCE_FAILURE` — only after `n_eligible_trades >= 4` and
-  (`realized_pnl <= 0` or `profit_factor < 1.10`)
-- `EVIDENCE_COMPLETE` — strategy horizon reached and both denominators met,
-  without a stop rule firing
-
-`promote: false`. `live_go: false`. This evidence window **cannot** authorize
-live trading.
 
 ## Scope limits
 
@@ -148,5 +181,5 @@ live trading.
 
 ## Sign-off
 
-Parameters locked by: protocol PR against `bc6ea9e1c62b36c82d27b96f2fb2c28d99f2f316`,
-2026-08-31. Post-T0 performance was not reviewed before freeze.
+Parameters locked by: protocol PR against `bc6ea9e1c62b36c82d27b96f2fb2c28d99f2f316`.
+Post-T0 performance was not reviewed before freeze.

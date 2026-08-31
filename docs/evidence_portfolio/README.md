@@ -20,7 +20,7 @@ reviewed, to prevent open-ended strategy research and post-hoc rationalization.
 | NFP forward gate | [NFP_FORWARD_GATE.md](NFP_FORWARD_GATE.md) | Forward-confirmation protocol bought by probe #1's YES. Signed 2026-07-21; measurement only, no build, no capital. First clean print 2026-08-07. |
 | Day-30 fallback | [PORTFOLIO_KILL_GATE.md](PORTFOLIO_KILL_GATE.md) | If everything fails: no new public-data lane. Fallback = input acquisition or redeploy agent-hours. |
 | Named-changed-input (post-portfolio) | [CVD_ABSORPTION_PREREG.md](CVD_ABSORPTION_PREREG.md) | Binance spot CVD absorption v1. Locked 2026-08-20 **before** develop fetch. Not probe #3 of the closed 30-day pair. `promote=no`. |
-| DeepSeek paper window | [DEEPSEEK_PAPER_WINDOW_PREREG.md](DEEPSEEK_PAPER_WINDOW_PREREG.md) | Sentiment-macro paper evidence on funded DeepSeek after deploy `bc6ea9e`. T0 `2026-08-31T15:26:51Z`. Pre-T0 history excluded. `live_go=no`. |
+| DeepSeek paper window | [DEEPSEEK_PAPER_WINDOW_PREREG.md](DEEPSEEK_PAPER_WINDOW_PREREG.md) | Sentiment-macro paper evidence on funded DeepSeek after deploy `bc6ea9e`. T0 `2026-08-31T15:26:51Z`. Pre-T0 history excluded. Performance denominator not approved. `live_go=no`. |
 
 ## Metrics, reporting, kill gates
 
