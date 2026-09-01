@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
-"""Walk-Forward Optimization comparison: Long-Only vs Long+Short."""
+"""Fixed-config WFO comparison: long-only vs long+short.
+
+Uses the same calendar windows, half-open fetch bounds, and
+``execution_parity_v2`` fills as ``scripts/experiment_autopilot.py``.
+Not a live-go.
+"""
 
 import os
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.append(os.getcwd())
 
+from src.backtest.experiment_autopilot import (  # noqa: E402
+    build_wfo_windows,
+    wfo_inclusive_fetch_bounds,
+)
+from src.backtest.research_safety import refuse_live_go  # noqa: E402
+
 
 def run_backtest(symbol, timeframe, start, end, allow_short=False, sl=0.02, tp=0.05):
     """Run a single backtest and return metrics."""
     cmd = [
-        "python",
+        sys.executable,
         "scripts/run_backtest.py",
         "--symbol",
         symbol,
@@ -29,6 +40,8 @@ def run_backtest(symbol, timeframe, start, end, allow_short=False, sl=0.02, tp=0
         str(sl),
         "--tp",
         str(tp),
+        "--execution-profile",
+        "execution_parity_v2",
     ]
     if allow_short:
         cmd.append("--allow-short")
@@ -59,45 +72,34 @@ def run_backtest(symbol, timeframe, start, end, allow_short=False, sl=0.02, tp=0
 
 def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3, sl=0.02, tp=0.05):
     """Run WFO comparing long-only vs long+short."""
-    start_dt = datetime.fromisoformat(start)
-    end_dt = datetime.fromisoformat(end)
-
     results_long = []
     results_short = []
 
-    current = start_dt
-    window = 0
+    windows = build_wfo_windows(start, end, train_months, test_months)
 
-    while current + timedelta(days=test_months * 30 + 1) < end_dt:
-        train_end = current + timedelta(days=train_months * 30)
-        test_start = train_end
-        test_end = test_start + timedelta(days=test_months * 30)
+    for index, window in enumerate(windows, start=1):
+        _, _, test_start, test_end = wfo_inclusive_fetch_bounds(window)
+        train_str = window.train_end[:10]
+        test_str = window.test_end[:10]
 
-        if test_end > end_dt:
-            break
-
-        train_str = train_end.strftime("%Y-%m-%d")
-        test_str = test_end.strftime("%Y-%m-%d")
-
-        window += 1
         print(f"\n{'=' * 60}")
-        print(f"Window {window}: Train to {train_str} | Test to {test_str}")
+        print(f"Window {index}: Train to {train_str} | Test to {test_str}")
         print(f"{'=' * 60}")
 
         # Long-only test
-        print(f"\n[LONG-ONLY] Testing {test_start.strftime('%Y-%m-%d')} to {test_str}...")
+        print(f"\n[LONG-ONLY] Testing {window.test_start[:10]} to {test_str}...")
         metrics_long = run_backtest(
             symbol,
             timeframe,
-            test_start.strftime("%Y-%m-%d"),
-            test_str,
+            test_start,
+            test_end,
             allow_short=False,
             sl=sl,
             tp=tp,
         )
         if metrics_long:
-            metrics_long["window"] = window
-            metrics_long["test_period"] = f"{test_start.strftime('%Y-%m')}-{test_str}"
+            metrics_long["window"] = index
+            metrics_long["test_period"] = f"{window.test_start[:7]}-{test_str}"
             results_long.append(metrics_long)
             print(
                 f"  Trades: {metrics_long.get('trades', 0)}, Win Rate: {metrics_long.get('win_rate', 0):.1f}%, "
@@ -105,26 +107,24 @@ def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3,
             )
 
         # Long+Short test
-        print(f"\n[LONG+SHORT] Testing {test_start.strftime('%Y-%m-%d')} to {test_str}...")
+        print(f"\n[LONG+SHORT] Testing {window.test_start[:10]} to {test_str}...")
         metrics_short = run_backtest(
             symbol,
             timeframe,
-            test_start.strftime("%Y-%m-%d"),
-            test_str,
+            test_start,
+            test_end,
             allow_short=True,
             sl=sl,
             tp=tp,
         )
         if metrics_short:
-            metrics_short["window"] = window
-            metrics_short["test_period"] = f"{test_start.strftime('%Y-%m')}-{test_str}"
+            metrics_short["window"] = index
+            metrics_short["test_period"] = f"{window.test_start[:7]}-{test_str}"
             results_short.append(metrics_short)
             print(
                 f"  Trades: {metrics_short.get('trades', 0)}, Win Rate: {metrics_short.get('win_rate', 0):.1f}%, "
                 f"Sharpe: {metrics_short.get('sharpe', 0):.2f}, Return: {metrics_short.get('return_pct', 0):.2f}%"
             )
-
-        current = train_end
 
     # Summary
     print(f"\n{'=' * 60}")
@@ -235,6 +235,7 @@ def wfo_comparison(symbol, timeframe, start, end, train_months=6, test_months=3,
 if __name__ == "__main__":
     import argparse
 
+    refuse_live_go(argv=sys.argv[1:])
     parser = argparse.ArgumentParser(description="WFO comparison: Long-Only vs Long+Short")
     parser.add_argument("--symbol", type=str, default="SOLUSDT", help="Trading pair")
     parser.add_argument("--timeframe", type=str, default="4h", help="Timeframe")
@@ -244,6 +245,7 @@ if __name__ == "__main__":
     parser.add_argument("--tp", type=float, default=0.05, help="Take profit (e.g. 0.05 for 5%)")
 
     args = parser.parse_args()
+    refuse_live_go(flags=vars(args))
 
     wfo_comparison(
         symbol=args.symbol,

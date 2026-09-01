@@ -44,7 +44,7 @@ surface is still unauthorized work.
 
 | Piece | What is already true |
 |-------|----------------------|
-| Validation | WFO + bootstrap + concentration gates live in `src/backtest/experiment_autopilot.py` (`GateConfig`, `WfoWindow`). Drive with `scripts/experiment_autopilot.py` / `scripts/run_wfo.py`. |
+| Validation | WFO + bootstrap + concentration gates live in `src/backtest/experiment_autopilot.py` (`GateConfig`, `WfoWindow`). Drive gated WFO with `scripts/experiment_autopilot.py`. `scripts/run_wfo.py` is a thin fixed-config OOS runner on the same calendar / half-open clock — not parameter optimization. |
 | Primary technical stack | `TrendPullbackStrategy` plus MTF (`mtf_breakout`, `mtf_continuation`, `multi_timeframe_regime`, `regime_router`). Production agents on this stack are **paper / disarmed**; several configs emit zero fills at current aggregator thresholds. |
 | Engine | `execution_parity_v2` evaluates at bar close and fills at next-bar open (`fill_source="next_bar_open"`). `legacy_v1` remains the signal-close compatibility path. The `scripts/experiment_autopilot.py` CLI defaults to `execution_parity_v2`. Futures qty is step-truncated in `src/backtest/sizing.py`. |
 | Costs | `src/backtest/cost_overrides.py` (`CostProfile`: `legacy` / `realistic` / `corrected`). Corrected book: fee `0.0004`, slip `0.0002`, `scaled_8h` funding. Model work must not edit cost overrides. |

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.run_wfo import oos_fetch_windows
 from src.backtest.artifacts import create_manifest, write_manifest
 from src.backtest.engine import BacktestConfig, BacktestEngine
 from src.backtest.experiment_autopilot import (
@@ -328,6 +329,7 @@ def test_canonical_research_scripts_cannot_place_live_orders() -> None:
         Path("scripts/experiment_autopilot.py"),
         Path("scripts/run_wfo.py"),
         Path("scripts/run_wfo_sweep.py"),
+        Path("scripts/run_wfo_short_comparison.py"),
         Path("scripts/run_config_search.py"),
         Path("scripts/run_mtf_search.py"),
         Path("src/backtest/engine.py"),
@@ -422,10 +424,17 @@ def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
     config_src = Path("scripts/run_config_search.py").read_text(encoding="utf-8")
     mtf_src = Path("scripts/run_mtf_search.py").read_text(encoding="utf-8")
     autopilot_src = Path("scripts/experiment_autopilot.py").read_text(encoding="utf-8")
-    for src in (config_src, mtf_src):
+    wfo_src = Path("scripts/run_wfo.py").read_text(encoding="utf-8")
+    short_src = Path("scripts/run_wfo_short_comparison.py").read_text(encoding="utf-8")
+    overlap_src = Path("scripts/analyze_entry_overlap.py").read_text(encoding="utf-8")
+    for src in (config_src, mtf_src, wfo_src, short_src):
         assert "build_wfo_windows(start, end, train_months, test_months)" in src
         assert "wfo_inclusive_fetch_bounds(" in src
-        assert "for window in windows:" in src
+        assert (
+            "for window in windows:" in src
+            or "for index, window in enumerate(windows" in src
+            or "oos_fetch_windows(" in src
+        )
         assert "timedelta(days=" not in src
         assert "months * 30" not in src
         assert "train_months * 30" not in src
@@ -434,6 +443,12 @@ def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
     assert "                    start=window.test_start," not in autopilot_src
     assert "                    start=test_start," in autopilot_src
     assert "                    end=test_end," in autopilot_src
+    assert "wfo_inclusive_fetch_bounds(window)" in overlap_src
+    assert "end=window.test_end," not in overlap_src
+    assert "start=window.test_start," not in overlap_src
+    assert 'execution_profile="execution_parity_v2"' in overlap_src
+    assert 'default="execution_parity_v2"' in wfo_src
+    assert "--execution-profile" in wfo_src
     windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
     sequence = [(window.test_start, window.test_end) for window in windows]
     assert sequence
@@ -443,6 +458,25 @@ def test_search_scripts_use_identical_calendar_wfo_boundaries() -> None:
         (window.test_start, window.test_end)
         for window in build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
     ]
+    advertised = oos_fetch_windows("2024-01-01", "2026-01-01", 6, 3)
+    assert [window.test_start for window, _, _ in advertised] == [start for start, _ in sequence]
+    assert [window.test_end for window, _, _ in advertised] == [end for _, end in sequence]
+    first_window, first_fetch_start, first_fetch_end = advertised[0]
+    _, _, bound_start, bound_end = wfo_inclusive_fetch_bounds(first_window)
+    assert first_fetch_start == bound_start
+    assert first_fetch_end == bound_end
+    assert first_fetch_end != first_window.test_end
+
+
+def test_thirty_day_wfo_windows_diverge_from_calendar() -> None:
+    """The old advertised runner used months*30; that is not the canonical clock."""
+    from datetime import datetime, timedelta
+
+    windows = build_wfo_windows("2024-01-01", "2026-01-01", 6, 3)
+    current = datetime.fromisoformat("2024-01-01")
+    thirty_test_end = (current + timedelta(days=6 * 30) + timedelta(days=3 * 30)).date().isoformat()
+    assert windows[0].test_end.startswith("2024-10-01")
+    assert thirty_test_end != "2024-10-01"
 
 
 def test_leap_year_and_month_end_wfo_windows_remain_disjoint() -> None:
@@ -760,6 +794,8 @@ RESEARCH_CLIS = [
     "scripts/run_backtest.py",
     "scripts/experiment_autopilot.py",
     "scripts/run_wfo.py",
+    "scripts/run_wfo_short_comparison.py",
+    "scripts/analyze_entry_overlap.py",
     "scripts/run_config_search.py",
     "scripts/run_mtf_search.py",
     "scripts/run_full_backtest.py",
