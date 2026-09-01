@@ -145,9 +145,30 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert settings.telegram.daily_summary_send_empty is False
     assert settings.display_name == "sentiment-macro-1h-multiasset"
     assert settings.ai.enabled is True
-    assert settings.ai.provider == "zai"
-    assert settings.ai.model == "glm-5.3"
+    assert settings.ai.provider == "deepseek"
+    assert settings.ai.fallback_model == "deepseek-v4-pro"
     assert aggregator_config["buy_threshold"] == 0.6
+
+
+def test_sentiment_macro_config_selects_funded_deepseek_not_zai_coding_plan():
+    """Sentiment-macro uses funded DeepSeek; Z.AI Coding Plan is not selected."""
+    overlay_path = Path("config/settings.sentiment_macro.yaml")
+    overlay_text = overlay_path.read_text(encoding="utf-8")
+    assert "provider: deepseek" in overlay_text
+    assert "fallback_model: deepseek-v4-pro" in overlay_text
+    assert "zai_base_url:" not in overlay_text
+    assert "api/coding/paas/v4" not in overlay_text
+    assert "glm-5.3" not in overlay_text
+
+    settings = load_settings(overlay_path)
+    assert settings.ai.enabled is True
+    assert settings.ai.provider == "deepseek"
+    assert settings.ai.fallback_model == "deepseek-v4-pro"
+    assert settings.ai.fallback_base_url == "https://api.deepseek.com/v1"
+    assert settings.ai.zai_base_url != "https://api.z.ai/api/coding/paas/v4"
+    assert settings.mode == "paper"
+    assert settings.trading_execution.enabled is False
+    assert settings.trading_execution.test_mode is True
 
 
 def test_sol_panic_block_paper_config_resolves_paper_safe_strategy():

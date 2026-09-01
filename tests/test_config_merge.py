@@ -139,9 +139,9 @@ telegram:
 
 ai:
   enabled: true
-  provider: zai
-  model: glm-5.3
+  provider: deepseek
   polling_interval: 60.0
+  fallback_model: deepseek-v4-pro
   max_history: 10
   allowed_chat_ids: []
   api_key: ""
