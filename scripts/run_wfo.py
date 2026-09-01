@@ -30,6 +30,25 @@ from src.backtest.research_safety import refuse_live_go  # noqa: E402
 ExecutionProfile = str
 
 
+def parse_run_backtest_stdout(stdout: str) -> dict[str, float]:
+    """Parse metrics from ``scripts/run_backtest.py`` stdout labels.
+
+    ``run_backtest.py`` emits ``Sharpe Ratio:``, not ``Sharpe:``. Matching the
+    short label silently drops Sharpe and later fills 0.0 into every WFO fold.
+    """
+    metrics: dict[str, float] = {}
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Total Trades:"):
+            metrics["trades"] = float(int(stripped.split(":", 1)[1].strip()))
+        elif stripped.startswith("Win Rate:"):
+            pct = stripped.split(":", 1)[1].strip().rstrip("%")
+            metrics["win_rate"] = float(pct) / 100.0
+        elif stripped.startswith("Sharpe Ratio:"):
+            metrics["sharpe"] = float(stripped.split(":", 1)[1].strip())
+    return metrics
+
+
 def oos_fetch_windows(
     start: str,
     end: str,
@@ -78,16 +97,7 @@ def run_backtest(
     if result.returncode != 0:
         print(f"Backtest failed: {result.stderr}")
         return None
-    lines = result.stdout.splitlines()
-    metrics: dict[str, float] = {}
-    for line in lines:
-        if "Total Trades:" in line:
-            metrics["trades"] = float(int(line.split(":")[1]))
-        elif "Win Rate:" in line:
-            metrics["win_rate"] = float(line.split(":")[1].strip("%")) / 100.0
-        elif "Sharpe:" in line:
-            metrics["sharpe"] = float(line.split(":")[1])
-    return metrics
+    return parse_run_backtest_stdout(result.stdout)
 
 
 async def wfo(
