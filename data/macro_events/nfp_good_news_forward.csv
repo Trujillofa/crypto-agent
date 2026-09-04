@@ -1,2 +1,3 @@
 event_type,release_date_et,release_ts_utc,metric,actual,consensus,surprise,z,consensus_source,actual_source,source_snapshot_url
 NFP_MISSED_CAPTURE,2026-08-07,2026-08-07T12:30:00Z,headline_nfp_change_k,,,,,MISSED_CAPTURE,pre failed 2026-08-06T12:32Z: Wayback Save Page Now Connection reset by peer (research/nfp_forward/pre-2026-08-07.log); no pending snapshot,
+NFP_MISSED_CAPTURE,2026-09-04,2026-09-04T12:30:00Z,headline_nfp_change_k,,,,,MISSED_CAPTURE,No pre-release snapshot or pending capture existed before the 12:30 UTC release,
