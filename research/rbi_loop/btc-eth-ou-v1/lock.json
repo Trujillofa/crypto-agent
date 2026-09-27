@@ -1,0 +1,65 @@
+{
+  "search_id": "binance_spot_btc_eth_logspread_ou_v1",
+  "locked_at": "2026-09-19T00:00:00Z",
+  "locked_before_fetch": true,
+  "n_free_knobs": 0,
+  "n_configs_expected": 1,
+  "predecessor": "eth-4h-range-reversion-bounded",
+  "predecessor_note": "Closed cost-realism rescreen on ETH own-price range. This lock is a two-leg BTC–ETH residual, not a retune of that family.",
+  "named_changed_input": {
+    "vs_eth_4h_range": "pair residual log(BTCUSDT)-β log(ETHUSDT), not ETH own-price range reversion",
+    "vs_mt5_ou": "Binance spot BTC/ETH daily; not Vantage XAU–XAG or EUR–GBP (those SCREEN_FAIL in mt5-arch)"
+  },
+  "venue": "binance_spot",
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "tf": "1d",
+  "beta": "expanding OLS log BTC close ~ 1 + log ETH close, dates strictly before signal close, min_obs 252",
+  "z_entry": 2.0,
+  "z_exit": 0.0,
+  "max_hold_days": 5,
+  "side": "fade residual; z>2 short BTC long ETH notional=β*BTC notional; z<-2 opposite",
+  "fill": "signal on closed day i; enter open[i+1]; exit z-cross 0 or day i+5 open",
+  "develop_start": "2024-01-01T00:00:00Z",
+  "develop_end_exclusive": "2026-01-01T00:00:00Z",
+  "holdout_start": "2026-01-01T00:00:00Z",
+  "holdout_end_exclusive": "2026-09-01T00:00:00Z",
+  "holdout_rule": "NEVER used for selection. Fetch develop only first.",
+  "cache_dir": "data/research/btc_eth_ou_v1",
+  "forbidden_cache_paths": [
+    "data/microstructure/BTCUSDT/",
+    "data/microstructure/ETHUSDT/",
+    "data/microstructure/cvd_absorption_v1/"
+  ],
+  "soft_gate": {
+    "n_trades_min": 40,
+    "net_pnl_gt": 0,
+    "profit_factor_min": 1.2,
+    "max_dd_pct_max": 0.15
+  },
+  "costs": {
+    "taker_fee_bps": 10.0,
+    "round_trip_both_legs": "2 * taker_fee_bps per leg",
+    "not": ["mt5_stp", "vip_discount", "kline_spread_as_zero"]
+  },
+  "book": {
+    "start_equity_usd": 10000.0,
+    "btc_notional_usd": 1000.0,
+    "compound_size": false,
+    "leverage": 1
+  },
+  "rank_develop": "single frozen config. Soft-pass or SCREEN_FAIL. No grid.",
+  "promote": false,
+  "live_go": false,
+  "python_only": true,
+  "not_in_scope": [
+    "python -m src.main",
+    "docker-compose up",
+    "mode: live / test_mode: false",
+    "Timescale :15432",
+    "import into mt5-arch",
+    "ETH 4h range retune",
+    "CVD absorption recycle",
+    "live orders",
+    "compute develop metrics in this lock PR"
+  ]
+}
