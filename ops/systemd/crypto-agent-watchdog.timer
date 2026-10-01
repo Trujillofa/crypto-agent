@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the crypto-agent watchdog every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+Unit=crypto-agent-watchdog.service
+
+[Install]
+WantedBy=timers.target
