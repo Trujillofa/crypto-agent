@@ -27,3 +27,34 @@ groups:
         annotations:
           summary: "API rate-limit headroom low"
           description: "Remaining Binance API weight is below 20% on {{ $labels.instance }}."
+
+  - name: infrastructure-coverage
+    rules:
+      # Still in file_sd, scrape failing. Labels agent_id and service come from agents.json.
+      - alert: AgentDown
+        expr: up{job="trading-agent"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Trading agent DOWN ({{ $labels.service }})"
+          description: "Agent {{ $labels.agent_id }} ({{ $labels.instance }}) has been unreachable for 2 minutes."
+
+      # Dropped out of file_sd. timestamp(up) cannot see a series that is already gone.
+      # Ids mirror config/prometheus/agents.json.
+      - alert: ScrapeTargetGone
+        expr: |
+          absent(up{job="trading-agent",agent_id="sol-trend-pullback-sparse"})
+          or absent(up{job="trading-agent",agent_id="sentiment-macro-bot"})
+          or absent(up{job="trading-agent",agent_id="sol-4h-panic-block-paper"})
+          or absent(up{job="trading-agent",agent_id="sol-1h-trend-pullback-overlay-live"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A trading-agent scrape target vanished"
+          description: "One configured file_sd agent is missing from up{job=\"trading-agent\"}: sol-trend-pullback-sparse, sentiment-macro-bot, sol-4h-panic-block-paper, sol-1h-trend-pullback-overlay-live."
+
+      # TimescaleDown omitted: pg_up is not scraped, so absent(pg_up) would fire forever.
+      # IngestionStale omitted: no last-write age gauge. ingest_last_open_time is the
+      # candle open, which stays fixed for a whole 4h bar. Add the gauge in task A3.
