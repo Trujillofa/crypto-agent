@@ -56,5 +56,18 @@ groups:
           description: "One configured file_sd agent is missing from up{job=\"trading-agent\"}: sol-trend-pullback-sparse, sentiment-macro-bot, sol-4h-panic-block-paper, sol-1h-trend-pullback-overlay-live."
 
       # TimescaleDown omitted: pg_up is not scraped, so absent(pg_up) would fire forever.
-      # IngestionStale omitted: no last-write age gauge. ingest_last_open_time is the
-      # candle open, which stays fixed for a whole 4h bar. Add the gauge in task A3.
+      # Closed-candle writes only. A healthy 1h agent is silent for ~3600s and a healthy
+      # 4h agent for ~14400s, so a flat 1800s threshold would page through every normal bar.
+      # for: 5m requires the close to be missed by 5 minutes. No absent(): a process that
+      # has not written yet has no sample, and absent() would page until that first write.
+      # Ids and bar lengths mirror the four file_sd agents.
+      - alert: IngestionStale
+        expr: |
+          ingest_db_last_write_age_seconds{job="trading-agent",agent_id=~"^(sol-1h-trend-pullback-overlay-live|sentiment-macro-bot)$"} > 3600
+          or ingest_db_last_write_age_seconds{job="trading-agent",agent_id=~"^(sol-trend-pullback-sparse|sol-4h-panic-block-paper)$"} > 14400
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB ingestion stale ({{ $labels.service }})"
+          description: "Agent {{ $labels.agent_id }} ({{ $labels.instance }}) missed its candle-close database write. 1h agents page after 3600s plus 5m; 4h agents page after 14400s plus 5m."
