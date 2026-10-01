@@ -46,6 +46,7 @@ class TimescaleWriter:
             await self._insert_row(candle)
         elapsed = time.perf_counter() - start_time
         self._metrics.insert_latency_seconds.set(elapsed)
+        self._metrics.note_db_write()
 
     async def _ensure_schema(self) -> None:
         pool = get_pool()
