@@ -1,0 +1,15 @@
+[Unit]
+Description=Page if crypto-agent Prometheus or a core container is down
+After=docker.service
+Requires=docker.service
+OnFailure=crypto-agent-telegram-failure@%n.service
+
+[Service]
+Type=oneshot
+User=emilio
+WorkingDirectory=/opt/crypto-agent
+StateDirectory=crypto-agent-watchdog
+ExecStart=/opt/crypto-agent/scripts/watchdog.sh
+
+[Install]
+WantedBy=multi-user.target
