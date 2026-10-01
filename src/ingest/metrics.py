@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -205,8 +206,11 @@ class Gauge:
 class MetricsRegistry:
     counters: list[Counter] = field(default_factory=list)
     gauges: list[Gauge] = field(default_factory=list)
+    before_render: list[Callable[[], None]] = field(default_factory=list)
 
     def render(self) -> str:
+        for hook in self.before_render:
+            hook()
         lines: list[str] = []
         for counter in self.counters:
             lines.append(f"# HELP {counter.name} {counter.help_text}")
@@ -296,6 +300,15 @@ class IngestMetrics:
             (),
         )
     )
+    db_last_write_age_seconds: Gauge = field(
+        default_factory=lambda: Gauge(
+            "ingest_db_last_write_age_seconds",
+            "Seconds since the last successful database write",
+            (),
+        )
+    )
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False)
+    _last_db_write_at: float | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.registry.counters.append(self.messages_total)
@@ -307,6 +320,8 @@ class IngestMetrics:
         self.registry.counters.append(self.websocket_reconnects_total)
         self.registry.gauges.append(self.api_rate_limit_remaining)
         self.registry.gauges.append(self.api_used_weight_1m)
+        self.registry.gauges.append(self.db_last_write_age_seconds)
+        self.registry.before_render.append(self._refresh_db_write_age)
         # Ensure baseline series exist for dashboards and alerts even before first event.
         self.websocket_last_message_age_seconds.set(0.0, labels={"stream": "kline"})
         self.websocket_last_message_age_seconds.set(0.0, labels={"stream": "mark_price"})
@@ -314,6 +329,16 @@ class IngestMetrics:
         self.websocket_reconnects_total.with_labels(stream="mark_price")
         self.api_rate_limit_remaining.set(2400.0)
         self.api_used_weight_1m.set(0.0)
+
+    def note_db_write(self) -> None:
+        """Remember a successful database write. Age is computed when metrics are scraped."""
+        self._last_db_write_at = self.clock()
+
+    def _refresh_db_write_age(self) -> None:
+        if self._last_db_write_at is None:
+            return
+        age = self.clock() - self._last_db_write_at
+        self.db_last_write_age_seconds.set(0.0 if age < 0 else age)
 
 
 class MetricsServer:

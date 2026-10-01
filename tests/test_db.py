@@ -73,6 +73,8 @@ class TestTimescaleWriter:
         # Latency metric should be recorded
         key = MetricKey.from_labels({})
         assert key in metrics.insert_latency_seconds.values
+        assert metrics._last_db_write_at is not None
+        assert "ingest_db_last_write_age_seconds" in metrics.registry.render()
 
     async def test_write_ohlcv_db_error(
         self, db_config: dict[str, object], metrics: IngestMetrics, sample_ohlcv: Ohlcv
@@ -87,6 +89,7 @@ class TestTimescaleWriter:
         with patch("src.ingest.db.get_pool", return_value=mock_pool):
             with pytest.raises(Exception, match="DB Error"):
                 await writer.write_ohlcv(sample_ohlcv)
+        assert metrics._last_db_write_at is None
 
     async def test_count_rows(self, db_config: dict[str, object], metrics: IngestMetrics) -> None:
         """Test counting rows."""

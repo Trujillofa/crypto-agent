@@ -8,6 +8,7 @@ from src.ingest.metrics import (
     MAX_CARDINALITY,
     Counter,
     Gauge,
+    IngestMetrics,
     LabelValidator,
     MetricKey,
     MetricsRegistry,
@@ -229,3 +230,30 @@ class TestMetricsRegistry:
         output = registry.render()
         assert "messages" in output
         assert "latency" in output
+
+
+class TestIngestDbWriteAge:
+    """Last successful database write age, computed at scrape time."""
+
+    def test_age_advances_with_fake_clock(self) -> None:
+        state = {"now": 1_000.0}
+
+        def clock() -> float:
+            return state["now"]
+
+        metrics = IngestMetrics(clock=clock)
+
+        def samples(rendered: str) -> list[str]:
+            return [
+                line
+                for line in rendered.splitlines()
+                if line.startswith("ingest_db_last_write_age_seconds")
+            ]
+
+        assert samples(metrics.registry.render()) == []
+
+        metrics.note_db_write()
+        assert samples(metrics.registry.render()) == ["ingest_db_last_write_age_seconds 0.0"]
+
+        state["now"] = 1_030.5
+        assert samples(metrics.registry.render()) == ["ingest_db_last_write_age_seconds 30.5"]
