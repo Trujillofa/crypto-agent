@@ -448,7 +448,7 @@ class TestTradingExecutorOnSignal:
             await executor.on_signal(signal)
 
             # Verify place_market_order called with order_size_usdt
-            mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0)
+            mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0, price=50000.0)
 
     @pytest.mark.asyncio
     async def test_on_signal_sell_queries_balance(self, trading_config, risk_manager, metrics):
@@ -494,7 +494,7 @@ class TestTradingExecutorOnSignal:
             # Verify get_asset_balance was called
             executor._client.get_asset_balance.assert_called_once_with("BTC")
             # Verify place_market_order called with balance
-            mock_order.assert_called_once_with("BTCUSDT", "SELL", 0.5)
+            mock_order.assert_called_once_with("BTCUSDT", "SELL", 0.5, price=50000.0)
 
     @pytest.mark.asyncio
     async def test_on_signal_sell_no_balance_skips(self, trading_config, risk_manager, metrics):
@@ -636,4 +636,4 @@ class TestTradingExecutorOnSignal:
             await executor.on_signal(signal)
 
             # Verify mock order was placed (paper trading)
-            mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0)
+            mock_order.assert_called_once_with("BTCUSDT", "BUY", 100.0, price=50000.0)

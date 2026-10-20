@@ -165,6 +165,8 @@ class FuturesTradingExecutor:
         quantity: float,
         portfolio_value: float,
         signal_confidence: float = 0.0,
+        price: float | None = None,
+        order_notional: float | None = None,
     ) -> None:
         if self._guard_pipeline is None:
             return
@@ -172,8 +174,10 @@ class FuturesTradingExecutor:
             symbol=symbol,
             side=side,
             quantity=quantity,
+            price=price,
             portfolio_value=portfolio_value,
             signal_confidence=signal_confidence,
+            order_notional=order_notional,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -695,7 +699,7 @@ class FuturesTradingExecutor:
         if pnl is not None and portfolio_value > 0:
             self._risk_manager.record_trade(symbol, pnl, portfolio_value)
             self._metrics.record_realized_pnl(symbol, pnl)
-        self._risk_manager.register_close_position(symbol)
+        self._risk_manager.register_close_position(symbol, market="futures")
 
     async def place_futures_order(
         self,
@@ -760,7 +764,7 @@ class FuturesTradingExecutor:
 
             notional_value = quantity * reference_price
             position_allowed, position_reason = self._risk_manager.check_position_limit(
-                symbol,
+                f"{symbol}:futures",
                 notional_value,
                 account_info.total_margin_balance,
             )
@@ -902,6 +906,7 @@ class FuturesTradingExecutor:
                         symbol,
                         recorded_qty * executed_price,
                         executed_price,
+                        market="futures",
                     )
 
             return order
@@ -1029,6 +1034,8 @@ class FuturesTradingExecutor:
                                 order_size,
                                 portfolio_value,
                                 signal.confidence,
+                                price=signal.price,
+                                order_notional=order_size * signal.price,
                             )
                         except RuntimeError:
                             self._logger.info(
@@ -1064,6 +1071,10 @@ class FuturesTradingExecutor:
                             stop_loss=sl_price if sl_price > 0 else None,
                             take_profit=tp_price if tp_price > 0 else None,
                         )
+
+                        # Start the cooldown window only after the fill.
+                        if self._guard_pipeline is not None:
+                            self._guard_pipeline.record_fill(signal.symbol)
 
             elif signal.type == SignalType.SELL:
                 # FAIL-SAFE: Close only agent-owned position amount, not full account position
@@ -1183,6 +1194,8 @@ class FuturesTradingExecutor:
                             agent_position_qty,
                             portfolio_value,
                             signal.confidence,
+                            price=signal.price,
+                            order_notional=agent_position_qty * signal.price,
                         )
                     except RuntimeError:
                         self._logger.info(
@@ -1461,6 +1474,7 @@ class FuturesTradingExecutor:
                         symbol,
                         abs(pos.position_amt) * pos.entry_price,
                         pos.entry_price,
+                        market="futures",
                     )
             except Exception as exc:
                 self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)

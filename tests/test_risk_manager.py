@@ -482,9 +482,14 @@ class TestRiskManager:
 
 
 def _make_pool_with_rows(rows: list[dict[str, str]]) -> MagicMock:
-    """Build a fake asyncpg pool whose fetch returns ``rows``."""
+    """Build a fake asyncpg pool whose fetch returns ``rows``.
+
+    Rows mirror the ``positions`` table, which carries the market in its own
+    ``market`` column. Rows without an explicit market default to spot.
+    """
+    normalized = [dict(row, market=row.get("market", "spot")) for row in rows]
     conn = MagicMock()
-    conn.fetch = AsyncMock(return_value=rows)
+    conn.fetch = AsyncMock(return_value=normalized)
 
     @asynccontextmanager
     async def acquire() -> MagicMock:
@@ -526,7 +531,8 @@ class TestReconcilePositionsWithDb:
 
         await manager.reconcile_positions_with_db(pool)
 
-        assert set(manager._positions.keys()) == {"ETHUSDT", "BTCUSDT"}
+        # Legacy bare-symbol keys are migrated to the market-qualified form.
+        assert set(manager._positions.keys()) == {"ETHUSDT:spot", "BTCUSDT:spot"}
 
     @pytest.mark.asyncio
     async def test_preserves_keys_matching_db(self, tmp_path: Path) -> None:
@@ -538,7 +544,7 @@ class TestReconcilePositionsWithDb:
 
         await manager.reconcile_positions_with_db(pool)
 
-        assert list(manager._positions.keys()) == ["ETHUSDT"]
+        assert list(manager._positions.keys()) == ["ETHUSDT:spot"]
 
     @pytest.mark.asyncio
     async def test_empty_db_drops_all_stale(self, tmp_path: Path) -> None:
@@ -572,3 +578,105 @@ class TestReconcilePositionsWithDb:
         await manager.reconcile_positions_with_db(pool)
 
         assert manager._positions == before
+
+    @pytest.mark.asyncio
+    async def test_spot_row_does_not_satisfy_a_futures_position(self, tmp_path: Path) -> None:
+        """A spot DB row must not keep a futures risk position alive."""
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "BTCUSDT:futures": {
+                "entry_price": 76000.0,
+                "quantity_usdt": 1000.0,
+                "entry_time": 1.0,
+            },
+        }
+        pool = _make_pool_with_rows([{"symbol": "BTCUSDT", "market": "spot"}])
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert manager._positions == {}
+
+    @pytest.mark.asyncio
+    async def test_futures_row_satisfies_a_futures_position(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "BTCUSDT:futures": {
+                "entry_price": 76000.0,
+                "quantity_usdt": 1000.0,
+                "entry_time": 1.0,
+            },
+        }
+        pool = _make_pool_with_rows([{"symbol": "BTCUSDT", "market": "futures"}])
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert list(manager._positions.keys()) == ["BTCUSDT:futures"]
+
+
+class TestMarketQualifiedPositionKeys:
+    """Spot and futures positions on the same pair must not collide."""
+
+    def _manager(self, tmp_path: Path) -> RiskManager:
+        return RiskManager(
+            config_path=Path("/nonexistent/path.yaml"),
+            state_path=tmp_path / "risk_state.json",
+            agent_id="default",
+        )
+
+    def test_spot_and_futures_positions_coexist(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+
+        manager.register_open_position("BTCUSDT", 100.0, 76000.0, market="spot")
+        manager.register_open_position("BTCUSDT", 250.0, 76000.0, market="futures")
+
+        assert set(manager._positions.keys()) == {"BTCUSDT:spot", "BTCUSDT:futures"}
+
+    def test_closing_spot_leaves_futures_intact(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        manager.register_open_position("BTCUSDT", 100.0, 76000.0, market="spot")
+        manager.register_open_position("BTCUSDT", 250.0, 76000.0, market="futures")
+
+        manager.register_close_position("BTCUSDT", market="spot")
+
+        assert set(manager._positions.keys()) == {"BTCUSDT:futures"}
+
+    def test_closing_futures_leaves_spot_intact(self, tmp_path: Path) -> None:
+        manager = self._manager(tmp_path)
+        manager.register_open_position("BTCUSDT", 100.0, 76000.0, market="spot")
+        manager.register_open_position("BTCUSDT", 250.0, 76000.0, market="futures")
+
+        manager.register_close_position("BTCUSDT", market="futures")
+
+        assert set(manager._positions.keys()) == {"BTCUSDT:spot"}
+
+    def test_legacy_bare_symbol_loads_as_spot(self, tmp_path: Path) -> None:
+        state_path = tmp_path / "risk_state.json"
+        state_path.write_text(
+            '{"positions": {"ETHUSDT": {"entry_price": 2380.3, '
+            '"quantity_usdt": 5.95, "entry_time": 2.0}}}',
+            encoding="utf-8",
+        )
+        manager = RiskManager(
+            config_path=Path("/nonexistent/path.yaml"),
+            state_path=state_path,
+            agent_id="default",
+        )
+
+        assert set(manager._positions.keys()) == {"ETHUSDT:spot"}
+
+    def test_check_position_limit_counts_both_markets(self, tmp_path: Path) -> None:
+        """The max-open-positions count must include both markets."""
+        manager = self._manager(tmp_path)
+        manager._config.position_limits.max_open_positions = 2
+
+        manager.register_open_position("BTCUSDT", 100.0, 76000.0, market="spot")
+        manager.register_open_position("ETHUSDT", 100.0, 2380.0, market="spot")
+
+        # Two positions already open -> a third is rejected.
+        allowed, reason = manager.check_position_limit("SOLUSDT:spot", 100.0, 10_000.0)
+        assert allowed is False
+        assert "Max open positions" in reason
+
+        # Re-opening an existing market+symbol is still allowed.
+        allowed, _ = manager.check_position_limit("BTCUSDT:spot", 100.0, 10_000.0)
+        assert allowed is True

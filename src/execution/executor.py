@@ -67,7 +67,15 @@ class TradingExecutor:
         self._client: BinancePrivateClient | None = None
         self._running = False
 
-    def _run_guards(self, symbol: str, side: str, quantity: float, portfolio_value: float) -> None:
+    def _run_guards(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        portfolio_value: float,
+        price: float | None = None,
+        order_notional: float | None = None,
+    ) -> None:
         if self._guard_pipeline is None:
             return
 
@@ -75,7 +83,9 @@ class TradingExecutor:
             symbol=symbol,
             side=side,
             quantity=quantity,
+            price=price,
             portfolio_value=portfolio_value,
+            order_notional=order_notional,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -218,6 +228,7 @@ class TradingExecutor:
         symbol: str,
         side: str,  # "BUY" or "SELL"
         quantity: float | None = None,
+        price: float | None = None,
     ) -> OrderInfo:
         """Place a market order with risk checks.
 
@@ -225,6 +236,8 @@ class TradingExecutor:
             symbol: Trading pair symbol (e.g., BTCUSDT)
             side: Order side ("BUY" or "SELL")
             quantity: Order quantity. If None, calculates from config.
+            price: Reference price, used to derive the order notional for
+                guards when `quantity` is a base-asset quantity (SELL).
 
         Returns:
             OrderInfo: Information about placed order
@@ -259,7 +272,24 @@ class TradingExecutor:
             raise RuntimeError(reason)
 
         try:
-            self._run_guards(symbol, side, quantity, portfolio_value)
+            # For BUY, `quantity` is already quote notional (USDT) -- the
+            # Binance client sends it as quoteOrderQty. For SELL it is a
+            # base-asset quantity, so the notional needs the price.
+            order_notional: float | None
+            if side == "BUY":
+                order_notional = quantity
+            elif price is not None:
+                order_notional = quantity * price
+            else:
+                order_notional = None
+            self._run_guards(
+                symbol,
+                side,
+                quantity,
+                portfolio_value,
+                price=price,
+                order_notional=order_notional,
+            )
         except RuntimeError:
             self._metrics.record_risk_block(symbol, "guard_pipeline")
             raise
@@ -273,7 +303,7 @@ class TradingExecutor:
         # Check position limits (skip for SELL — closing a position shouldn't be blocked)
         if side == "BUY":
             allowed, risk_reason = self._risk_manager.check_position_limit(
-                symbol, quantity, portfolio_value
+                f"{symbol}:spot", quantity, portfolio_value
             )
             if not allowed:
                 self._metrics.record_risk_block(symbol, risk_reason)
@@ -404,6 +434,7 @@ class TradingExecutor:
                             symbol,
                             filled_quantity * executed_price,
                             executed_price,
+                            market="spot",
                         )
                     elif side == "SELL":
                         _, pnl = await self._portfolio_manager.close_position(
@@ -421,7 +452,13 @@ class TradingExecutor:
                         # Record realized PnL in metrics
                         self._metrics.record_realized_pnl(symbol, pnl)
                         # Register position close in risk manager
-                        self._risk_manager.register_close_position(symbol)
+                        self._risk_manager.register_close_position(symbol, market="spot")
+
+                # Start the cooldown window only now that the order actually
+                # filled. Recording it at guard-check time would burn the
+                # window even for rejected orders.
+                if self._guard_pipeline is not None:
+                    self._guard_pipeline.record_fill(symbol)
 
             self._logger.info(
                 "Market order placed: %s %s %s (qty: %.4f, status: %s)",
@@ -507,7 +544,24 @@ class TradingExecutor:
             raise RuntimeError(reason)
 
         try:
-            self._run_guards(symbol, side, quantity, portfolio_value)
+            # For BUY, `quantity` is already quote notional (USDT) -- the
+            # Binance client sends it as quoteOrderQty. For SELL it is a
+            # base-asset quantity, so the notional needs the price.
+            order_notional: float | None
+            if side == "BUY":
+                order_notional = quantity
+            elif price is not None:
+                order_notional = quantity * price
+            else:
+                order_notional = None
+            self._run_guards(
+                symbol,
+                side,
+                quantity,
+                portfolio_value,
+                price=price,
+                order_notional=order_notional,
+            )
         except RuntimeError:
             self._metrics.record_risk_block(symbol, "guard_pipeline")
             raise
@@ -521,7 +575,7 @@ class TradingExecutor:
         # Check position limits (skip for SELL — closing a position shouldn't be blocked)
         if side == "BUY":
             allowed, risk_reason = self._risk_manager.check_position_limit(
-                symbol, quantity, portfolio_value
+                f"{symbol}:spot", quantity, portfolio_value
             )
             if not allowed:
                 self._metrics.record_risk_block(symbol, risk_reason)
@@ -845,7 +899,7 @@ class TradingExecutor:
                     return
 
                 order = await self.place_market_order(
-                    signal.symbol, "BUY", self._config.order_size_usdt
+                    signal.symbol, "BUY", self._config.order_size_usdt, price=signal.price
                 )
                 if order.status == "FILLED":
                     filled_quantity = (
@@ -897,7 +951,9 @@ class TradingExecutor:
                         )
                         return
 
-                    order = await self.place_market_order(signal.symbol, "SELL", balance)
+                    order = await self.place_market_order(
+                        signal.symbol, "SELL", balance, price=signal.price
+                    )
                     if order.status == "FILLED":
                         filled_quantity = (
                             order.executed_quantity if order.executed_quantity > 0 else balance

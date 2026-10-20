@@ -176,6 +176,7 @@ class TestFuturesTradingExecutor:
             "ETHUSDT",
             pytest.approx(0.009 * 2276.25),
             pytest.approx(2276.25),
+            market="futures",
         )
 
     @pytest.mark.asyncio
@@ -824,6 +825,7 @@ class TestFuturesTradingExecutor:
             "BTCUSDT",
             pytest.approx(500.0),
             pytest.approx(50000.0),
+            market="futures",
         )
 
     @pytest.mark.asyncio
@@ -949,7 +951,9 @@ class TestFuturesTradingExecutor:
         executor._risk_manager.record_trade.assert_called_once_with(
             "BTCUSDT", pytest.approx(-20.0), 5000.0
         )
-        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
+        executor._risk_manager.register_close_position.assert_called_once_with(
+            "BTCUSDT", market="futures"
+        )
         assert "BTCUSDT" not in executor._sl_tp_orders
 
     @pytest.mark.asyncio
@@ -1093,7 +1097,9 @@ class TestFuturesTradingExecutor:
         assert call_kwargs["pnl"] == pytest.approx(-0.7689)
         assert call_kwargs["close_reason"] == "stop_loss"
         executor._risk_manager.record_trade.assert_called_once_with("BTCUSDT", -0.7689, 5000.0)
-        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
+        executor._risk_manager.register_close_position.assert_called_once_with(
+            "BTCUSDT", market="futures"
+        )
 
     @pytest.mark.asyncio
     async def test_monitor_skips_alert_when_fill_lookup_fails(self, executor):
@@ -1133,7 +1139,9 @@ class TestFuturesTradingExecutor:
         executor._risk_manager.record_trade.assert_called_once_with(
             "BTCUSDT", pytest.approx(-19.0), 5000.0
         )
-        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
+        executor._risk_manager.register_close_position.assert_called_once_with(
+            "BTCUSDT", market="futures"
+        )
         assert "BTCUSDT" not in executor._sl_tp_orders
 
     @pytest.mark.asyncio
@@ -1192,7 +1200,9 @@ class TestFuturesTradingExecutor:
         executor._risk_manager.record_trade.assert_called_once_with(
             "BTCUSDT", pytest.approx(-19.0), 5000.0
         )
-        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
+        executor._risk_manager.register_close_position.assert_called_once_with(
+            "BTCUSDT", market="futures"
+        )
 
     @pytest.mark.asyncio
     async def test_monitor_sends_close_notification_on_tp_close(self, executor):
@@ -1336,7 +1346,9 @@ class TestFuturesTradingExecutor:
         await executor._monitor_and_update()
 
         executor._risk_manager.record_trade.assert_called_once_with("BTCUSDT", -20.0, 5000.0)
-        executor._risk_manager.register_close_position.assert_called_once_with("BTCUSDT")
+        executor._risk_manager.register_close_position.assert_called_once_with(
+            "BTCUSDT", market="futures"
+        )
 
     @pytest.mark.asyncio
     async def test_monitor_software_time_stop_closes_and_cancels_exchange_orders(self, executor):

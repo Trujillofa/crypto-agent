@@ -7,10 +7,11 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import ROUND_DOWN, Decimal
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
+from src.execution.retry import RetryConfig, retry_with_backoff
 from src.utils.logger import get_logger
 
 
@@ -53,6 +54,15 @@ class BinancePrivateClient:
     BASE_URL = "https://api.binance.com"
     DEMO_URL = "https://demo-api.binance.com"
 
+    # Total per-request timeout (connect + read). A hung request must not
+    # stall the trading loop indefinitely.
+    REQUEST_TIMEOUT_SECONDS = 30.0
+
+    # Retry policy for idempotent (read-only) requests. Order placement is
+    # NOT retried automatically: a retried order can double-fill if the
+    # first attempt actually reached the exchange.
+    RETRY_CONFIG = RetryConfig(max_attempts=3, base_delay=1.0, max_delay=10.0)
+
     def __init__(
         self,
         api_key: str,
@@ -73,7 +83,12 @@ class BinancePrivateClient:
         self._lot_size_cache: dict[str, tuple[Decimal, Decimal, Decimal]] = {}
 
     async def __aenter__(self) -> BinancePrivateClient:
-        self._session = aiohttp.ClientSession()
+        # An explicit timeout is mandatory: without it a hung connection can
+        # block the agent forever, and the order-placement path has no
+        # timeout of its own.
+        self._session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT_SECONDS)
+        )
         return self
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -210,6 +225,30 @@ class BinancePrivateClient:
                 )
             raise
 
+    async def _request_readonly(
+        self,
+        method: str,
+        endpoint: str,
+        params: Mapping[str, Any] | None = None,
+        signed: bool = False,
+    ) -> dict[str, Any]:
+        """GET request with retry on transient network/server failures.
+
+        Only safe for idempotent reads: a retried POST could double-fill an
+        order if the first attempt already reached the exchange.
+        """
+
+        async def _call() -> dict[str, Any]:
+            return await self._request(
+                method,
+                endpoint,
+                dict(params) if params else None,
+                signed=signed,
+            )
+
+        result = await retry_with_backoff(_call, self.RETRY_CONFIG)
+        return cast("dict[str, Any]", result)
+
     async def _handle_response(self, response: aiohttp.ClientResponse) -> dict[str, Any]:
         """Handle API response and check for errors."""
         data = await response.json()
@@ -304,7 +343,7 @@ class BinancePrivateClient:
         Returns:
             Dict mapping asset name to total balance, e.g. {"BTC": 0.5, "USDT": 1000.0}
         """
-        data = await self._request("GET", "/api/v3/account", signed=True)
+        data = await self._request_readonly("GET", "/api/v3/account", signed=True)
         result: dict[str, float] = {}
         for bal in data.get("balances", []):
             total = float(bal.get("free", 0)) + float(bal.get("locked", 0))
@@ -317,7 +356,7 @@ class BinancePrivateClient:
 
         Endpoint: GET /api/v3/account
         """
-        data = await self._request("GET", "/api/v3/account", signed=True)
+        data = await self._request_readonly("GET", "/api/v3/account", signed=True)
         balances = data.get("balances", [])
         usdt_balance = next(
             (balance for balance in balances if balance.get("asset") == "USDT"),
@@ -341,7 +380,7 @@ class BinancePrivateClient:
         Returns:
             float: Available balance for the asset
         """
-        data = await self._request("GET", "/api/v3/account", signed=True)
+        data = await self._request_readonly("GET", "/api/v3/account", signed=True)
         balances = data.get("balances", [])
         asset_balance = next(
             (balance for balance in balances if balance.get("asset") == asset),
@@ -361,7 +400,7 @@ class BinancePrivateClient:
         if symbol:
             params["symbol"] = symbol
 
-        data = await self._request("GET", "/api/v3/openOrders", params, signed=True)
+        data = await self._request_readonly("GET", "/api/v3/openOrders", params, signed=True)
 
         orders = []
         for order_data in data:
@@ -526,7 +565,7 @@ class BinancePrivateClient:
             "orderId": str(order_id),
         }
 
-        data = await self._request("GET", "/api/v3/order", params, signed=True)
+        data = await self._request_readonly("GET", "/api/v3/order", params, signed=True)
         executed_qty = float(data.get("executedQty", 0))
         cum_quote = float(data.get("cummulativeQuoteQty", 0))
         executed_price = cum_quote / executed_qty if executed_qty > 0 else None

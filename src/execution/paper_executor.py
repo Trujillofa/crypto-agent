@@ -162,6 +162,8 @@ class PaperExecutor:
         quantity: float,
         portfolio_value: float,
         signal_confidence: float = 0.0,
+        price: float | None = None,
+        order_notional: float | None = None,
     ) -> None:
         """Run guard pipeline pre-check. Raises RuntimeError if blocked."""
         if self._guard_pipeline is None:
@@ -170,8 +172,10 @@ class PaperExecutor:
             symbol=symbol,
             side=side,
             quantity=quantity,
+            price=price,
             portfolio_value=portfolio_value,
             signal_confidence=signal_confidence,
+            order_notional=order_notional,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -657,6 +661,8 @@ class PaperExecutor:
                 order_usdt,
                 self._portfolio_value(),
                 signal.confidence,
+                price=signal.price,
+                order_notional=order_usdt,
             )
         except RuntimeError as exc:
             if self._guard_pipeline is not None and self._event_log:
@@ -813,6 +819,7 @@ class PaperExecutor:
                 pos_key,
                 order_usdt,
                 signal.price,
+                market=market_tag,
             )
 
             if staged_order is not None:
@@ -974,6 +981,8 @@ class PaperExecutor:
                 order_usdt,
                 self._portfolio_value(),
                 signal.confidence,
+                price=signal.price,
+                order_notional=order_usdt,
             )
         except RuntimeError as exc:
             if self._guard_pipeline is not None and self._event_log:
@@ -1086,6 +1095,7 @@ class PaperExecutor:
             pos_key,
             order_usdt,
             signal.price,
+            market=market_tag,
         )
 
         if self._portfolio_manager:
@@ -1170,6 +1180,8 @@ class PaperExecutor:
                 close_usdt,
                 self._portfolio_value(),
                 signal.confidence,
+                price=signal.price,
+                order_notional=close_usdt,
             )
         except RuntimeError as exc:
             if self._guard_pipeline is not None and self._event_log:
@@ -1233,7 +1245,7 @@ class PaperExecutor:
 
         # Record in risk manager
         self._risk_manager.record_trade(signal.symbol, net_pnl, self._portfolio_value())
-        self._risk_manager.register_close_position(pos_key)
+        self._risk_manager.register_close_position(pos_key, market=market_tag)
 
         # Record in portfolio DB for overseer visibility
         if self._portfolio_manager:

@@ -279,7 +279,9 @@ async def test_on_signal_sell_uses_removesuffix():
 
     mock_client.get_asset_balance.assert_called_once_with("BUSD")
     mock_client.normalize_sell_quantity.assert_called_once_with("BUSDUSDT", 1.5)
-    executor.place_market_order.assert_called_once_with("BUSDUSDT", "SELL", 1.5)
+    # The signal price is forwarded so the guard pipeline can derive the order
+    # notional from the base-asset SELL quantity.
+    executor.place_market_order.assert_called_once_with("BUSDUSDT", "SELL", 1.5, price=1.0)
 
 
 @pytest.mark.asyncio

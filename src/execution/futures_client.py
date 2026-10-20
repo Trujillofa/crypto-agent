@@ -8,10 +8,11 @@ import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
+from src.execution.retry import RetryConfig, retry_with_backoff
 from src.utils.logger import get_logger
 
 
@@ -127,6 +128,15 @@ class BinanceFuturesClient:
     BASE_URL = "https://fapi.binance.com"
     DEMO_URL = "https://demo-fapi.binance.com"
 
+    # Total per-request timeout (connect + read). A hung request must not
+    # stall the trading loop indefinitely.
+    REQUEST_TIMEOUT_SECONDS = 30.0
+
+    # Retry policy for idempotent (read-only) requests. Order placement is
+    # NOT retried automatically: a retried order can double-fill if the
+    # first attempt actually reached the exchange.
+    RETRY_CONFIG = RetryConfig(max_attempts=3, base_delay=1.0, max_delay=10.0)
+
     def __init__(
         self,
         api_key: str,
@@ -147,7 +157,12 @@ class BinanceFuturesClient:
         self._price_filters: dict[str, dict[str, float]] = {}
 
     async def __aenter__(self) -> BinanceFuturesClient:
-        self._session = aiohttp.ClientSession()
+        # An explicit timeout is mandatory: without it a hung connection can
+        # block the agent forever, and the order-placement path has no
+        # timeout of its own.
+        self._session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT_SECONDS)
+        )
         return self
 
     def format_price(self, symbol: str, price: float) -> str:
@@ -296,6 +311,30 @@ class BinanceFuturesClient:
                     _retry=False,
                 )
             raise
+
+    async def _request_readonly(
+        self,
+        method: str,
+        endpoint: str,
+        params: Mapping[str, Any] | None = None,
+        signed: bool = False,
+    ) -> dict[str, Any]:
+        """GET request with retry on transient network/server failures.
+
+        Only safe for idempotent reads: a retried POST could double-fill an
+        order if the first attempt already reached the exchange.
+        """
+
+        async def _call() -> dict[str, Any]:
+            return await self._request(
+                method,
+                endpoint,
+                dict(params) if params else None,
+                signed=signed,
+            )
+
+        result = await retry_with_backoff(_call, self.RETRY_CONFIG)
+        return cast("dict[str, Any]", result)
 
     async def _handle_response(self, response: aiohttp.ClientResponse) -> dict[str, Any]:
         """Handle API response and check for errors."""
@@ -520,7 +559,9 @@ class BinanceFuturesClient:
     async def get_open_orders(self, symbol: str | None = None) -> list[dict[str, Any]]:
         """List open regular futures orders."""
         params = {"symbol": symbol} if symbol else {}
-        data = await self._request("GET", "/fapi/v1/openOrders", params=params, signed=True)
+        data = await self._request_readonly(
+            "GET", "/fapi/v1/openOrders", params=params, signed=True
+        )
         return data if isinstance(data, list) else []
 
     async def get_user_trades(
@@ -533,7 +574,9 @@ class BinanceFuturesClient:
         params: dict[str, Any] = {"symbol": symbol, "limit": limit}
         if order_id:
             params["orderId"] = order_id
-        data = await self._request("GET", "/fapi/v1/userTrades", params=params, signed=True)
+        data = await self._request_readonly(
+            "GET", "/fapi/v1/userTrades", params=params, signed=True
+        )
         rows = data if isinstance(data, list) else []
         return [
             FuturesUserTrade(
@@ -563,7 +606,7 @@ class BinanceFuturesClient:
             params["incomeType"] = income_type
         if symbol:
             params["symbol"] = symbol
-        data = await self._request("GET", "/fapi/v1/income", params=params, signed=True)
+        data = await self._request_readonly("GET", "/fapi/v1/income", params=params, signed=True)
         rows = data if isinstance(data, list) else []
         return [
             FuturesIncomeRecord(

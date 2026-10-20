@@ -127,7 +127,21 @@ class StrategyEngine:
 
         try:
             while self._running:
-                await self._evaluate_all(on_signal, on_tick)
+                try:
+                    await self._evaluate_all(on_signal, on_tick)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    # A transient failure (DB blip, network error) in one
+                    # evaluation cycle must not kill the engine permanently --
+                    # that silently stops signal generation for the whole
+                    # agent. Log it and keep looping.
+                    self._logger.error(
+                        "Strategy evaluation cycle failed (%s: %s); continuing",
+                        type(exc).__name__,
+                        exc,
+                    )
+                    self._logger.debug("Strategy cycle traceback", exc_info=True)
                 await asyncio.sleep(self._config.evaluation_interval_seconds)
         except asyncio.CancelledError:
             self._logger.info("StrategyEngine loop cancelled")

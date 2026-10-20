@@ -101,11 +101,89 @@ class TestPositionLimitGuard:
         assert result.passed is True
         assert result.reason == "Sell allowed"
 
+    def test_explicit_notional_is_used_over_quantity_times_price(self) -> None:
+        """The executors pass notional explicitly; it must win over qty*price.
+
+        spot BUY passes quote notional as `quantity` (USDT) while `price` is a
+        per-unit price, so `quantity * price` would inflate the notional by the
+        price factor.
+        """
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        # 500 USDT notional on a 10k portfolio = 5% -> allowed.
+        # quantity*price would be 500*100 = 50,000 -> 500% -> blocked.
+        result = guard.check(
+            make_context(
+                quantity=500.0,
+                price=100.0,
+                portfolio_value=10_000.0,
+                order_notional=500.0,
+            )
+        )
+
+        assert result.passed is True
+        assert result.reason == "Within position limits"
+
+    def test_blocks_when_explicit_notional_exceeds_limit(self) -> None:
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        result = guard.check(
+            make_context(
+                quantity=2_000.0,
+                price=100.0,
+                portfolio_value=10_000.0,
+                order_notional=2_000.0,
+            )
+        )
+
+        assert result.blocked is True
+        assert result.metadata == {"max_pct": 0.10, "new_pct": 0.2}
+
+    def test_fails_closed_when_portfolio_value_is_unknown(self) -> None:
+        """A limit that cannot be evaluated must not silently allow the order."""
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        result = guard.check(make_context(quantity=5.0, price=100.0, portfolio_value=0.0))
+
+        assert result.blocked is True
+        assert result.guard_name == "PositionLimit"
+        assert "Portfolio value unavailable" in result.reason
+
+    def test_fails_closed_when_notional_cannot_be_derived(self) -> None:
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        result = guard.check(make_context(quantity=5.0, price=None, portfolio_value=10_000.0))
+
+        assert result.blocked is True
+        assert "Order notional unavailable" in result.reason
+
+    def test_current_position_notional_is_added(self) -> None:
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        # 400 existing + 700 new = 1100 / 10k = 11% -> blocked
+        result = guard.check(
+            make_context(
+                quantity=700.0,
+                price=1.0,
+                portfolio_value=10_000.0,
+                current_position=400.0,
+            )
+        )
+
+        assert result.blocked is True
+        assert result.metadata == {"max_pct": 0.10, "new_pct": 0.11}
+
 
 class TestCooldownGuard:
-    def test_first_order_passes_and_records_timestamp(
+    def test_first_order_passes_without_recording_timestamp(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """check() must NOT record the timestamp.
+
+        The cooldown window has to start when the order FILLS, not when it is
+        checked -- otherwise a rejected order still burns the window and
+        blocks the next legitimate entry.
+        """
         guard = CooldownGuard(min_seconds=60.0)
         monkeypatch.setattr("time.time", lambda: 1_000.0)
 
@@ -113,7 +191,39 @@ class TestCooldownGuard:
 
         assert result.passed is True
         assert result.reason == "Cooldown passed"
+        assert "BTCUSDT" not in guard._last_order_time
+
+    def test_record_order_starts_the_cooldown_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        guard = CooldownGuard(min_seconds=60.0)
+        monkeypatch.setattr("time.time", lambda: 1_000.0)
+
+        guard.record_order("BTCUSDT")
+
         assert guard._last_order_time["BTCUSDT"] == 1_000.0
+
+    def test_rejected_order_does_not_burn_the_cooldown_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A guard check that never fills must not block the next entry."""
+        guard = CooldownGuard(min_seconds=60.0)
+        monkeypatch.setattr("time.time", lambda: 1_000.0)
+
+        first = guard.check(make_context(symbol="BTCUSDT"))
+        second = guard.check(make_context(symbol="BTCUSDT"))
+
+        assert first.passed is True
+        assert second.passed is True
+
+    def test_sell_is_never_blocked_by_cooldown(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A cooldown must not trap an open position."""
+        guard = CooldownGuard(min_seconds=60.0)
+        guard._last_order_time["BTCUSDT"] = 1_000.0
+        monkeypatch.setattr("time.time", lambda: 1_030.0)
+
+        result = guard.check(make_context(symbol="BTCUSDT", side="SELL"))
+
+        assert result.passed is True
+        assert result.guard_name == "Cooldown"
 
     def test_second_order_during_cooldown_is_blocked(self, monkeypatch: pytest.MonkeyPatch) -> None:
         guard = CooldownGuard(min_seconds=60.0)

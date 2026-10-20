@@ -171,6 +171,10 @@ class RiskManager:
             self._reconciliation_block = state.get("reconciliation_block")
             self._circuit_breakers = state.get("circuit_breakers", self._circuit_breakers)
             self._last_reset = state.get("last_reset", time.time())
+            # Legacy state files keyed positions by bare symbol. Normalize them
+            # to the market-qualified key on load so the position-limit check
+            # (which compares against canonical keys) cannot mis-count them.
+            self._positions = self._normalize_loaded_positions(self._positions)
             updated_at = state.get("updated_at")
             if updated_at:
                 try:
@@ -196,16 +200,72 @@ class RiskManager:
         except Exception as exc:
             self._logger.error(f"Failed to load risk state: {exc}")
 
+    def _normalize_loaded_positions(
+        self, positions: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """Migrate legacy position keys to the market-qualified canonical form.
+
+        Legacy state files used bare symbols (or ``{agent}::SYMBOL:futures``).
+        They are mapped to ``SYMBOL:market``; a key that already carries a
+        market suffix keeps that market.
+        """
+        migrated: dict[str, dict[str, Any]] = {}
+        for raw_key, payload in positions.items():
+            symbol, market = self._split_market(raw_key, default="spot")
+            key = self._canonical_position_key(symbol, market)
+            entry = dict(payload)
+            entry.setdefault("market", market)
+            # A spot and a futures entry for the same pair would collapse into
+            # one key; keep the futures one and drop the shadowed spot entry
+            # rather than silently losing position tracking.
+            if key in migrated:
+                existing_market = migrated[key].get("market", "spot")
+                if existing_market == market:
+                    continue
+                if existing_market == "futures":
+                    continue
+            migrated[key] = entry
+        return migrated
+
+    @staticmethod
+    def _canonical_position_key(symbol: str, market: str = "spot") -> str:
+        """Build the canonical in-memory position key: ``SYMBOL:market``.
+
+        Spot and futures positions live in the same RiskManager, so a bare
+        symbol key would let a futures position overwrite the spot position
+        for the same pair (and let one market's close delete the other's
+        entry). The market suffix keeps them independent.
+        """
+        base = symbol.strip().upper()
+        # Strip any pre-existing market suffix and agent prefix so the key is
+        # idempotent no matter which form the caller passed in.
+        if "::" in base:
+            base = base.rsplit("::", 1)[1]
+        if ":" in base:
+            base = base.rsplit(":", 1)[0]
+        return f"{base}:{market.strip().lower()}"
+
+    @staticmethod
+    def _split_market(symbol: str, default: str = "spot") -> tuple[str, str]:
+        """Split a possibly market-suffixed symbol into (symbol, market)."""
+        base = symbol.strip().upper()
+        if "::" in base:
+            base = base.rsplit("::", 1)[1]
+        if ":" in base:
+            head, _, tail = base.rpartition(":")
+            if tail.lower() in {"spot", "futures"}:
+                return head, tail.lower()
+        return base, default
+
     def _normalize_position_key(self, raw: str) -> str:
-        """Strip legacy agent/market decorations from a position key for DB comparison."""
-        key = raw
-        prefix = f"{self._agent_id}::"
-        if key.startswith(prefix):
-            key = key[len(prefix) :]
-        for suffix in (":futures", ":spot"):
-            if key.endswith(suffix):
-                key = key[: -len(suffix)]
-        return key.upper()
+        """Canonicalize a position key for comparison.
+
+        Legacy state files stored bare symbols (or legacy
+        ``{agent}::SYMBOL:futures`` keys). These are mapped to
+        ``SYMBOL:spot`` because the legacy live executors only traded spot.
+        """
+        symbol, market = self._split_market(raw, default="spot")
+        return self._canonical_position_key(symbol, market)
 
     async def reconcile_positions_with_db(self, pool: Any) -> None:
         """Drop in-memory positions not backed by an open DB row.
@@ -214,18 +274,27 @@ class RiskManager:
         keys like ``{agent}::SYMBOL:futures`` persisting on disk after a
         live-trading migration) that would otherwise consume ``max_open_positions``
         slots and block real signals.
+
+        The DB carries the market in its own ``market`` column, so positions
+        are matched on (symbol, market) — a spot row must not satisfy a
+        futures position for the same pair.
         """
         try:
             async with pool.acquire() as conn:
                 rows = await conn.fetch(
-                    "SELECT symbol FROM positions WHERE agent_id = $1 AND status = 'open'",
+                    "SELECT symbol, market FROM positions WHERE agent_id = $1 AND status = 'open'",
                     self._agent_id,
                 )
         except Exception as exc:
             self._logger.warning("Risk-state DB reconciliation skipped: %s", exc)
             return
 
-        valid = {self._normalize_position_key(row["symbol"]) for row in rows}
+        valid = {
+            self._canonical_position_key(
+                row["symbol"], (row["market"] if "market" in row.keys() else "spot") or "spot"
+            )
+            for row in rows
+        }
 
         to_drop: list[str] = []
         to_migrate: list[tuple[str, str]] = []
@@ -281,7 +350,8 @@ class RiskManager:
         """Check if a new position would violate position limits.
 
         Args:
-            symbol: Trading pair symbol
+            symbol: Trading pair symbol. May carry a market suffix
+                (``BTCUSDT:futures``); bare symbols default to spot.
             quantity_usdt: Position size in USDT
             portfolio_value: Total portfolio value in USDT
 
@@ -291,9 +361,11 @@ class RiskManager:
         if self._kill_switch_triggered:
             return False, "Kill switch is active"
 
+        key = self._normalize_position_key(symbol)
+
         # Check max open positions
         if len(self._positions) >= self._config.position_limits.max_open_positions:
-            if symbol not in self._positions:
+            if key not in self._positions:
                 return (
                     False,
                     f"Max open positions ({self._config.position_limits.max_open_positions}) reached",
@@ -313,36 +385,65 @@ class RiskManager:
 
         return True, "OK"
 
-    def register_open_position(self, symbol: str, quantity_usdt: float, price: float) -> None:
-        """Register a newly opened position in risk manager."""
-        self._positions[symbol] = {
+    def register_open_position(
+        self,
+        symbol: str,
+        quantity_usdt: float,
+        price: float,
+        market: str = "spot",
+    ) -> None:
+        """Register a newly opened position in risk manager.
+
+        The market is part of the key so a spot and a futures position on the
+        same pair are tracked independently.
+        """
+        key = self._canonical_position_key(symbol, market)
+        self._positions[key] = {
             "entry_price": price,
             "quantity_usdt": quantity_usdt,
             "entry_time": time.time(),
+            "market": market.strip().lower(),
         }
         self._save_state()
 
-    def register_close_position(self, symbol: str) -> None:
+    def register_close_position(self, symbol: str, market: str = "spot") -> None:
         """Register a closed position in risk manager."""
-        if symbol in self._positions:
-            del self._positions[symbol]
+        key = self._canonical_position_key(symbol, market)
+        if key in self._positions:
+            del self._positions[key]
             self._save_state()
 
     def record_trade(self, symbol: str, pnl: float, portfolio_value: float) -> None:
-        """Record a completed trade for risk tracking."""
+        """Record a completed trade for risk tracking.
+
+        ``portfolio_value`` can legitimately be 0 (e.g. the account was fully
+        drawn down right after a fill). Percentage-based limits cannot be
+        computed from a zero base, so they are skipped rather than dividing by
+        zero -- an exception here would fire *after* the exchange fill and
+        leave the position unmanaged.
+        """
         self._daily_pnl += pnl
+
+        # Percentage limits need a non-zero base to be meaningful.
+        safe_portfolio_value = portfolio_value if portfolio_value > 0 else 0.0
 
         # Track consecutive losses
         if pnl < 0:
             self._consecutive_losses += 1
             # Check max single loss
-            loss_pct = abs(pnl) / portfolio_value
-            if loss_pct > self._config.loss_limits.max_single_loss_pct:
-                self._logger.error(
-                    f"Max single loss exceeded: {loss_pct:.2%} > "
-                    f"{self._config.loss_limits.max_single_loss_pct:.2%}"
+            if safe_portfolio_value > 0:
+                loss_pct = abs(pnl) / safe_portfolio_value
+                if loss_pct > self._config.loss_limits.max_single_loss_pct:
+                    self._logger.error(
+                        f"Max single loss exceeded: {loss_pct:.2%} > "
+                        f"{self._config.loss_limits.max_single_loss_pct:.2%}"
+                    )
+                    self._trigger_circuit_breaker("max_single_loss")
+            else:
+                self._logger.warning(
+                    "Portfolio value is zero; skipping max_single_loss check for %s",
+                    symbol,
                 )
-                self._trigger_circuit_breaker("max_single_loss")
         else:
             self._consecutive_losses = 0
 
@@ -385,10 +486,16 @@ class RiskManager:
             self._trigger_circuit_breaker("drawdown")
 
         # Check daily loss limit
-        daily_loss_pct = abs(min(0, self._daily_pnl)) / portfolio_value
-        if daily_loss_pct > self._config.loss_limits.max_daily_loss_pct:
-            self._logger.error(f"Daily loss limit exceeded: {daily_loss_pct:.2%}")
-            self._trigger_circuit_breaker("daily_loss")
+        if safe_portfolio_value > 0:
+            daily_loss_pct = abs(min(0, self._daily_pnl)) / safe_portfolio_value
+            if daily_loss_pct > self._config.loss_limits.max_daily_loss_pct:
+                self._logger.error(f"Daily loss limit exceeded: {daily_loss_pct:.2%}")
+                self._trigger_circuit_breaker("daily_loss")
+        else:
+            self._logger.warning(
+                "Portfolio value is zero; skipping daily_loss check for %s",
+                symbol,
+            )
 
     def record_api_error(self) -> None:
         """Record an API error."""

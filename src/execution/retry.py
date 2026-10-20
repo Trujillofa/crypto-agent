@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypeVar
@@ -129,7 +129,7 @@ class RetryConfig:
 
 
 async def retry_with_backoff(
-    func: Callable[..., T],
+    func: Callable[..., Awaitable[T]],
     config: RetryConfig | None = None,
     *args: Any,
     **kwargs: Any,
@@ -154,7 +154,8 @@ async def retry_with_backoff(
 
     for attempt in range(config.max_attempts):
         try:
-            return await func(*args, **kwargs)
+            result: T = await func(*args, **kwargs)
+            return result
         except Exception as e:
             last_exception = e
             if attempt < config.max_attempts - 1:
@@ -181,7 +182,7 @@ async def retry_with_backoff(
                     e,
                 )
 
-    raise last_exception
+    raise last_exception  # type: ignore[misc]
 
 
 @dataclass
