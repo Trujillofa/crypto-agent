@@ -1,0 +1,344 @@
+from __future__ import annotations
+
+import json
+
+from src.utils.production_drift_sentinel import (
+    DurableSignalSnapshot,
+    DurableWatchedServiceSnapshot,
+    RepoSnapshot,
+    ServiceSnapshot,
+    analyze_drift,
+    build_durable_signal_snapshot,
+    build_durable_watched_service_snapshot,
+    collect_durable_signal_events,
+    resolve_service_agent_id,
+    summarize_durable_signals,
+)
+
+DURABLE_STATUS = {"type": "__status__", "files": 3, "records": 12, "error": ""}
+
+
+def _event(event_type: str, ts: str, agent_id: str) -> dict[str, str]:
+    return {"type": event_type, "ts": ts, "agent_id": agent_id}
+
+
+def test_summarize_durable_signals_counts_all_events() -> None:
+    events = [
+        _event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a"),
+        _event("signal_ignored", "2026-10-03T11:44:20+00:00", "agent-a"),
+        _event("signal_received", "2026-10-01T11:44:20+00:00", "agent-b"),
+    ]
+
+    count, last = summarize_durable_signals(events)
+
+    assert count == 3
+    assert last == "2026-10-03T11:44:20+00:00"
+
+
+def test_summarize_durable_signals_filters_by_agent_id() -> None:
+    events = [
+        _event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a"),
+        _event("signal_received", "2026-10-09T11:44:20+00:00", "agent-b"),
+    ]
+
+    count, last = summarize_durable_signals(events, agent_id="agent-a")
+
+    assert count == 1
+    assert last == "2026-10-02T11:44:20+00:00"
+
+
+def test_summarize_durable_signals_ignores_empty_timestamps() -> None:
+    events = [
+        _event("signal_received", "", "agent-a"),
+        _event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a"),
+    ]
+
+    count, last = summarize_durable_signals(events)
+
+    assert count == 2
+    assert last == "2026-10-02T11:44:20+00:00"
+
+
+def test_summarize_durable_signals_returns_none_when_no_events() -> None:
+    count, last = summarize_durable_signals([])
+
+    assert count == 0
+    assert last is None
+
+
+def test_collect_durable_signal_events_parses_status_and_events(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str | None,
+        remote_dir: str,
+        command: str,
+        timeout: int = 20,
+        ssh_config: str | None = None,
+    ) -> str:
+        commands.append(command)
+        return "\n".join(
+            [
+                json.dumps({"type": "__status__", "files": 2, "records": 1, "error": ""}),
+                json.dumps(
+                    {
+                        "type": "signal_received",
+                        "ts": "2026-10-02T11:44:20+00:00",
+                        "agent_id": "agent-a",
+                    }
+                ),
+            ]
+        )
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    events, status = collect_durable_signal_events(
+        None,
+        "/srv/app",
+        ServiceSnapshot(all_services=["agent_a"], running_services=["agent_a"]),
+    )
+
+    assert status["files"] == "2"
+    assert status["records"] == "1"
+    assert len(events) == 1
+    assert events[0]["agent_id"] == "agent-a"
+    # The volume is not readable from the host, so the read runs inside a
+    # container via `docker compose exec`.
+    assert "exec -T agent_a python3" in commands[0]
+    assert "/app/data/event_log_*.jsonl" in commands[0]
+
+
+def test_collect_durable_signal_events_returns_empty_status_when_no_agent_runs(
+    monkeypatch,
+) -> None:
+    def fake_run_remote_command(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        raise AssertionError("must not read the event log when no agent is running")
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    events, status = collect_durable_signal_events(
+        None,
+        "/srv/app",
+        ServiceSnapshot(all_services=["agent_a"], running_services=[]),
+    )
+
+    assert events == []
+    assert status == {}
+
+
+def test_collect_durable_signal_events_ignores_non_json_output(monkeypatch) -> None:
+    def fake_run_remote_command(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
+        return "some noise\nnot json\n" + json.dumps(
+            {"type": "__status__", "files": 1, "records": 0, "error": ""}
+        )
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    events, status = collect_durable_signal_events(
+        None,
+        "/srv/app",
+        ServiceSnapshot(all_services=["agent_a"], running_services=["agent_a"]),
+    )
+
+    assert events == []
+    assert status["files"] == "1"
+
+
+def test_build_durable_signal_snapshot_marks_read_failure() -> None:
+    snapshot = build_durable_signal_snapshot([], {})
+
+    assert snapshot.read_ok is False
+    assert snapshot.read_error != ""
+    assert snapshot.event_count == 0
+
+
+def test_build_durable_signal_snapshot_marks_success() -> None:
+    events = [_event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a")]
+
+    snapshot = build_durable_signal_snapshot(events, DURABLE_STATUS)
+
+    assert snapshot.read_ok is True
+    assert snapshot.event_count == 1
+    assert snapshot.last_signal_at == "2026-10-02T11:44:20+00:00"
+    assert snapshot.files_scanned == 3
+
+
+def test_build_durable_watched_service_snapshot_filters_by_agent() -> None:
+    events = [
+        _event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a"),
+        _event("signal_received", "2026-10-09T11:44:20+00:00", "agent-b"),
+    ]
+
+    snapshot = build_durable_watched_service_snapshot(
+        "agent_sol_sparse",
+        "agent-a",
+        events,
+        DURABLE_STATUS,
+    )
+
+    assert snapshot.agent_id == "agent-a"
+    assert snapshot.event_count == 1
+    assert snapshot.last_signal_at == "2026-10-02T11:44:20+00:00"
+    assert snapshot.read_ok is True
+
+
+def test_resolve_service_agent_id_reads_environ(monkeypatch) -> None:
+    commands = []
+
+    def fake_run_remote_command(
+        host: str | None,
+        remote_dir: str,
+        command: str,
+        timeout: int = 20,
+        ssh_config: str | None = None,
+    ) -> str:
+        commands.append(command)
+        return "sol-trend-pullback-sparse\n"
+
+    monkeypatch.setattr(
+        "src.utils.production_drift_sentinel.run_remote_command",
+        fake_run_remote_command,
+    )
+
+    assert resolve_service_agent_id(None, "/srv/app", "agent_sol_sparse") == (
+        "sol-trend-pullback-sparse"
+    )
+    assert "exec -T agent_sol_sparse printenv AGENT_ID" in commands[0]
+
+
+def test_analyze_drift_uses_durable_signal_source_when_available() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=4,
+            last_signal_at="2026-10-20T10:00:00+00:00",
+            read_ok=True,
+            files_scanned=3,
+        ),
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "SIGNAL_DROUGHT" not in codes
+    assert "SIGNAL_STALE" not in codes
+
+
+def test_analyze_drift_reports_durable_read_failure_as_error() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=0,
+            last_signal_at=None,
+            read_ok=False,
+            read_error="volume not mounted",
+        ),
+    )
+
+    codes = {finding.code for finding in findings}
+    # A broken instrument must not look like a quiet market.
+    assert "DURABLE_SIGNAL_LOG_UNREADABLE" in codes
+    assert "SIGNAL_DROUGHT" not in codes
+
+
+def test_analyze_drift_reports_durable_drought_and_staleness() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=0,
+            last_signal_at=None,
+            read_ok=True,
+            files_scanned=3,
+        ),
+        durable_watched_service_snapshot=DurableWatchedServiceSnapshot(
+            service="agent_sol_sparse",
+            agent_id="sol-trend-pullback-sparse",
+            event_count=0,
+            last_signal_at=None,
+            read_ok=True,
+        ),
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "SIGNAL_DROUGHT" in codes
+    assert "WATCH_SERVICE_SIGNAL_DROUGHT" in codes
+
+
+def test_analyze_drift_does_not_double_report_log_findings() -> None:
+    """With a durable source available, the log-based drought finding is
+    suppressed so the report does not list the same problem twice."""
+    from src.utils.production_drift_sentinel import SignalSnapshot, WatchedServiceSnapshot
+
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=SignalSnapshot(
+            signal_count=0, last_signal_at=None, saw_strategy_cycle=True
+        ),
+        watched_service_snapshot=WatchedServiceSnapshot(
+            service="agent_sol_sparse",
+            exists=True,
+            running=True,
+            signal_count=0,
+            last_signal_at=None,
+            saw_strategy_cycle=True,
+            paper_order_count=0,
+            last_paper_order_at=None,
+        ),
+        remote_error=None,
+        signal_stale_hours=24,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=0,
+            last_signal_at=None,
+            read_ok=True,
+            files_scanned=3,
+        ),
+        durable_watched_service_snapshot=DurableWatchedServiceSnapshot(
+            service="agent_sol_sparse",
+            agent_id="sol-trend-pullback-sparse",
+            event_count=0,
+            last_signal_at=None,
+            read_ok=True,
+        ),
+    )
+
+    drought_findings = [f for f in findings if f.code == "WATCH_SERVICE_SIGNAL_DROUGHT"]
+    assert len(drought_findings) == 1

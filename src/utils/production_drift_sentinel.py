@@ -24,6 +24,17 @@ TIMER_ARTIFACT_POLICIES = {
     "crypto-agent-production-drift-sentinel.timer": (PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB, 2),
 }
 
+# Durable signal events, read from the shared agent-data volume.
+#
+# Docker logs are the wrong source for "has this strategy traded lately":
+# they only cover the life of the current container, so a deploy silently
+# resets the lookback window, and "Consensus Signal" is only logged for
+# non-HOLD decisions. The event log in the shared volume outlives deploys
+# and records every signal the paper executor received.
+DURABLE_SIGNAL_EVENT_TYPES = ("signal_received", "signal_ignored")
+DURABLE_EVENT_LOG_GLOB = "/app/data/event_log_*.jsonl"
+DURABLE_EVENT_LOG_DIR = "/app/data"
+
 
 class Severity(StrEnum):
     ERROR = "error"
@@ -76,6 +87,21 @@ class SignalSnapshot:
 
 
 @dataclass(frozen=True)
+class DurableSignalSnapshot:
+    """Signal activity read from the shared agent-data volume.
+
+    Unlike SignalSnapshot, this survives a container redeploy, so it is
+    the trustworthy source for "has this strategy traded lately".
+    """
+
+    event_count: int
+    last_signal_at: str | None
+    read_ok: bool
+    read_error: str = ""
+    files_scanned: int = 0
+
+
+@dataclass(frozen=True)
 class WatchedServiceSnapshot:
     service: str
     exists: bool
@@ -85,6 +111,18 @@ class WatchedServiceSnapshot:
     saw_strategy_cycle: bool
     paper_order_count: int
     last_paper_order_at: str | None
+
+
+@dataclass(frozen=True)
+class DurableWatchedServiceSnapshot:
+    """Durable signal activity for one watched service."""
+
+    service: str
+    agent_id: str
+    event_count: int
+    last_signal_at: str | None
+    read_ok: bool
+    read_error: str = ""
 
 
 @dataclass(frozen=True)
@@ -98,6 +136,8 @@ class DriftReport:
     signal_snapshot: SignalSnapshot | None
     watched_service_snapshot: WatchedServiceSnapshot | None
     findings: list[Finding]
+    durable_signal_snapshot: DurableSignalSnapshot | None = None
+    durable_watched_service_snapshot: DurableWatchedServiceSnapshot | None = None
 
 
 def run_command(command: list[str], cwd: Path | None = None, timeout: int = 15) -> str:
@@ -290,6 +330,183 @@ def epoch_to_iso_timestamp(value: str) -> str | None:
     return datetime.fromtimestamp(epoch, tz=UTC).isoformat()
 
 
+# The reader that runs inside the agent container. It prints one JSON object
+# per line so the caller can parse it without depending on the container's
+# python version or on the host having read access to the volume.
+#
+# The first line is always a status record. Without it, "the volume could
+# not be read" and "the strategy produced no signals" would be
+# indistinguishable, and a broken instrument would look exactly like a
+# quiet market.
+DURABLE_EVENT_READER = r"""
+import glob, json, sys
+status = {"type": "__status__", "files": 0, "records": 0, "error": ""}
+out = []
+try:
+    paths = sorted(glob.glob(sys.argv[1]))
+    status["files"] = len(paths)
+    for path in paths:
+        try:
+            with open(path, "r", errors="replace") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except Exception:
+                        continue
+                    if not isinstance(record, dict):
+                        continue
+                    event_type = record.get("type")
+                    if event_type not in sys.argv[2].split(","):
+                        continue
+                    status["records"] += 1
+                    out.append({
+                        "type": event_type,
+                        "ts": record.get("ts") or "",
+                        "agent_id": record.get("agent_id") or "",
+                    })
+        except Exception as exc:
+            status["error"] = "%s: %s" % (path, exc)
+except Exception as exc:
+    status["error"] = str(exc)
+print(json.dumps(status))
+for item in out:
+    print(json.dumps(item))
+"""
+
+
+def collect_durable_signal_events(
+    host: str | None,
+    remote_dir: str,
+    service_snapshot: ServiceSnapshot,
+    event_types: tuple[str, ...] = DURABLE_SIGNAL_EVENT_TYPES,
+    ssh_config: str | None = None,
+) -> tuple[list[dict[str, str]], dict[str, str]]:
+    """Read signal events from the shared agent-data volume.
+
+    The event log lives in a Docker volume that the host user cannot read
+    directly, so the read is done inside a running agent container via
+    `docker compose exec`.
+
+    Returns (events, status). The status dict carries the reader's own
+    status record: files scanned, records matched, and any error. When
+    status is empty the read did not complete and the caller must not
+    treat the empty event list as "no signals happened".
+    """
+    running_agents = [
+        name for name in service_snapshot.running_services if name.startswith("agent")
+    ]
+    if not running_agents:
+        return [], {}
+
+    reader = DURABLE_EVENT_READER.strip()
+    event_types_arg = ",".join(event_types)
+    service = running_agents[0]
+    command = (
+        f"{PRODUCTION_COMPOSE} exec -T {shlex.quote(service)} "
+        f"python3 -c {shlex.quote(reader)} "
+        f"{shlex.quote(DURABLE_EVENT_LOG_GLOB)} {shlex.quote(event_types_arg)}"
+    )
+
+    output = run_remote_command(host, remote_dir, command, timeout=60, ssh_config=ssh_config)
+
+    status: dict[str, str] = {}
+    events: list[dict[str, str]] = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        if record.get("type") == "__status__":
+            status = {str(key): str(value) for key, value in record.items()}
+            continue
+        if record.get("type"):
+            events.append(
+                {
+                    "type": str(record.get("type", "")),
+                    "ts": str(record.get("ts", "")),
+                    "agent_id": str(record.get("agent_id", "")),
+                }
+            )
+    return events, status
+
+
+def summarize_durable_signals(
+    events: list[dict[str, str]],
+    agent_id: str | None = None,
+) -> tuple[int, str | None]:
+    """Return (count, newest timestamp) for signal events.
+
+    When agent_id is given, only that agent's events are counted. A
+    timestamp of "" is ignored so a malformed record cannot become the
+    "newest" signal.
+    """
+    matching = [event for event in events if agent_id is None or event.get("agent_id") == agent_id]
+    timestamps = [event.get("ts", "") for event in matching if event.get("ts")]
+    if not timestamps:
+        return len(matching), None
+    return len(matching), max(timestamps)
+
+
+def resolve_service_agent_id(
+    host: str | None,
+    remote_dir: str,
+    service: str,
+    ssh_config: str | None = None,
+) -> str:
+    """Read AGENT_ID from a running service's environment.
+
+    The event log is keyed by agent_id, not by compose service name, so
+    the mapping has to be resolved at runtime rather than hardcoded.
+    """
+    command = f"{PRODUCTION_COMPOSE} exec -T {shlex.quote(service)} printenv AGENT_ID"
+    output = run_remote_command(host, remote_dir, command, timeout=30, ssh_config=ssh_config)
+    return output.strip().splitlines()[-1].strip() if output.strip() else ""
+
+
+def build_durable_signal_snapshot(
+    events: list[dict[str, str]],
+    status: dict[str, str],
+) -> DurableSignalSnapshot:
+    count, last = summarize_durable_signals(events)
+    read_ok = bool(status)
+    read_error = status.get("error", "") if status else "durable event log was not read"
+    files = int(status.get("files", "0") or 0) if status else 0
+    return DurableSignalSnapshot(
+        event_count=count,
+        last_signal_at=last,
+        read_ok=read_ok,
+        read_error=read_error,
+        files_scanned=files,
+    )
+
+
+def build_durable_watched_service_snapshot(
+    service: str,
+    agent_id: str,
+    events: list[dict[str, str]],
+    status: dict[str, str],
+) -> DurableWatchedServiceSnapshot:
+    count, last = summarize_durable_signals(events, agent_id=agent_id or None)
+    read_ok = bool(status)
+    read_error = status.get("error", "") if status else "durable event log was not read"
+    return DurableWatchedServiceSnapshot(
+        service=service,
+        agent_id=agent_id,
+        event_count=count,
+        last_signal_at=last,
+        read_ok=read_ok,
+        read_error=read_error,
+    )
+
+
 def collect_remote_signal_snapshot(
     host: str | None,
     remote_dir: str,
@@ -421,6 +638,8 @@ def analyze_drift(
     remote_error: str | None,
     signal_stale_hours: int,
     remote_checks_enabled: bool = True,
+    durable_signal_snapshot: DurableSignalSnapshot | None = None,
+    durable_watched_service_snapshot: DurableWatchedServiceSnapshot | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
 
@@ -610,7 +829,67 @@ def analyze_drift(
                             )
                         )
 
-    if signal_snapshot is not None:
+    # Signal activity.
+    #
+    # The durable event log is authoritative when it could be read. Docker
+    # logs are only a fallback: they are truncated by a container redeploy
+    # and "Consensus Signal" is logged for non-HOLD decisions only, so a
+    # log-only check reports a drought even when the strategy traded
+    # yesterday.
+    if durable_signal_snapshot is not None:
+        if not durable_signal_snapshot.read_ok:
+            findings.append(
+                Finding(
+                    severity=Severity.ERROR,
+                    code="DURABLE_SIGNAL_LOG_UNREADABLE",
+                    message=(
+                        "Could not read the durable signal event log: "
+                        f"{durable_signal_snapshot.read_error or 'unknown error'}"
+                    ),
+                    recommendation=(
+                        "Check that the agent containers are running and that the shared "
+                        "agent-data volume is mounted and readable from inside a container."
+                    ),
+                )
+            )
+        else:
+            if durable_signal_snapshot.event_count == 0:
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        code="SIGNAL_DROUGHT",
+                        message=(
+                            "No consensus signals have been recorded in the durable event log "
+                            f"({durable_signal_snapshot.files_scanned} event log file(s) scanned)"
+                        ),
+                        recommendation=(
+                            "Review strategy and aggregator thresholds; run config doctor and "
+                            "check filters."
+                        ),
+                    )
+                )
+
+            if durable_signal_snapshot.last_signal_at:
+                parsed = parse_iso_timestamp(durable_signal_snapshot.last_signal_at)
+                if parsed is not None:
+                    age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
+                    if age_hours > signal_stale_hours:
+                        findings.append(
+                            Finding(
+                                severity=Severity.WARNING,
+                                code="SIGNAL_STALE",
+                                message=(
+                                    "Latest durable consensus signal is stale "
+                                    f"({age_hours:.1f}h old at "
+                                    f"{durable_signal_snapshot.last_signal_at})"
+                                ),
+                                recommendation=(
+                                    "Inspect recent market conditions and strategy thresholds "
+                                    "for over-filtering."
+                                ),
+                            )
+                        )
+    elif signal_snapshot is not None:
         if signal_snapshot.saw_strategy_cycle and signal_snapshot.signal_count == 0:
             findings.append(
                 Finding(
@@ -678,8 +957,17 @@ def analyze_drift(
                     )
                 )
 
+            # The log-based signal findings are suppressed when the durable
+            # log was read, because the durable snapshot reports the same
+            # condition with a source that survives a redeploy.
+            durable_available = (
+                durable_watched_service_snapshot is not None
+                and durable_watched_service_snapshot.read_ok
+            )
+
             if (
-                watched_service_snapshot.saw_strategy_cycle
+                not durable_available
+                and watched_service_snapshot.saw_strategy_cycle
                 and watched_service_snapshot.signal_count == 0
             ):
                 findings.append(
@@ -697,7 +985,7 @@ def analyze_drift(
                     )
                 )
 
-            if watched_service_snapshot.last_signal_at:
+            if not durable_available and watched_service_snapshot.last_signal_at:
                 parsed = parse_iso_timestamp(watched_service_snapshot.last_signal_at)
                 if parsed is not None:
                     age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
@@ -709,6 +997,64 @@ def analyze_drift(
                                 message=(
                                     f"Latest watched-service consensus signal is stale "
                                     f"({age_hours:.1f}h old at {watched_service_snapshot.last_signal_at})"
+                                ),
+                                recommendation=(
+                                    "Inspect whether this sparse strategy is idle by design or "
+                                    "whether conditions changed materially."
+                                ),
+                            )
+                        )
+
+    # Watched service, durable source. This supersedes the log-based
+    # findings above when the durable log could be read, because the log
+    # window is reset by every container redeploy.
+    if durable_watched_service_snapshot is not None:
+        watched = durable_watched_service_snapshot
+        if not watched.read_ok:
+            findings.append(
+                Finding(
+                    severity=Severity.ERROR,
+                    code="DURABLE_WATCH_SERVICE_LOG_UNREADABLE",
+                    message=(
+                        f"Could not read the durable signal event log for "
+                        f"'{watched.service}': {watched.read_error or 'unknown error'}"
+                    ),
+                    recommendation=(
+                        "Check that the agent containers are running and that the shared "
+                        "agent-data volume is mounted and readable from inside a container."
+                    ),
+                )
+            )
+        else:
+            if watched.event_count == 0:
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        code="WATCH_SERVICE_SIGNAL_DROUGHT",
+                        message=(
+                            f"Watched service '{watched.service}' (agent_id "
+                            f"'{watched.agent_id or 'unknown'}') has no consensus signals "
+                            "recorded in the durable event log"
+                        ),
+                        recommendation=(
+                            "Review the watched strategy thresholds and confirm recent market "
+                            "conditions match the thesis."
+                        ),
+                    )
+                )
+
+            if watched.last_signal_at:
+                parsed = parse_iso_timestamp(watched.last_signal_at)
+                if parsed is not None:
+                    age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
+                    if age_hours > signal_stale_hours:
+                        findings.append(
+                            Finding(
+                                severity=Severity.WARNING,
+                                code="WATCH_SERVICE_SIGNAL_STALE",
+                                message=(
+                                    "Latest durable watched-service consensus signal is stale "
+                                    f"({age_hours:.1f}h old at {watched.last_signal_at})"
                                 ),
                                 recommendation=(
                                     "Inspect whether this sparse strategy is idle by design or "
@@ -731,6 +1077,14 @@ def report_to_json(report: DriftReport) -> str:
         "signal_snapshot": asdict(report.signal_snapshot) if report.signal_snapshot else None,
         "watched_service_snapshot": (
             asdict(report.watched_service_snapshot) if report.watched_service_snapshot else None
+        ),
+        "durable_signal_snapshot": (
+            asdict(report.durable_signal_snapshot) if report.durable_signal_snapshot else None
+        ),
+        "durable_watched_service_snapshot": (
+            asdict(report.durable_watched_service_snapshot)
+            if report.durable_watched_service_snapshot
+            else None
         ),
         "findings": [asdict(finding) for finding in report.findings],
     }
