@@ -28,7 +28,7 @@ def _event(
     event_type: str,
     ts: str,
     agent_id: str,
-    signal_type: str = "",
+    signal_type: str = "BUY",
     reason: str = "",
 ) -> dict[str, str]:
     return {
@@ -49,8 +49,10 @@ def test_summarize_durable_signals_counts_all_events() -> None:
 
     count, last = summarize_durable_signals(events)
 
-    assert count == 3
-    assert last == "2026-10-03T11:44:20+00:00"
+    # Only actionable BUY/SELL votes count. The ignored event is not a
+    # signal the strategy produced, it is a signal that was refused.
+    assert count == 2
+    assert last == "2026-10-02T11:44:20+00:00"
 
 
 def test_summarize_durable_signals_filters_by_agent_id() -> None:
@@ -555,4 +557,32 @@ def test_median_interval_does_not_mix_agents() -> None:
 
     # Per agent each gap is 216h. Mixed into one series the gaps would
     # alternate between 1h and 215h, which would read as a fast cadence.
+    assert median_signal_interval_hours(events) == pytest.approx(216.0)
+
+
+def test_hold_votes_do_not_count_as_signals() -> None:
+    """The executor logs `signal_received` for HOLD votes too. Counting
+    those would make a dormant strategy look busy."""
+    events = [
+        _event("signal_received", "2026-10-20T00:00:00+00:00", "agent-a", "HOLD"),
+        _event("signal_received", "2026-10-20T04:00:00+00:00", "agent-a", "HOLD"),
+        _event("signal_received", "2026-10-20T08:00:00+00:00", "agent-a", "BUY"),
+    ]
+
+    assert count_durable_received(events) == 1
+    count, newest = summarize_durable_signals(events)
+    assert count == 1
+    assert newest == "2026-10-20T08:00:00+00:00"
+
+
+def test_hold_votes_do_not_affect_the_cadence() -> None:
+    """HOLD votes arrive every cycle, so including them would make the
+    agent look like it signals constantly."""
+    events = [
+        _event("signal_received", "2026-10-01T00:00:00+00:00", "agent-a", "HOLD"),
+        _event("signal_received", "2026-10-01T04:00:00+00:00", "agent-a", "HOLD"),
+        _event("signal_received", "2026-10-10T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-19T00:00:00+00:00", "agent-a", "SELL"),
+    ]
+
     assert median_signal_interval_hours(events) == pytest.approx(216.0)

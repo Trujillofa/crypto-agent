@@ -482,13 +482,23 @@ def summarize_durable_signals(
     events: list[dict[str, str]],
     agent_id: str | None = None,
 ) -> tuple[int, str | None]:
-    """Return (count, newest timestamp) for signal events.
+    """Return (count, newest timestamp) for actionable signal events.
 
     When agent_id is given, only that agent's events are counted. A
     timestamp of "" is ignored so a malformed record cannot become the
     "newest" signal.
+
+    Only BUY and SELL votes count. The executor also logs HOLD votes as
+    `signal_received`, and treating those as trading signals would make
+    a dormant strategy look busy.
     """
-    matching = [event for event in events if agent_id is None or event.get("agent_id") == agent_id]
+    matching = [
+        event
+        for event in events
+        if event.get("type") == "signal_received"
+        and event.get("signal_type", "").upper() in ("BUY", "SELL")
+        and (agent_id is None or event.get("agent_id") == agent_id)
+    ]
     timestamps = [event.get("ts", "") for event in matching if event.get("ts")]
     if not timestamps:
         return len(matching), None
@@ -520,7 +530,11 @@ def median_signal_interval_hours(
 
     by_agent: dict[str, list[dict[str, str]]] = {}
     for event in events:
-        if event.get("type") != "signal_received" or not event.get("ts"):
+        if event.get("type") != "signal_received":
+            continue
+        if event.get("signal_type", "").upper() not in ("BUY", "SELL"):
+            continue
+        if not event.get("ts"):
             continue
         by_agent.setdefault(event.get("agent_id", ""), []).append(event)
 
@@ -570,12 +584,19 @@ def count_durable_received(
     events: list[dict[str, str]],
     agent_id: str | None = None,
 ) -> int:
-    """Count signals the executor received."""
+    """Count signals the executor received.
+
+    The paper executor logs `signal_received` for every vote it is
+    handed, including HOLD votes, which it returns without acting on.
+    A HOLD vote is not a trading signal, so only BUY and SELL votes
+    count towards the activity numbers.
+    """
     return len(
         [
             event
             for event in events
             if event.get("type") == "signal_received"
+            and event.get("signal_type", "").upper() in ("BUY", "SELL")
             and (agent_id is None or event.get("agent_id") == agent_id)
         ]
     )
