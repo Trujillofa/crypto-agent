@@ -67,17 +67,29 @@ if [[ "$CONFIRM" != "yes" ]]; then
 fi
 
 # Terminate lingering connections so the drop cannot be blocked.
-$DOCKER_CMD exec "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 <<SQL
+# NOTE: `-i` is REQUIRED. Without it docker does not forward stdin, so the
+# heredoc is silently discarded and the statement never runs (psql exits 0).
+$DOCKER_CMD exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 <<SQL
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
 WHERE datname = '${DB_NAME}' AND pid <> pg_backend_pid();
 SQL
 
 log "Recreating database '$DB_NAME'..."
-$DOCKER_CMD exec "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 <<SQL
-DROP DATABASE IF EXISTS ${DB_NAME};
-CREATE DATABASE ${DB_NAME};
-SQL
+# CREATE DATABASE cannot run inside a transaction block, so use separate
+# -c invocations rather than one multi-statement script.
+$DOCKER_CMD exec "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS ${DB_NAME};"
+$DOCKER_CMD exec "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 \
+    -c "CREATE DATABASE ${DB_NAME};" 
+
+# Verify the database actually exists. A silently-discarded statement (e.g. a
+# missing `docker exec -i`, so stdin is not forwarded) would otherwise look
+# like a successful create and blow up later with a confusing error.
+if ! $DOCKER_CMD exec "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -t -c \
+    "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}';" | grep -q 1; then
+    die "Database '${DB_NAME}' was not created — refusing to load the dump."
+fi
 
 log "Loading dump..."
 gunzip -c "$BACKUP_FILE" \
