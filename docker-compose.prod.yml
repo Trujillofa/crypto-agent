@@ -109,6 +109,90 @@ services:
         max-size: "50m"
         max-file: "3"
 
+  # postgres_exporter exposes pg_up and the PostgreSQL/PostgreSQL-derived
+  # metrics for marketdata. Prometheus scrapes it on :9187 and the
+  # TimescaleDown / PostgresExporterDown rules in config/prometheus-alerts.yml
+  # fire on it.
+  #
+  # The credentials come from the same .env the timescaledb container uses
+  # (${POSTGRES_USER}, ${POSTGRES_PASSWORD}, ${POSTGRES_DB}) -- no secret is
+  # committed here. If the password contains URL-reserved characters
+  # (@ : / ? # %), set POSTGRES_EXPORTER_DSN in .env to the fully-encoded
+  # DSN instead; it takes precedence over the built-in form.
+  #
+  # This service lives in the base compose file rather than in an overlay on
+  # purpose: the deploy script runs `docker compose up -d --remove-orphans`,
+  # which removes any container not declared in the merged file. When the
+  # exporters lived only in an overlay, every rebuild silently dropped them
+  # and took the database and offsite monitoring down with it.
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    restart: always
+    environment:
+      DATA_SOURCE_NAME: "${POSTGRES_EXPORTER_DSN:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}?sslmode=disable}"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9187/metrics || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.1"
+          memory: 32M
+    networks:
+      - crypto-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # node_exporter with the textfile collector enabled. The textfile
+  # collector reads *.prom files from --collector.textfile.directory and
+  # exposes them as metrics. That is how the offsite-backup unit's
+  # last-success sentinel becomes a Prometheus metric, and therefore an
+  # alert (OffsiteBackupStale / OffsiteBackupFailing).
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: always
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.textfile.directory=/textfile"
+    volumes:
+      - /:/host:ro,rslave
+      - /var/lib/prometheus-textfile:/textfile:ro
+    ports:
+      - "9100:9100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9100/metrics || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.1"
+          memory: 32M
+    networks:
+      - crypto-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
   grafana:
     image: grafana/grafana:latest
     restart: always
