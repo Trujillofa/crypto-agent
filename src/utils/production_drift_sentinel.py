@@ -106,6 +106,7 @@ class DurableSignalSnapshot:
     ignored_count: int = 0
     received_count: int = 0
     guard_block_count: int = 0
+    median_interval_hours: float | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,7 @@ class DurableWatchedServiceSnapshot:
     last_signal_at: str | None
     read_ok: bool
     read_error: str = ""
+    median_interval_hours: float | None = None
 
 
 @dataclass(frozen=True)
@@ -452,6 +454,30 @@ def collect_durable_signal_events(
     return events, status
 
 
+def effective_stale_threshold(
+    configured_hours: float,
+    median_interval_hours: float | None,
+    multiplier: float = 3.0,
+) -> float:
+    """Threshold for calling a signal stale, adapted to the agent's cadence.
+
+    A fixed threshold is wrong for these strategies. The 4h panic-block
+    agent signals roughly every nine days, so a 72-hour threshold would
+    report it as stale almost permanently and recreate the exact
+    false-alarm failure this instrument was repaired to fix.
+
+    When the agent's own historical cadence is known, the threshold
+    becomes a multiple of it. The configured value is still respected as
+    an upper bound so a genuinely quiet market is still reported.
+
+    Returns the larger of the two, because a threshold below the
+    configured one would make the instrument noisier than it was.
+    """
+    if median_interval_hours is None or median_interval_hours <= 0:
+        return float(configured_hours)
+    return max(float(configured_hours), median_interval_hours * multiplier)
+
+
 def summarize_durable_signals(
     events: list[dict[str, str]],
     agent_id: str | None = None,
@@ -467,6 +493,77 @@ def summarize_durable_signals(
     if not timestamps:
         return len(matching), None
     return len(matching), max(timestamps)
+
+
+def median_signal_interval_hours(
+    events: list[dict[str, str]], agent_id: str | None = None
+) -> float | None:
+    """Median hours between consecutive signals, from the durable log.
+
+    A fixed staleness threshold is wrong for these strategies: the 4h
+    panic-block agent signals roughly every nine days, so a 72-hour
+    threshold would report it as stale almost permanently. The agent's
+    own historical cadence is the right yardstick.
+
+    When agent_id is None the intervals are computed per agent and the
+    median of those per-agent medians is returned. Mixing every agent's
+    signals into one series would make the gap look tiny -- two
+    different agents signalling an hour apart is not a fast cadence.
+
+    Returns None when there is nothing to learn from, because a single
+    signal gives no interval.
+    """
+    if agent_id is not None:
+        return _median_interval_for(
+            [event for event in events if event.get("agent_id") == agent_id]
+        )
+
+    by_agent: dict[str, list[dict[str, str]]] = {}
+    for event in events:
+        if event.get("type") != "signal_received" or not event.get("ts"):
+            continue
+        by_agent.setdefault(event.get("agent_id", ""), []).append(event)
+
+    per_agent = [
+        interval
+        for interval in (_median_interval_for(group) for group in by_agent.values())
+        if interval is not None
+    ]
+    if not per_agent:
+        return None
+    per_agent.sort()
+    middle = len(per_agent) // 2
+    if len(per_agent) % 2:
+        return per_agent[middle]
+    return (per_agent[middle - 1] + per_agent[middle]) / 2
+
+
+def _median_interval_for(events: list[dict[str, str]]) -> float | None:
+    """Median gap between consecutive signals in one series."""
+    timestamps = sorted(event.get("ts", "") for event in events if event.get("ts"))
+    if len(timestamps) < 2:
+        return None
+
+    parsed = []
+    for value in timestamps:
+        moment = parse_iso_timestamp(value)
+        if moment is not None:
+            parsed.append(moment)
+    if len(parsed) < 2:
+        return None
+
+    gaps = sorted(
+        (later - earlier).total_seconds() / 3600
+        for earlier, later in zip(parsed, parsed[1:], strict=False)
+        if later > earlier
+    )
+    if not gaps:
+        return None
+
+    middle = len(gaps) // 2
+    if len(gaps) % 2:
+        return gaps[middle]
+    return (gaps[middle - 1] + gaps[middle]) / 2
 
 
 def count_durable_received(
@@ -545,6 +642,7 @@ def build_durable_signal_snapshot(
         ignored_count=guard_blocks,
         received_count=received,
         guard_block_count=guard_blocks,
+        median_interval_hours=median_signal_interval_hours(events),
     )
 
 
@@ -564,6 +662,7 @@ def build_durable_watched_service_snapshot(
         last_signal_at=last,
         read_ok=read_ok,
         read_error=read_error,
+        median_interval_hours=median_signal_interval_hours(events, agent_id=agent_id or None),
     )
 
 
@@ -933,7 +1032,11 @@ def analyze_drift(
                 parsed = parse_iso_timestamp(durable_signal_snapshot.last_signal_at)
                 if parsed is not None:
                     age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
-                    if age_hours > signal_stale_hours:
+                    threshold = effective_stale_threshold(
+                        signal_stale_hours,
+                        durable_signal_snapshot.median_interval_hours,
+                    )
+                    if age_hours > threshold:
                         findings.append(
                             Finding(
                                 severity=Severity.WARNING,
@@ -941,7 +1044,8 @@ def analyze_drift(
                                 message=(
                                     "Latest durable consensus signal is stale "
                                     f"({age_hours:.1f}h old at "
-                                    f"{durable_signal_snapshot.last_signal_at})"
+                                    f"{durable_signal_snapshot.last_signal_at}, "
+                                    f"threshold {threshold:.1f}h)"
                                 ),
                                 recommendation=(
                                     "Inspect recent market conditions and strategy thresholds "
@@ -1134,14 +1238,19 @@ def analyze_drift(
                 parsed = parse_iso_timestamp(watched.last_signal_at)
                 if parsed is not None:
                     age_hours = (datetime.now(UTC) - parsed).total_seconds() / 3600
-                    if age_hours > signal_stale_hours:
+                    threshold = effective_stale_threshold(
+                        signal_stale_hours,
+                        watched.median_interval_hours,
+                    )
+                    if age_hours > threshold:
                         findings.append(
                             Finding(
                                 severity=Severity.WARNING,
                                 code="WATCH_SERVICE_SIGNAL_STALE",
                                 message=(
                                     "Latest durable watched-service consensus signal is stale "
-                                    f"({age_hours:.1f}h old at {watched.last_signal_at})"
+                                    f"({age_hours:.1f}h old at {watched.last_signal_at}, "
+                                    f"threshold {threshold:.1f}h)"
                                 ),
                                 recommendation=(
                                     "Inspect whether this sparse strategy is idle by design or "
