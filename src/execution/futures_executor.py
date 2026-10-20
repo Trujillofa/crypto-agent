@@ -165,6 +165,10 @@ class FuturesTradingExecutor:
         quantity: float,
         portfolio_value: float,
         signal_confidence: float = 0.0,
+        price: float | None = None,
+        order_notional: float | None = None,
+        market: str = "futures",
+        is_exit: bool | None = None,
     ) -> None:
         if self._guard_pipeline is None:
             return
@@ -172,8 +176,15 @@ class FuturesTradingExecutor:
             symbol=symbol,
             side=side,
             quantity=quantity,
+            price=price,
             portfolio_value=portfolio_value,
             signal_confidence=signal_confidence,
+            order_notional=order_notional,
+            # Existing exposure for this pair, so the position-limit guard adds
+            # the incoming order to what is ALREADY held instead of measuring
+            # the new order from zero.
+            current_position=self._risk_manager.get_position_notional(symbol, market),
+            is_exit=is_exit,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -365,10 +376,17 @@ class FuturesTradingExecutor:
 
     async def _monitor_and_update(self) -> None:
         """Monitor positions and update metrics."""
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
-        if not is_allowed:
-            self._logger.warning(f"Futures trading blocked: {reason}")
+        # This loop only ever CLOSES positions (software SL/TP, trailing stop,
+        # time stop) and reads account state -- it never opens one. The kill
+        # switch and circuit breakers exist to stop NEW risk from being
+        # taken; gating the close path on them means a tripped breaker stops
+        # the software stop-loss from working, which turns a protective exit
+        # into a trap on an open losing position. Use is_close_allowed(),
+        # which still respects a reconciliation block (we must not close
+        # something we are not sure we are holding).
+        close_allowed, reason = self._risk_manager.is_close_allowed()
+        if not close_allowed:
+            self._logger.warning(f"Futures position monitoring blocked: {reason}")
             return
 
         # Get account info
@@ -695,7 +713,7 @@ class FuturesTradingExecutor:
         if pnl is not None and portfolio_value > 0:
             self._risk_manager.record_trade(symbol, pnl, portfolio_value)
             self._metrics.record_realized_pnl(symbol, pnl)
-        self._risk_manager.register_close_position(symbol)
+        self._risk_manager.register_close_position(symbol, market="futures")
 
     async def place_futures_order(
         self,
@@ -760,7 +778,7 @@ class FuturesTradingExecutor:
 
             notional_value = quantity * reference_price
             position_allowed, position_reason = self._risk_manager.check_position_limit(
-                symbol,
+                f"{symbol}:futures",
                 notional_value,
                 account_info.total_margin_balance,
             )
@@ -902,6 +920,7 @@ class FuturesTradingExecutor:
                         symbol,
                         recorded_qty * executed_price,
                         executed_price,
+                        market="futures",
                     )
 
             return order
@@ -1029,6 +1048,9 @@ class FuturesTradingExecutor:
                                 order_size,
                                 portfolio_value,
                                 signal.confidence,
+                                price=signal.price,
+                                order_notional=order_size * signal.price,
+                                is_exit=False,
                             )
                         except RuntimeError:
                             self._logger.info(
@@ -1064,6 +1086,10 @@ class FuturesTradingExecutor:
                             stop_loss=sl_price if sl_price > 0 else None,
                             take_profit=tp_price if tp_price > 0 else None,
                         )
+
+                        # Start the cooldown window only after the fill.
+                        if self._guard_pipeline is not None:
+                            self._guard_pipeline.record_fill(signal.symbol)
 
             elif signal.type == SignalType.SELL:
                 # FAIL-SAFE: Close only agent-owned position amount, not full account position
@@ -1183,6 +1209,10 @@ class FuturesTradingExecutor:
                             agent_position_qty,
                             portfolio_value,
                             signal.confidence,
+                            price=signal.price,
+                            order_notional=agent_position_qty * signal.price,
+                            # A futures SELL here closes an open long.
+                            is_exit=True,
                         )
                     except RuntimeError:
                         self._logger.info(
@@ -1234,6 +1264,10 @@ class FuturesTradingExecutor:
                         bars_held=bars_held,
                         ticket_id=order.order_id,
                     )
+
+                    # Start the cooldown window only after the fill.
+                    if self._guard_pipeline is not None:
+                        self._guard_pipeline.record_fill(signal.symbol)
                 else:
                     self._logger.warning(
                         "Futures SELL order not filled for %s (status: %s)",
@@ -1461,6 +1495,7 @@ class FuturesTradingExecutor:
                         symbol,
                         abs(pos.position_amt) * pos.entry_price,
                         pos.entry_price,
+                        market="futures",
                     )
             except Exception as exc:
                 self._logger.error("Failed to recover SL/TP for open %s position: %s", symbol, exc)

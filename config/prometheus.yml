@@ -17,3 +17,18 @@ scrape_configs:
     file_sd_configs:
       - files:
           - /etc/prometheus/file_sd/agents.json
+
+  - job_name: "postgres-exporter"
+    static_configs:
+      - targets:
+          - postgres_exporter:9187
+
+  # The node_exporter textfile collector. The offsite-backup unit writes
+  # /var/lib/prometheus-textfile/offsite_backup.prom after every run, and
+  # node_exporter exposes it as an ordinary metric. This is how "the offsite
+  # copy has not succeeded in 2 days" becomes an alert instead of a comment
+  # in a README.
+  - job_name: "node-exporter"
+    static_configs:
+      - targets:
+          - node_exporter:9100

@@ -55,7 +55,31 @@ groups:
           summary: "A trading-agent scrape target vanished"
           description: "One configured file_sd agent is missing from up{job=\"trading-agent\"}: sol-trend-pullback-sparse, sentiment-macro-bot, sol-4h-panic-block-paper, sol-1h-trend-pullback-overlay-live."
 
-      # TimescaleDown omitted: pg_up is not scraped, so absent(pg_up) would fire forever.
+      # pg_up is emitted by postgres-exporter (job "postgres-exporter"). It is 1
+      # while the exporter can reach marketdata, 0 when the connection fails.
+      # pg_up == 0 (not absent()) means the exporter itself is up but the
+      # database is unreachable — the dead-DB case that was previously invisible.
+      - alert: TimescaleDown
+        expr: pg_up{job="postgres-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "crypto-agent TimescaleDB DOWN ({{ $labels.instance }})"
+          description: "postgres-exporter reports pg_up=0; the marketdata database is unreachable from {{ $labels.instance }}."
+
+      # Complementary to TimescaleDown: the exporter itself is not scraped at
+      # all, so pg_up has no series and TimescaleDown cannot fire. Mirrors the
+      # AgentDown up==0 pattern above.
+      - alert: PostgresExporterDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "postgres-exporter DOWN ({{ $labels.instance }})"
+          description: "The postgres-exporter target is unreachable; database uptime is not being monitored."
+
       # Closed-candle writes only. A healthy 1h agent is silent for ~3600s and a healthy
       # 4h agent for ~14400s, so a flat 1800s threshold would page through every normal bar.
       # for: 5m requires the close to be missed by 5 minutes. No absent(): a process that
@@ -71,3 +95,31 @@ groups:
         annotations:
           summary: "DB ingestion stale ({{ $labels.service }})"
           description: "Agent {{ $labels.agent_id }} ({{ $labels.instance }}) missed its candle-close database write. 1h agents page after 3600s plus 5m; 4h agents page after 14400s plus 5m."
+
+      # Offsite backup staleness.
+      #
+      # The local backup is only a real backup if a copy of it exists somewhere
+      # else. offsite-backup.sh writes a last-success sentinel after every
+      # VERIFIED copy; the metric script turns that into a gauge. If the peer
+      # is offline for a week, the unit skips every night and -- without this
+      # alert -- nothing at all would say so.
+      #
+      # 2 days is deliberately twice the 24h timer period, so a single missed
+      # run does not page, but two consecutive misses do.
+      - alert: OffsiteBackupStale
+        expr: offsite_backup_never_succeeded == 1 or offsite_backup_last_success_age_seconds > 172800
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Offsite backup has not succeeded recently"
+          description: "No verified offsite backup copy in over 48h (or none ever). The local backup is the only copy. Check 'journalctl -u crypto-agent-offsite-backup' and the peer."
+
+      - alert: OffsiteBackupFailing
+        expr: increase(offsite_backup_failures_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Offsite backup failed ({{ $labels.instance }})"
+          description: "An offsite backup run failed in the last hour on {{ $labels.instance }}. The local copy exists but there is no verified offsite copy."

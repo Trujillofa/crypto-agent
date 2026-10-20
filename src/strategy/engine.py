@@ -125,9 +125,40 @@ class StrategyEngine:
             self._logger.warning("No strategies initialized")
             return
 
+        consecutive_failures = 0
         try:
             while self._running:
-                await self._evaluate_all(on_signal, on_tick)
+                try:
+                    await self._evaluate_all(on_signal, on_tick)
+                    consecutive_failures = 0
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    # A transient failure (DB blip, network error) in one
+                    # evaluation cycle must not kill the engine permanently --
+                    # that silently stops signal generation for the whole
+                    # agent. Log it and keep looping.
+                    consecutive_failures += 1
+                    self._logger.error(
+                        "Strategy evaluation cycle failed (%s: %s); continuing "
+                        "(consecutive failures: %d)",
+                        type(exc).__name__,
+                        exc,
+                        consecutive_failures,
+                    )
+                    self._logger.debug("Strategy cycle traceback", exc_info=True)
+                    # A persistent failure (auth, bad credentials, schema drift)
+                    # would otherwise retry forever with only ERROR-level logs
+                    # and no signal generation. Escalate to a loud warning so
+                    # the condition is visible in monitoring.
+                    if consecutive_failures in (10, 50, 100) or consecutive_failures % 100 == 0:
+                        self._logger.warning(
+                            "Strategy evaluation has failed %d consecutive times -- "
+                            "signal generation is DOWN (last error: %s: %s)",
+                            consecutive_failures,
+                            type(exc).__name__,
+                            exc,
+                        )
                 await asyncio.sleep(self._config.evaluation_interval_seconds)
         except asyncio.CancelledError:
             self._logger.info("StrategyEngine loop cancelled")
