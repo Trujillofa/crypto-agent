@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from src.utils.production_drift_sentinel import (
     DurableSignalSnapshot,
     DurableWatchedServiceSnapshot,
@@ -13,6 +15,8 @@ from src.utils.production_drift_sentinel import (
     collect_durable_signal_events,
     count_durable_ignored,
     count_durable_received,
+    effective_stale_threshold,
+    median_signal_interval_hours,
     resolve_service_agent_id,
     summarize_durable_signals,
 )
@@ -466,3 +470,89 @@ def test_analyze_drift_does_not_flag_over_filtering_when_signals_flow() -> None:
 
     codes = {finding.code for finding in findings}
     assert "SIGNAL_OVER_FILTERED" not in codes
+
+
+def test_median_interval_uses_the_agents_own_cadence() -> None:
+    """The 4h panic-block agent signals about every nine days, so a
+    fixed 72-hour threshold would report it stale almost permanently."""
+    events = [
+        _event("signal_received", "2026-09-20T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-09-29T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-08T11:00:00+00:00", "agent-a", "BUY"),
+    ]
+
+    assert median_signal_interval_hours(events) == pytest.approx(216.0)
+
+
+def test_median_interval_needs_at_least_two_signals() -> None:
+    events = [_event("signal_received", "2026-10-08T11:00:00+00:00", "agent-a", "BUY")]
+
+    assert median_signal_interval_hours(events) is None
+
+
+def test_median_interval_filters_by_agent() -> None:
+    events = [
+        _event("signal_received", "2026-10-01T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-01T12:00:00+00:00", "agent-b", "BUY"),
+    ]
+
+    assert median_signal_interval_hours(events, agent_id="agent-b") is None
+
+
+def test_effective_threshold_adapts_to_a_slow_cadence() -> None:
+    """A nine-day cadence must not trip a 72-hour staleness threshold."""
+    assert effective_stale_threshold(72, 216.0) == pytest.approx(648.0)
+
+
+def test_effective_threshold_falls_back_when_cadence_is_unknown() -> None:
+    assert effective_stale_threshold(72, None) == 72.0
+    assert effective_stale_threshold(72, 0) == 72.0
+
+
+def test_effective_threshold_never_goes_below_configured() -> None:
+    """A fast cadence must not make the instrument noisier than before."""
+    assert effective_stale_threshold(72, 1.0) == 72.0
+
+
+def test_stale_finding_uses_cadence_adaptive_threshold() -> None:
+    """A signal that is older than the configured threshold but within
+    the agent's own cadence must not be reported as stale."""
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=72,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=3,
+            last_signal_at="2026-10-14T00:00:00+00:00",
+            read_ok=True,
+            files_scanned=3,
+            received_count=3,
+            guard_block_count=0,
+            median_interval_hours=216.0,
+        ),
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "SIGNAL_STALE" not in codes
+
+
+def test_median_interval_does_not_mix_agents() -> None:
+    """Two different agents signalling an hour apart is not a fast
+    cadence for either one of them."""
+    events = [
+        _event("signal_received", "2026-10-01T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-01T01:00:00+00:00", "agent-b", "BUY"),
+        _event("signal_received", "2026-10-10T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-10T01:00:00+00:00", "agent-b", "BUY"),
+    ]
+
+    # Per agent each gap is 216h. Mixed into one series the gaps would
+    # alternate between 1h and 215h, which would read as a fast cadence.
+    assert median_signal_interval_hours(events) == pytest.approx(216.0)
