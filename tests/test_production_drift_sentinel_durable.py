@@ -11,6 +11,8 @@ from src.utils.production_drift_sentinel import (
     build_durable_signal_snapshot,
     build_durable_watched_service_snapshot,
     collect_durable_signal_events,
+    count_durable_ignored,
+    count_durable_received,
     resolve_service_agent_id,
     summarize_durable_signals,
 )
@@ -18,8 +20,20 @@ from src.utils.production_drift_sentinel import (
 DURABLE_STATUS = {"type": "__status__", "files": 3, "records": 12, "error": ""}
 
 
-def _event(event_type: str, ts: str, agent_id: str) -> dict[str, str]:
-    return {"type": event_type, "ts": ts, "agent_id": agent_id}
+def _event(
+    event_type: str,
+    ts: str,
+    agent_id: str,
+    signal_type: str = "",
+    reason: str = "",
+) -> dict[str, str]:
+    return {
+        "type": event_type,
+        "ts": ts,
+        "agent_id": agent_id,
+        "signal_type": signal_type,
+        "reason": reason,
+    }
 
 
 def test_summarize_durable_signals_counts_all_events() -> None:
@@ -342,3 +356,113 @@ def test_analyze_drift_does_not_double_report_log_findings() -> None:
 
     drought_findings = [f for f in findings if f.code == "WATCH_SERVICE_SIGNAL_DROUGHT"]
     assert len(drought_findings) == 1
+
+
+def test_count_durable_ignored_counts_only_guard_blocks() -> None:
+    """A by-design ignore in a spot-only account must not count as
+    over-filtering, or every healthy long-only agent would be flagged."""
+    events = [
+        _event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a", "BUY"),
+        _event(
+            "signal_ignored",
+            "2026-10-03T11:44:20+00:00",
+            "agent-a",
+            "SELL",
+            "Guard blocked: risk guard",
+        ),
+        _event(
+            "signal_ignored",
+            "2026-10-04T11:44:20+00:00",
+            "agent-a",
+            "SELL",
+            "strategy_sell_ignored_spot_mode",
+        ),
+        _event(
+            "signal_ignored",
+            "2026-10-05T11:44:20+00:00",
+            "agent-a",
+            "SELL",
+            "strategy_sell_exits_via_sl_tp_only",
+        ),
+    ]
+
+    assert count_durable_ignored(events) == 1
+    assert count_durable_ignored(events, agent_id="agent-b") == 0
+    assert count_durable_received(events) == 1
+
+
+def test_build_durable_signal_snapshot_counts_ignored() -> None:
+    events = [
+        _event("signal_received", "2026-10-02T11:44:20+00:00", "agent-a", "BUY"),
+        _event(
+            "signal_ignored",
+            "2026-10-03T11:44:20+00:00",
+            "agent-a",
+            "SELL",
+            "Guard blocked: risk guard",
+        ),
+    ]
+
+    snapshot = build_durable_signal_snapshot(events, DURABLE_STATUS)
+
+    assert snapshot.event_count == 2
+    assert snapshot.received_count == 1
+    assert snapshot.guard_block_count == 1
+    assert snapshot.ignored_count == 1
+
+
+def test_analyze_drift_flags_over_filtering() -> None:
+    """Signals produced but refused by a guard need a different fix than
+    a strategy that stopped producing signals."""
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=10,
+            last_signal_at="2026-10-20T10:00:00+00:00",
+            read_ok=True,
+            files_scanned=3,
+            ignored_count=8,
+            received_count=2,
+            guard_block_count=8,
+        ),
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "SIGNAL_OVER_FILTERED" in codes
+    assert "SIGNAL_DROUGHT" not in codes
+
+
+def test_analyze_drift_does_not_flag_over_filtering_when_signals_flow() -> None:
+    findings = analyze_drift(
+        expected_branch="main",
+        local_repo=None,
+        remote_repo=RepoSnapshot(branch="main", commit="a" * 40, dirty=False),
+        local_config_hashes={},
+        remote_config_hashes={},
+        service_snapshot=None,
+        signal_snapshot=None,
+        watched_service_snapshot=None,
+        remote_error=None,
+        signal_stale_hours=24,
+        durable_signal_snapshot=DurableSignalSnapshot(
+            event_count=10,
+            last_signal_at="2026-10-20T10:00:00+00:00",
+            read_ok=True,
+            files_scanned=3,
+            ignored_count=1,
+            received_count=9,
+            guard_block_count=1,
+        ),
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "SIGNAL_OVER_FILTERED" not in codes

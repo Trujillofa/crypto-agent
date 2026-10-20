@@ -32,6 +32,10 @@ TIMER_ARTIFACT_POLICIES = {
 # non-HOLD decisions. The event log in the shared volume outlives deploys
 # and records every signal the paper executor received.
 DURABLE_SIGNAL_EVENT_TYPES = ("signal_received", "signal_ignored")
+
+# The paper executor logs a guard refusal with this prefix. The other
+# "ignored" reasons are by-design behaviour for a long-only spot account.
+GUARD_BLOCK_REASON_PREFIX = "Guard blocked"
 DURABLE_EVENT_LOG_GLOB = "/app/data/event_log_*.jsonl"
 DURABLE_EVENT_LOG_DIR = "/app/data"
 
@@ -99,6 +103,9 @@ class DurableSignalSnapshot:
     read_ok: bool
     read_error: str = ""
     files_scanned: int = 0
+    ignored_count: int = 0
+    received_count: int = 0
+    guard_block_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -362,10 +369,15 @@ try:
                     if event_type not in sys.argv[2].split(","):
                         continue
                     status["records"] += 1
+                    payload = record.get("payload")
+                    if not isinstance(payload, dict):
+                        payload = {}
                     out.append({
                         "type": event_type,
                         "ts": record.get("ts") or "",
                         "agent_id": record.get("agent_id") or "",
+                        "signal_type": payload.get("type") or payload.get("signal_type") or "",
+                        "reason": str(payload.get("reason") or "")[:200],
                     })
         except Exception as exc:
             status["error"] = "%s: %s" % (path, exc)
@@ -433,6 +445,8 @@ def collect_durable_signal_events(
                     "type": str(record.get("type", "")),
                     "ts": str(record.get("ts", "")),
                     "agent_id": str(record.get("agent_id", "")),
+                    "signal_type": str(record.get("signal_type", "")),
+                    "reason": str(record.get("reason", "")),
                 }
             )
     return events, status
@@ -455,6 +469,47 @@ def summarize_durable_signals(
     return len(matching), max(timestamps)
 
 
+def count_durable_received(
+    events: list[dict[str, str]],
+    agent_id: str | None = None,
+) -> int:
+    """Count signals the executor received."""
+    return len(
+        [
+            event
+            for event in events
+            if event.get("type") == "signal_received"
+            and (agent_id is None or event.get("agent_id") == agent_id)
+        ]
+    )
+
+
+def count_durable_ignored(
+    events: list[dict[str, str]],
+    agent_id: str | None = None,
+) -> int:
+    """Count signals that were produced but then blocked by a guard.
+
+    This is the over-filtering signature: the strategy keeps producing
+    signals and the guards keep refusing them. A plain event count
+    cannot tell that apart from a strategy that stopped producing.
+
+    Only guard blocks count. The other "ignored" reasons are by-design
+    behaviour -- a SELL in a spot-only account, or an exit that is
+    handled by stop-loss/take-profit rather than by a signal. Counting
+    those as over-filtering would flag every healthy long-only agent.
+    """
+    return len(
+        [
+            event
+            for event in events
+            if event.get("type") == "signal_ignored"
+            and event.get("reason", "").startswith(GUARD_BLOCK_REASON_PREFIX)
+            and (agent_id is None or event.get("agent_id") == agent_id)
+        ]
+    )
+
+
 def resolve_service_agent_id(
     host: str | None,
     remote_dir: str,
@@ -475,16 +530,21 @@ def build_durable_signal_snapshot(
     events: list[dict[str, str]],
     status: dict[str, str],
 ) -> DurableSignalSnapshot:
-    count, last = summarize_durable_signals(events)
+    received = count_durable_received(events)
+    guard_blocks = count_durable_ignored(events)
+    _, last = summarize_durable_signals(events)
     read_ok = bool(status)
     read_error = status.get("error", "") if status else "durable event log was not read"
     files = int(status.get("files", "0") or 0) if status else 0
     return DurableSignalSnapshot(
-        event_count=count,
+        event_count=len(events),
         last_signal_at=last,
         read_ok=read_ok,
         read_error=read_error,
         files_scanned=files,
+        ignored_count=guard_blocks,
+        received_count=received,
+        guard_block_count=guard_blocks,
     )
 
 
@@ -889,6 +949,33 @@ def analyze_drift(
                                 ),
                             )
                         )
+
+            # Over-filtering signature: signals are being produced and then
+            # refused by a guard. A drought of produced signals and a
+            # drought of executed signals look identical in an event count
+            # alone, but they need opposite fixes.
+            #
+            # Only guard blocks count towards over-filtering. The other
+            # ignored reasons are by-design behaviour for a long-only
+            # spot account and are not a filtering problem.
+            received = durable_signal_snapshot.received_count
+            guard_blocks = durable_signal_snapshot.guard_block_count
+            if received > 0 and guard_blocks >= received:
+                findings.append(
+                    Finding(
+                        severity=Severity.WARNING,
+                        code="SIGNAL_OVER_FILTERED",
+                        message=(
+                            f"{guard_blocks} durable signals were blocked by a guard versus "
+                            f"{received} received; the guards are refusing most of what the "
+                            "strategy produces"
+                        ),
+                        recommendation=(
+                            "Inspect the guard and filter configuration for thresholds that "
+                            "reject the signals the strategy generates."
+                        ),
+                    )
+                )
     elif signal_snapshot is not None:
         if signal_snapshot.saw_strategy_cycle and signal_snapshot.signal_count == 0:
             findings.append(
