@@ -18,6 +18,9 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
     DriftReport,
     Severity,
     analyze_drift,
+    build_durable_signal_snapshot,
+    build_durable_watched_service_snapshot,
+    collect_durable_signal_events,
     collect_local_config_hashes,
     collect_remote_config_hashes,
     collect_remote_repo_snapshot,
@@ -27,6 +30,7 @@ from src.utils.production_drift_sentinel import (  # noqa: E402
     collect_remote_watched_service_snapshot,
     collect_repo_snapshot,
     report_to_json,
+    resolve_service_agent_id,
 )
 
 
@@ -45,6 +49,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--watch-service",
         help="Optional docker compose service to inspect separately (for example: agent_sol_sparse)",
+    )
+    parser.add_argument(
+        "--durable-signals",
+        action="store_true",
+        help=(
+            "Read signal activity from the shared agent-data volume instead of docker logs. "
+            "The durable source survives container redeploys; docker logs do not."
+        ),
     )
     parser.add_argument("--local-only", action="store_true", help="Skip remote checks")
     parser.add_argument(
@@ -172,14 +184,35 @@ def _render_markdown(report: DriftReport, expected_branch: str) -> str:
     lines.append("")
     lines.append("## Signal Activity")
     lines.append("")
-    if report.signal_snapshot is not None:
+    if report.durable_signal_snapshot is not None:
+        durable = report.durable_signal_snapshot
+        lines.append("- Source: durable event log (shared agent-data volume)")
+        lines.append(f"- Read OK: {durable.read_ok}")
+        if durable.read_error:
+            lines.append(f"- Read error: {durable.read_error}")
+        lines.append(f"- Event log files scanned: {durable.files_scanned}")
+        lines.append(f"- Signal events recorded: {durable.event_count}")
+        lines.append(f"- Last signal timestamp: {durable.last_signal_at or 'none'}")
+    elif report.signal_snapshot is not None:
         lines.append(f"- Signal count in lookback: {report.signal_snapshot.signal_count}")
         lines.append(f"- Strategy cycle seen: {report.signal_snapshot.saw_strategy_cycle}")
         lines.append(f"- Last signal timestamp: {report.signal_snapshot.last_signal_at or 'none'}")
     else:
         lines.append("- Signal snapshot unavailable")
 
-    if report.watched_service_snapshot is not None:
+    if report.durable_watched_service_snapshot is not None:
+        watched_durable = report.durable_watched_service_snapshot
+        lines.append("")
+        lines.append("## Watched Service (durable)")
+        lines.append("")
+        lines.append(f"- Service: {watched_durable.service}")
+        lines.append(f"- Agent ID: {watched_durable.agent_id or 'unknown'}")
+        lines.append(f"- Read OK: {watched_durable.read_ok}")
+        if watched_durable.read_error:
+            lines.append(f"- Read error: {watched_durable.read_error}")
+        lines.append(f"- Durable signal events: {watched_durable.event_count}")
+        lines.append(f"- Last durable signal: {watched_durable.last_signal_at or 'none'}")
+    elif report.watched_service_snapshot is not None:
         lines.append("")
         lines.append("## Watched Service")
         lines.append("")
@@ -239,6 +272,8 @@ def main() -> int:
     timer_snapshot = None
     signal_snapshot = None
     watched_service_snapshot = None
+    durable_signal_snapshot = None
+    durable_watched_service_snapshot = None
     remote_error = None
 
     if not args.local_only:
@@ -256,22 +291,44 @@ def main() -> int:
             timer_snapshot = collect_remote_timer_snapshot(
                 inspection_host, args.remote_dir, ssh_config=args.ssh_config
             )
-            signal_snapshot = collect_remote_signal_snapshot(
-                inspection_host,
-                args.remote_dir,
-                service_snapshot,
-                tail_lines=args.log_tail,
-                ssh_config=args.ssh_config,
-            )
-            if args.watch_service:
-                watched_service_snapshot = collect_remote_watched_service_snapshot(
+            if args.durable_signals:
+                events, status = collect_durable_signal_events(
                     inspection_host,
                     args.remote_dir,
                     service_snapshot,
-                    args.watch_service,
+                    ssh_config=args.ssh_config,
+                )
+                durable_signal_snapshot = build_durable_signal_snapshot(events, status)
+                if args.watch_service:
+                    agent_id = resolve_service_agent_id(
+                        inspection_host,
+                        args.remote_dir,
+                        args.watch_service,
+                        ssh_config=args.ssh_config,
+                    )
+                    durable_watched_service_snapshot = build_durable_watched_service_snapshot(
+                        args.watch_service,
+                        agent_id,
+                        events,
+                        status,
+                    )
+            else:
+                signal_snapshot = collect_remote_signal_snapshot(
+                    inspection_host,
+                    args.remote_dir,
+                    service_snapshot,
                     tail_lines=args.log_tail,
                     ssh_config=args.ssh_config,
                 )
+                if args.watch_service:
+                    watched_service_snapshot = collect_remote_watched_service_snapshot(
+                        inspection_host,
+                        args.remote_dir,
+                        service_snapshot,
+                        args.watch_service,
+                        tail_lines=args.log_tail,
+                        ssh_config=args.ssh_config,
+                    )
         except Exception as exc:  # noqa: BLE001
             remote_error = str(exc)
 
@@ -288,6 +345,8 @@ def main() -> int:
         remote_error=remote_error,
         signal_stale_hours=args.signal_stale_hours,
         remote_checks_enabled=not args.local_only,
+        durable_signal_snapshot=durable_signal_snapshot,
+        durable_watched_service_snapshot=durable_watched_service_snapshot,
     )
 
     if local_error:
@@ -313,6 +372,8 @@ def main() -> int:
         signal_snapshot=signal_snapshot,
         watched_service_snapshot=watched_service_snapshot,
         findings=findings,
+        durable_signal_snapshot=durable_signal_snapshot,
+        durable_watched_service_snapshot=durable_watched_service_snapshot,
     )
 
     if args.json:
