@@ -376,10 +376,17 @@ class FuturesTradingExecutor:
 
     async def _monitor_and_update(self) -> None:
         """Monitor positions and update metrics."""
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
-        if not is_allowed:
-            self._logger.warning(f"Futures trading blocked: {reason}")
+        # This loop only ever CLOSES positions (software SL/TP, trailing stop,
+        # time stop) and reads account state -- it never opens one. The kill
+        # switch and circuit breakers exist to stop NEW risk from being
+        # taken; gating the close path on them means a tripped breaker stops
+        # the software stop-loss from working, which turns a protective exit
+        # into a trap on an open losing position. Use is_close_allowed(),
+        # which still respects a reconciliation block (we must not close
+        # something we are not sure we are holding).
+        close_allowed, reason = self._risk_manager.is_close_allowed()
+        if not close_allowed:
+            self._logger.warning(f"Futures position monitoring blocked: {reason}")
             return
 
         # Get account info

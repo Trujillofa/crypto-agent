@@ -276,8 +276,18 @@ class RiskManager:
         """Canonicalize a position key for comparison.
 
         Legacy state files stored bare symbols (or legacy
-        ``{agent}::SYMBOL:futures`` keys). These are mapped to
-        ``SYMBOL:spot`` because the legacy live executors only traded spot.
+        ``{agent}::SYMBOL:futures`` keys). A bare symbol carries no market
+        information, so it is NOT resolved here -- guessing "spot" would
+        misclassify a futures position and double-count it against the
+        futures executor's own startup recovery. Bare keys are resolved
+        against the authoritative DB market in
+        :meth:`reconcile_positions_with_db`, and dropped when that
+        resolution is ambiguous.
+
+        Note that ``_split_market`` still uses ``default="spot"`` below; the
+        default only applies to a key that has a market suffix which is
+        neither ``spot`` nor ``futures``, and all current callers pass
+        already-qualified keys.
         """
         symbol, market = self._split_market(raw, default="spot")
         return self._canonical_position_key(symbol, market)

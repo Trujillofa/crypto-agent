@@ -896,6 +896,69 @@ class TestFuturesTradingExecutor:
         executor._risk_manager.register_close_position.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_monitor_still_closes_when_kill_switch_trips(self, executor):
+        """The software SL/TP monitor keeps closing when trading is blocked.
+
+        The monitor loop only ever CLOSES positions -- it never opens one.
+        The kill switch and circuit breakers exist to stop NEW risk from
+        being taken, so gating the close path on is_trading_allowed() means
+        a tripped breaker disables the software stop-loss and leaves an
+        open losing position with no protective exit.
+
+        Regression: the monitor must use is_close_allowed(), which still
+        respects a reconciliation block.
+        """
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        # Trading (opening) is blocked by the kill switch...
+        executor._risk_manager.is_trading_allowed.return_value = (False, "Kill switch is active")
+        # ...but closing is still allowed.
+        executor._risk_manager.is_close_allowed.return_value = (True, "Close allowed")
+
+        executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "sl_1", "tp_order_id": "tp_1"}
+
+        await executor._monitor_and_update()
+
+        # The monitor must have run: the exchange-side SL/TP tracking was
+        # reconciled, which only happens if the loop was not gated out.
+        assert "BTCUSDT" not in executor._sl_tp_orders
+        executor._risk_manager.is_close_allowed.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_monitor_is_gated_by_reconciliation_block(self, executor):
+        """A reconciliation block still stops the monitor from closing.
+
+        is_close_allowed() honours the reconciliation block, because a
+        mismatch between our position state and the broker's means we may
+        not be closing what we think we are.
+        """
+        mock_client = MagicMock()
+        mock_client.get_position_risk = AsyncMock(return_value=[])
+        mock_client.get_account_info = AsyncMock(
+            return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
+        )
+        executor._client = mock_client
+        executor._notifier = AsyncMock()
+
+        executor._risk_manager.is_close_allowed.return_value = (
+            False,
+            "Reconciliation block: position mismatch",
+        )
+        executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "sl_1", "tp_order_id": "tp_1"}
+
+        await executor._monitor_and_update()
+
+        # Blocked: the tracking must NOT have been reconciled.
+        assert "BTCUSDT" in executor._sl_tp_orders
+        mock_client.get_position_risk.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_monitor_sends_close_notification_on_sl_close(self, executor):
         """send_trade_alert is called with pnl and close_reason='stop_loss' on exchange SL fill."""
         mock_client = MagicMock()
