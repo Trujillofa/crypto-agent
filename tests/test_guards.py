@@ -99,7 +99,45 @@ class TestPositionLimitGuard:
         result = guard.check(make_context(side="SELL", quantity=100.0, current_position=100.0))
 
         assert result.passed is True
-        assert result.reason == "Sell allowed"
+        assert result.reason == "Exit allowed"
+
+    def test_short_entry_is_not_an_exit_and_still_limited(self) -> None:
+        """A SELL that OPENS a short is not an exit and must stay limited.
+
+        Deriving "is exit" from the side string alone would let a short entry
+        slip past the position limit.
+        """
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        result = guard.check(
+            make_context(
+                side="SELL",
+                quantity=100.0,
+                current_position=100.0,
+                order_notional=5_000.0,
+                portfolio_value=10_000.0,
+                is_exit=False,
+            )
+        )
+
+        assert result.passed is False
+
+    def test_explicit_exit_flag_allows_a_sell(self) -> None:
+        """is_exit=True is authoritative even for an unusual side."""
+        guard = PositionLimitGuard(max_position_pct=0.10)
+
+        result = guard.check(
+            make_context(
+                side="BUY",
+                quantity=100.0,
+                order_notional=5_000.0,
+                portfolio_value=10_000.0,
+                is_exit=True,
+            )
+        )
+
+        assert result.passed is True
+        assert result.reason == "Exit allowed"
 
     def test_explicit_notional_is_used_over_quantity_times_price(self) -> None:
         """The executors pass notional explicitly; it must win over qty*price.

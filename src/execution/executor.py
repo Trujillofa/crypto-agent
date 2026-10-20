@@ -75,6 +75,8 @@ class TradingExecutor:
         portfolio_value: float,
         price: float | None = None,
         order_notional: float | None = None,
+        market: str = "spot",
+        is_exit: bool | None = None,
     ) -> None:
         if self._guard_pipeline is None:
             return
@@ -86,6 +88,11 @@ class TradingExecutor:
             price=price,
             portfolio_value=portfolio_value,
             order_notional=order_notional,
+            # Existing exposure for this pair, so the position-limit guard adds
+            # the incoming order to what is ALREADY held instead of measuring
+            # the new order from zero.
+            current_position=self._risk_manager.get_position_notional(symbol, market),
+            is_exit=is_exit,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -289,13 +296,24 @@ class TradingExecutor:
                 portfolio_value,
                 price=price,
                 order_notional=order_notional,
+                # Spot is long-only: a SELL always reduces exposure.
+                is_exit=(side == "SELL"),
             )
         except RuntimeError:
             self._metrics.record_risk_block(symbol, "guard_pipeline")
             raise
 
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        # Check if trading is allowed.
+        #
+        # For an EXIT (SELL) use is_close_allowed(), not is_trading_allowed():
+        # the kill switch and circuit breakers exist to stop NEW risk, and a
+        # control that prevents you from closing a position is a risk
+        # amplifier, not a control. Only a reconciliation block is respected
+        # for closes, because mismatched position data makes any close unsafe.
+        if side == "SELL":
+            is_allowed, reason = self._risk_manager.is_close_allowed()
+        else:
+            is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             self._metrics.record_risk_block(symbol, reason)
             raise RuntimeError(f"Trading blocked: {reason}")
@@ -561,13 +579,24 @@ class TradingExecutor:
                 portfolio_value,
                 price=price,
                 order_notional=order_notional,
+                # Spot is long-only: a SELL always reduces exposure.
+                is_exit=(side == "SELL"),
             )
         except RuntimeError:
             self._metrics.record_risk_block(symbol, "guard_pipeline")
             raise
 
-        # Check if trading is allowed
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        # Check if trading is allowed.
+        #
+        # For an EXIT (SELL) use is_close_allowed(), not is_trading_allowed():
+        # the kill switch and circuit breakers exist to stop NEW risk, and a
+        # control that prevents you from closing a position is a risk
+        # amplifier, not a control. Only a reconciliation block is respected
+        # for closes, because mismatched position data makes any close unsafe.
+        if side == "SELL":
+            is_allowed, reason = self._risk_manager.is_close_allowed()
+        else:
+            is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             self._metrics.record_risk_block(symbol, reason)
             raise RuntimeError(f"Trading blocked: {reason}")

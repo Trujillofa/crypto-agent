@@ -167,6 +167,8 @@ class FuturesTradingExecutor:
         signal_confidence: float = 0.0,
         price: float | None = None,
         order_notional: float | None = None,
+        market: str = "futures",
+        is_exit: bool | None = None,
     ) -> None:
         if self._guard_pipeline is None:
             return
@@ -178,6 +180,11 @@ class FuturesTradingExecutor:
             portfolio_value=portfolio_value,
             signal_confidence=signal_confidence,
             order_notional=order_notional,
+            # Existing exposure for this pair, so the position-limit guard adds
+            # the incoming order to what is ALREADY held instead of measuring
+            # the new order from zero.
+            current_position=self._risk_manager.get_position_notional(symbol, market),
+            is_exit=is_exit,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -1036,6 +1043,7 @@ class FuturesTradingExecutor:
                                 signal.confidence,
                                 price=signal.price,
                                 order_notional=order_size * signal.price,
+                                is_exit=False,
                             )
                         except RuntimeError:
                             self._logger.info(
@@ -1196,6 +1204,8 @@ class FuturesTradingExecutor:
                             signal.confidence,
                             price=signal.price,
                             order_notional=agent_position_qty * signal.price,
+                            # A futures SELL here closes an open long.
+                            is_exit=True,
                         )
                     except RuntimeError:
                         self._logger.info(
@@ -1247,6 +1257,10 @@ class FuturesTradingExecutor:
                         bars_held=bars_held,
                         ticket_id=order.order_id,
                     )
+
+                    # Start the cooldown window only after the fill.
+                    if self._guard_pipeline is not None:
+                        self._guard_pipeline.record_fill(signal.symbol)
                 else:
                     self._logger.warning(
                         "Futures SELL order not filled for %s (status: %s)",

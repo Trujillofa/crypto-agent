@@ -649,7 +649,16 @@ class TestMarketQualifiedPositionKeys:
 
         assert set(manager._positions.keys()) == {"BTCUSDT:spot"}
 
-    def test_legacy_bare_symbol_loads_as_spot(self, tmp_path: Path) -> None:
+    def test_legacy_bare_symbol_loads_unqualified(self, tmp_path: Path) -> None:
+        """A bare legacy key must NOT be guessed into a market on load.
+
+        The legacy futures executor also wrote bare keys into the same shared
+        state file, so a bare key may be a futures position. Defaulting it to
+        "spot" would misclassify it, and the futures executor's own startup
+        recovery would then register the same economic position a second time
+        under SYMBOL:futures -- counting one position twice and losing the
+        other. The DB reconciliation pass resolves the market instead.
+        """
         state_path = tmp_path / "risk_state.json"
         state_path.write_text(
             '{"positions": {"ETHUSDT": {"entry_price": 2380.3, '
@@ -662,7 +671,45 @@ class TestMarketQualifiedPositionKeys:
             agent_id="default",
         )
 
-        assert set(manager._positions.keys()) == {"ETHUSDT:spot"}
+        assert set(manager._positions.keys()) == {"ETHUSDT"}
+        assert manager._positions["ETHUSDT"]["market"] is None
+
+    @pytest.mark.asyncio
+    async def test_legacy_bare_symbol_resolved_from_db_market(self, tmp_path: Path) -> None:
+        """A bare legacy key is qualified using the DB's own market column."""
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "ETHUSDT": {"entry_price": 2380.3, "quantity_usdt": 5.95, "entry_time": 2.0},
+        }
+        pool = _make_pool_with_rows([{"symbol": "ETHUSDT", "market": "futures"}])
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert set(manager._positions.keys()) == {"ETHUSDT:futures"}
+        assert manager._positions["ETHUSDT:futures"]["market"] == "futures"
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_bare_symbol_is_dropped_not_guessed(self, tmp_path: Path) -> None:
+        """Same symbol open in BOTH markets: a bare key cannot say which.
+
+        It must be dropped rather than guessed, so the executors' own recovery
+        re-registers both positions correctly instead of the state file
+        double-counting one of them.
+        """
+        manager = self._manager(tmp_path)
+        manager._positions = {
+            "BTCUSDT": {"entry_price": 76000.0, "quantity_usdt": 5.3, "entry_time": 3.0},
+        }
+        pool = _make_pool_with_rows(
+            [
+                {"symbol": "BTCUSDT", "market": "spot"},
+                {"symbol": "BTCUSDT", "market": "futures"},
+            ]
+        )
+
+        await manager.reconcile_positions_with_db(pool)
+
+        assert manager._positions == {}
 
     def test_check_position_limit_counts_both_markets(self, tmp_path: Path) -> None:
         """The max-open-positions count must include both markets."""

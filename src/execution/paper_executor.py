@@ -164,6 +164,8 @@ class PaperExecutor:
         signal_confidence: float = 0.0,
         price: float | None = None,
         order_notional: float | None = None,
+        market: str = "spot",
+        is_exit: bool | None = None,
     ) -> None:
         """Run guard pipeline pre-check. Raises RuntimeError if blocked."""
         if self._guard_pipeline is None:
@@ -176,6 +178,11 @@ class PaperExecutor:
             portfolio_value=portfolio_value,
             signal_confidence=signal_confidence,
             order_notional=order_notional,
+            # Existing exposure for this pair, so the position-limit guard adds
+            # the incoming order to what is ALREADY held instead of measuring
+            # the new order from zero.
+            current_position=self._risk_manager.get_position_notional(symbol, market),
+            is_exit=is_exit,
         )
         result = self._guard_pipeline.check(context)
         if result.blocked:
@@ -663,6 +670,7 @@ class PaperExecutor:
                 signal.confidence,
                 price=signal.price,
                 order_notional=order_usdt,
+                is_exit=False,
             )
         except RuntimeError as exc:
             if self._guard_pipeline is not None and self._event_log:
@@ -929,6 +937,10 @@ class PaperExecutor:
         )
         self._metrics.record_order_filled(signal.symbol, "BUY")
 
+        # Start the cooldown window only after the fill (never on check).
+        if self._guard_pipeline is not None:
+            self._guard_pipeline.record_fill(signal.symbol)
+
         await self._notifier.send_trade_alert(
             symbol=signal.symbol,
             side="BUY",
@@ -983,6 +995,9 @@ class PaperExecutor:
                 signal.confidence,
                 price=signal.price,
                 order_notional=order_usdt,
+                # A short ENTRY: this SELL opens NEW exposure, so it is not an
+                # exit and must stay subject to the position limit.
+                is_exit=False,
             )
         except RuntimeError as exc:
             if self._guard_pipeline is not None and self._event_log:
@@ -1152,6 +1167,10 @@ class PaperExecutor:
         )
         self._metrics.record_order_filled(signal.symbol, "SELL")
 
+        # Start the cooldown window only after the fill (never on check).
+        if self._guard_pipeline is not None:
+            self._guard_pipeline.record_fill(signal.symbol)
+
         await self._notifier.send_trade_alert(
             symbol=signal.symbol,
             side="SELL",
@@ -1182,6 +1201,8 @@ class PaperExecutor:
                 signal.confidence,
                 price=signal.price,
                 order_notional=close_usdt,
+                # A SELL here closes an open long.
+                is_exit=True,
             )
         except RuntimeError as exc:
             if self._guard_pipeline is not None and self._event_log:
@@ -1299,6 +1320,10 @@ class PaperExecutor:
             latency_seconds=0.0,
         )
         self._metrics.record_order_filled(signal.symbol, "SELL")
+
+        # Start the cooldown window only after the fill (never on check).
+        if self._guard_pipeline is not None:
+            self._guard_pipeline.record_fill(signal.symbol)
 
         bars_held = self._estimate_bars_held(position.open_time)
         await self._notifier.send_trade_alert(

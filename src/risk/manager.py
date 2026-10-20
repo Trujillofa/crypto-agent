@@ -206,24 +206,39 @@ class RiskManager:
         """Migrate legacy position keys to the market-qualified canonical form.
 
         Legacy state files used bare symbols (or ``{agent}::SYMBOL:futures``).
-        They are mapped to ``SYMBOL:market``; a key that already carries a
-        market suffix keeps that market.
+        A key that already carries an explicit market suffix keeps that market.
+
+        A BARE symbol carries no market information, and guessing one is
+        unsafe: the legacy futures executor also wrote bare keys into the
+        same shared state file, so the bare key may be a futures position
+        wearing a spot label (or the reverse). Defaulting to ``spot`` would
+        silently reclassify it, and the futures executor's own startup
+        recovery would then re-register the same economic position under
+        ``SYMBOL:futures`` — counting one position twice and losing the other.
+
+        Bare keys are therefore left UNQUALIFIED here. ``reconcile_positions_with_db``
+        resolves them against the DB's own ``market`` column, which is
+        authoritative, and only then qualifies them.
         """
         migrated: dict[str, dict[str, Any]] = {}
         for raw_key, payload in positions.items():
-            symbol, market = self._split_market(raw_key, default="spot")
-            key = self._canonical_position_key(symbol, market)
+            symbol, market = self._split_market(raw_key, default="")
             entry = dict(payload)
-            entry.setdefault("market", market)
-            # A spot and a futures entry for the same pair would collapse into
-            # one key; keep the futures one and drop the shadowed spot entry
-            # rather than silently losing position tracking.
+            if market:
+                # Explicit market: qualify immediately.
+                key = self._canonical_position_key(symbol, market)
+                entry.setdefault("market", market)
+            else:
+                # Bare key: keep it bare and mark it unresolved. The DB
+                # reconciliation pass decides the market.
+                key = raw_key.strip().upper()
+                if "::" in key:
+                    key = key.rsplit("::", 1)[1]
+                entry.setdefault("market", None)
             if key in migrated:
-                existing_market = migrated[key].get("market", "spot")
-                if existing_market == market:
-                    continue
-                if existing_market == "futures":
-                    continue
+                # A genuine duplicate for the same resolved key: keep the one
+                # already stored rather than losing position tracking.
+                continue
             migrated[key] = entry
         return migrated
 
@@ -289,17 +304,60 @@ class RiskManager:
             self._logger.warning("Risk-state DB reconciliation skipped: %s", exc)
             return
 
-        valid = {
-            self._canonical_position_key(
-                row["symbol"], (row["market"] if "market" in row.keys() else "spot") or "spot"
-            )
-            for row in rows
-        }
+        # The DB is authoritative about the market of an open position.
+        # Build both a canonical-key set and a symbol->markets index so a
+        # legacy bare key can be resolved to the market the DB actually has.
+        valid: set[str] = set()
+        symbol_markets: dict[str, set[str]] = {}
+        for row in rows:
+            row_market = (row["market"] if "market" in row.keys() else "spot") or "spot"
+            row_symbol = row["symbol"]
+            valid.add(self._canonical_position_key(row_symbol, row_market))
+            # Index by the BARE symbol: the DB may store an agent-prefixed
+            # symbol ("agent::ETHUSDT") while the risk state stores the bare
+            # one. Indexing the raw value would never match.
+            bare_symbol, _ = self._split_market(row_symbol, default="")
+            symbol_markets.setdefault(bare_symbol.strip().upper(), set()).add(row_market)
 
         to_drop: list[str] = []
         to_migrate: list[tuple[str, str]] = []
         for key in list(self._positions):
-            canonical = self._normalize_position_key(key)
+            entry = self._positions[key]
+            # Precedence for the market:
+            #   1. An explicit market suffix on the KEY (e.g. "BTCUSDT:futures")
+            #      is authoritative -- the key says which market it is.
+            #   2. Otherwise a "market" recorded on the entry.
+            #   3. Otherwise the key is genuinely bare: the DB decides.
+            key_symbol, key_market = self._split_market(key, default="")
+            resolved_market = key_market or None
+            if not resolved_market and isinstance(entry, dict):
+                entry_market = entry.get("market")
+                if entry_market:
+                    resolved_market = str(entry_market)
+            if not resolved_market:
+                # Unresolved legacy bare key: let the DB decide the market.
+                symbol = key_symbol
+                candidates = symbol_markets.get(symbol.strip().upper(), set())
+                if len(candidates) == 1:
+                    resolved_market = next(iter(candidates))
+                elif len(candidates) > 1:
+                    # The DB has the same symbol open in BOTH markets. A bare
+                    # key cannot say which one it is, so it is ambiguous and
+                    # must not be guessed into a market — drop it and let the
+                    # executors' own recovery re-register both positions.
+                    self._logger.warning(
+                        "Ambiguous legacy position key %s: DB has it open in %s; "
+                        "dropping the unqualified state entry",
+                        key,
+                        sorted(candidates),
+                    )
+                    to_drop.append(key)
+                    continue
+            if not resolved_market:
+                # No DB row for this symbol in any market — it is stale state.
+                to_drop.append(key)
+                continue
+            canonical = self._canonical_position_key(key_symbol, resolved_market)
             if canonical not in valid:
                 to_drop.append(key)
             elif key != canonical:
@@ -314,7 +372,13 @@ class RiskManager:
             if canonical in self._positions:
                 del self._positions[old]
             else:
-                self._positions[canonical] = self._positions.pop(old)
+                entry = self._positions.pop(old)
+                # Record the market we resolved from the DB so the entry is
+                # self-describing and a later load does not have to guess.
+                _, resolved_market = self._split_market(canonical, default="spot")
+                if isinstance(entry, dict):
+                    entry["market"] = resolved_market
+                self._positions[canonical] = entry
         self._save_state()
         self._logger.warning(
             "Risk state reconciled with DB: dropped=%s migrated=%s",
@@ -405,6 +469,23 @@ class RiskManager:
             "market": market.strip().lower(),
         }
         self._save_state()
+
+    def get_position_notional(self, symbol: str, market: str = "spot") -> float:
+        """Return the current open position's notional in quote currency.
+
+        Used by guards that need the *existing* exposure for a symbol, e.g. the
+        position-limit guard, which must add the incoming order to what is
+        already held rather than measure from zero.
+        """
+        key = self._canonical_position_key(symbol, market)
+        entry = self._positions.get(key)
+        if not isinstance(entry, dict):
+            return 0.0
+        value = entry.get("quantity_usdt")
+        try:
+            return float(value) if value is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
 
     def register_close_position(self, symbol: str, market: str = "spot") -> None:
         """Register a closed position in risk manager."""

@@ -23,6 +23,20 @@ from typing import Any
 from src.utils.logger import get_logger
 
 
+def _is_exit_order(context: GuardContext) -> bool:
+    """Return True when the order reduces existing exposure.
+
+    ``GuardContext.is_exit`` is authoritative when the caller set it. When it
+    is ``None`` (older call sites that only populate ``side``), fall back to
+    the legacy inference: a SELL is treated as an exit. This keeps existing
+    behaviour for untouched call paths while letting a short ENTRY declare
+    ``is_exit=False`` and stay subject to the position limit.
+    """
+    if context.is_exit is not None:
+        return context.is_exit
+    return context.side == "SELL"
+
+
 @dataclass(frozen=True)
 class GuardContext:
     """Context passed to guards for evaluation.
@@ -44,6 +58,22 @@ class GuardContext:
     # Explicit order notional in quote currency (USDT). When None, guards fall
     # back to quantity * price.
     order_notional: float | None = None
+    # Whether the order REDUCES existing exposure (closing a long, covering a
+    # short). Guards that exist to stop NEW risk (cooldown, position limit)
+    # must not block these: a control that prevents you from exiting a
+    # position is a risk amplifier, not a control.
+    #
+    # This is deliberately separate from ``side``. A SELL can either close a
+    # long OR open a short; only the former is an exit. Deriving "is exit"
+    # from the side string alone would let a short ENTRY slip past the
+    # position limit.
+    #
+    # Tri-state on purpose:
+    #   True  -> definitely an exit, always allow.
+    #   False -> definitely NOT an exit (a short entry), apply the limits.
+    #   None  -> caller did not say; fall back to the legacy ``side == SELL``
+    #            inference so older call sites keep working unchanged.
+    is_exit: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -185,7 +215,15 @@ class CircuitBreakerGuard(Guard):
         return "CircuitBreaker"
 
     def check(self, context: GuardContext) -> GuardResult:
-        is_allowed, reason = self._risk_manager.is_trading_allowed()
+        # The kill switch and circuit breakers exist to stop NEW risk. They
+        # must not prevent an EXIT: a control that blocks you from closing a
+        # position is a risk amplifier, not a control. Only a reconciliation
+        # block is respected for closes, because mismatched position data
+        # makes any close unsafe.
+        if _is_exit_order(context):
+            is_allowed, reason = self._risk_manager.is_close_allowed()
+        else:
+            is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             return GuardResult.block(reason, self.name)
         return GuardResult.allow("Trading allowed", self.name)
@@ -224,9 +262,10 @@ class PositionLimitGuard(Guard):
         return None
 
     def check(self, context: GuardContext) -> GuardResult:
-        if context.side == "SELL":
-            # Allow sells (closing positions)
-            return GuardResult.allow("Sell allowed", self.name)
+        if _is_exit_order(context):
+            # Allow exits (closing positions). A SELL that OPENS a short is not
+            # an exit and is still subject to the position limit.
+            return GuardResult.allow("Exit allowed", self.name)
 
         portfolio_value = context.portfolio_value
         if portfolio_value <= 0:
@@ -296,7 +335,7 @@ class CooldownGuard(Guard):
     def check(self, context: GuardContext) -> GuardResult:
         import time
 
-        if context.side == "SELL":
+        if _is_exit_order(context):
             # Never block an exit.
             return GuardResult.allow("Cooldown skipped for exit", self.name)
 
