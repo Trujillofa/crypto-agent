@@ -161,31 +161,44 @@ turn. On a 4h series, SOL in 2026 delivered uptrends but almost never a
 *pullback-and-recover* shape, and certainly not with the one-bar
 confirmation the stateful `previous_*` comparisons demand.
 
-### 3.2 The live agent sees the forming candle, which is why the replay misses its 2 real signals
+### 3.2 The live agent saw the FORMING candle — proven
 
-The two logged signals have reason strings that only make sense with
-*intrabar* resolution:
+This is not an inference. The agent's logged reason string carries the
+indicator values it actually used; the 4h bar it was reading was still
+forming, and the *final* stored row for that same bar holds different
+values.
+
+For the 2026-04-25 signal, the forming 4h bar was `12:00:00`. Rebuilding
+that bar from its 1h sub-candles and recomputing the 200-bar window at each
+intrabar step:
 
 ```
-2026-04-25T15:17:33  price=86.47 ema50=85.99 ema200=85.03 vwap=84.80 rsi=56.64
-                     macd_hist=0.0252 atr_pct=0.0105
-2026-05-05T18:59:20  price=85.47 ema50=84.46 ema200=83.76 vwap=84.44 rsi=62.48
-                     prev_rsi=60.03 macd_hist=0.1113 prev_macd_hist=0.0728
+2026-04-25 12:00 bar
+   1h in: close=86.39 ema50=86.0293 ema200=85.4232 vwap=84.7968 rsi=55.03 macd=0.0174
+   2h in: close=86.61 ema50=86.0379 ema200=85.4254 vwap=84.7974 rsi=56.97 macd=0.0314
+   3h in: close=86.47 ema50=86.0325 ema200=85.4240 vwap=84.7979 rsi=55.76 macd=0.0225
+   4h in: close=86.22 ema50=86.0227 ema200=85.4215 vwap=84.7984 rsi=53.21 macd=0.0065   <- final
+   AGENT SAID: close=86.47 ema50=85.9927 ema200=85.0259 vwap=84.7987 rsi=56.64 macd=0.0252
 ```
 
-`prev_rsi=60.03` and `prev_macd_hist=0.0728` are *smaller* than the
-current values — the recovery condition `rsi > previous_rsi AND
-macd_hist > previous_macd_hist AND close > previous_close` fired. Those
-"previous" values are the **previous 60-second evaluation cycle**, not the
-previous 4h bar. The live agent recomputes the 200-bar window on every
-cycle using the *forming* 4h candle, so RSI/MACD/close all ratchet upward
-*within* the bar as 1h sub-candles land. That intra-bar ratchet is what
-satisfies `recovery_ok`; a bar-to-bar replay can never reproduce it.
+The agent's `close=86.47` is the **3h-into-bar** value, not the final
+`86.22`. Its `vwap=84.7987` is the 3h-step value (84.7979) to 4 decimals.
+Its `rsi=56.64` sits between the 2h step (56.97) and the 3h step (55.76),
+i.e. a tick after the 2h sub-candle had landed. The signal fired at
+15:17:33 — **3h17m into a bar that closes at 16:00**.
 
-This is the same forming-candle mechanism already documented for the
-panic-block agent in the indicator-vintage report (§5b), now shown to be
-load-bearing for the sparse strategy's *entry* logic, not just for its
-stored values.
+The same pattern holds for 2026-05-05 (bar `16:00:00`, signal at
+18:59:20 — 2h59m in): the agent's `close=85.47` sits between the 1h
+(`85.31`) and 2h (`85.45`) steps, and its `prev_rsi=60.03` /
+`prev_macd_hist=0.0728` are the *previous 60-second evaluation cycle's*
+values, not the previous 4h bar's.
+
+So the strategy's `recovery_ok` condition (`rsi > previous_rsi AND
+macd_hist > previous_macd_hist AND close > previous_close`) is satisfied by
+an **intrabar ratchet** that a bar-to-bar replay can never reproduce. This
+is the same forming-candle mechanism already documented for the panic-block
+agent in the indicator-vintage report (§5b), here shown to be load-bearing
+for the sparse strategy's *entry* logic, not just for its stored values.
 
 ### 3.2b The live agent's own values confirm the 200-bar window
 
