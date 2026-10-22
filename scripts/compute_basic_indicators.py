@@ -16,6 +16,7 @@ from src.features.technical import (
     INDICATOR_WINDOW_BARS,
     TechnicalIndicators,
     compute_indicators_for_window,
+    newest_closed_index,
 )
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
@@ -154,7 +155,7 @@ async def fetch_ohlcv_rows(symbol: str, timeframe: str) -> list[Mapping[str, obj
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT time, open_price, high_price, low_price, close_price, volume
+            SELECT time, close_time, open_price, high_price, low_price, close_price, volume
             FROM ohlcv
             WHERE symbol = $1 AND timeframe = $2
             ORDER BY time ASC
@@ -174,6 +175,25 @@ async def process_rows(
     writer: IndicatorWriter,
     dry_run: bool = False,
 ) -> tuple[int, int]:
+    # The newest row may still be a FORMING candle: the REST poller writes
+    # Binance's in-progress kline and revises it on close. The live path
+    # publishes only the newest CLOSED candle (PR #208), so this backfill
+    # must not write a row for the forming bar either -- otherwise the two
+    # paths disagree about who owns it, and the forming value can be left
+    # frozen in the table.
+    #
+    # `newest_closed_index` is the shared definition of "closed".
+    closed_index = newest_closed_index(rows)
+    if closed_index is None:
+        raise ValueError("Every candle is still forming; nothing to backfill")
+    if closed_index < len(rows) - 1:
+        logger.info(
+            "Excluding the forming candle at %s (closes %s)",
+            rows[closed_index + 1].get("time"),
+            rows[closed_index + 1].get("close_time"),
+        )
+        rows = rows[: closed_index + 1]
+
     if len(rows) < lookback:
         raise ValueError(f"Not enough data. Have {len(rows)}, need at least {lookback}")
 

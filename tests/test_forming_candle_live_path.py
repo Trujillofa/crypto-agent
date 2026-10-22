@@ -25,8 +25,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.features.computer import IndicatorComputer
-from src.features.technical import INDICATOR_WINDOW_BARS
+from src.features.technical import INDICATOR_WINDOW_BARS, newest_closed_index
 
 
 def _series(
@@ -96,7 +95,7 @@ def test_newest_closed_index_skips_the_forming_bar() -> None:
     now = datetime.now(UTC)
     data = _series(10, now=now, forming=True)
 
-    index = IndicatorComputer._newest_closed_index(data)
+    index = newest_closed_index(data)
 
     assert index is not None
     # The forming bar is the last element; the selected one is the one before.
@@ -109,7 +108,7 @@ def test_newest_closed_index_selects_the_last_bar_when_all_closed() -> None:
     now = datetime.now(UTC)
     data = _series(10, now=now, forming=False)
 
-    index = IndicatorComputer._newest_closed_index(data)
+    index = newest_closed_index(data)
 
     assert index == len(data["time"]) - 1
 
@@ -121,7 +120,7 @@ def test_newest_closed_index_returns_none_when_everything_is_forming() -> None:
     # Push every close time into the future.
     data["close_time"] = [t + timedelta(days=1) for t in data["close_time"]]
 
-    assert IndicatorComputer._newest_closed_index(data) is None
+    assert newest_closed_index(data) is None
 
 
 def test_newest_closed_index_handles_missing_close_time() -> None:
@@ -130,7 +129,7 @@ def test_newest_closed_index_handles_missing_close_time() -> None:
     data = _series(5, now=now, forming=False)
     data["close_time"][-1] = None
 
-    index = IndicatorComputer._newest_closed_index(data)
+    index = newest_closed_index(data)
 
     assert index == len(data["time"]) - 1
 
@@ -141,7 +140,7 @@ def test_newest_closed_index_treats_naive_timestamps_as_utc() -> None:
     data = _series(5, now=now, forming=False)
     data["close_time"] = [t.replace(tzinfo=None) for t in data["close_time"]]
 
-    index = IndicatorComputer._newest_closed_index(data)
+    index = newest_closed_index(data)
 
     assert index == len(data["time"]) - 1
 
@@ -157,7 +156,7 @@ def test_live_window_is_exactly_the_canonical_window_of_closed_bars() -> None:
     now = datetime.now(UTC)
     data = _series(INDICATOR_WINDOW_BARS + 1, now=now, forming=True)
 
-    closed_index = IndicatorComputer._newest_closed_index(data)
+    closed_index = newest_closed_index(data)
     assert closed_index is not None
 
     closed_times = data["time"][: closed_index + 1]
@@ -174,7 +173,7 @@ def test_published_bar_is_closed_never_forming() -> None:
     now = datetime.now(UTC)
     data = _series(INDICATOR_WINDOW_BARS + 1, now=now, forming=True)
 
-    closed_index = IndicatorComputer._newest_closed_index(data)
+    closed_index = newest_closed_index(data)
 
     assert closed_index is not None
     published_close_time = data["close_time"][closed_index]
@@ -193,7 +192,7 @@ def test_window_length_is_stable_regardless_of_forming_state(forming: bool) -> N
     now = datetime.now(UTC)
     data = _series(INDICATOR_WINDOW_BARS + 1, now=now, forming=forming)
 
-    closed_index = IndicatorComputer._newest_closed_index(data)
+    closed_index = newest_closed_index(data)
     assert closed_index is not None
 
     closed_count = closed_index + 1

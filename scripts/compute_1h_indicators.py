@@ -14,7 +14,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # database, with the same key names the shared pool expects.
 from scripts.compute_basic_indicators import build_db_config  # noqa: E402
 from src.db.pool import close_pool, init_pool
-from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators_for_window
+from src.features.technical import (
+    INDICATOR_WINDOW_BARS,
+    compute_indicators_for_window,
+    newest_closed_index,
+)
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
@@ -51,12 +55,29 @@ async def compute_and_store_indicators(dry_run: bool = False) -> None:
             # Get all 1h OHLCV data for BTCUSDT
             rows_1h = await conn.fetch(
                 """
-                SELECT time, open_price, high_price, low_price, close_price, volume
+                SELECT time, close_time, open_price, high_price, low_price, close_price, volume
                 FROM ohlcv
                 WHERE symbol = 'BTCUSDT' AND timeframe = '1h'
                 ORDER BY time ASC
                 """
             )
+
+            # The newest 1h row may still be a FORMING candle (the REST
+            # poller writes Binance's in-progress kline). The live path
+            # publishes only the newest CLOSED candle, so this backfill
+            # must not write a row for the forming bar either -- or the two
+            # paths would disagree about who owns it.
+            closed_index = newest_closed_index(rows_1h)
+            if closed_index is None:
+                logger.error("Every 1h candle is still forming; nothing to backfill")
+                return
+            if closed_index < len(rows_1h) - 1:
+                logger.info(
+                    "Excluding the forming 1h candle at %s (closes %s)",
+                    rows_1h[closed_index + 1]["time"],
+                    rows_1h[closed_index + 1].get("close_time"),
+                )
+                rows_1h = rows_1h[: closed_index + 1]
 
             logger.info(f"Found {len(rows_1h)} 1h OHLCV rows to process")
 

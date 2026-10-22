@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 
 # The single source of truth for the indicator window.
@@ -183,6 +184,55 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
         rsi_slope=rsi_slope,
         trend_consistency=trend_consistency,
     )
+
+
+def newest_closed_index(
+    rows: Sequence[OhlcvRow] | Mapping[str, list],
+    *,
+    now: datetime | None = None,
+) -> int | None:
+    """Index of the newest CLOSED candle in ``rows``, or ``None``.
+
+    A candle is closed when its ``close_time`` is at or before ``now``.
+    The REST poller writes Binance's *in-progress* kline into ``ohlcv`` and
+    revises it when the candle closes, so the newest row is often still
+    forming.
+
+    Neither the live path nor any backfill may compute an indicator for a
+    forming candle: its values are provisional, and — because the live path
+    only ever rewrites the newest bar — a row written from a forming
+    candle stays frozen at a partial value forever. Measured on production,
+    that left 399 of 400 closed 4h rows disagreeing with a canonical
+    recompute.
+
+    A row with no ``close_time`` is treated as closed, for sources that do
+    not track forming state. Naive datetimes are interpreted as UTC.
+
+    This is the single definition of "closed" shared by the live path
+    (``src/features/computer.py``) and every backfill, so they cannot
+    disagree about which bar they own.
+    """
+    moment = now or datetime.now(UTC)
+    # Accept both shapes: a sequence of row mappings (the backfills) and a
+    # column-oriented mapping of lists (the live path).
+    if isinstance(rows, Mapping):
+        close_times = rows.get("close_time") or []
+        length = len(rows.get("time") or close_times)
+    else:
+        close_times = [row.get("close_time") for row in rows]
+        length = len(rows)
+
+    for index in range(length - 1, -1, -1):
+        close_time = close_times[index] if index < len(close_times) else None
+        if close_time is None:
+            return index
+        if not isinstance(close_time, datetime):
+            continue
+        if close_time.tzinfo is None:
+            close_time = close_time.replace(tzinfo=UTC)
+        if close_time <= moment:
+            return index
+    return None
 
 
 def compute_indicators_for_window(

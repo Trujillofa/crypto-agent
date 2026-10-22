@@ -7,7 +7,11 @@ from datetime import UTC, datetime
 
 from src.db.pool import get_pool
 from src.features.metrics import IndicatorMetrics
-from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators
+from src.features.technical import (
+    INDICATOR_WINDOW_BARS,
+    compute_indicators,
+    newest_closed_index,
+)
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
@@ -96,7 +100,10 @@ class IndicatorComputer:
             # So: compute and publish the newest CLOSED bar instead, and
             # leave the forming bar to the next cycle. The row we publish is
             # then final and stays correct.
-            closed_index = self._newest_closed_index(ohlcv_data)
+            # `newest_closed_index` is the shared definition of "closed",
+            # used by the live path and by every backfill, so they cannot
+            # disagree about which bar they own.
+            closed_index = newest_closed_index(ohlcv_data)
             if closed_index is None:
                 self._logger.info(
                     "No closed candle for %s yet (newest bar is still forming)", symbol
@@ -206,36 +213,6 @@ class IndicatorComputer:
             self._metrics.computation_latency.labels(symbol=symbol).observe(elapsed)
             self._metrics.computations_total.labels(symbol=symbol, status="success").inc()
             self._metrics.last_computation_time.labels(symbol=symbol).set(time.time())
-
-    @staticmethod
-    def _newest_closed_index(ohlcv_data: Mapping[str, list]) -> int | None:
-        """Index of the newest candle whose close time has already passed.
-
-        Returns ``None`` when every candle is still forming.
-
-        A candle is closed once ``close_time <= now``. The REST poller writes
-        Binance's in-progress kline, so the newest row in ``ohlcv`` is
-        normally still forming and must not be published as an indicator.
-        """
-        close_times = ohlcv_data.get("close_time")
-        times = ohlcv_data.get("time")
-        if not close_times or not times:
-            return None
-
-        now = datetime.now(UTC)
-        for index in range(len(close_times) - 1, -1, -1):
-            close_time = close_times[index]
-            if close_time is None:
-                # No close time recorded: treat the bar as closed, since it
-                # came from a source that does not track forming state.
-                return index
-            if not isinstance(close_time, datetime):
-                continue
-            if close_time.tzinfo is None:
-                close_time = close_time.replace(tzinfo=UTC)
-            if close_time <= now:
-                return index
-        return None
 
     async def _read_ohlcv(self, symbol: str, limit: int) -> dict[str, list]:
         """Read OHLCV data from TimescaleDB.
