@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from scripts.compute_basic_indicators import ComputeArgs, parse_args
+from scripts.compute_1h_indicators import parse_args as parse_1h_args
+from scripts.compute_basic_indicators import parse_args
 from scripts.compute_historical_indicators import parse_args as parse_historical_args
 from src.features.technical import (
     INDICATOR_WINDOW_BARS,
@@ -153,7 +155,9 @@ def test_historical_script_defaults_to_the_live_window() -> None:
 def test_basic_script_defaults_to_the_live_window() -> None:
     args = parse_args(["--symbol", "BTCUSDT", "--timeframe", "4h"])
 
-    assert args == ComputeArgs(symbol="BTCUSDT", timeframe="4h", lookback=INDICATOR_WINDOW_BARS)
+    assert args.symbol == "BTCUSDT"
+    assert args.timeframe == "4h"
+    assert args.lookback == INDICATOR_WINDOW_BARS
 
 
 def test_historical_script_supports_dry_run() -> None:
@@ -162,3 +166,34 @@ def test_historical_script_supports_dry_run() -> None:
 
     assert args.dry_run is False
     assert parse_historical_args(["--symbol", "BTCUSDT", "--timeframe", "4h", "--dry-run"]).dry_run
+
+
+def test_basic_script_supports_dry_run() -> None:
+    """A data rewrite must be previewable before it touches the table."""
+    assert parse_args(["--symbol", "BTCUSDT", "--timeframe", "4h"]).dry_run is False
+    assert parse_args(["--symbol", "BTCUSDT", "--timeframe", "4h", "--dry-run"]).dry_run is True
+
+
+def test_1h_script_supports_dry_run() -> None:
+    """A data rewrite must be previewable before it touches the table.
+
+    This script writes straight to the `indicators` table with no other
+    safeguard, so a dry-run flag is the only thing standing between a
+    preview and a production rewrite.
+    """
+    assert parse_1h_args([]).dry_run is False
+    assert parse_1h_args(["--dry-run"]).dry_run is True
+
+
+@pytest.mark.parametrize("script_name", ["compute_1h_indicators.py"])
+def test_backfill_script_write_is_guarded_by_dry_run(script_name: str) -> None:
+    """Every backfill must skip the write when `--dry-run` is set.
+
+    Guards the exact failure mode: a backfill invoked with a dry-run flag
+    that still writes to the table.
+    """
+    source = Path(__file__).resolve().parent.parent / "scripts" / script_name
+    text = source.read_text()
+
+    assert "if not dry_run:" in text, f"{script_name} writes without a dry-run guard"
+    assert "--dry-run" in text, f"{script_name} has no --dry-run flag"

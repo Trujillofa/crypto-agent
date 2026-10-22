@@ -4,18 +4,20 @@
 Supports CLI arguments for symbol and timeframe, with batch inserts for performance.
 """
 
-import os
-import sys
-
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
 import argparse
 import asyncio
 import os
+import sys
 import time
 
 import asyncpg
 
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+# Reuse the shared config builder so every backfill resolves the same
+# database, with the same key names the shared pool expects.
+from scripts.compute_basic_indicators import build_db_config  # noqa: E402
+from src.db.pool import close_pool, init_pool
 from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators_for_window
 from src.utils.logger import get_logger
 
@@ -142,21 +144,11 @@ async def compute_and_store_indicators(
         force: Recompute rows that already have indicators.
         dry_run: Report what would be written without touching the database.
     """
-    db_config = {
-        "host": os.getenv("DB_HOST", "localhost"),
-        "port": int(os.getenv("DB_PORT", 15432)),
-        "database": os.getenv("DB_NAME", "marketdata"),
-        "user": os.getenv("DB_USER", "trading"),
-        "password": os.getenv("DB_PASSWORD", "change_me"),
-    }
+    db_config = build_db_config()
 
-    pool = await asyncpg.create_pool(
-        host=db_config["host"],
-        port=db_config["port"],
-        database=db_config["database"],
-        user=db_config["user"],
-        password=db_config["password"],
-    )
+    # The shared pool, so this backfill and the other backfills resolve the
+    # same database with the same key names.
+    pool = await init_pool(db_config)
 
     try:
         async with pool.acquire() as conn:
@@ -297,7 +289,9 @@ async def compute_and_store_indicators(
             )
 
     finally:
-        await pool.close()
+        # `pool` IS the global pool created by `init_pool`, so `close_pool`
+        # closes it. Closing it twice would raise.
+        await close_pool()
 
 
 if __name__ == "__main__":

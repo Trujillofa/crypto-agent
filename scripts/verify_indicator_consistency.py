@@ -35,6 +35,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 import asyncpg
 
+# Same resolver the backfills use, so this script always points at the
+# database they would write to.
+from scripts.compute_basic_indicators import build_db_config  # noqa: E402
 from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators_for_window
 from src.utils.logger import get_logger
 
@@ -273,18 +276,14 @@ async def verify_all(
     recent: int | None = None,
 ) -> int:
     """Verify every pair. Returns a process exit code."""
-    db_config = {
-        "host": os.getenv("DB_HOST", os.getenv("POSTGRES_HOST", "localhost")),
-        "port": int(os.getenv("DB_PORT", os.getenv("POSTGRES_PORT", 15432))),
-        "database": os.getenv("DB_NAME", os.getenv("POSTGRES_DB", "marketdata")),
-        "user": os.getenv("DB_USER", os.getenv("POSTGRES_USER", "trading")),
-        "password": os.getenv("DB_PASSWORD", os.getenv("POSTGRES_PASSWORD", "change_me")),
-    }
+    # Same resolver the backfills use, so this script always points at the
+    # database they would write to.
+    db_config = build_db_config()
 
     conn = await asyncpg.connect(
         host=db_config["host"],
         port=db_config["port"],
-        database=db_config["database"],
+        database=db_config["name"],
         user=db_config["user"],
         password=db_config["password"],
     )

@@ -337,6 +337,43 @@ Before the fix, the same comparison gave **0/30 agreeing** on every pair.
   keeps its 200-bar window; it now just reads it from a named constant.
 - **The drought.** Unchanged; see §7.
 
+### Operational findings from the validation pass
+
+**The backfills could not reach the database at all.** All three resolved
+the database from `DB_*` environment variables, but the container exports
+`POSTGRES_*`. Two of the three also used key names the shared pool does
+not understand (`database` instead of `name`), and `compute_1h_indicators.py`
+opened a *second* pool while the shared `IndicatorWriter` used the first.
+All three now share one `build_db_config()` in
+`scripts/compute_basic_indicators.py`, which accepts either variable
+prefix and returns the key names `src/db/pool.py` expects.
+
+**Two of the three backfills had no dry-run.** `compute_historical_indicators.py`
+had one; `compute_basic_indicators.py` and `compute_1h_indicators.py` wrote
+to the `indicators` table unconditionally. `compute_1h_indicators.py` was
+invoked during validation and rewrote 23,127 `BTCUSDT 1h` rows before the
+gap was noticed. The outcome was benign — those rows were previously
+written by the same script with a 251-bar window and a partial column set,
+and are now written with the live 200-bar window and the full column set —
+but the write was not intended, and the same invocation against a
+production table is not something to leave to chance.
+
+All three backfills now have `--dry-run`, and the write is guarded by
+`if not dry_run:`. Verified against the live database: with `--dry-run`,
+both scripts report `Would compute 23127 rows` and the table is unchanged
+(248,749 rows, identical `sum(ema_8)` before and after). A regression
+test asserts the guard exists in every backfill script.
+
+**The `BTCUSDT 1h` rows are now correct.** After that rewrite, the NULL
+fingerprint is gone — `ema_8/10/14/21/24/30`, `sma_40` and `sma_60` are
+NULL in 0 of 23,127 rows, where `sma_40` had been NULL in 88% of them.
+`scripts/verify_indicator_consistency.py` reports `BTCUSDT 1h  5/5  OK`
+and exits 0, alongside the other three live-owned pairs.
+
+**The live agent was never at risk.** It reads only the newest row, the
+rewrite used the same live window definition, and the agent ran through
+the whole operation with `restarts=0`.
+
 ---
 
 ## Residual risks

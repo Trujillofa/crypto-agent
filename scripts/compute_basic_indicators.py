@@ -9,6 +9,7 @@ import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypedDict
 
 from src.db.pool import close_pool, get_pool, init_pool
 from src.features.technical import (
@@ -32,6 +33,17 @@ class ComputeArgs:
     symbol: str
     timeframe: str
     lookback: int
+    dry_run: bool = False
+
+
+class DbConfig(TypedDict):
+    """Database settings, with the key names `src/db/pool.py` expects."""
+
+    host: str
+    port: int
+    name: str
+    user: str
+    password: str
 
 
 def parse_args(argv: Sequence[str] | None = None) -> ComputeArgs:
@@ -46,22 +58,44 @@ def parse_args(argv: Sequence[str] | None = None) -> ComputeArgs:
         default=DEFAULT_LOOKBACK,
         help=f"Rolling window size used for indicator computation (default: {DEFAULT_LOOKBACK})",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be written without touching the database",
+    )
     parsed = parser.parse_args(argv)
     return ComputeArgs(
         symbol=parsed.symbol.upper(),
         timeframe=parsed.timeframe,
         lookback=parsed.lookback,
+        dry_run=parsed.dry_run,
     )
 
 
-def build_db_config(env: Mapping[str, str] | None = None) -> dict[str, object]:
+def build_db_config(env: Mapping[str, str] | None = None) -> DbConfig:
+    """Resolve the database settings from the environment.
+
+    Two variable names are in use for the same thing: `DB_*` (the convention
+    the backfill scripts document) and `POSTGRES_*` (what the docker-compose
+    service and the live agent actually export). `DB_*` wins when both are
+    present, so an operator can override the container's defaults.
+
+    The returned keys are the ones `src/db/pool.py::init_pool` expects.
+    """
     source = env or os.environ
+
+    def pick(db_key: str, postgres_key: str, default: str) -> str:
+        value = source.get(db_key)
+        if value:
+            return value
+        return source.get(postgres_key) or default
+
     return {
-        "host": source.get("DB_HOST", "localhost"),
-        "port": int(source.get("DB_PORT", 15432)),
-        "name": source.get("DB_NAME", "marketdata"),
-        "user": source.get("DB_USER", "trading"),
-        "password": source.get("DB_PASSWORD", "change_me"),
+        "host": pick("DB_HOST", "POSTGRES_HOST", "localhost"),
+        "port": int(pick("DB_PORT", "POSTGRES_PORT", "15432")),
+        "name": pick("DB_NAME", "POSTGRES_DB", "marketdata"),
+        "user": pick("DB_USER", "POSTGRES_USER", "trading"),
+        "password": pick("DB_PASSWORD", "POSTGRES_PASSWORD", "change_me"),
     }
 
 
@@ -138,6 +172,7 @@ async def process_rows(
     timeframe: str,
     lookback: int,
     writer: IndicatorWriter,
+    dry_run: bool = False,
 ) -> tuple[int, int]:
     if len(rows) < lookback:
         raise ValueError(f"Not enough data. Have {len(rows)}, need at least {lookback}")
@@ -165,7 +200,8 @@ async def process_rows(
             timeframe=timeframe,
             indicators=indicators,
         )
-        await writer.write_indicators(stored)
+        if not dry_run:
+            await writer.write_indicators(stored)
         processed += 1
 
         if processed % 500 == 0:
@@ -200,10 +236,13 @@ async def compute_and_store_indicators(args: ComputeArgs) -> tuple[int, int]:
                 timeframe=args.timeframe,
                 lookback=args.lookback,
                 writer=writer,
+                dry_run=args.dry_run,
             )
 
+        verb = "Would compute" if args.dry_run else "Computed and stored"
         logger.info(
-            "Done! Computed and stored %s rows for %s %s (%s errors)",
+            "Done! %s %s rows for %s %s (%s errors)",
+            verb,
             processed,
             args.symbol,
             args.timeframe,
