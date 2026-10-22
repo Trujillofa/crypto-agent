@@ -11,10 +11,18 @@ not be reviewed as-is. Everything below was re-derived independently from
 the live database and the durable event logs.
 
 **Headline correction.** The delegated report's central claim — *"no
-`signal_received` since 2026-10-02T11:44:20Z"* — was already **stale by two
-days** when it was written. A further signal landed on 2026-10-20T21:09:33Z.
-The current last-signal time for the panic-block agent is that one. Any
-conclusion drawn from the "no signal since 2026-10-02" premise is invalid.
+`signal_received` since 2026-10-02T11:44:20Z"* — was **obsolete by the time
+it was written**, by about three minutes. The delegated report was produced
+at **2026-10-20T21:12Z**; a further signal landed at
+**2026-10-20T21:09:33Z**. The current last-signal time for the panic-block
+agent is that one. Any conclusion drawn from the "no signal since
+2026-10-02" premise is invalid.
+
+> **Correction (2026-10-22).** The first version of this report said the
+> delegated report was "stale by two days when it was written". That was
+> wrong on both counts: the report was written ~3 minutes *after* the
+> omitted signal, not two days later. The report was stale **relative to the
+> 2026-10-22 re-baseline**, which is the accurate framing.
 
 ---
 
@@ -206,16 +214,25 @@ The agent's logged reason string carries the indicator values it actually
 used. Comparing those against a 200-bar recompute of the same bar:
 
 ```
-2026-04-25 08:00 bar
+2026-04-25 12:00 bar   (signal fired 15:17:33Z, 0.71h before the bar closed)
   AGENT live vwap        = 84.798693
-  200-bar recompute vwap = 84.803215   MATCH
-  (stored row for that bar: vwap = 98.7003  <- legacy 751-bar writer)
+  200-bar recompute vwap = 84.798355   MATCH
+  (stored row for that bar: vwap = 98.6466  <- legacy 751-bar writer)
 
-2026-05-05 12:00 bar
+2026-05-05 16:00 bar   (signal fired 18:59:20Z, 1.01h before the bar closed)
   AGENT live vwap        = 84.440000
-  200-bar recompute vwap = 84.440935   MATCH
-  (stored row for that bar: vwap = 96.5744  <- legacy 751-bar writer)
+  200-bar recompute vwap = 84.478218   MATCH
+  (stored row for that bar: vwap = 96.4216  <- legacy 751-bar writer)
 ```
+
+> **Correction (2026-10-22).** The first version of this section labelled the
+> two bars `2026-04-25 08:00` and `2026-05-05 12:00`. Those labels were
+> wrong: they were read off the *previous* bar in each case. Measured
+> against the live 4h `ohlcv` table, the bar a signal belongs to is the one
+> that was still forming when the signal fired, which is the bar whose
+> `close_time` is in the future at that moment — `2026-04-25 12:00` and
+> `2026-05-05 16:00`. The VWAP figures above were recomputed with the
+> corrected labels.
 
 So the live path has always used the 200-bar window; the *stored historical
 rows* are the ones carrying the legacy 751-bar VWAP. This is the same

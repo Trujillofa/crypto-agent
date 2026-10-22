@@ -33,6 +33,20 @@ TIMER_ARTIFACT_POLICIES = {
 # and records every signal the paper executor received.
 DURABLE_SIGNAL_EVENT_TYPES = ("signal_received", "signal_ignored")
 
+# The smallest number of signals that may establish an agent's cadence.
+#
+# The stale-signal threshold is derived from the agent's own historical
+# signal spacing (3x the median gap). Deriving a threshold from a single
+# gap is circular: the threshold is then applied to the very signal it was
+# derived from, and it inherits that signal's age.
+#
+# The sparse agent has 2 signals, 243.7 h apart. That sets a 731.1 h
+# threshold, and its newest signal is 4072 h old, so the instrument warns
+# forever while having learned nothing about the agent's real cadence. With
+# 5 signals minimum there are 4 gaps, which is enough for a median to mean
+# something.
+MIN_CADENCE_SAMPLES = 5
+
 # The paper executor logs a guard refusal with this prefix. The other
 # "ignored" reasons are by-design behaviour for a long-only spot account.
 GUARD_BLOCK_REASON_PREFIX = "Guard blocked"
@@ -553,9 +567,21 @@ def median_signal_interval_hours(
 
 
 def _median_interval_for(events: list[dict[str, str]]) -> float | None:
-    """Median gap between consecutive signals in one series."""
+    """Median gap between consecutive signals in one series.
+
+    Returns ``None`` when there are too few signals to establish a cadence
+    with any confidence. A single gap (2 signals) is not a cadence: it is
+    one observation, and the threshold derived from it is then used to judge
+    those very same signals. The sparse agent has 2 signals 243.7 h apart,
+    which would set a 731 h threshold — and the last of those 2 signals is
+    4072 h old, so the instrument would report stale forever while having
+    learned nothing about the agent's real cadence.
+
+    ``MIN_CADENCE_SAMPLES`` is therefore the smallest number of signals
+    that may set a threshold.
+    """
     timestamps = sorted(event.get("ts", "") for event in events if event.get("ts"))
-    if len(timestamps) < 2:
+    if len(timestamps) < MIN_CADENCE_SAMPLES:
         return None
 
     parsed = []
@@ -563,7 +589,7 @@ def _median_interval_for(events: list[dict[str, str]]) -> float | None:
         moment = parse_iso_timestamp(value)
         if moment is not None:
             parsed.append(moment)
-    if len(parsed) < 2:
+    if len(parsed) < MIN_CADENCE_SAMPLES:
         return None
 
     gaps = sorted(

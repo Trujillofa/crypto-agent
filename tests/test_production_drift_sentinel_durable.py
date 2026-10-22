@@ -485,9 +485,11 @@ def test_median_interval_uses_the_agents_own_cadence() -> None:
     """The 4h panic-block agent signals about every nine days, so a
     fixed 72-hour threshold would report it stale almost permanently."""
     events = [
-        _event("signal_received", "2026-09-20T11:00:00+00:00", "agent-a", "BUY"),
-        _event("signal_received", "2026-09-29T11:00:00+00:00", "agent-a", "BUY"),
-        _event("signal_received", "2026-10-08T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-08-28T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-09-06T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-09-15T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-09-24T11:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-03T11:00:00+00:00", "agent-a", "BUY"),
     ]
 
     assert median_signal_interval_hours(events) == pytest.approx(216.0)
@@ -560,11 +562,39 @@ def test_median_interval_does_not_mix_agents() -> None:
         _event("signal_received", "2026-10-01T01:00:00+00:00", "agent-b", "BUY"),
         _event("signal_received", "2026-10-10T00:00:00+00:00", "agent-a", "BUY"),
         _event("signal_received", "2026-10-10T01:00:00+00:00", "agent-b", "BUY"),
+        _event("signal_received", "2026-10-19T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-19T01:00:00+00:00", "agent-b", "BUY"),
+        _event("signal_received", "2026-10-28T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-10-28T01:00:00+00:00", "agent-b", "BUY"),
+        _event("signal_received", "2026-11-06T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-11-06T01:00:00+00:00", "agent-b", "BUY"),
     ]
 
     # Per agent each gap is 216h. Mixed into one series the gaps would
     # alternate between 1h and 215h, which would read as a fast cadence.
     assert median_signal_interval_hours(events) == pytest.approx(216.0)
+
+
+def test_cadence_needs_a_minimum_number_of_samples() -> None:
+    """A single gap is not a cadence.
+
+    The stale threshold is derived from the agent's own signal spacing and
+    then applied to those same signals. With only 2 signals there is one
+    gap, so the threshold inherits that signal's age and the instrument
+    warns forever without having learned the agent's real cadence.
+    """
+    two = [
+        _event("signal_received", "2026-04-25T15:17:33+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-05-05T18:59:20+00:00", "agent-a", "BUY"),
+    ]
+    assert median_signal_interval_hours(two) is None
+
+    # With enough samples the cadence is established.
+    five = [
+        _event("signal_received", f"2026-04-{day:02d}T12:00:00+00:00", "agent-a", "BUY")
+        for day in (1, 2, 3, 4, 5)
+    ]
+    assert median_signal_interval_hours(five) == pytest.approx(24.0)
 
 
 def test_hold_votes_do_not_count_as_signals() -> None:
@@ -590,6 +620,11 @@ def test_hold_votes_do_not_affect_the_cadence() -> None:
         _event("signal_received", "2026-10-01T04:00:00+00:00", "agent-a", "HOLD"),
         _event("signal_received", "2026-10-10T00:00:00+00:00", "agent-a", "BUY"),
         _event("signal_received", "2026-10-19T00:00:00+00:00", "agent-a", "SELL"),
+        _event("signal_received", "2026-10-28T00:00:00+00:00", "agent-a", "BUY"),
+        _event("signal_received", "2026-11-06T00:00:00+00:00", "agent-a", "SELL"),
+        _event("signal_received", "2026-11-15T00:00:00+00:00", "agent-a", "BUY"),
     ]
 
+    # The HOLD votes must not contribute gaps: with them included the series
+    # would be dominated by 4h spacing and read as a fast cadence.
     assert median_signal_interval_hours(events) == pytest.approx(216.0)
