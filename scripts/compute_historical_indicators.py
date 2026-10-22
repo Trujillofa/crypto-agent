@@ -18,7 +18,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 # database, with the same key names the shared pool expects.
 from scripts.compute_basic_indicators import build_db_config  # noqa: E402
 from src.db.pool import close_pool, init_pool
-from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators_for_window
+from src.features.technical import (
+    INDICATOR_WINDOW_BARS,
+    compute_indicators_for_window,
+    newest_closed_index,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -154,7 +158,7 @@ async def compute_and_store_indicators(
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT time, open_price, high_price, low_price, close_price, volume
+                SELECT time, close_time, open_price, high_price, low_price, close_price, volume
                 FROM ohlcv
                 WHERE symbol = $1 AND timeframe = $2
                 ORDER BY time ASC
@@ -164,6 +168,32 @@ async def compute_and_store_indicators(
             )
 
             logger.info(f"Found {len(rows)} OHLCV rows for {symbol} {timeframe}")
+
+            # The newest OHLCV row may still be a FORMING candle: the REST
+            # poller writes Binance's in-progress kline and revises it on
+            # close. A backfill must not write an indicator row for it.
+            #
+            # The live path does not either (PR #208): it publishes the
+            # newest CLOSED candle, because the live path only ever
+            # rewrites the newest bar, so a row written from a forming
+            # candle stays frozen at a partial value forever. Writing one
+            # here would put a forming value into the table and let it
+            # disagree with the live path over who owns that bar.
+            #
+            # `newest_closed_index` is the shared definition of "closed",
+            # so this script and the live path cannot drift apart.
+            closed_index = newest_closed_index(rows)
+            if closed_index is None:
+                logger.error("Every candle is still forming; nothing to backfill")
+                return
+            if closed_index < len(rows) - 1:
+                forming = rows[closed_index + 1]
+                logger.info(
+                    "Excluding the forming candle at %s (closes %s)",
+                    forming["time"],
+                    forming.get("close_time"),
+                )
+                rows = rows[: closed_index + 1]
 
             if len(rows) < min_required:
                 logger.error(f"Not enough data. Have {len(rows)}, need at least {min_required}")
