@@ -1,7 +1,24 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
+
+# The single source of truth for the indicator window.
+#
+# The LIVE path (`src/features/computer.py`) reads the most recent
+# `limit=INDICATOR_WINDOW_BARS` bars and computes over exactly that many
+# bars. Every backfill must reproduce that definition exactly, or the
+# `indicators` table ends up holding several different values for the same
+# indicator under the same primary key.
+#
+# The window is not a free parameter: `_vwap`, `_ema`, `_rsi`, `_macd`, `_atr`
+# and the percentile helpers all weight or seed from the values handed to
+# them, so a different window yields a different value for the same bar.
+INDICATOR_WINDOW_BARS = 200
+
+# An OHLCV row as read from the database or a test fixture.
+OhlcvRow = Mapping[str, object]
 
 
 @dataclass(frozen=True)
@@ -168,6 +185,61 @@ def compute_indicators(data: OhlcvSeries) -> TechnicalIndicators:
     )
 
 
+def compute_indicators_for_window(
+    rows: Sequence[OhlcvRow],
+    *,
+    index: int,
+    window: int = INDICATOR_WINDOW_BARS,
+) -> TechnicalIndicators:
+    """Compute indicators for the bar at ``index`` using the live window.
+
+    This is the shared definition every writer of the ``indicators`` table
+    must use, so that a backfilled row and a live-written row for the same
+    bar hold the *same* indicator values.
+
+    The slice is exactly ``window`` bars ending at (and including) ``index``
+    — the same semantics as the live path, which reads the most recent
+    ``limit=window`` bars from the database.
+
+    The historical backfills used to slice ``rows[index - lookback : index + 1]``,
+    which is ``lookback + 1`` bars and therefore never matched the live
+    path even when the window lengths were set equal. That off-by-one is
+    the reason a backfill row and a live row for the same bar disagreed
+    even with the "right" window.
+
+    Args:
+        rows: OHLCV rows ordered oldest to newest. Each row must expose
+            ``open_price``, ``high_price``, ``low_price``, ``close_price``
+            and ``volume``.
+        index: Position of the bar to compute.
+        window: Number of trailing bars to use, including ``index``.
+
+    Returns:
+        The computed indicators.
+
+    Raises:
+        ValueError: If ``index`` is out of range or there are fewer than
+            ``window`` bars available up to and including ``index``.
+    """
+    if index < 0 or index >= len(rows):
+        raise ValueError(f"index {index} out of range for {len(rows)} rows")
+    if index + 1 < window:
+        raise ValueError(
+            f"Not enough data: bar {index} has {index + 1} bars available, need {window}"
+        )
+
+    start = index + 1 - window
+    return compute_indicators(
+        {
+            "open": [_row_float(row, "open_price") for row in rows[start : index + 1]],
+            "high": [_row_float(row, "high_price") for row in rows[start : index + 1]],
+            "low": [_row_float(row, "low_price") for row in rows[start : index + 1]],
+            "close": [_row_float(row, "close_price") for row in rows[start : index + 1]],
+            "volume": [_row_float(row, "volume") for row in rows[start : index + 1]],
+        }
+    )
+
+
 def _rsi(series: list[float], period: int) -> float:
     deltas = [series[i] - series[i - 1] for i in range(1, len(series))]
     gains = [delta if delta > 0 else 0.0 for delta in deltas]
@@ -220,6 +292,16 @@ def _as_float_list(values: Iterable[float], field: str) -> list[float]:
     if len(result) < 30:
         raise ValueError(f"Not enough data points for {field}")
     return result
+
+
+def _row_float(row: OhlcvRow, field: str) -> float:
+    """Read a numeric field from an OHLCV row."""
+    value = row.get(field)
+    if value is None:
+        raise ValueError(f"OHLCV row is missing {field!r}")
+    if isinstance(value, (int, float, str, Decimal)):
+        return float(value)
+    raise ValueError(f"OHLCV row field {field!r} is not numeric: {type(value).__name__}")
 
 
 def _ema(series: list[float], period: int) -> list[float]:

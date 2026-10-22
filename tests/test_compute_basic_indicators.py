@@ -11,12 +11,13 @@ from scripts.compute_basic_indicators import (
     parse_args,
     process_rows,
 )
+from src.features.technical import INDICATOR_WINDOW_BARS
 
 
 def test_parse_args_normalizes_symbol_and_defaults_lookback() -> None:
     args = parse_args(["--symbol", "linkusdt", "--timeframe", "4h"])
 
-    assert args == ComputeArgs(symbol="LINKUSDT", timeframe="4h", lookback=250)
+    assert args == ComputeArgs(symbol="LINKUSDT", timeframe="4h", lookback=INDICATOR_WINDOW_BARS)
 
 
 def test_build_db_config_reads_environment_values() -> None:
@@ -104,8 +105,8 @@ async def test_process_rows_writes_symbol_specific_indicators(
     )
 
     monkeypatch.setattr(
-        "scripts.compute_basic_indicators.compute_indicators",
-        lambda data: indicator,
+        "scripts.compute_basic_indicators.compute_indicators_for_window",
+        lambda rows, index, window: indicator,
     )
 
     processed, errors = await process_rows(
@@ -116,12 +117,15 @@ async def test_process_rows_writes_symbol_specific_indicators(
         writer=FakeWriter(),
     )
 
-    assert processed == 1
+    # With a 250-bar window the first computable bar is index 249 (the bar with
+    # a full window behind it), so rows 249 and 250 are both processed.
+    assert processed == 2
     assert errors == 0
-    assert len(written) == 1
+    assert len(written) == 2
     assert written[0].symbol == "LINKUSDT"
     assert written[0].timeframe == "4h"
-    assert written[0].time == rows[-1]["time"]
+    assert written[0].time == rows[-2]["time"]
+    assert written[1].time == rows[-1]["time"]
 
 
 @pytest.mark.asyncio

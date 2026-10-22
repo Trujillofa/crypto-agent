@@ -11,13 +11,20 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.db.pool import close_pool, get_pool, init_pool
-from src.features.technical import TechnicalIndicators, compute_indicators
+from src.features.technical import (
+    INDICATOR_WINDOW_BARS,
+    TechnicalIndicators,
+    compute_indicators_for_window,
+)
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_LOOKBACK = 250
+# The backfill must use the same window as the live path, otherwise a
+# backfilled row and a live-written row for the same bar hold different
+# values under the same primary key.
+DEFAULT_LOOKBACK = INDICATOR_WINDOW_BARS
 
 
 @dataclass(frozen=True)
@@ -55,16 +62,6 @@ def build_db_config(env: Mapping[str, str] | None = None) -> dict[str, object]:
         "name": source.get("DB_NAME", "marketdata"),
         "user": source.get("DB_USER", "trading"),
         "password": source.get("DB_PASSWORD", "change_me"),
-    }
-
-
-def rows_to_ohlcv_series(rows: Sequence[Mapping[str, object]]) -> dict[str, list[float]]:
-    return {
-        "open": [float(row["open_price"]) for row in rows],
-        "high": [float(row["high_price"]) for row in rows],
-        "low": [float(row["low_price"]) for row in rows],
-        "close": [float(row["close_price"]) for row in rows],
-        "volume": [float(row["volume"]) for row in rows],
     }
 
 
@@ -148,12 +145,12 @@ async def process_rows(
     processed = 0
     errors = 0
 
-    for index in range(lookback, len(rows)):
-        window = rows[max(0, index - lookback) : index + 1]
-        data = rows_to_ohlcv_series(window)
-
+    # The first computable bar is the one with a full window behind it:
+    # index `lookback - 1`, because the window is `lookback` bars ending at
+    # (and including) the bar being computed.
+    for index in range(lookback - 1, len(rows)):
         try:
-            indicators = compute_indicators(data)
+            indicators = compute_indicators_for_window(rows, index=index, window=lookback)
         except Exception as exc:  # noqa: BLE001
             errors += 1
             if errors <= 5:

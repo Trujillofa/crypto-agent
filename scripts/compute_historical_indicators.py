@@ -16,7 +16,7 @@ import time
 
 import asyncpg
 
-from src.features.technical import compute_indicators
+from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators_for_window
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -77,7 +77,7 @@ UPSERT_SQL = """
 """
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI arguments."""
     parser = argparse.ArgumentParser(
         description="Compute and store indicators for historical OHLCV data"
@@ -90,12 +90,24 @@ def parse_args() -> argparse.Namespace:
         "--batch-size", type=int, default=500, help="Batch insert size (default: 500)"
     )
     parser.add_argument(
-        "--lookback", type=int, default=750, help="Minimum lookback periods (default: 750)"
+        "--lookback",
+        type=int,
+        default=INDICATOR_WINDOW_BARS,
+        help=(
+            "Indicator window in bars. Must match the live path "
+            f"({INDICATOR_WINDOW_BARS}) or backfilled rows will disagree with "
+            "live-written rows for the same bar"
+        ),
     )
     parser.add_argument(
         "--force", action="store_true", help="Force full recompute even if indicators exist"
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compute and report what would change, without writing to the database",
+    )
+    return parser.parse_args(argv)
 
 
 async def _flush_batch(conn: asyncpg.Connection, batch: list[tuple]) -> int:
@@ -110,16 +122,25 @@ async def compute_and_store_indicators(
     symbol: str = "BTCUSDT",
     timeframe: str = "4h",
     batch_size: int = 500,
-    min_required: int = 750,
+    min_required: int = INDICATOR_WINDOW_BARS,
     force: bool = False,
+    dry_run: bool = False,
 ) -> None:
     """Compute indicators for OHLCV data and store in indicators table.
+
+    The window and slice semantics match the live path exactly
+    (`src/features/computer.py`): `min_required` bars ending at, and
+    including, the bar being computed.
 
     Args:
         symbol: Trading pair (e.g. BTCUSDT, ETHUSDT).
         timeframe: Candle timeframe (e.g. 4h, 1h, 15m).
         batch_size: Number of rows to batch before flushing to DB.
-        min_required: Minimum lookback periods for indicator computation.
+        min_required: Indicator window in bars. Must equal
+            `INDICATOR_WINDOW_BARS` for backfilled rows to agree with
+            live-written rows.
+        force: Recompute rows that already have indicators.
+        dry_run: Report what would be written without touching the database.
     """
     db_config = {
         "host": os.getenv("DB_HOST", "localhost"),
@@ -156,8 +177,11 @@ async def compute_and_store_indicators(
                 logger.error(f"Not enough data. Have {len(rows)}, need at least {min_required}")
                 return
 
-            # Skip rows that already have indicators (resume support)
-            start_idx = min_required
+            # Skip rows that already have indicators (resume support).
+            # The first computable bar is the one with a full window behind it,
+            # i.e. index `min_required - 1` (windows are `min_required` bars
+            # ending at, and including, the bar being computed).
+            start_idx = min_required - 1
             if not force:
                 last_indicator = await conn.fetchrow(
                     "SELECT max(time) as max_t FROM indicators WHERE symbol = $1 AND timeframe = $2",
@@ -191,19 +215,12 @@ async def compute_and_store_indicators(
             t0 = time.monotonic()
 
             for i in range(start_idx, len(rows)):
-                window_start = max(0, i - min_required)
-                window = rows[window_start : i + 1]
-
-                data = {
-                    "open": [r["open_price"] for r in window],
-                    "high": [r["high_price"] for r in window],
-                    "low": [r["low_price"] for r in window],
-                    "close": [r["close_price"] for r in window],
-                    "volume": [r["volume"] for r in window],
-                }
-
+                # Use the shared live-window definition: exactly `lookback` bars
+                # ending at (and including) this bar. The previous slice
+                # `rows[max(0, i - lookback):i + 1]` yielded lookback+1 bars and
+                # therefore never matched the live path.
                 try:
-                    indicators = compute_indicators(data)
+                    indicators = compute_indicators_for_window(rows, index=i, window=min_required)
                 except Exception as e:
                     logger.warning(f"Failed to compute indicators for row {i}: {e}")
                     continue
@@ -255,7 +272,8 @@ async def compute_and_store_indicators(
                 )
 
                 if len(batch) >= batch_size:
-                    await _flush_batch(conn, batch)
+                    if not dry_run:
+                        await _flush_batch(conn, batch)
                     processed += len(batch)
                     elapsed = time.monotonic() - t0
                     rate = processed / elapsed if elapsed > 0 else 0
@@ -267,12 +285,14 @@ async def compute_and_store_indicators(
 
             # Flush remaining
             if batch:
-                await _flush_batch(conn, batch)
+                if not dry_run:
+                    await _flush_batch(conn, batch)
                 processed += len(batch)
 
             elapsed = time.monotonic() - t0
+            verb = "Would compute" if dry_run else "Computed"
             logger.info(
-                f"Done! Computed indicators for {processed} rows of {symbol} {timeframe} "
+                f"Done! {verb} indicators for {processed} rows of {symbol} {timeframe} "
                 f"in {elapsed:.1f}s ({processed / elapsed:.0f} rows/s)"
             )
 
@@ -289,5 +309,6 @@ if __name__ == "__main__":
             batch_size=args.batch_size,
             min_required=args.lookback,
             force=args.force,
+            dry_run=args.dry_run,
         )
     )

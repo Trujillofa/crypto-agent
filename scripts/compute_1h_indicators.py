@@ -7,7 +7,9 @@ import os
 import asyncpg
 import pandas as pd
 
-from src.features.technical import compute_indicators
+from src.db.pool import close_pool, init_pool
+from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators_for_window
+from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,6 +32,10 @@ async def compute_and_store_indicators():
         user=db_config["user"],
         password=db_config["password"],
     )
+
+    # The shared IndicatorWriter uses the global pool.
+    await init_pool(db_config)
+    writer = IndicatorWriter(db_config)
 
     try:
         async with pool.acquire() as conn:
@@ -77,20 +83,13 @@ async def compute_and_store_indicators():
             processed = 0
             errors = 0
 
-            for i in range(250, len(rows_1h)):
-                # Get window of 1h data for indicator computation
-                window = rows_1h[max(0, i - 250) : i + 1]
-
-                data = {
-                    "open": [r["open_price"] for r in window],
-                    "high": [r["high_price"] for r in window],
-                    "low": [r["low_price"] for r in window],
-                    "close": [r["close_price"] for r in window],
-                    "volume": [r["volume"] for r in window],
-                }
-
+            for i in range(INDICATOR_WINDOW_BARS - 1, len(rows_1h)):
+                # Use the shared live-window definition: exactly
+                # INDICATOR_WINDOW_BARS bars ending at (and including) this bar.
                 try:
-                    indicators = compute_indicators(data)
+                    indicators = compute_indicators_for_window(
+                        rows_1h, index=i, window=INDICATOR_WINDOW_BARS
+                    )
                 except Exception as e:
                     errors += 1
                     if errors <= 5:
@@ -106,69 +105,53 @@ async def compute_and_store_indicators():
                     else None
                 )
 
-                # Insert into database
+                # Insert into database.
+                # The shared IndicatorWriter writes the full column set, so this
+                # script can no longer leave `ema_8/10/14/21/24/30`, `sma_40` and
+                # `sma_60` NULL while claiming to have written the row.
                 try:
-                    await conn.execute(
-                        """
-                        INSERT INTO indicators (
-                            time, symbol, timeframe,
-                            ema_12, ema_26, ema_50, ema_200,
-                            sma_20, sma_50, sma_200,
-                            rsi_14, rsi_7,
-                            macd, macd_signal, macd_hist,
-                            bb_upper_dist, bb_lower_dist,
-                            atr_14, atr_pct,
-                            vwap,
-                            stoch_k, stoch_d, cci,
-                            ema_slope_50, volatility_percentile, atr_percentile,
-                            volume_regime, price_vs_weekly, price_vs_monthly,
-                            rsi_slope, trend_consistency
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
-                        ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
-                            ema_12 = EXCLUDED.ema_12, ema_26 = EXCLUDED.ema_26,
-                            ema_50 = EXCLUDED.ema_50, ema_200 = EXCLUDED.ema_200,
-                            sma_20 = EXCLUDED.sma_20, sma_50 = EXCLUDED.sma_50, sma_200 = EXCLUDED.sma_200,
-                            rsi_14 = EXCLUDED.rsi_14, rsi_7 = EXCLUDED.rsi_7,
-                            macd = EXCLUDED.macd, macd_signal = EXCLUDED.macd_signal, macd_hist = EXCLUDED.macd_hist,
-                            bb_upper_dist = EXCLUDED.bb_upper_dist, bb_lower_dist = EXCLUDED.bb_lower_dist,
-                            atr_14 = EXCLUDED.atr_14, atr_pct = EXCLUDED.atr_pct, vwap = EXCLUDED.vwap,
-                            stoch_k = EXCLUDED.stoch_k, stoch_d = EXCLUDED.stoch_d, cci = EXCLUDED.cci,
-                            ema_slope_50 = EXCLUDED.ema_slope_50, volatility_percentile = EXCLUDED.volatility_percentile,
-                            atr_percentile = EXCLUDED.atr_percentile, volume_regime = EXCLUDED.volume_regime,
-                            price_vs_weekly = EXCLUDED.price_vs_weekly, price_vs_monthly = EXCLUDED.price_vs_monthly,
-                            rsi_slope = EXCLUDED.rsi_slope, trend_consistency = EXCLUDED.trend_consistency
-                        """,
-                        row_time,
-                        "BTCUSDT",
-                        "1h",
-                        indicators.ema_12,
-                        indicators.ema_26,
-                        indicators.ema_50,
-                        indicators.ema_200,
-                        indicators.sma_20,
-                        indicators.sma_50,
-                        indicators.sma_200,
-                        indicators.rsi_14,
-                        indicators.rsi_7,
-                        indicators.macd,
-                        indicators.macd_signal,
-                        indicators.macd_hist,
-                        indicators.bb_upper_dist,
-                        indicators.bb_lower_dist,
-                        indicators.atr_14,
-                        indicators.atr_pct,
-                        indicators.vwap,
-                        indicators.stoch_k,
-                        indicators.stoch_d,
-                        indicators.cci,
-                        indicators.ema_slope_50,
-                        indicators.volatility_percentile,
-                        indicators.atr_percentile,
-                        indicators.volume_regime,
-                        indicators.price_vs_weekly,
-                        indicators.price_vs_monthly,
-                        indicators.rsi_slope,
-                        indicators.trend_consistency,
+                    await writer.write_indicators(
+                        StoredIndicator(
+                            time=row_time,
+                            symbol="BTCUSDT",
+                            timeframe="1h",
+                            ema_8=indicators.ema_8,
+                            ema_10=indicators.ema_10,
+                            ema_12=indicators.ema_12,
+                            ema_14=indicators.ema_14,
+                            ema_21=indicators.ema_21,
+                            ema_24=indicators.ema_24,
+                            ema_26=indicators.ema_26,
+                            ema_30=indicators.ema_30,
+                            ema_50=indicators.ema_50,
+                            ema_200=indicators.ema_200,
+                            sma_20=indicators.sma_20,
+                            sma_40=indicators.sma_40,
+                            sma_50=indicators.sma_50,
+                            sma_60=indicators.sma_60,
+                            sma_200=indicators.sma_200,
+                            rsi_14=indicators.rsi_14,
+                            rsi_7=indicators.rsi_7,
+                            macd=indicators.macd,
+                            macd_signal=indicators.macd_signal,
+                            macd_hist=indicators.macd_hist,
+                            bb_upper_dist=indicators.bb_upper_dist,
+                            bb_lower_dist=indicators.bb_lower_dist,
+                            atr_14=indicators.atr_14,
+                            atr_pct=indicators.atr_pct,
+                            vwap=indicators.vwap,
+                            stoch_k=indicators.stoch_k,
+                            stoch_d=indicators.stoch_d,
+                            cci=indicators.cci,
+                            ema_slope_50=indicators.ema_slope_50,
+                            volatility_percentile=indicators.volatility_percentile,
+                            atr_percentile=indicators.atr_percentile,
+                            volume_regime=indicators.volume_regime,
+                            price_vs_weekly=indicators.price_vs_weekly,
+                            price_vs_monthly=indicators.price_vs_monthly,
+                            rsi_slope=indicators.rsi_slope,
+                            trend_consistency=indicators.trend_consistency,
+                        )
                     )
                     processed += 1
                 except Exception as e:
@@ -177,12 +160,14 @@ async def compute_and_store_indicators():
 
                 if processed % 1000 == 0:
                     logger.info(
-                        f"Processed {processed}/{len(rows_1h) - 250} rows (errors: {errors})"
+                        f"Processed {processed}/{len(rows_1h) - INDICATOR_WINDOW_BARS} rows "
+                        f"(errors: {errors})"
                     )
 
             logger.info(f"Done! Computed and stored {processed} 1h rows ({errors} errors)")
 
     finally:
+        await close_pool()
         await pool.close()
 
 
