@@ -77,16 +77,56 @@ class IndicatorComputer:
         async with self._db_lock:
             computation_start = time.perf_counter()
 
-            # Read OHLCV data (need at least 200 periods for long-term indicators)
-            ohlcv_data = await self._read_ohlcv(symbol, limit=INDICATOR_WINDOW_BARS)
+            # Read OHLCV data (need at least 200 periods for long-term indicators).
+            # Read one extra bar so that dropping a still-forming newest candle
+            # still leaves a full canonical window of closed candles.
+            ohlcv_data = await self._read_ohlcv(symbol, limit=INDICATOR_WINDOW_BARS + 1)
 
             if not ohlcv_data:
                 self._logger.warning("No OHLCV data found for %s", symbol)
                 return
 
+            # The newest bar may still be forming. Publishing an indicator row
+            # for it would freeze that row at a partial value forever: the
+            # live path only ever rewrites the newest bar, and by the time the
+            # candle closes a newer bar exists, so the closed bar's row is
+            # never revisited. That is how the 4h rows ended up 2-3 hours
+            # stale relative to the final candle.
+            #
+            # So: compute and publish the newest CLOSED bar instead, and
+            # leave the forming bar to the next cycle. The row we publish is
+            # then final and stays correct.
+            closed_index = self._newest_closed_index(ohlcv_data)
+            if closed_index is None:
+                self._logger.info(
+                    "No closed candle for %s yet (newest bar is still forming)", symbol
+                )
+                return
+
+            # Trim to the newest closed bar, then keep exactly the canonical
+            # trailing `INDICATOR_WINDOW_BARS` closed candles, so the window
+            # matches the backfill definition bar for bar.
+            closed_data: dict[str, list[float]] = {
+                key: values[: closed_index + 1]
+                for key, values in ohlcv_data.items()
+                if key not in ("close_time", "time")
+            }
+            closed_times = list(ohlcv_data["time"])[: closed_index + 1]
+            if len(closed_times) < INDICATOR_WINDOW_BARS:
+                self._logger.info(
+                    "Not enough closed candles for %s: have %d, need %d",
+                    symbol,
+                    len(closed_times),
+                    INDICATOR_WINDOW_BARS,
+                )
+                return
+            for key, values in closed_data.items():
+                closed_data[key] = values[-INDICATOR_WINDOW_BARS:]
+            closed_times = closed_times[-INDICATOR_WINDOW_BARS:]
+
             # Compute indicators
             try:
-                indicators = compute_indicators(ohlcv_data)
+                indicators = compute_indicators(closed_data)
             except ValueError as exc:
                 self._logger.warning(
                     "Not enough data to compute indicators for %s: %s", symbol, exc
@@ -96,14 +136,10 @@ class IndicatorComputer:
                 ).inc()
                 return
 
-            # Get the latest timestamp from OHLCV data
-            time_values = list(ohlcv_data.get("time", []))
-            if time_values:
-                latest_time_value = time_values[-1]
-                if isinstance(latest_time_value, datetime):
-                    latest_time = latest_time_value
-                else:
-                    latest_time = datetime.now(UTC)
+            # The published bar is the newest CLOSED candle.
+            latest_time_value = closed_times[-1] if closed_times else None
+            if isinstance(latest_time_value, datetime):
+                latest_time = latest_time_value
             else:
                 latest_time = datetime.now(UTC)
 
@@ -171,10 +207,46 @@ class IndicatorComputer:
             self._metrics.computations_total.labels(symbol=symbol, status="success").inc()
             self._metrics.last_computation_time.labels(symbol=symbol).set(time.time())
 
+    @staticmethod
+    def _newest_closed_index(ohlcv_data: Mapping[str, list]) -> int | None:
+        """Index of the newest candle whose close time has already passed.
+
+        Returns ``None`` when every candle is still forming.
+
+        A candle is closed once ``close_time <= now``. The REST poller writes
+        Binance's in-progress kline, so the newest row in ``ohlcv`` is
+        normally still forming and must not be published as an indicator.
+        """
+        close_times = ohlcv_data.get("close_time")
+        times = ohlcv_data.get("time")
+        if not close_times or not times:
+            return None
+
+        now = datetime.now(UTC)
+        for index in range(len(close_times) - 1, -1, -1):
+            close_time = close_times[index]
+            if close_time is None:
+                # No close time recorded: treat the bar as closed, since it
+                # came from a source that does not track forming state.
+                return index
+            if not isinstance(close_time, datetime):
+                continue
+            if close_time.tzinfo is None:
+                close_time = close_time.replace(tzinfo=UTC)
+            if close_time <= now:
+                return index
+        return None
+
     async def _read_ohlcv(self, symbol: str, limit: int) -> dict[str, list]:
-        """Read OHLCV data from TimescaleDB."""
+        """Read OHLCV data from TimescaleDB.
+
+        The newest row may still be a *forming* candle: the REST poller
+        writes Binance's in-progress kline and revises it on close. This
+        method therefore also returns ``close_time`` for each row so the
+        caller can tell a closed bar from a forming one.
+        """
         query = """
-            SELECT time, open_price, high_price, low_price, close_price, volume
+            SELECT time, close_time, open_price, high_price, low_price, close_price, volume
             FROM ohlcv
             WHERE symbol = $1 AND timeframe = $2
             ORDER BY time DESC
@@ -193,6 +265,7 @@ class IndicatorComputer:
 
         return {
             "time": [row["time"] for row in rows],
+            "close_time": [row["close_time"] for row in rows],
             "open": [row["open_price"] for row in rows],
             "high": [row["high_price"] for row in rows],
             "low": [row["low_price"] for row in rows],
