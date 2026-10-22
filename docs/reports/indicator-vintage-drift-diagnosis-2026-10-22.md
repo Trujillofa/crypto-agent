@@ -21,6 +21,16 @@ the earlier analysis had conflated:
 
 ## Verdict
 
+> **Status: the defect is fixed and the data is corrected.** The canonical
+> window (exactly 200 bars) is implemented in the code (PR #204), the live
+> path publishes the newest *closed* candle (PR #208), every backfill
+> excludes the forming candle (PR #212), and the whole table has been
+> recomputed under the canonical definition. See
+> `docs/reports/canonical-backfill-2026-10-22.md` for the write itself and
+> `docs/reports/restore-drill-preserved-backup-2026-10-22.md` for the
+> restore drill. The table below is the **original** diagnosis, kept as the
+> record of what was wrong.
+
 **The documented VWAP-window story is one symptom of a larger defect, and
 fixing only VWAP would leave the table still wrong.**
 

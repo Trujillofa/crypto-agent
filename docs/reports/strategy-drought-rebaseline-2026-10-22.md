@@ -1,6 +1,10 @@
 # Strategy-Drought Re-Baseline — 2026-10-22
 
-**Status:** the analysis is complete; the disposition is now partly executed.
+**Status:** the analysis is complete and **the disposition is now fully
+executed**. The historical backfill that item 3 depended on has been run
+(2026-10-22) — see `docs/reports/canonical-backfill-2026-10-22.md`. No
+strategy threshold, agent configuration, or money-path configuration was
+changed at any point.
 This document was originally a read-only analysis with no live
 configuration changed, and that remains true of the *analysis*. The
 disposition items in §5 have since been carried out in reviewed PRs, each
@@ -308,10 +312,17 @@ for all future writes.
    issue.** PR #204 fixed the writer; the pre-2026-06-02 rows are still
    wrong in the table and will remain wrong until (and unless) the
    historical backfill is run under review with a tested rollback.
-   — *Status: the writer is fixed; the historical rows are still wrong and
-   the backfill is still outstanding. The rollback path is no longer
-   blocked: a pre-write `pg_dump` was found and preserved, and the exact
-   affected-row set is now computed (20,526 rows) rather than described.*
+   — *Status: done.* The writer is fixed (PR #204), the rollback path was
+   unblocked and then **proved**: a pre-write `pg_dump` was found and
+   preserved, and the exact affected-row set was computed (20,526 rows)
+   rather than described. The restore drill then restored the dump into an
+   isolated database and showed it differed from production on exactly those
+   20,526 keys and matched all 2,116 no-op keys. The historical backfill
+   has since been **executed** (2026-10-22): every row of every pair was
+   recomputed under the canonical 200-bar definition, with a fresh
+   pre-backfill backup taken immediately before the write and a read-only
+   dry-run proof that the table was byte-identical beforehand. See
+   `docs/reports/canonical-backfill-2026-10-22.md`.*
 4. **Fix the forming-candle ingest separately** for both the 4h agents.
    It is a real defect: the REST poller writes `payload[-1]` (the forming
    candle) and never revisits the row after the candle closes. It affects
@@ -323,7 +334,9 @@ for all future writes.
    poll-phase-specific: `ETHUSDT 1h` polls just past the bar boundary and
    was already correct, which is why the defect looked 4h-only. Historical
    rows written from forming candles stay wrong until the backfill
-   rewrites them.
+   rewrites them — **which it now has** (see item 3). The backfill excludes
+   the forming candle as well (PR #212), so the backfill and the live path
+   cannot disagree about which bar they own.
 
 ---
 

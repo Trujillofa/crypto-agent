@@ -1,7 +1,11 @@
 # Incident Record — Accidental `BTCUSDT` 1h Indicator Backfill
 
 **Date:** 2026-10-22
-**Status:** disclosed, fully characterized, no live-configuration impact
+**Status:** disclosed, fully characterized, no live-configuration impact.
+The affected rows have since been **rewritten under the canonical definition**
+by the reviewed backfill (see §9 and
+`docs/reports/canonical-backfill-2026-10-22.md`); this section is kept as the
+record of the incident itself.
 **Severity:** low (data-only, no money-path impact, no service impact)
 **Related:** PR #204 (`d7bfd47`), PR #205 (`33fad42`)
 
@@ -331,16 +335,18 @@ Regression tests live in `tests/test_indicator_window_definition.py` and
 
 ## 9. Outstanding
 
-- The broad historical backfill across the remaining pairs has **not** been
-  run. It is now *fully unblocked on the backup gate* -- a verified pre-write
-  dump exists, the restore path has been **executed and proved exact** in
-  an isolated database (§6.1b), and the dry-run guard is in place -- but it
-  is still gated on a decision about
-  whether to rewrite rows whose stored values are not reproducible from
-  today's OHLCV (see §5b of the indicator-vintage diagnosis report).
-  The census in `scripts/classify_indicator_writers.py` is the work list:
-  124,042 rows still carry the legacy 751-bar window and 29,904 the
-  251-bar window.
+- ~~The broad historical backfill across the remaining pairs has not been
+  run.~~ **Done (2026-10-22).** The gate on rewriting rows whose stored
+  values are not reproducible from today's OHLCV was resolved by scoping the
+  claim instead of freezing the data: the census's work list (124,042 rows on
+  the legacy 751-bar window, 29,904 on the 251-bar window) was rewritten
+  under the canonical 200-bar definition, because the canonical value is the
+  one the live path computes and the one a backfilled row must match. The
+  rows that cannot be recomputed at all -- no `ohlcv` for the pair, or fewer
+  than 200 bars behind the row -- are reported rather than asserted.
+  See `docs/reports/canonical-backfill-2026-10-22.md` for the write, its
+  scope measurement, the dry-run proof, and the backup taken immediately
+  before it.
 - The forming-candle defect was **root-caused to the minute** (see §5b of
   the indicator-vintage diagnosis report): the REST poller writes Binance's
   currently-forming kline, the indicator computer computes from it, and the
@@ -353,7 +359,9 @@ Regression tests live in `tests/test_indicator_window_definition.py` and
   forming, and the stored row matches a canonical 200-bar recompute (that
   pair was 399/400 divergent before the fix). The historical rows already
   written from forming candles stay wrong until the backfill rewrites
-  them.
+  them -- **which it now has** (see the first item in §9). The backfill
+  excludes the forming candle too (PR #212, merged as `198f256`), so the
+  backfill and the live path cannot disagree about which bar they own.
 
 ## 10. Reproduction
 
