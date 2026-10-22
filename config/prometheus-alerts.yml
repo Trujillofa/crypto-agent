@@ -141,19 +141,25 @@ groups:
       # reaches the indicators table -- but the SOURCE table is wrong, and
       # the next writer (or a backfill) may pick it up.
       #
-      # This fires for a normal, expected moment too: a bar is forming
-      # between its open and its close, and the ingest layer legitimately
-      # tracks it. So this is a WARNING with a long `for`: a bar that is
-      # still open after its period has elapsed is a stuck poller, not a
-      # bar that is simply between its open and close.
+      # A bar is forming for the WHOLE of its period -- a 4h bar is
+      # legitimately open for four hours. So a FIXED threshold would fire
+      # constantly on 4h pairs and never on a stuck 1h pair.
+      #
+      # The comparison is exact instead: a forming bar is only anomalous
+      # once it has been open for LONGER than its own period, because by
+      # then it should have closed. A 4h bar that has been open for 5h is
+      # stuck; a 4h bar that has been open for 3h is perfectly normal.
       - alert: SourceOhlcvFormingBarLingering
-        expr: indicator_source_newest_bar_was_forming == 1
-        for: 30m
+        expr: |
+          indicator_source_newest_bar_was_forming == 1
+          and indicator_published_bar_period_seconds > 0
+          and indicator_source_newest_bar_forming_for_seconds > indicator_published_bar_period_seconds
+        for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Source OHLCV still holds a forming candle ({{ $labels.symbol }} {{ $labels.timeframe }})"
-          description: "The newest row in the source ohlcv table has not closed, and has been like that for 30 minutes. Either the ingest poller is not advancing, or it is stuck writing a bar that never completes. The indicator layer skips forming rows, so the indicators are not affected directly -- but the source table is wrong."
+          description: "The newest row in the source ohlcv table has been open for longer than its bar period, so it should have closed by now. Either the ingest poller is not advancing, or it is stuck writing a bar that never completes. The indicator layer skips forming rows, so the indicators are not affected directly -- but the source table is wrong."
 
       # A bar was published before it finished forming.
       #

@@ -230,8 +230,17 @@ class IndicatorComputer:
                     self._metrics.source_newest_bar_was_forming.labels(**labels).set(
                         1 if newest_source_close > now else 0
                     )
+                    # How long has it been open? Compared against the bar
+                    # period, this is the exact measure of "should have
+                    # closed by now": a forming bar is normal, but one
+                    # that has been open for LONGER than its own period
+                    # is stuck.
+                    self._metrics.source_newest_bar_forming_for.labels(**labels).set(
+                        max(0.0, (newest_source_close - now).total_seconds())
+                    )
                 else:
                     self._metrics.source_newest_bar_was_forming.labels(**labels).set(0)
+                    self._metrics.source_newest_bar_forming_for.labels(**labels).set(0)
 
             # Update Prometheus metrics
             self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)
