@@ -173,11 +173,40 @@ transition zone where the live path had already begun writing complete rows
 before the dump. Every other pair was already written by the migrated
 full-column writer.
 
+### 6.1b The backup has been restored and verified in isolation
+
+The backup's existence and contents were verified (§6.1), but that is not
+the same as a working restore path. The dump was therefore **restored into
+an isolated TimescaleDB container** — separate from production, on its own
+network, discarded afterwards — and the restored state was compared
+value-by-value against the live database.
+
+```
+manifest keys: 20526
+live rows: 23135   restored rows: 22642
+rows present in both: 22642
+  of which in the changed manifest: 20526
+  of which NOT in the manifest (no-op rows): 2116
+
+CHANGED rows (in manifest) that differ live vs restored: 20526/20526
+NO-OP  rows (not in manifest) that differ live vs restored:     0/2116
+```
+
+The restored database differs from live on **exactly** the 20,526 rows the
+accidental write changed, and matches on all 2,116 no-op rows. It also
+carries 19,920 rows with the legacy eight-column NULL fingerprint, against
+**0** in the live table — the positive proof that the dump predates the
+write.
+
+**The restore path is therefore proven executable and exact, not merely
+present.** The historical backfill is no longer blocked on it. Full
+procedure, including two non-obvious preconditions, in
+`docs/reports/restore-drill-preserved-backup-2026-10-22.md`.
+
 ### 6.2 The exact affected-row manifest
 
 `scripts/build_affected_row_manifest.py` diffs the preserved dump against
 the live table, value by value, for a given pair:
-
 ```
 dump rows for BTCUSDT 1h: 22642
 live rows for BTCUSDT 1h: 23134
@@ -226,6 +255,12 @@ SHA-256 `d3c755e75e588624cb498f502160c681a55266952d760673acb34acb05db6539`),
 so the affected set is exact and diffable rather than described.
 
 ### 6.3 A restore path that is actually tested
+
+**This procedure was executed in full on 2026-10-22.** The preserved dump
+was restored into an isolated TimescaleDB container, and the restored
+`BTCUSDT 1h` pair was compared against the live table: it differs on
+exactly the 20,526 manifest rows and matches on all 2,116 no-op rows
+(§6.1b). The restore path is proven, not merely written.
 
 The restore is not hypothetical. Restoring the affected pair is a bounded,
 reversible operation:
@@ -297,22 +332,28 @@ Regression tests live in `tests/test_indicator_window_definition.py` and
 ## 9. Outstanding
 
 - The broad historical backfill across the remaining pairs has **not** been
-  run. It is now *unblocked on the backup gate* -- a verified pre-write dump
-  exists, the restore procedure is written down in §6.3, and the
-  dry-run guard is in place -- but it is still gated on a decision about
+  run. It is now *fully unblocked on the backup gate* -- a verified pre-write
+  dump exists, the restore path has been **executed and proved exact** in
+  an isolated database (§6.1b), and the dry-run guard is in place -- but it
+  is still gated on a decision about
   whether to rewrite rows whose stored values are not reproducible from
   today's OHLCV (see §5b of the indicator-vintage diagnosis report).
   The census in `scripts/classify_indicator_writers.py` is the work list:
   124,042 rows still carry the legacy 751-bar window and 29,904 the
   251-bar window.
-- The forming-candle defect is now **root-caused to the minute** (see §5b of
+- The forming-candle defect was **root-caused to the minute** (see §5b of
   the indicator-vintage diagnosis report): the REST poller writes Binance's
   currently-forming kline, the indicator computer computes from it, and the
   row is never recomputed after the candle closes because the live path
-  only ever writes the newest bar. It is diagnosed and documented but not
-  fixed. The fix is a separate change with its own PR: the indicator
-  computer must skip the newest bar until it has closed, or recompute the
-  previous bar when the current one closes.
+  only ever writes the newest bar. It is now **fixed** (PR #208, merged as
+  `622a3ac`): the indicator computer publishes the newest **closed** candle,
+  so the published row is final and can no longer be frozen at a partial
+  value. Verified against the live database after deployment — `SOLUSDT 4h`
+  now publishes the closed `08:00` bar while the `12:00` bar is still
+  forming, and the stored row matches a canonical 200-bar recompute (that
+  pair was 399/400 divergent before the fix). The historical rows already
+  written from forming candles stay wrong until the backfill rewrites
+  them.
 
 ## 10. Reproduction
 
