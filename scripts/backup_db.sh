@@ -44,11 +44,22 @@ $DOCKER_CMD exec "$DB_CONTAINER" pg_dump \
 SIZE="$(du -h "$BACKUP_FILE" | cut -f1)"
 echo "[$(date -Iseconds)] Backup complete: $BACKUP_FILE ($SIZE)"
 
-# Prune old backups
+# Prune old backups.
+#
+# A `preserved/` subdirectory holds dumps that were deliberately kept
+# because they are the baseline for an incident (a pre-write dump, a
+# pre-migration dump). The prune glob `marketdata_*.sql.gz` matches those
+# files too -- `find` is recursive by default -- so a preserved dump was
+# being deleted by the same retention rule that is supposed to apply only
+# to the rolling daily window. Exclude preserved directories explicitly.
+#
+# Anything under a `preserved/` directory is exempt from retention.
 DELETED=0
-find "$BACKUP_DIR" -name "marketdata_*.sql.gz" -mtime +"$RETENTION_DAYS" -print -delete | while read -r f; do
+find "$BACKUP_DIR" -name "marketdata_*.sql.gz" -mtime +"$RETENTION_DAYS" \
+    -not -path "*/preserved/*" \
+    -print -delete | while read -r f; do
     DELETED=$((DELETED + 1))
 done
-echo "[$(date -Iseconds)] Pruned backups older than $RETENTION_DAYS days"
+echo "[$(date -Iseconds)] Pruned backups older than $RETENTION_DAYS days (preserved/ excluded)"
 
 echo "[$(date -Iseconds)] Done."
