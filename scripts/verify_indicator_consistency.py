@@ -85,9 +85,12 @@ INDICATOR_COLUMNS: tuple[str, ...] = (
 )
 
 # The number of trailing rows the live path owns. The live agent recomputes
-# and rewrites the newest bar of each symbol/timeframe on its cycle, so these
-# rows are the live definition and must always agree.
-LIVE_OWNED_ROWS = 5
+# and rewrites exactly ONE row per symbol/timeframe on its cycle: the newest
+# OHLCV bar (see src/features/computer.py, which writes `latest_time` and
+# nothing else). Every older row is frozen history. Requiring more than one
+# row to agree would flag historical rows that the live path has already
+# moved past, which is not a live defect.
+LIVE_OWNED_ROWS = 1
 
 # A pair is "live-owned" when the live agent still writes to it: its newest
 # indicator row is recent (within this many hours of now) and it tracks the

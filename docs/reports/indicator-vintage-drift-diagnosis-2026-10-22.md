@@ -167,6 +167,60 @@ value was right for the data at the time — but it means "stored == recompute"
 is not an invariant that can hold across a data revision, and the CI
 check must be scoped to the rows the live path owns.
 
+#### 5b. The 4h rows were computed on a *forming* candle
+
+The 4h divergence is not random. `src/ingest/binance.py::_poll_latest`
+writes `payload[-1]` — the **last** kline Binance returns, which is the
+*currently forming* candle, never a closed one. The websocket ingest does
+the opposite (`src/ingest/websocket.py:196` skips any kline where
+`x` is not true), but these agents run with `ingest.use_websocket: false`,
+so they use the REST poller.
+
+The 4h poller interval is 14 400 s (`_poll_interval_seconds`), so the
+forming 4h candle is sampled once per 4h bar and then left alone. The
+indicator is therefore computed from a partially-formed candle, and the
+`ohlcv` row is later revised (upserted) when the real close arrives —
+while the indicator row is never recomputed for that bar, because the
+live path only ever writes the *newest* bar.
+
+This is visible in the data:
+
+```
+bar=2026-10-22 00:00  close_time=03:59:59  computed_at=01:49:26  (2.2h early)
+bar=2026-10-21 20:00  close_time=23:59:59  computed_at=21:49:15  (2.2h early)
+```
+
+`computed_at` is a DB default and is not in the writer's `ON CONFLICT`
+update list, so it records the **first** write of each row — i.e. the
+forming-candle write.
+
+Reconstructing the 4h series as it stood at compute time (using the 1h
+bars that existed then) reproduces the stored values:
+
+```
+4h 00:00 bar with 1 of 4 hours  -> vwap=114.215231
+4h 00:00 bar with 2 of 4 hours  -> vwap=114.138938
+4h 00:00 bar with 3 of 4 hours  -> vwap=113.939059
+4h 00:00 bar with 4 of 4 hours  -> vwap=113.886058   (final)
+STORED (computed at 01:49)      -> vwap=114.023302
+```
+
+The stored value sits between the 1-hour and 2-hour reconstructions,
+confirming it was computed from a partially-formed 4h candle.
+
+**This is a pre-existing live-path defect, not a regression from this
+change.** The live path is byte-identical before and after this work
+(`compute_indicators` is unchanged; the only edit to the live path is
+`limit=200` → `limit=INDICATOR_WINDOW_BARS`, and the constant is 200).
+It is also **not** a money-path defect: see §6.
+
+It is a real bug and it is worth fixing, but it is a *different* bug from
+the one this branch was opened for, and it needs its own change: the
+indicator computer must either (a) skip the newest bar until its candle
+has closed, or (b) recompute the previous bar once the current one
+closes. Until then, the affected rows are stale-but-harmless, and the
+verifier must not treat them as live-owned.
+
 ### 6. The money path is NOT affected
 
 This is the most important result, and it bounds the severity correctly.
@@ -182,19 +236,27 @@ And the newest rows are the ones the live writer produced. Recomputing the
 
 ```
 SOLUSDT 1h: 40/40 newest rows match the live 200-window recompute
-SOLUSDT 4h:  8/40 newest rows match   <-- the 4h row is stale (see below)
+SOLUSDT 4h:  8/40 newest rows match   <-- the 4h rows are stale (see §5b)
 ```
 
-The 1h timeframe — the one the live agent trades on — is **clean**. The 4h
-mismatch in the newest rows is a *different* problem: the 4h agent's
-`IndicatorComputer` runs on a 60s interval, and a 4h candle only closes
-every 4 hours, so the newest 4h row in the table is a **partially-formed
-candle** written by the live path at a moment when fewer than 200 complete
-4h bars existed in its window.
+The 1h timeframe — the one the live agent trades on — is **clean**.
+
+The 4h mismatch is a *different* problem, and it is **not** a money-path
+defect. Its cause is the forming-candle write described in §5b: the 4h
+agent's REST poller samples the *currently forming* 4h candle once every
+4 hours, computes indicators from it, and then never recomputes that bar
+after the candle closes and `ohlcv` is revised. (An earlier draft of
+this report attributed it to the compute interval instead — that was
+wrong; the 60 s interval is irrelevant here because the live writer only
+ever writes the newest bar.)
 
 **No money-path behaviour is wrong today.** The strategy consumes
 `vwap`/`ema_50`/`ema_200`/`rsi_14`/`atr_pct`/`macd_hist` from the newest
-row, and the newest row is correct.
+row, and for the live pairs the newest row is either correct (1h) or is
+the newest, still-forming 4h bar — which the live path also reads and
+which is *by construction* the same value the strategy would compute
+itself. The stale rows are the *older* 4h bars, which nothing in the
+money path reads.
 
 #### 6b. Which pairs the live path actually owns
 
