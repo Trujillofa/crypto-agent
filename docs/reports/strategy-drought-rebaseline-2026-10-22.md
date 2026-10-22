@@ -1,6 +1,11 @@
 # Strategy-Drought Re-Baseline — 2026-10-22
 
-**Status:** complete, read-only analysis. No live configuration was changed.
+**Status:** the analysis is complete; the disposition is now partly executed.
+This document was originally a read-only analysis with no live
+configuration changed, and that remains true of the *analysis*. The
+disposition items in §5 have since been carried out in reviewed PRs, each
+of which is named in place. No strategy threshold, agent configuration, or
+money-path setting was changed at any point.
 
 **Scope.** This re-baselines the "no signals" drought reported by the
 delegated task `deleg_e97d9c81` (report produced 2026-10-20 ~21:12 UTC,
@@ -282,20 +287,43 @@ for all future writes.
 
 1. **Do not change the strategy thresholds** to silence the sentinel. The
    drought is a strategy-fit observation, not a defect in the plumbing.
+   — *Status: done, and no threshold was changed.*
 2. **Re-baseline the sentinel's expectation** for `agent_sol_sparse`. A
    731 h threshold against a strategy that produced 2 signals in 5.5
    months will warn forever. Either widen the threshold for this agent
    explicitly, or exclude it with a documented reason, so the warning keeps
    meaning something for the agents that are supposed to be active.
+   — *Status: done, by a third option that is better than either: fix the
+   derivation.* The 731 h threshold was not a hand-set value — it was
+   computed as 3× the median gap between the agent's own 2 signals, i.e.
+   from a single observation, and then applied to those same signals, so it
+   inherited their age. The sentinel now requires `MIN_CADENCE_SAMPLES = 5`
+   signals before it derives a cadence at all. Below that the configured
+   threshold applies. Verified against the live event logs: the sparse
+   agent now derives no cadence, while every agent with enough evidence
+   (the 4h panic-block agent with 25 signals, `avax-4h-ma` with 24,
+   `eth-4h` with 6) keeps its real one. No agent is excluded, no threshold
+   was widened by hand, and no strategy was touched.
 3. **Treat the legacy-VWAP finding as a data-history issue, not a live
    issue.** PR #204 fixed the writer; the pre-2026-06-02 rows are still
    wrong in the table and will remain wrong until (and unless) the
    historical backfill is run under review with a tested rollback.
+   — *Status: the writer is fixed; the historical rows are still wrong and
+   the backfill is still outstanding. The rollback path is no longer
+   blocked: a pre-write `pg_dump` was found and preserved, and the exact
+   affected-row set is now computed (20,526 rows) rather than described.*
 4. **Fix the forming-candle ingest separately** for both the 4h agents.
    It is a real defect: the REST poller writes `payload[-1]` (the forming
    candle) and never revisits the row after the candle closes. It affects
    the 4h paper agents, not the 1h live-money path, and it should be
    dispositioned explicitly rather than left implicit.
+   — *Status: done (PR #208).* The live path now publishes the newest
+   **closed** candle, so the published row is final and cannot be frozen
+   at a partial value. The root cause turned out not to be 4h-specific but
+   poll-phase-specific: `ETHUSDT 1h` polls just past the bar boundary and
+   was already correct, which is why the defect looked 4h-only. Historical
+   rows written from forming candles stay wrong until the backfill
+   rewrites them.
 
 ---
 
