@@ -436,6 +436,61 @@ and exits 0, alongside the other three live-owned pairs.
 rewrite used the same live window definition, and the agent ran through
 the whole operation with `restarts=0`.
 
+### Whole-table writer census (2026-10-22)
+
+Every row in the `indicators` table was classified by which writer produced
+it. The method reproduces the stored VWAP at three candidate window lengths
+using the production formula from `src/features/technical.py::_vwap` —
+typical price `(H+L+C)/3`, **not** close — and attributes the row to the
+window that matches within 1e-6 relative tolerance.
+
+```
+symbol     tf      rows    w=200    w=251    w=751    other  dominant
+  ADAUSDT  1h     19794       40       86    19668        0  w=751 (19668)
+  AVAXUSDT 1h     19887        4    19883        0        0  w=251 (19883)
+  AVAXUSDT 4h      4960      141     4601        0      218  w=251 (4601)
+  BNBUSDT  1h     20345        2      179     1708    18456  w=751 (1708)
+  BNBUSDT  4h      4707      200       64        0     4443  w=200 (200)
+  BTCUSDT  1h     23134    23134        0        0        0  w=200 (23134)
+  BTCUSDT  4h      4726      218       66        0     4442  w=200 (218)
+  BTCUSDT  5m      2146     2146        0        0        0  w=200 (2146)
+  DOGEUSDT 1h     19794      103      119    19572        0  w=751 (19572)
+  ETHUSDT  1h     22653     4018      128        0    18507  w=200 (4018)
+  ETHUSDT  4h      4627      119       55        0     4453  w=200 (119)
+  LINKUSDT 1h     19794        0        2    19792        0  w=751 (19792)
+  LINKUSDT 4h      4604        2     4602        0        0  w=251 (4602)
+  LTCUSDT  1h     19795        0        1    19794        0  w=751 (19794)
+  SOLUSDT  1h     23945     3939       55    19371      580  w=751 (19371)
+  SOLUSDT  4h      5800        9       50     4389     1352  w=751 (4389)
+  XRPUSDT  1h     19794       33       13    19748        0  w=751 (19748)
+TOTALS  w200=39169  w251=29904  w751=124042  other=52451
+```
+
+Reading it:
+
+- **`BTCUSDT 1h` is 23,134 / 23,134 at w=200** — the only large pair with
+  no legacy residue at all, as a direct result of the accidental rewrite
+  documented in the incident report. It is now canonical.
+- **124,042 rows carry the legacy 751-bar window** — the historical
+  script's default. These are the rows the (not-yet-run) backfill would
+  rewrite.
+- **29,904 rows carry the 251-bar window** — the basic script's default.
+- **52,451 rows match no closed-bar window.** These concentrate in the
+  `4h` pairs and are the forming-candle rows described in §5b: a row
+  computed from a partially-formed candle cannot be reproduced by any
+  closed-bar window, and the source candle was later revised.
+- The `1m` and `5m` pairs hold only 29 and ~730 rows respectively — they
+  are backfill-era artifacts with too little history to recompute.
+
+This census is the concrete work list for the historical backfill. It also
+confirms that the legacy `compute_basic_indicators.py` (251-bar) and
+`compute_historical_indicators.py` (751-bar) writers are both still
+represented in the table, and that neither has been run since the
+window unification.
+
+The census script is `~/.hermes/cache/scratch/classify_writers2.py`; it is
+read-only and reproducible against a running agent container.
+
 ---
 
 ## Residual risks
