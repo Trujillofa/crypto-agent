@@ -333,7 +333,57 @@ Regression tests live in `tests/test_indicator_window_definition.py` and
    read-only.
 4. Every write goes through a reviewed PR and green CI.
 
-## 9. Outstanding
+## 8b. Backup retention (found during final verification)
+
+The authoritative pre-write dump in `backups/preserved/` was **6.5 days from
+being deleted** by the daily backup's own retention rule.
+
+`scripts/backup_db.sh` prunes with:
+
+```bash
+find "$BACKUP_DIR" -name "marketdata_*.sql.gz" -mtime +"$RETENTION_DAYS" -print -delete
+```
+
+`find` descends into subdirectories by default and the glob matches the
+standard dump name, so it also matched the *preserved* copy -- the one file
+that must not expire, because it is the baseline every comparison in this
+report is measured against. With `RETENTION_DAYS=7` the incident baseline
+would have been silently deleted, taking the documented rollback path with
+it.
+
+Fixed in PR #214 (merged as `78ae0b6`): the prune now excludes any path
+under a `preserved/` directory. Rolling dumps are still pruned on the same
+schedule. Verified against a fixture, not by inspection.
+
+Note the other dump, `prebackfill_marketdata_20261022_124943.sql.gz`, was
+never at risk -- its name does not match the `marketdata_*` glob at all. It
+was the *preserved* copy that was exposed, precisely because that one keeps
+the standard name. The fix is therefore scoped by **path** rather than by
+name: what deserves protection is "a dump somebody deliberately preserved",
+which is a property of where it lives, not of what it is called.
+
+### Both recovery points are now offsite
+
+The offsite rsync copies `backups/` recursively, but the last scheduled run
+was at 03:55 -- before `preserved/` (11:30) and the pre-backfill dump
+(12:49) existed. Both were local-only until verified offsite:
+
+```
+local  backups/preserved/marketdata_20261022_030001.sql.gz
+       714742fba8b1f61d04582b2534720d0742cd54233308352a2340c0a46b6af80e
+offsite .../backups/preserved/marketdata_20261022_030001.sql.gz
+       714742fba8b1f61d04582b2534720d0742cd54233308352a2340c0a46b6af80e   MATCH
+
+local  backups/prebackfill_marketdata_20261022_124943.sql.gz
+       12dd6d4c6c8f5dd1aadcb00bae7a137d7980a209b82cecfd3cd2cad93c54ee8e
+offsite .../backups/prebackfill_marketdata_20261022_124943.sql.gz
+       12dd6d4c6c8f5dd1aadcb00bae7a137d7980a209b82cecfd3cd2cad93c54ee8e   MATCH
+```
+
+Offsite copy verified at 845,133,572 bytes; `OffsiteBackupStale` and
+`OffsiteBackupFailing` both inactive.
+
+## 9. Status of remediation
 
 - ~~The broad historical backfill across the remaining pairs has not been
   run.~~ **Done (2026-10-22).** The gate on rewriting rows whose stored
@@ -362,6 +412,8 @@ Regression tests live in `tests/test_indicator_window_definition.py` and
   them -- **which it now has** (see the first item in §9). The backfill
   excludes the forming candle too (PR #212, merged as `198f256`), so the
   backfill and the live path cannot disagree about which bar they own.
+  See §8b for a backup-retention defect found during final verification,
+  which would have deleted the preserved pre-write baseline.
 
 ## 10. Reproduction
 
