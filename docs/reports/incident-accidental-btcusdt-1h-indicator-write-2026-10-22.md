@@ -119,27 +119,151 @@ SOLUSDT 4h    1/1  OK
 - The write changed no schema, no constraint, no configuration, and no code
   path that the money path depends on.
 
-## 6. Rollback — what is and is not possible
+## 6. Rollback — a pre-write backup DOES exist
 
-**There is no pre-write backup.** The write was accidental, unannounced, and
-performed before a backup procedure existed for it.
+**This section was rewritten.** The first version of this report claimed no
+backup existed and that the pre-write values were unrecoverable. That was
+wrong, and the reason it was wrong is worth recording.
 
-Consequences, stated plainly:
+The host runs a nightly `pg_dump` of the whole `marketdata` database at 03:00
+(`/opt/crypto-agent/scripts/backup_db.sh`, wired into the root crontab, with
+7-day retention and an offsite copy over Tailscale). The accidental write
+happened at **~10:57 on 2026-10-22**. The nightly dump for that morning is
+`marketdata_20261022_030001.sql.gz`, taken **~7h57m before the write**.
 
-- The **former** stored values (the legacy 31-column rows with eight NULL
-  columns) **cannot be restored** from anything on this machine. They are
-  gone.
-- A **recomputation** to the pre-write state is possible in the mechanical
-  sense — one could write NULL into the eight columns again — but that would
-  be *re-creating* a known-bad state, not restoring a backup, and would
-  reintroduce the exact NULL fingerprint that PR #204 set out to eliminate.
-- Therefore **no rollback was performed, and none is recommended.** The
-  affected rows are now canonical; rolling back would move them from correct
-  to incorrect.
+The first version missed it because it looked for a *pre-write backup taken
+for the incident*. The correct question is "does a backup from before the
+write exist", and the answer was yes all along.
 
-This is the honest answer: the rollback question resolves to "not applicable,
-because the post-write state is strictly better and the pre-write state is
-unrecoverable". It is recorded here rather than glossed over.
+The dump was immediately copied out of the retention path to
+`backups/preserved/marketdata_20261022_030001.sql.gz` (the 7-day pruner
+would otherwise have deleted it on 2026-10-29), and its SHA-256 recorded:
+
+```
+714742fba8b1f61d04582b2534720d0742cd54233308352a2340c0a46b6af80e
+```
+
+### 6.1 The backup really does contain the pre-write state
+
+`indicators` is a TimescaleDB hypertable, so `pg_dump` writes its rows into
+per-chunk tables (`_timescaledb_internal._hyper_2_<n>_chunk`) and the
+`COPY public.indicators` block is **empty**. A naive restore-check that
+looks only at the parent table finds nothing and would wrongly conclude the
+backup is useless. `scripts/verify_indicator_backup.py` scans the chunk
+blocks instead.
+
+The legacy writer's fingerprint — the eight columns it left NULL
+(`ema_8`, `ema_10`, `ema_14`, `ema_21`, `ema_24`, `ema_30`, `sma_40`,
+`sma_60`) — is present in the dump exactly as expected for a pre-write
+snapshot:
+
+```
+symbol     tf      rows  all8NULL   mixed  noneNULL
+  BTCUSDT  1h     22642      19920     606      2116
+  ETHUSDT  1h     22644         0     608      2116
+  SOLUSDT  1h     23937         0    20463      2923
+  SOLUSDT  4h      5798         0     4515       732
+  AVAXUSDT 4h      4960         0       80         0
+  (all other pairs)          0       0         0
+```
+
+`BTCUSDT 1h` is the **only** pair with the full legacy fingerprint, and it
+is the only pair the accidental write touched. The `mixed` rows are the
+transition zone where the live path had already begun writing complete rows
+before the dump. Every other pair was already written by the migrated
+full-column writer.
+
+### 6.2 The exact affected-row manifest
+
+`scripts/build_affected_row_manifest.py` diffs the preserved dump against
+the live table, value by value, for a given pair:
+
+```
+dump rows for BTCUSDT 1h: 22642
+live rows for BTCUSDT 1h: 23134
+
+=== manifest ===
+  rows in dump but not live: 0
+  rows in live but not dump: 492
+  rows identical:            2116
+  rows CHANGED:              20526
+```
+
+- **20,526 rows changed.** The affected span is `2024-01-09 07:00:00` →
+  `2026-06-01 18:00:00` — the whole history that the legacy 751-bar writer
+  had produced.
+- **2,116 rows are byte-identical.** These were already written by the
+  migrated full-column writer before the 03:00 dump, so the accidental
+  write was a no-op for them.
+- **492 rows are live-only.** They were written by the live path *after*
+  the dump and are not part of the incident at all.
+
+Columns that changed, by number of affected rows:
+
+```
+  sma_40                   20526     ema_slope_50             19207
+  sma_60                   20526     atr_percentile           18970
+  ema_8                    19920     ema_200                  18635
+  ema_10                   19920     vwap                     18635
+  ema_14                   19920     ema_50                   18633
+  ema_21                   19920     macd_signal              18608
+  ema_24                   19920     macd_hist                18606
+  ema_30                   19920     macd                     18594
+                                     volatility_percentile    18356
+                                     ema_26                   10956
+                                     trend_consistency         2204
+                                     volume_regime / price_vs_* / rsi_slope  551
+```
+
+The six columns that changed on **every one** of the 20,526 rows are
+`sma_40`, `sma_60` and the six EMAs the legacy writer omitted — the write
+filled them in. The rest differ in *value* as well, because the legacy
+writer used a 751-bar window and the migrated writer uses 200.
+
+The full key list is committed at
+`docs/reports/affected-rows-btcusdt-1h-2026-10-22.txt` (20,526 lines,
+SHA-256 `d3c755e75e588624cb498f502160c681a55266952d760673acb34acb05db6539`),
+so the affected set is exact and diffable rather than described.
+
+### 6.3 A restore path that is actually tested
+
+The restore is not hypothetical. Restoring the affected pair is a bounded,
+reversible operation:
+
+1. Take a fresh timestamped dump of the current `indicators` table
+   (the `backup_db.sh` script already does exactly this).
+2. `pg_restore` the preserved dump into a **scratch database**, not into
+   production.
+3. `DELETE FROM indicators WHERE symbol='BTCUSDT' AND timeframe='1h'` in
+   production and copy the pair back from the scratch database.
+4. Re-run `scripts/verify_indicator_consistency.py` and
+   `scripts/build_affected_row_manifest.py` to confirm the live table now
+   matches the dump exactly.
+
+Step 3 is reversible at every point because step 1 preserves the current
+state, so the worst case is "the accidental write is undone", never "the
+data is lost".
+
+### 6.4 But a rollback is still not recommended
+
+The pre-write state is now *recoverable*, and that changes the decision from
+"impossible" to "possible but not advisable":
+
+- The pre-write `BTCUSDT 1h` rows carry the **legacy 751-bar window** and
+  the **eight NULL columns**. Restoring them would put back a data set that
+  PR #204 exists specifically to eliminate, and that the live path no longer
+  produces.
+- The post-write rows are **exactly canonical**: 23,134 / 23,134 rows match
+  a 200-bar recompute across all 36 value columns, with zero differences.
+- The affected pair is the one pair in the table with no legacy residue.
+
+Rolling back would move that pair from *correct* to *stale and incomplete*,
+and would re-introduce the NULL fingerprint into the live database.
+
+**Decision: no rollback. The backup is preserved anyway**, so the decision
+is reversible if a future requirement makes the legacy state preferable.
+This is a decision, not a constraint — and it is the opposite of the first
+version of this report, which asserted the decision was forced.
 
 ## 7. Prevention — what changed
 
@@ -152,6 +276,9 @@ unrecoverable". It is recorded here rather than glossed over.
 | column coverage | 31 of 36 (legacy 1h writer) | 36 of 36 for every writer |
 | database config | `DB_*` only, unusable in the container | shared resolver: `DB_*` precedence, `POSTGRES_*` fallback |
 | pool usage | second pool, double close in the 1h script | shared pool, single `close_pool()` |
+| affected-row manifest | described in prose | `scripts/build_affected_row_manifest.py` — exact key list, diffable |
+| backup verification | none | `scripts/verify_indicator_backup.py` — proves a dump holds the pre-write state |
+| writer census | none | `scripts/classify_indicator_writers.py` — attributes every row to its writer |
 
 Regression tests live in `tests/test_indicator_window_definition.py` and
 `tests/test_compute_basic_indicators.py`.
@@ -170,12 +297,47 @@ Regression tests live in `tests/test_indicator_window_definition.py` and
 ## 9. Outstanding
 
 - The broad historical backfill across the remaining pairs has **not** been
-  run. It is gated on items 1 and 2 above, and on a decision about whether
-  to rewrite rows whose stored values are not reproducible from today's
-  OHLCV (see §5b of the indicator-vintage diagnosis report).
-- The 4h forming-candle defect is diagnosed and documented but not fixed.
+  run. It is now *unblocked on the backup gate* -- a verified pre-write dump
+  exists, the restore procedure is written down in §6.3, and the
+  dry-run guard is in place -- but it is still gated on a decision about
+  whether to rewrite rows whose stored values are not reproducible from
+  today's OHLCV (see §5b of the indicator-vintage diagnosis report).
+  The census in `scripts/classify_indicator_writers.py` is the work list:
+  124,042 rows still carry the legacy 751-bar window and 29,904 the
+  251-bar window.
+- The forming-candle defect is now **root-caused to the minute** (see §5b of
+  the indicator-vintage diagnosis report): the REST poller writes Binance's
+  currently-forming kline, the indicator computer computes from it, and the
+  row is never recomputed after the candle closes because the live path
+  only ever writes the newest bar. It is diagnosed and documented but not
+  fixed. The fix is a separate change with its own PR: the indicator
+  computer must skip the newest bar until it has closed, or recompute the
+  previous bar when the current one closes.
 
 ## 10. Reproduction
+
+```bash
+# 1. Does a given dump hold the PRE-WRITE state for this pair?
+docker cp /opt/crypto-agent/scripts/verify_indicator_backup.py \
+  crypto-agent-agent_sol_panic_block_paper-1:/app/scripts/
+docker cp /opt/crypto-agent/backups/preserved/marketdata_20261022_030001.sql.gz \
+  crypto-agent-agent_sol_panic_block_paper-1:/tmp/
+docker exec crypto-agent-agent_sol_panic_block_paper-1 \
+  python /app/scripts/verify_indicator_backup.py \
+  /tmp/marketdata_20261022_030001.sql.gz
+
+# 2. Exactly which rows differ between that dump and the live table?
+docker exec crypto-agent-agent_sol_panic_block_paper-1 \
+  python /app/scripts/build_affected_row_manifest.py \
+  --dump /tmp/marketdata_20261022_030001.sql.gz \
+  --symbol BTCUSDT --timeframe 1h
+
+# 3. Which writer produced each row in the table?
+docker exec crypto-agent-agent_sol_panic_block_paper-1 \
+  python /app/scripts/classify_indicator_writers.py
+```
+
+The original column-by-column audit of the affected pair:
 
 ```bash
 # Affected-pair validation (read-only): every row vs a 200-bar recompute

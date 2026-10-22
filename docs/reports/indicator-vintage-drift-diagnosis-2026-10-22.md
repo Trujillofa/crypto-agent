@@ -183,16 +183,80 @@ indicator is therefore computed from a partially-formed candle, and the
 while the indicator row is never recomputed for that bar, because the
 live path only ever writes the *newest* bar.
 
-This is visible in the data:
+This is visible in the data — and it is now **measured across the whole
+recent window**, not inferred from two samples:
 
 ```
-bar=2026-10-22 00:00  close_time=03:59:59  computed_at=01:49:26  (2.2h early)
-bar=2026-10-21 20:00  close_time=23:59:59  computed_at=21:49:15  (2.2h early)
+=== SOLUSDT 4h (poll interval 14400s = 4h) ===
+  bar 2026-10-22 08:00 close_time=11:59:59 computed_at=08:46:32  +193.5 min before close
+  bar 2026-10-22 04:00 close_time=07:59:59 computed_at=04:47:20  +192.7 min before close
+  bar 2026-10-22 00:00 close_time=03:59:59 computed_at=01:49:26  +130.6 min before close
+  bar 2026-10-21 20:00 close_time=23:59:59 computed_at=21:49:15  +130.7 min before close
+  bar 2026-10-21 16:00 close_time=19:59:59 computed_at=17:50:04  +129.9 min before close
+  -> 12/12 computed BEFORE the bar closed (forming candle)
+
+=== SOLUSDT 1h (poll interval 3600s = 1h) ===
+  bar 2026-10-22 11:00 close_time=11:59:59 computed_at=11:24:08  +35.9 min before close
+  bar 2026-10-22 10:00 close_time=10:59:59 computed_at=10:37:23  +22.6 min before close
+  bar 2026-10-22 09:00 close_time=09:59:59 computed_at=09:46:35  +13.4 min before close
+  -> 12/12 computed BEFORE the bar closed (forming candle)
+
+=== ETHUSDT 1h ===
+  bar 2026-10-22 10:00 close_time=10:59:59 computed_at=11:00:27  -0.5 min before close
+  bar 2026-10-22 09:00 close_time=09:59:59 computed_at=10:00:55  -0.9 min before close
+  -> 0/12 computed BEFORE the bar closed
 ```
 
 `computed_at` is a DB default and is not in the writer's `ON CONFLICT`
 update list, so it records the **first** write of each row — i.e. the
 forming-candle write.
+
+Two things fall out of this table:
+
+**The defect is not 4h-specific — it is universal, and it varies by phase.**
+Every agent that uses the REST poller computes its indicator from a
+*forming* candle. The 4h agent is the *worst* case because its 14 400 s
+poll interval means it samples the bar 2 to 3 hours before it closes, and
+because `sol_4h_panic_block_paper` is the pair the sentinel watches. The
+`SOLUSDT 1h` agent samples 10 to 36 minutes early. `ETHUSDT 1h` samples
+*after* the close (its poll phase happens to land just past the boundary),
+so its rows are correct — which is why the 1h pairs audit clean:
+
+```
+=== last 400 CLOSED bars, stored vs a canonical 200-bar recompute ===
+  SOLUSDT 1h:   0/400 differ (0.0%)    worst delta 0
+  ETHUSDT 1h:   0/400 differ (0.0%)    worst delta 0
+  BTCUSDT 1h:   0/400 differ (0.0%)    worst delta 0
+  SOLUSDT 4h: 399/400 differ (99.8%)   worst delta 458.679 (volume_regime)
+```
+
+**The source `ohlcv` is correct; only the indicator row is stale.**
+Comparing the stored `ohlcv` against Binance's own final values, bar for
+bar:
+
+```
+SOLUSDT 1h: final=299  PARTIAL=1   (only the currently-forming bar)
+SOLUSDT 4h: final=299  PARTIAL=1   (only the currently-forming bar)
+```
+
+Every closed bar matches Binance exactly. The `ohlcv` upsert
+(`src/ingest/db.py:92`) does revise the candle on close. But the *indicator*
+row for that bar was already written from the partial candle and is never
+recomputed, because the live path only ever writes the newest bar — by then
+a newer bar exists, so the closed bar's indicator row is frozen at its
+forming value forever.
+
+The signature of that freeze is diagnostic: `ema_200` barely moves (it is
+dominated by history) while `rsi_14`, `cci` and `vwap` move a lot (they
+depend on the current bar):
+
+```
+bar 2026-10-22 00:00  (closed)
+   vwap     stored=114.023302  recompute=113.886058   DIFF
+   rsi_14   stored= 60.141718  recompute= 56.634016   DIFF
+   ema_200  stored=110.948819  recompute=110.939640   DIFF
+   cci      stored= 51.495474  recompute= 21.012620   DIFF
+```
 
 Reconstructing the 4h series as it stood at compute time (using the 1h
 bars that existed then) reproduces the stored values:
