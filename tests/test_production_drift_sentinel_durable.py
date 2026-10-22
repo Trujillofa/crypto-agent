@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -236,6 +237,12 @@ def test_resolve_service_agent_id_reads_environ(monkeypatch) -> None:
 
 
 def test_analyze_drift_uses_durable_signal_source_when_available() -> None:
+    # The staleness check compares the signal age against the wall clock, so
+    # the timestamp must be relative to now. A hardcoded date turns this test
+    # into a time bomb: it passed while the date was fresh and started
+    # failing 24h later, with no code change.
+    last_signal_at = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+
     findings = analyze_drift(
         expected_branch="main",
         local_repo=None,
@@ -249,7 +256,7 @@ def test_analyze_drift_uses_durable_signal_source_when_available() -> None:
         signal_stale_hours=24,
         durable_signal_snapshot=DurableSignalSnapshot(
             event_count=4,
-            last_signal_at="2026-10-20T10:00:00+00:00",
+            last_signal_at=last_signal_at,
             read_ok=True,
             files_scanned=3,
         ),
@@ -433,7 +440,7 @@ def test_analyze_drift_flags_over_filtering() -> None:
         signal_stale_hours=24,
         durable_signal_snapshot=DurableSignalSnapshot(
             event_count=10,
-            last_signal_at="2026-10-20T10:00:00+00:00",
+            last_signal_at=(datetime.now(UTC) - timedelta(hours=1)).isoformat(),
             read_ok=True,
             files_scanned=3,
             ignored_count=8,
@@ -461,7 +468,7 @@ def test_analyze_drift_does_not_flag_over_filtering_when_signals_flow() -> None:
         signal_stale_hours=24,
         durable_signal_snapshot=DurableSignalSnapshot(
             event_count=10,
-            last_signal_at="2026-10-20T10:00:00+00:00",
+            last_signal_at=(datetime.now(UTC) - timedelta(hours=1)).isoformat(),
             read_ok=True,
             files_scanned=3,
             ignored_count=1,
@@ -532,7 +539,7 @@ def test_stale_finding_uses_cadence_adaptive_threshold() -> None:
         signal_stale_hours=72,
         durable_signal_snapshot=DurableSignalSnapshot(
             event_count=3,
-            last_signal_at="2026-10-14T00:00:00+00:00",
+            last_signal_at=(datetime.now(UTC) - timedelta(hours=1)).isoformat(),
             read_ok=True,
             files_scanned=3,
             received_count=3,
