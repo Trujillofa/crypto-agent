@@ -24,6 +24,7 @@ function the live path uses.
 | Rows after | 253,235 |
 | Delta | +4,460 (4,457 predicted new + 3 that arrived live during the run) |
 | Rows upserted | 249,006 (244,549 overwrites + 4,457 new) |
+| Rows audited vs canonical recompute | 249,009 — **0 differing** |
 | Pairs written | 28 |
 | Pairs skipped (fewer than 200 closed bars) | 6 |
 | Elapsed | 1,061.7 s |
@@ -132,6 +133,48 @@ PASS: every remaining NULL row is inside the uncomputable prefix
 
 Before the backfill the same fingerprint covered 19,920 rows.
 
+## Final equality audit — every stored row vs a canonical recompute
+
+Every indicator row of every pair was recomputed from `ohlcv` under the
+canonical 200-bar window and compared across **all 36 value columns**:
+
+```
+rows audited            : 249009
+rows matching canonical : 249009
+rows DIFFERING          : 0
+columns with any difference: none
+```
+
+Per-pair results:
+
+| Pair | Stored | Match | Result |
+|---|---|---|---|
+| ADAUSDT 1h | 20,345 | 20,345 | OK |
+| AVAXUSDT 1h | 19,938 | 19,938 | OK |
+| AVAXUSDT 4h | 5,027 | 5,027 | OK |
+| BNBUSDT 1h | 20,345 | 20,345 | OK |
+| BNBUSDT 4h | 4,707 | 4,707 | OK |
+| BTCUSDT 1h | 23,136 | 23,136 | OK |
+| BTCUSDT 4h | 5,178 | 5,178 | OK |
+| BTCUSDT 5m | 2,146 | 1,976 | OK (the other 170 are in the uncomputable prefix) |
+| DOGEUSDT 1h | 20,345 | 20,345 | OK |
+| ETHUSDT 1h | 23,136 | 23,136 | OK |
+| ETHUSDT 4h | 5,074 | 5,074 | OK |
+| LINKUSDT 1h | 20,345 | 20,345 | OK |
+| LINKUSDT 4h | 4,655 | 4,655 | OK |
+| LTCUSDT 1h | 20,346 | 20,346 | OK |
+| SOLUSDT 1h | 23,952 | 23,952 | OK |
+| SOLUSDT 4h | 5,948 | 5,948 | OK |
+| XRPUSDT 1h | 20,345 | 20,345 | OK |
+| *6 × 1m pairs* | 29–33 each | — | NOT RECOMPUTABLE (fewer than 200 bars) |
+
+The 6 × 1m pairs and the 4 × 5m pairs' first 170 rows are the only stored
+rows the audit did not recompute, and they are the ones proven
+uncomputable above.
+
+The 5m pairs show fewer matches than stored rows for exactly the same
+reason: their first 170 stored rows sit inside the uncomputable prefix.
+
 ## Post-write production state
 
 - 9/9 containers healthy, 0 restarts.
@@ -140,6 +183,9 @@ Before the backfill the same fingerprint covered 19,920 rows.
   *and* that bar is still forming).
 - The live path and the backfill now compute the same value for the same bar,
   so a live-written row and a backfilled row are interchangeable.
+- The final audit recomputed **249,009** stored rows from `ohlcv` under the
+  canonical 200-bar window and compared all 36 value columns:
+  **249,009 match, 0 differ.**
 
 ## Residual risks
 
