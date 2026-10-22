@@ -278,12 +278,53 @@ change.** The live path is byte-identical before and after this work
 `limit=200` → `limit=INDICATOR_WINDOW_BARS`, and the constant is 200).
 It is also **not** a money-path defect: see §6.
 
-It is a real bug and it is worth fixing, but it is a *different* bug from
-the one this branch was opened for, and it needs its own change: the
-indicator computer must either (a) skip the newest bar until its candle
-has closed, or (b) recompute the previous bar once the current one
-closes. Until then, the affected rows are stale-but-harmless, and the
-verifier must not treat them as live-owned.
+### 5c. The fix (implemented)
+
+The defect had two possible repairs: (a) skip the newest bar until its
+candle has closed, or (b) recompute the previous bar once the current one
+closes. **(a) is the one that was implemented**, because it is strictly
+simpler and needs no state:
+
+`src/features/computer.py` now:
+
+1. reads `INDICATOR_WINDOW_BARS + 1` OHLCV bars, including each bar's
+   `close_time`;
+2. finds the newest bar whose `close_time <= now` (the newest **closed**
+   candle);
+3. computes the indicators over exactly the canonical trailing 200 **closed**
+   candles, and publishes the row at that closed bar's timestamp.
+
+Reading one bar extra matters: with a forming newest bar, reading exactly
+200 and discarding the forming one would leave 199 bars, which is a
+*different* window and therefore a different indicator value. The window
+must stay exactly `INDICATOR_WINDOW_BARS` closed candles for a live row to
+be comparable with a backfilled row.
+
+Two consequences worth stating explicitly:
+
+- **The published row is final.** A closed candle never changes, so the
+  row the live path writes for it is correct forever. The frozen-partial
+  value cannot recur.
+- **The live path now lags the newest bar by one.** While a candle is
+  forming, the newest indicator row is the previous (closed) bar. The
+  strategy engine reads the two newest rows for crossover detection, so it
+  evaluates a genuinely closed bar — which is what it should have been
+  doing all along.
+
+The consistency verifier was updated to match: a pair counts as
+live-owned when its newest indicator row tracks the newest *closed* OHLCV
+bar, not the newest OHLCV row. Without that change the verifier would
+have stopped recognising live pairs as live and silently stopped
+checking them.
+
+Regression tests live in `tests/test_forming_candle_live_path.py` and pin
+the behaviour rather than the implementation: a forming bar is never
+selected, a closed bar always is, the window is exactly 200 closed bars
+regardless of forming state, and the published bar is never a forming one.
+
+**This fixes the defect going forward; it does not repair the historical
+rows.** The rows already written from forming candles stay wrong until the
+historical backfill rewrites them. See §7.
 
 ### 6. The money path is NOT affected
 

@@ -221,8 +221,15 @@ async def verify_pair(
     # whose newest indicator row is months behind the newest OHLCV bar was
     # written once by a backfill and is never touched again, so its newest row
     # is not expected to match the live definition.
+    #
+    # The live path publishes the newest CLOSED candle, not the newest bar:
+    # the REST poller writes Binance's in-progress kline, and publishing it
+    # would freeze the row at a partial value forever. So the newest
+    # indicator row tracks the newest *closed* OHLCV bar, which is one bar
+    # behind the newest OHLCV row while a candle is forming.
     newest_ohlcv_time = ohlcv_rows[-1]["time"]
-    tracks_ohlcv = newest_time == newest_ohlcv_time
+    newest_closed_ohlcv_time = ohlcv_rows[-2]["time"] if len(ohlcv_rows) >= 2 else None
+    tracks_ohlcv = newest_time in (newest_ohlcv_time, newest_closed_ohlcv_time)
     is_fresh = (datetime.now(UTC) - newest_time) <= timedelta(hours=LIVE_FRESHNESS_HOURS)
     pair_is_live = tracks_ohlcv and is_fresh
     result.live_owned = pair_is_live
