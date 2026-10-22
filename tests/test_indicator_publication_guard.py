@@ -176,6 +176,33 @@ async def test_source_forming_bar_is_detected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_source_forming_bar_reports_how_long_it_has_been_open() -> None:
+    """The forming bar's open duration is what makes the alert usable.
+
+    A bar is normally open for the whole of its period, so a fixed
+    threshold would fire constantly on 4h pairs and never on a stuck 1h
+    pair. The metric has to report the DURATION so the alert can compare
+    it against the bar's own period.
+    """
+    metrics = IndicatorMetrics()
+    computer = _computer(_series(250, forming=True), metrics)
+
+    await computer._compute_symbol("TESTUSDT")
+
+    forming_for = metrics.source_newest_bar_forming_for.labels(
+        symbol="TESTUSDT", timeframe="1h"
+    )._value.get()
+    assert forming_for is not None
+    # The fixture's forming bar closes 3 hours from now.
+    assert forming_for > 2.5 * 3600, f"expected ~3h, got {forming_for}"
+    assert forming_for < 3.5 * 3600, f"expected ~3h, got {forming_for}"
+
+    # And the period, so the alert can compare the two.
+    period = metrics.published_bar_period.labels(symbol="TESTUSDT", timeframe="1h")._value.get()
+    assert period == 3600
+
+
+@pytest.mark.asyncio
 async def test_source_fully_closed_is_not_flagged() -> None:
     """A fully closed source table must not be flagged."""
     metrics = IndicatorMetrics()

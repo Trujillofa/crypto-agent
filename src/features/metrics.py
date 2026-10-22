@@ -117,6 +117,22 @@ indicator_source_newest_bar_was_forming = Gauge(
     ["symbol", "timeframe"],
 )
 
+# Gauge: how long the newest source row has been open, in seconds.
+#
+# This is what makes the "forming bar" alert usable: a bar is normally
+# open for the whole of its period, so a FIXED threshold either fires
+# constantly on 4h pairs or never fires on a stuck 1h pair. Comparing
+# this against the bar's own period is exact -- a forming bar becomes
+# anomalous precisely when it has been open for LONGER than its period,
+# because by then it should have closed.
+indicator_source_newest_bar_forming_for_seconds = Gauge(
+    "indicator_source_newest_bar_forming_for_seconds",
+    "Seconds the newest source ohlcv row has been open. Compare against "
+    "the bar period: a value larger than the period means the bar should "
+    "have closed already.",
+    ["symbol", "timeframe"],
+)
+
 # Gauge: the timeframe's period in seconds.
 #
 # This exists so the staleness alert can be expressed in BAR PERIODS
@@ -169,6 +185,7 @@ class IndicatorMetrics:
         self.published_bar_was_forming = indicator_published_bar_was_forming
         self.published_bar_period = indicator_published_bar_period_seconds
         self.source_newest_bar_was_forming = indicator_source_newest_bar_was_forming
+        self.source_newest_bar_forming_for = indicator_source_newest_bar_forming_for_seconds
 
     def start_computation_loop(self) -> None:
         """Mark computation loop as running."""
