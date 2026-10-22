@@ -197,3 +197,37 @@ def test_backfill_script_write_is_guarded_by_dry_run(script_name: str) -> None:
 
     assert "if not dry_run:" in text, f"{script_name} writes without a dry-run guard"
     assert "--dry-run" in text, f"{script_name} has no --dry-run flag"
+
+
+def test_live_path_owns_exactly_one_indicator_row() -> None:
+    """The live computer writes ONE row per pair: the newest bar.
+
+    `src/features/computer.py` computes indicators from the newest 200
+    bars and writes a single row at `latest_time`. Every other row in the
+    table is frozen history that the live path never revisits.
+
+    The consistency verifier therefore has to treat exactly one row as
+    live-owned. If it claims more, it will flag historical rows that the
+    live path has already moved past (for example the 4h rows computed
+    from a forming candle) as live defects, which is a false alarm.
+    """
+    from scripts.verify_indicator_consistency import LIVE_OWNED_ROWS
+
+    assert LIVE_OWNED_ROWS == 1
+
+
+def test_live_computer_writes_only_the_newest_bar() -> None:
+    """Pin the invariant the verifier depends on.
+
+    If the live computer ever starts writing more than the newest bar,
+    `LIVE_OWNED_ROWS` has to be revisited — so assert the behaviour that
+    makes 1 correct, rather than the constant alone.
+    """
+    source = (
+        Path(__file__).resolve().parent.parent / "src" / "features" / "computer.py"
+    ).read_text()
+
+    # The written timestamp is the newest OHLCV time, and there is exactly
+    # one write call in the method.
+    assert "latest_time" in source
+    assert source.count("await self._writer.write_indicators(stored)") == 1
