@@ -69,6 +69,77 @@ indicator_writes_total = Counter(
     ["symbol", "status"],
 )
 
+# Gauge: the age of the newest PUBLISHED indicator bar, in seconds,
+# measured from that bar's own close_time to the moment of publication.
+#
+# This is the guard against publishing a forming candle. A published bar
+# whose close_time is still in the future is a bar that was written
+# before it finished forming -- the defect that froze a partial 4h value
+# in the table and could never be corrected, because the live path only
+# ever writes the newest bar.
+#
+# For a correctly published bar this is a small positive number: the
+# time between the bar closing and the computer getting to it. For a
+# forming bar it is NEGATIVE. A negative value is not "old data", it is
+# a bar that had not closed yet.
+indicator_published_bar_age_seconds = Gauge(
+    "indicator_published_bar_age_seconds",
+    "Seconds between the published bar's close_time and the moment it was "
+    "published. Negative means the bar was still forming when it was written.",
+    ["symbol", "timeframe"],
+)
+
+# Gauge: the timestamp of the newest published indicator bar.
+indicator_published_bar_timestamp_seconds = Gauge(
+    "indicator_published_bar_timestamp_seconds",
+    "Unix timestamp of the newest published indicator bar.",
+    ["symbol", "timeframe"],
+)
+
+# Gauge: 1 if the newest row in the SOURCE ohlcv table is still forming.
+#
+# This is the ROOT CAUSE guard, and it sits upstream of the publication
+# guard above. The original defect began in the ingest layer: the REST
+# poller wrote the in-progress kline, so the source table itself held a
+# bar that had not closed. The computer then inherited it.
+#
+# The computer skips forming rows when it publishes, so this defect is
+# invisible in the indicators table -- but the source table is still
+# wrong, and the next writer (or a backfill) may pick it up. Detecting it
+# here catches the cause rather than the symptom.
+#
+# The data is already loaded (the computer reads close_time to decide
+# which bar is closed), so this costs no extra query.
+indicator_source_newest_bar_was_forming = Gauge(
+    "indicator_source_newest_bar_was_forming",
+    "1 if the newest row in the source ohlcv table has not closed yet, "
+    "0 otherwise. 1 means the ingest layer wrote a forming candle.",
+    ["symbol", "timeframe"],
+)
+
+# Gauge: the timeframe's period in seconds.
+#
+# This exists so the staleness alert can be expressed in BAR PERIODS
+# rather than in wall-clock seconds. A 1h pair's newest published bar is
+# naturally up to ~1h old, and a 4h pair's is naturally up to ~4h old --
+# a fixed "older than 1h" threshold would fire constantly for every 4h
+# pair. Comparing age against the period makes the same threshold mean
+# the same thing for every timeframe.
+indicator_published_bar_period_seconds = Gauge(
+    "indicator_published_bar_period_seconds",
+    "The timeframe period in seconds, used to express staleness in bar periods.",
+    ["symbol", "timeframe"],
+)
+
+# Gauge: 1 if the newest published bar was still forming at publication
+# time. Kept as a separate 0/1 gauge so an alert can fire on it directly
+# rather than on a sign comparison.
+indicator_published_bar_was_forming = Gauge(
+    "indicator_published_bar_was_forming",
+    "1 if the newest published indicator bar was still forming when it was written, 0 otherwise.",
+    ["symbol", "timeframe"],
+)
+
 # Histogram for write latency
 write_latency_seconds = Histogram(
     "indicator_write_latency_seconds",
@@ -93,6 +164,11 @@ class IndicatorMetrics:
         self.running = computation_running
         self.writes_total = indicator_writes_total
         self.write_latency = write_latency_seconds
+        self.published_bar_age = indicator_published_bar_age_seconds
+        self.published_bar_timestamp = indicator_published_bar_timestamp_seconds
+        self.published_bar_was_forming = indicator_published_bar_was_forming
+        self.published_bar_period = indicator_published_bar_period_seconds
+        self.source_newest_bar_was_forming = indicator_source_newest_bar_was_forming
 
     def start_computation_loop(self) -> None:
         """Mark computation loop as running."""

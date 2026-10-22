@@ -123,3 +123,104 @@ groups:
         annotations:
           summary: "Offsite backup failed ({{ $labels.instance }})"
           description: "An offsite backup run failed in the last hour on {{ $labels.instance }}. The local copy exists but there is no verified offsite copy."
+
+      # ------------------------------------------------------------------
+      # Indicator layer.
+      #
+      # The indicator layer is where both of this system's worst defects
+      # lived (a frozen forming-candle value, and a silent drift between
+      # four writers), and until now NOTHING monitored it. The alerts below
+      # cover the failure modes that are invisible in the table itself.
+      # ------------------------------------------------------------------
+
+      # ROOT CAUSE: the ingest layer wrote a candle that had not closed.
+      #
+      # This is where the original defect actually started: the REST
+      # poller wrote the in-progress kline into the source ohlcv table.
+      # The computer now skips forming rows when publishing, so this never
+      # reaches the indicators table -- but the SOURCE table is wrong, and
+      # the next writer (or a backfill) may pick it up.
+      #
+      # This fires for a normal, expected moment too: a bar is forming
+      # between its open and its close, and the ingest layer legitimately
+      # tracks it. So this is a WARNING with a long `for`: a bar that is
+      # still open after its period has elapsed is a stuck poller, not a
+      # bar that is simply between its open and close.
+      - alert: SourceOhlcvFormingBarLingering
+        expr: indicator_source_newest_bar_was_forming == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source OHLCV still holds a forming candle ({{ $labels.symbol }} {{ $labels.timeframe }})"
+          description: "The newest row in the source ohlcv table has not closed, and has been like that for 30 minutes. Either the ingest poller is not advancing, or it is stuck writing a bar that never completes. The indicator layer skips forming rows, so the indicators are not affected directly -- but the source table is wrong."
+
+      # A bar was published before it finished forming.
+      #
+      # The live path writes only the newest bar, and it never revisits an
+      # old row. So a bar written while still forming is frozen at a
+      # partial value FOREVER: no later computation corrects it, and the
+      # row looks like any other row. The only way to see it is to compare
+      # the bar's own close_time against the moment of publication -- a
+      # negative age.
+      #
+      # indicator_published_bar_was_forming is the 0/1 version of that
+      # comparison, so the alert does not depend on a sign.
+      - alert: IndicatorPublishedFormingBar
+        expr: indicator_published_bar_was_forming == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Forming candle published as an indicator ({{ $labels.symbol }} {{ $labels.timeframe }})"
+          description: "The indicator computer published a bar that had not closed yet. Because the live path only ever writes the newest bar and never revisits an old one, that row is frozen at a partial value permanently. Check the ingest poller is not writing the in-progress kline."
+
+      # The published indicator bar is far older than it should be.
+      #
+      # Staleness is measured in BAR PERIODS, not wall-clock seconds: a 4h
+      # pair's newest published bar is naturally up to four hours old, so
+      # a fixed "older than 1h" threshold would fire constantly for every
+      # 4h pair. "More than 2 bar periods old" means the same thing for
+      # every timeframe.
+      #
+      # Normally the age is the delay between a bar closing and the
+      # computer writing it -- seconds to a couple of minutes. Exceeding
+      # two periods means the computer stopped advancing, or it is stuck
+      # on an old bar while the market moves on. That is the "drift"
+      # condition: the table looks populated, and every row is quietly
+      # out of date.
+      - alert: IndicatorPublishedBarStale
+        expr: indicator_published_bar_age_seconds > 2 * indicator_published_bar_period_seconds
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Indicator bar is stale ({{ $labels.symbol }} {{ $labels.timeframe }})"
+          description: "The newest published indicator bar is more than 2 bar periods old. The table looks populated but is drifting out of date. Check the indicator computer loop."
+
+      # The indicator computation loop is not running.
+      - alert: IndicatorComputationStopped
+        expr: indicator_computation_running == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Indicator computation loop stopped ({{ $labels.instance }})"
+          description: "The indicator computer reports it is not running. Indicators in the table are frozen at their last computed values. Check the agent logs."
+
+      # A pair that HAS published before has stopped publishing.
+      #
+      # The universe of pairs that should have indicators is not fixed
+      # enough to assert a count, so this is deliberately narrow: it fires
+      # only when a pair that published before has published nothing for a
+      # long time. That is the "the computer is alive but wedged on this
+      # pair" case. The threshold is in bar periods too, so a 4h pair is
+      # given proportionally more room than a 1h pair.
+      - alert: IndicatorPairStoppedPublishing
+        expr: indicator_published_bar_timestamp_seconds > 0 and (time() - indicator_published_bar_timestamp_seconds) > 24 * indicator_published_bar_period_seconds
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Indicator pair stopped publishing ({{ $labels.symbol }} {{ $labels.timeframe }})"
+          description: "This pair published indicators more than 24 bar periods ago and has published nothing since. The rows for this pair are frozen."

@@ -15,6 +15,30 @@ from src.features.technical import (
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
+# Minutes per supported timeframe.
+_TIMEFRAME_MINUTES: dict[str, int] = {
+    "1m": 1,
+    "5m": 5,
+    "15m": 15,
+    "1h": 60,
+    "4h": 240,
+    "1d": 1440,
+}
+
+
+def _timeframe_seconds(timeframe: str) -> float:
+    """The period of a timeframe in seconds.
+
+    Used to express indicator staleness in BAR PERIODS rather than
+    wall-clock seconds: a 4h pair's newest published bar is naturally up
+    to four hours old, so a fixed threshold would false-positive for most
+    of the day.
+
+    Unknown timeframes fall back to one hour, which keeps the metric
+    meaningful (and the alert conservative) rather than dividing by zero.
+    """
+    return float(_TIMEFRAME_MINUTES.get(timeframe, 60) * 60)
+
 
 class IndicatorComputer:
     """Periodically computes and stores technical indicators from OHLCV data."""
@@ -119,6 +143,10 @@ class IndicatorComputer:
                 if key not in ("close_time", "time")
             }
             closed_times = list(ohlcv_data["time"])[: closed_index + 1]
+            # The close_time of each bar, aligned with `closed_times`. The
+            # bar's OPEN time is not the same as the moment it finished
+            # forming, and the guard below needs the latter.
+            closed_close_times = list(ohlcv_data.get("close_time") or [])[: closed_index + 1]
             if len(closed_times) < INDICATOR_WINDOW_BARS:
                 self._logger.info(
                     "Not enough closed candles for %s: have %d, need %d",
@@ -143,12 +171,67 @@ class IndicatorComputer:
                 ).inc()
                 return
 
-            # The published bar is the newest CLOSED candle.
+            # The published bar is the newest CLOSED candle. `latest_time`
+            # is the bar's OPEN time, which is the row's primary key.
             latest_time_value = closed_times[-1] if closed_times else None
             if isinstance(latest_time_value, datetime):
                 latest_time = latest_time_value
             else:
                 latest_time = datetime.now(UTC)
+
+            # Guard: record how long ago the published bar FINISHED
+            # forming, measured from the bar's own close_time.
+            #
+            # A correct publication is a small positive number: the bar
+            # closed, then we wrote it. A NEGATIVE number means the bar had
+            # not closed yet when it was written -- the forming-candle
+            # defect. That defect is invisible in the table, because the
+            # row looks like any other row; but since the live path only
+            # ever writes the newest bar and never revisits an old one,
+            # the value stays frozen at a partial state forever.
+            #
+            # The close_time is what matters here, NOT the open time: a
+            # 1h bar opened at 10:00 is still forming until 10:59:59, and
+            # using its open time would report a bar as an hour old the
+            # moment it opens.
+            labels = {"symbol": symbol, "timeframe": self._timeframe}
+            now = datetime.now(UTC)
+            close_value = closed_close_times[-1] if closed_close_times else latest_time
+            if isinstance(close_value, datetime):
+                bar_closed_at = close_value
+                if bar_closed_at.tzinfo is None:
+                    bar_closed_at = bar_closed_at.replace(tzinfo=UTC)
+            else:
+                bar_closed_at = latest_time
+            bar_age = (now - bar_closed_at).total_seconds()
+            self._metrics.published_bar_age.labels(**labels).set(bar_age)
+            self._metrics.published_bar_timestamp.labels(**labels).set(bar_closed_at.timestamp())
+            self._metrics.published_bar_was_forming.labels(**labels).set(1 if bar_age < 0 else 0)
+            self._metrics.published_bar_period.labels(**labels).set(
+                _timeframe_seconds(self._timeframe)
+            )
+
+            # Root-cause guard: is the NEWEST row in the source ohlcv table
+            # still forming?
+            #
+            # The original defect began in the ingest layer, which wrote
+            # the in-progress kline into the source table. The computer
+            # correctly skips forming rows when publishing, so that defect
+            # never reaches the indicators table -- but the SOURCE table is
+            # still wrong, and the next writer (or a backfill) may pick it
+            # up. The source data is already loaded here, so this costs no
+            # extra query.
+            source_close_times = list(ohlcv_data.get("close_time") or [])
+            if source_close_times:
+                newest_source_close = source_close_times[-1]
+                if isinstance(newest_source_close, datetime):
+                    if newest_source_close.tzinfo is None:
+                        newest_source_close = newest_source_close.replace(tzinfo=UTC)
+                    self._metrics.source_newest_bar_was_forming.labels(**labels).set(
+                        1 if newest_source_close > now else 0
+                    )
+                else:
+                    self._metrics.source_newest_bar_was_forming.labels(**labels).set(0)
 
             # Update Prometheus metrics
             self._metrics.rsi.labels(symbol=symbol, period="14").set(indicators.rsi_14)
