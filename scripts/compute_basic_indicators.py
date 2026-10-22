@@ -9,15 +9,23 @@ import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypedDict
 
 from src.db.pool import close_pool, get_pool, init_pool
-from src.features.technical import TechnicalIndicators, compute_indicators
+from src.features.technical import (
+    INDICATOR_WINDOW_BARS,
+    TechnicalIndicators,
+    compute_indicators_for_window,
+)
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_LOOKBACK = 250
+# The backfill must use the same window as the live path, otherwise a
+# backfilled row and a live-written row for the same bar hold different
+# values under the same primary key.
+DEFAULT_LOOKBACK = INDICATOR_WINDOW_BARS
 
 
 @dataclass(frozen=True)
@@ -25,6 +33,17 @@ class ComputeArgs:
     symbol: str
     timeframe: str
     lookback: int
+    dry_run: bool = False
+
+
+class DbConfig(TypedDict):
+    """Database settings, with the key names `src/db/pool.py` expects."""
+
+    host: str
+    port: int
+    name: str
+    user: str
+    password: str
 
 
 def parse_args(argv: Sequence[str] | None = None) -> ComputeArgs:
@@ -39,32 +58,44 @@ def parse_args(argv: Sequence[str] | None = None) -> ComputeArgs:
         default=DEFAULT_LOOKBACK,
         help=f"Rolling window size used for indicator computation (default: {DEFAULT_LOOKBACK})",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be written without touching the database",
+    )
     parsed = parser.parse_args(argv)
     return ComputeArgs(
         symbol=parsed.symbol.upper(),
         timeframe=parsed.timeframe,
         lookback=parsed.lookback,
+        dry_run=parsed.dry_run,
     )
 
 
-def build_db_config(env: Mapping[str, str] | None = None) -> dict[str, object]:
+def build_db_config(env: Mapping[str, str] | None = None) -> DbConfig:
+    """Resolve the database settings from the environment.
+
+    Two variable names are in use for the same thing: `DB_*` (the convention
+    the backfill scripts document) and `POSTGRES_*` (what the docker-compose
+    service and the live agent actually export). `DB_*` wins when both are
+    present, so an operator can override the container's defaults.
+
+    The returned keys are the ones `src/db/pool.py::init_pool` expects.
+    """
     source = env or os.environ
-    return {
-        "host": source.get("DB_HOST", "localhost"),
-        "port": int(source.get("DB_PORT", 15432)),
-        "name": source.get("DB_NAME", "marketdata"),
-        "user": source.get("DB_USER", "trading"),
-        "password": source.get("DB_PASSWORD", "change_me"),
-    }
 
+    def pick(db_key: str, postgres_key: str, default: str) -> str:
+        value = source.get(db_key)
+        if value:
+            return value
+        return source.get(postgres_key) or default
 
-def rows_to_ohlcv_series(rows: Sequence[Mapping[str, object]]) -> dict[str, list[float]]:
     return {
-        "open": [float(row["open_price"]) for row in rows],
-        "high": [float(row["high_price"]) for row in rows],
-        "low": [float(row["low_price"]) for row in rows],
-        "close": [float(row["close_price"]) for row in rows],
-        "volume": [float(row["volume"]) for row in rows],
+        "host": pick("DB_HOST", "POSTGRES_HOST", "localhost"),
+        "port": int(pick("DB_PORT", "POSTGRES_PORT", "15432")),
+        "name": pick("DB_NAME", "POSTGRES_DB", "marketdata"),
+        "user": pick("DB_USER", "POSTGRES_USER", "trading"),
+        "password": pick("DB_PASSWORD", "POSTGRES_PASSWORD", "change_me"),
     }
 
 
@@ -141,6 +172,7 @@ async def process_rows(
     timeframe: str,
     lookback: int,
     writer: IndicatorWriter,
+    dry_run: bool = False,
 ) -> tuple[int, int]:
     if len(rows) < lookback:
         raise ValueError(f"Not enough data. Have {len(rows)}, need at least {lookback}")
@@ -148,12 +180,12 @@ async def process_rows(
     processed = 0
     errors = 0
 
-    for index in range(lookback, len(rows)):
-        window = rows[max(0, index - lookback) : index + 1]
-        data = rows_to_ohlcv_series(window)
-
+    # The first computable bar is the one with a full window behind it:
+    # index `lookback - 1`, because the window is `lookback` bars ending at
+    # (and including) the bar being computed.
+    for index in range(lookback - 1, len(rows)):
         try:
-            indicators = compute_indicators(data)
+            indicators = compute_indicators_for_window(rows, index=index, window=lookback)
         except Exception as exc:  # noqa: BLE001
             errors += 1
             if errors <= 5:
@@ -168,7 +200,8 @@ async def process_rows(
             timeframe=timeframe,
             indicators=indicators,
         )
-        await writer.write_indicators(stored)
+        if not dry_run:
+            await writer.write_indicators(stored)
         processed += 1
 
         if processed % 500 == 0:
@@ -203,10 +236,13 @@ async def compute_and_store_indicators(args: ComputeArgs) -> tuple[int, int]:
                 timeframe=args.timeframe,
                 lookback=args.lookback,
                 writer=writer,
+                dry_run=args.dry_run,
             )
 
+        verb = "Would compute" if args.dry_run else "Computed and stored"
         logger.info(
-            "Done! Computed and stored %s rows for %s %s (%s errors)",
+            "Done! %s %s rows for %s %s (%s errors)",
+            verb,
             processed,
             args.symbol,
             args.timeframe,

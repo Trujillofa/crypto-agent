@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from src.db.pool import get_pool
 from src.features.metrics import IndicatorMetrics
-from src.features.technical import compute_indicators
+from src.features.technical import INDICATOR_WINDOW_BARS, compute_indicators
 from src.features.writer import IndicatorWriter, StoredIndicator
 from src.utils.logger import get_logger
 
@@ -78,7 +78,7 @@ class IndicatorComputer:
             computation_start = time.perf_counter()
 
             # Read OHLCV data (need at least 200 periods for long-term indicators)
-            ohlcv_data = await self._read_ohlcv(symbol, limit=200)
+            ohlcv_data = await self._read_ohlcv(symbol, limit=INDICATOR_WINDOW_BARS)
 
             if not ohlcv_data:
                 self._logger.warning("No OHLCV data found for %s", symbol)
