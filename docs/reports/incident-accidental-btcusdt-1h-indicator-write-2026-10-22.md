@@ -75,8 +75,29 @@ than before the write, not worse. (23,134 stored rows vs 23,127 written: the
 7-row difference is the 200-bar warm-up boundary plus rows written since by
 the live agent.)
 
-The live consistency verifier confirms the same for the live-owned row, and
-all four currently live-updated pairs agree:
+### 4.1 Whole-table writer census
+
+Every row in the `indicators` table was classified by which writer produced
+it, by reproducing the stored VWAP at three candidate window lengths using
+the production VWAP formula (typical price `(H+L+C)/3`, not close):
+
+```
+symbol     tf      rows    w=200    w=251    w=751    other  dominant
+  BTCUSDT  1h     23134    23134        0        0        0  w=200 (23134)
+  SOLUSDT  1h     23945     3939       55    19371      580  w=751 (19371)
+  SOLUSDT  4h      5800        9       50     4389     1352  w=751 (4389)
+  ETHUSDT  1h     22653     4018      128        0    18507  w=200 (4018)
+  LINKUSDT 1h     19794        0        2    19792        0  w=751 (19792)
+  ...
+TOTALS  w200=39169  w251=29904  w751=124042  other=52451
+```
+
+`BTCUSDT 1h` is **23,134 / 23,134 at w=200** — the only large pair with no
+legacy residue at all. The `other` bucket is concentrated in the `4h` pairs,
+where the row was computed from a *forming* candle and so matches no
+closed-bar window at all (see the indicator-vintage report §5b).
+
+### 4.2 The live consistency verifier agrees
 
 ```
 BTCUSDT 1h    1/1  OK
