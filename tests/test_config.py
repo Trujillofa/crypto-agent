@@ -120,6 +120,18 @@ class TestLoadSettings:
         assert settings.ai.zai_base_url == "https://api.z.ai/api/paas/v4"
         assert settings.ai.zai_api_key == ""  # empty unless ZAI_API_KEY is set
 
+    def test_loads_opencode_go_key_from_environment(self, config_file: Path, monkeypatch) -> None:
+        """OpenCode Go credentials are sourced from the runtime env, not YAML."""
+        monkeypatch.setenv("OPENCODE_GO_API_KEY", "test-opencode-key")
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {"enabled": True, "provider": "zai", "model": "glm-5.3-flash"}
+        config_file.write_text(yaml.dump(raw))
+
+        settings = load_settings(config_file)
+
+        assert settings.ai.opencode_go_api_key == "test-opencode-key"
+        assert settings.ai.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
+
     def test_invalid_type_raises_error(self) -> None:
         """Test that invalid types in config raise ValueError."""
         config = {

@@ -139,9 +139,11 @@ telegram:
 
 ai:
   enabled: true
-  provider: deepseek
+  provider: zai
+  model: glm-5.3-flash
   polling_interval: 60.0
   fallback_model: deepseek-v4-pro
+  opencode_go_base_url: https://opencode.ai/zen/go/v1
   max_history: 10
   allowed_chat_ids: []
   api_key: ""

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,6 +21,17 @@ def _make_permission_denied() -> openai.PermissionDeniedError:
     mock_response.status_code = 403
     mock_response.headers = {}
     return openai.PermissionDeniedError("forbidden", response=mock_response, body=None)
+
+
+def _make_insufficient_balance() -> openai.RateLimitError:
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.headers = {}
+    return openai.RateLimitError(
+        "Insufficient balance or no resource package",
+        response=mock_response,
+        body={"error": {"message": "Insufficient balance or no resource package"}},
+    )
 
 
 @pytest.mark.asyncio
@@ -242,3 +254,180 @@ async def test_deepseek_primary_does_not_call_xai() -> None:
     assert response == ChatResult(
         content="deepseek-primary", provider="deepseek", model="deepseek-v4-pro"
     )
+
+
+@pytest.mark.asyncio
+async def test_chat_uses_daily_discovered_opencode_free_fallback() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    fallback_create = AsyncMock(return_value=_make_completion("free-fallback-ok"))
+    fallback_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create)),
+        models=SimpleNamespace(
+            list=AsyncMock(
+                return_value=SimpleNamespace(
+                    data=[
+                        SimpleNamespace(id="paid-model"),
+                        SimpleNamespace(id="beam-free"),
+                    ]
+                )
+            )
+        ),
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, fallback_client],
+    ):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            base_url="https://api.z.ai/api/paas/v4",
+            opencode_go_api_key="opencode-test-key",
+        )
+        response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == ChatResult(
+        content="free-fallback-ok", provider="opencode-go", model="beam-free"
+    )
+    fallback_client.models.list.assert_awaited_once()
+    fallback_create.assert_awaited_once_with(
+        model="beam-free",
+        messages=[{"role": "user", "content": "ping"}],
+        temperature=0.2,
+    )
+
+
+@pytest.mark.asyncio
+async def test_opencode_catalog_refreshes_daily_and_never_selects_paid_models() -> None:
+    model_list = AsyncMock(
+        side_effect=[
+            SimpleNamespace(data=[SimpleNamespace(id="beam-free"), SimpleNamespace(id="paid")]),
+            SimpleNamespace(data=[SimpleNamespace(id="new-free-model")]),
+        ]
+    )
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock())),
+        models=SimpleNamespace(list=model_list),
+    )
+
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            opencode_go_api_key="opencode-test-key",
+        )
+        first = await client._resolve_opencode_free_model()
+        assert await client._resolve_opencode_free_model() == first
+        assert model_list.await_count == 1
+        client._opencode_model_date = datetime.now(UTC).date() - timedelta(days=1)
+        second = await client._resolve_opencode_free_model()
+
+    assert first == "beam-free"
+    assert second == "new-free-model"
+    assert model_list.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_opencode_catalog_without_free_models_fails_closed() -> None:
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock())),
+        models=SimpleNamespace(
+            list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="paid-model")]))
+        ),
+    )
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            opencode_go_api_key="opencode-test-key",
+        )
+        with pytest.raises(RuntimeError, match="no advertised free models"):
+            await client._resolve_opencode_free_model()
+        with pytest.raises(RuntimeError, match="no advertised free models"):
+            await client._resolve_opencode_free_model()
+
+    fake_client.models.list.assert_awaited_once()
+    fake_client.chat.completions.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_zai_tries_opencode_then_xai_fallback() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    opencode_create = AsyncMock(side_effect=_make_permission_denied())
+    opencode_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=opencode_create)),
+        models=SimpleNamespace(
+            list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")]))
+        ),
+    )
+    xai_create = AsyncMock(return_value=_make_completion("xai-fallback-ok"))
+    xai_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=xai_create))
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, opencode_client, xai_client],
+    ):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            opencode_go_api_key="opencode-test-key",
+            xai_fallback_api_key="xai-test-key",
+        )
+        response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == ChatResult(
+        content="xai-fallback-ok", provider="xai", model="grok-4-1-fast-reasoning"
+    )
+    primary_create.assert_awaited_once()
+    opencode_create.assert_awaited_once()
+    xai_create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_primary_insufficient_balance_skips_retries_and_opencode_model_list_is_cached():
+    primary_create = AsyncMock(side_effect=_make_insufficient_balance())
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    fallback_create = AsyncMock(
+        side_effect=[_make_completion("free-one"), _make_completion("free-two")]
+    )
+    catalog_list = AsyncMock(
+        return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")])
+    )
+    opencode_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create)),
+        models=SimpleNamespace(list=catalog_list),
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI", side_effect=[primary_client, opencode_client]
+    ):
+        with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            client = XAIClient(
+                api_key="zai-key",
+                model="glm-5.3-flash",
+                provider="zai",
+                opencode_go_api_key="opencode-test-key",
+            )
+            first = await client.chat([{"role": "user", "content": "one"}])
+            second = await client.chat([{"role": "user", "content": "two"}])
+
+    assert first.provider == "opencode-go"
+    assert second.provider == "opencode-go"
+    primary_create.assert_awaited_once()
+    catalog_list.assert_awaited_once()
+    assert fallback_create.await_count == 2
+    mock_sleep.assert_not_awaited()

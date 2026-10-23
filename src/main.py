@@ -151,6 +151,9 @@ class AISettings:
     fallback_base_url: str = "https://api.deepseek.com/v1"
     zai_api_key: str = ""
     zai_base_url: str = "https://api.z.ai/api/paas/v4"
+    opencode_go_api_key: str = ""
+    opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
+    xai_fallback_model: str = "grok-4-1-fast-reasoning"
 
 
 @dataclass(frozen=True)
@@ -414,6 +417,7 @@ def load_settings(config_path: Path) -> Settings:
     zai_api_key = _as_str(ai.get("zai_api_key"), "ai.zai_api_key", default="")
     if not zai_api_key:
         zai_api_key = os.getenv("ZAI_API_KEY", "").strip()
+    opencode_go_api_key = os.getenv("OPENCODE_GO_API_KEY", "").strip()
 
     ai_settings = AISettings(
         enabled=_as_bool(ai.get("enabled"), "ai.enabled", default=False),
@@ -455,6 +459,17 @@ def load_settings(config_path: Path) -> Settings:
             ai.get("zai_base_url"),
             "ai.zai_base_url",
             default="https://api.z.ai/api/paas/v4",
+        ),
+        opencode_go_api_key=opencode_go_api_key,
+        opencode_go_base_url=_as_str(
+            ai.get("opencode_go_base_url"),
+            "ai.opencode_go_base_url",
+            default="https://opencode.ai/zen/go/v1",
+        ),
+        xai_fallback_model=_as_str(
+            ai.get("xai_fallback_model"),
+            "ai.xai_fallback_model",
+            default="grok-4-1-fast-reasoning",
         ),
     )
 
@@ -1035,6 +1050,10 @@ async def run() -> None:
                     model=settings.ai.model,
                     base_url=settings.ai.zai_base_url,
                     provider="zai",
+                    opencode_go_api_key=settings.ai.opencode_go_api_key,
+                    opencode_go_base_url=settings.ai.opencode_go_base_url,
+                    xai_fallback_api_key=settings.ai.api_key,
+                    xai_fallback_model=settings.ai.xai_fallback_model,
                 )
             else:
                 logger.warning(
@@ -1047,6 +1066,10 @@ async def run() -> None:
                     model=settings.ai.fallback_model,
                     base_url=settings.ai.fallback_base_url,
                     provider="deepseek",
+                    opencode_go_api_key=settings.ai.opencode_go_api_key,
+                    opencode_go_base_url=settings.ai.opencode_go_base_url,
+                    xai_fallback_api_key=settings.ai.api_key,
+                    xai_fallback_model=settings.ai.xai_fallback_model,
                 )
             else:
                 logger.warning(
@@ -1060,6 +1083,8 @@ async def run() -> None:
                 fallback_api_key=settings.ai.fallback_api_key,
                 fallback_model=settings.ai.fallback_model,
                 fallback_base_url=settings.ai.fallback_base_url,
+                opencode_go_api_key=settings.ai.opencode_go_api_key,
+                opencode_go_base_url=settings.ai.opencode_go_base_url,
             )
         else:
             logger.warning(

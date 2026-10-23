@@ -102,6 +102,8 @@ class SentimentScorer:
                 source = "zai_live"
             elif provider == "deepseek":
                 source = "deepseek_fallback"
+            elif provider == "opencode-go":
+                source = "opencode_go_free_live"
             else:
                 source = "xai_live"
             await self._record_observation(symbol, score, source=source, model=answering_model)
