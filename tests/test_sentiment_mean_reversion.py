@@ -470,6 +470,40 @@ class TestSentimentScorer:
             }
         ]
 
+    @pytest.mark.parametrize(
+        ("provider", "expected_source"),
+        [("ollama", "ollama_cloud_live"), ("nvidia", "nvidia_nim_live")],
+    )
+    @pytest.mark.asyncio
+    async def test_records_cloud_provider_as_live(
+        self, provider: str, expected_source: str
+    ) -> None:
+        from src.overseer.xai import ChatResult
+
+        class ProviderClient:
+            async def chat(self, messages):
+                return ChatResult(
+                    content='{"score": 63, "reason": "provider"}',
+                    provider=provider,
+                    model="test-model",
+                )
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=ProviderClient(),
+            observation_recorder=recorder,
+        )
+
+        score = await scorer.get_score("SOLUSDT")
+
+        assert score == 63.0
+        assert observations[0]["source"] == expected_source
+        assert observations[0]["model"] == "test-model"
+
     @pytest.mark.asyncio
     async def test_records_zai_error_with_provider_and_model(self):
         """Failed Z.AI requests are attributed to zai and the attempted model."""

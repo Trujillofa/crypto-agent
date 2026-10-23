@@ -404,17 +404,13 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
     fallback_create = AsyncMock(
         side_effect=[_make_completion("free-one"), _make_completion("free-two")]
     )
-    catalog_list = AsyncMock(
-        return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")])
-    )
+    catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")]))
     opencode_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create)),
         models=SimpleNamespace(list=catalog_list),
     )
 
-    with patch(
-        "src.overseer.xai.AsyncOpenAI", side_effect=[primary_client, opencode_client]
-    ):
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[primary_client, opencode_client]):
         with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             client = XAIClient(
                 api_key="zai-key",
@@ -431,3 +427,74 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
     catalog_list.assert_awaited_once()
     assert fallback_create.await_count == 2
     mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_zai_falls_back_to_ollama_cloud_before_nvidia_nim() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    ollama_create = AsyncMock(return_value=_make_completion("ollama-answer"))
+    ollama_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=ollama_create))
+    )
+    nvidia_create = AsyncMock(return_value=_make_completion("nvidia-answer"))
+    nvidia_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=nvidia_create))
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, ollama_client, nvidia_client],
+    ):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            ollama_api_key="ollama-test-key",
+            nvidia_api_key="nvidia-test-key",
+        )
+        response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == ChatResult(content="ollama-answer", provider="ollama", model="gemma4:31b")
+    primary_create.assert_awaited_once()
+    ollama_create.assert_awaited_once()
+    nvidia_create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    ollama_create = AsyncMock(side_effect=_make_permission_denied())
+    ollama_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=ollama_create))
+    )
+    nvidia_create = AsyncMock(return_value=_make_completion("nvidia-answer"))
+    nvidia_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=nvidia_create))
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, ollama_client, nvidia_client],
+    ):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            ollama_api_key="ollama-test-key",
+            nvidia_api_key="nvidia-test-key",
+        )
+        response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == ChatResult(
+        content="nvidia-answer",
+        provider="nvidia",
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+    )
+    ollama_create.assert_awaited_once()
+    nvidia_create.assert_awaited_once()

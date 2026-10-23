@@ -48,7 +48,7 @@ class ChatResult:
     """LLM reply plus which provider and model actually answered."""
 
     content: str
-    provider: str  # "xai" | "deepseek" | "zai" | "opencode-go"
+    provider: str  # "xai" | "deepseek" | "zai" | "opencode-go" | "ollama" | "nvidia"
     model: str
 
 
@@ -67,6 +67,12 @@ class XAIClient:
         opencode_go_base_url: str = "https://opencode.ai/zen/go/v1",
         xai_fallback_api_key: str = "",
         xai_fallback_model: str = "grok-4-1-fast-reasoning",
+        ollama_api_key: str = "",
+        ollama_model: str = "gemma4:31b",
+        ollama_base_url: str = "https://ollama.com/v1",
+        nvidia_api_key: str = "",
+        nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b",
+        nvidia_base_url: str = "https://integrate.api.nvidia.com/v1",
     ) -> None:
         self._provider = provider
         self._primary_name = {"deepseek": "DeepSeek", "zai": "Z.AI"}.get(provider, "xAI")
@@ -110,6 +116,30 @@ class XAIClient:
                 timeout=timeout_seconds,
                 max_retries=0,
             )
+        self._ollama_client = (
+            AsyncOpenAI(
+                api_key=ollama_api_key,
+                base_url=ollama_base_url,
+                timeout=timeout_seconds,
+                max_retries=0,
+            )
+            if ollama_api_key
+            else None
+        )
+        self._ollama_model = ollama_model
+        self._skip_ollama = False
+        self._nvidia_client = (
+            AsyncOpenAI(
+                api_key=nvidia_api_key,
+                base_url=nvidia_base_url,
+                timeout=timeout_seconds,
+                max_retries=0,
+            )
+            if nvidia_api_key
+            else None
+        )
+        self._nvidia_model = nvidia_model
+        self._skip_nvidia = False
         self._logger = get_logger(self.__class__.__name__)
 
     @property
@@ -165,6 +195,36 @@ class XAIClient:
                     self._opencode_disabled_date = today
                 self._logger.warning("OpenCode Go free-model fallback failed: %s", exc)
 
+        ollama_error: Exception | None = None
+        if self._ollama_client is not None and not self._skip_ollama:
+            try:
+                content = await self._chat_with_client(
+                    self._ollama_client,
+                    self._ollama_model,
+                    messages,
+                    provider_name="Ollama Cloud",
+                )
+                return ChatResult(content=content, provider="ollama", model=self._ollama_model)
+            except Exception as exc:
+                ollama_error = exc
+                self._skip_ollama = _is_permanent_provider_error(exc)
+                self._logger.warning("Ollama fallback failed: %s", exc)
+
+        nvidia_error: Exception | None = None
+        if self._nvidia_client is not None and not self._skip_nvidia:
+            try:
+                content = await self._chat_with_client(
+                    self._nvidia_client,
+                    self._nvidia_model,
+                    messages,
+                    provider_name="NVIDIA NIM",
+                )
+                return ChatResult(content=content, provider="nvidia", model=self._nvidia_model)
+            except Exception as exc:
+                nvidia_error = exc
+                self._skip_nvidia = _is_permanent_provider_error(exc)
+                self._logger.warning("NVIDIA NIM fallback failed: %s", exc)
+
         xai_error: Exception | None = None
         if self._xai_fallback_client is not None and not self._skip_xai_fallback:
             try:
@@ -174,9 +234,7 @@ class XAIClient:
                     messages,
                     provider_name="xAI fallback",
                 )
-                return ChatResult(
-                    content=content, provider="xai", model=self._xai_fallback_model
-                )
+                return ChatResult(content=content, provider="xai", model=self._xai_fallback_model)
             except Exception as exc:
                 xai_error = exc
                 self._skip_xai_fallback = _is_permanent_provider_error(exc)
@@ -201,11 +259,17 @@ class XAIClient:
             raise deepseek_error
         if xai_error is not None:
             raise xai_error
+        if nvidia_error is not None:
+            raise nvidia_error
+        if ollama_error is not None:
+            raise ollama_error
         if opencode_error is not None:
             raise opencode_error
         if primary_error is not None:
             raise primary_error
-        raise RuntimeError(f"{self._primary_name} is disabled and no fallback provider is configured")
+        raise RuntimeError(
+            f"{self._primary_name} is disabled and no fallback provider is configured"
+        )
 
     async def _resolve_opencode_free_model(self) -> str:
         """Refresh the provider catalog once per UTC day and select only free IDs.

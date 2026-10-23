@@ -154,6 +154,12 @@ class AISettings:
     opencode_go_api_key: str = ""
     opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
     xai_fallback_model: str = "grok-4-1-fast-reasoning"
+    ollama_api_key: str = ""
+    ollama_model: str = "gemma4:31b"
+    ollama_base_url: str = "https://ollama.com/v1"
+    nvidia_api_key: str = ""
+    nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
 
 
 @dataclass(frozen=True)
@@ -471,6 +477,12 @@ def load_settings(config_path: Path) -> Settings:
             "ai.xai_fallback_model",
             default="grok-4-1-fast-reasoning",
         ),
+        ollama_api_key=os.getenv("OLLAMA_API_KEY", "").strip(),
+        ollama_model=os.getenv("OLLAMA_MODEL", "gemma4:31b").strip(),
+        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1").strip(),
+        nvidia_api_key=os.getenv("NVIDIA_API_KEY", "").strip(),
+        nvidia_model=os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b").strip(),
+        nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").strip(),
     )
 
     # Parse and validate futures configuration
@@ -1052,6 +1064,12 @@ async def run() -> None:
                     provider="zai",
                     opencode_go_api_key=settings.ai.opencode_go_api_key,
                     opencode_go_base_url=settings.ai.opencode_go_base_url,
+                    ollama_api_key=settings.ai.ollama_api_key,
+                    ollama_model=settings.ai.ollama_model,
+                    ollama_base_url=settings.ai.ollama_base_url,
+                    nvidia_api_key=settings.ai.nvidia_api_key,
+                    nvidia_model=settings.ai.nvidia_model,
+                    nvidia_base_url=settings.ai.nvidia_base_url,
                     xai_fallback_api_key=settings.ai.api_key,
                     xai_fallback_model=settings.ai.xai_fallback_model,
                 )
@@ -1068,6 +1086,12 @@ async def run() -> None:
                     provider="deepseek",
                     opencode_go_api_key=settings.ai.opencode_go_api_key,
                     opencode_go_base_url=settings.ai.opencode_go_base_url,
+                    ollama_api_key=settings.ai.ollama_api_key,
+                    ollama_model=settings.ai.ollama_model,
+                    ollama_base_url=settings.ai.ollama_base_url,
+                    nvidia_api_key=settings.ai.nvidia_api_key,
+                    nvidia_model=settings.ai.nvidia_model,
+                    nvidia_base_url=settings.ai.nvidia_base_url,
                     xai_fallback_api_key=settings.ai.api_key,
                     xai_fallback_model=settings.ai.xai_fallback_model,
                 )
@@ -1085,6 +1109,12 @@ async def run() -> None:
                 fallback_base_url=settings.ai.fallback_base_url,
                 opencode_go_api_key=settings.ai.opencode_go_api_key,
                 opencode_go_base_url=settings.ai.opencode_go_base_url,
+                ollama_api_key=settings.ai.ollama_api_key,
+                ollama_model=settings.ai.ollama_model,
+                ollama_base_url=settings.ai.ollama_base_url,
+                nvidia_api_key=settings.ai.nvidia_api_key,
+                nvidia_model=settings.ai.nvidia_model,
+                nvidia_base_url=settings.ai.nvidia_base_url,
             )
         else:
             logger.warning(

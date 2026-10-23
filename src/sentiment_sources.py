@@ -7,7 +7,14 @@ loading ``src.strategy``.
 from __future__ import annotations
 
 SENTIMENT_ANSWERED_SOURCES = frozenset(
-    {"xai_live", "deepseek_fallback", "zai_live", "opencode_go_free_live"}
+    {
+        "xai_live",
+        "deepseek_fallback",
+        "zai_live",
+        "opencode_go_free_live",
+        "ollama_cloud_live",
+        "nvidia_nim_live",
+    }
 )
 SENTIMENT_ERROR_SOURCES = frozenset({"xai_error_fallback", "error_fallback"})
 SENTIMENT_NO_ANSWER_SOURCES = SENTIMENT_ERROR_SOURCES | frozenset({"neutral_fallback"})

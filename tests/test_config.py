@@ -132,6 +132,27 @@ class TestLoadSettings:
         assert settings.ai.opencode_go_api_key == "test-opencode-key"
         assert settings.ai.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
 
+    def test_loads_ollama_and_nvidia_credentials_from_environment(
+        self, config_file: Path, monkeypatch
+    ) -> None:
+        """Provider secrets and routing values come from the environment, not YAML."""
+        monkeypatch.setenv("OLLAMA_API_KEY", "test-ollama-key")
+        monkeypatch.setenv("NVIDIA_API_KEY", "test-nvidia-key")
+        monkeypatch.setenv("OLLAMA_MODEL", "gemma4:31b")
+        monkeypatch.setenv("NVIDIA_MODEL", "nvidia/test-model")
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {"enabled": True, "provider": "zai", "model": "glm-5.3-flash"}
+        config_file.write_text(yaml.dump(raw))
+
+        settings = load_settings(config_file)
+
+        assert settings.ai.ollama_api_key == "test-ollama-key"
+        assert settings.ai.ollama_model == "gemma4:31b"
+        assert settings.ai.ollama_base_url == "https://ollama.com/v1"
+        assert settings.ai.nvidia_api_key == "test-nvidia-key"
+        assert settings.ai.nvidia_model == "nvidia/test-model"
+        assert settings.ai.nvidia_base_url == "https://integrate.api.nvidia.com/v1"
+
     def test_invalid_type_raises_error(self) -> None:
         """Test that invalid types in config raise ValueError."""
         config = {
