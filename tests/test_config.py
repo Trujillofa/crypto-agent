@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-from src.main import load_settings
+from src.main import AISettings, _opencode_go_key, _xai_fallback_key, load_settings
 
 
 class TestLoadSettings:
@@ -123,6 +124,7 @@ class TestLoadSettings:
     def test_loads_opencode_go_key_from_environment(self, config_file: Path, monkeypatch) -> None:
         """OpenCode Go credentials are sourced from the runtime env, not YAML."""
         monkeypatch.setenv("OPENCODE_GO_API_KEY", "test-opencode-key")
+        monkeypatch.delenv("OPENCODE_GO_ENABLED", raising=False)
         raw = yaml.safe_load(config_file.read_text())
         raw["ai"] = {"enabled": True, "provider": "zai", "model": "glm-5.3-flash"}
         config_file.write_text(yaml.dump(raw))
@@ -131,6 +133,51 @@ class TestLoadSettings:
 
         assert settings.ai.opencode_go_api_key == "test-opencode-key"
         assert settings.ai.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
+        assert settings.ai.opencode_go_enabled is False
+
+    def test_opencode_go_requires_explicit_enable_flag(
+        self, config_file: Path, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("OPENCODE_GO_API_KEY", "test-opencode-key")
+        monkeypatch.setenv("OPENCODE_GO_ENABLED", "true")
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {"enabled": True, "provider": "zai", "model": "glm-5.3-flash"}
+        config_file.write_text(yaml.dump(raw))
+
+        settings = load_settings(config_file)
+
+        assert settings.ai.opencode_go_enabled is True
+
+    def test_xai_fallback_is_explicitly_opt_in(self, config_file: Path, monkeypatch) -> None:
+        monkeypatch.delenv("XAI_FALLBACK_ENABLED", raising=False)
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {"enabled": True, "provider": "zai", "model": "glm-5.3-flash"}
+        config_file.write_text(yaml.dump(raw))
+
+        settings = load_settings(config_file)
+        assert settings.ai.xai_fallback_enabled is False
+
+        monkeypatch.setenv("XAI_FALLBACK_ENABLED", "true")
+        settings = load_settings(config_file)
+        assert settings.ai.xai_fallback_enabled is True
+
+    def test_provider_keys_are_not_used_until_explicitly_enabled(self) -> None:
+        settings = AISettings(
+            enabled=True,
+            provider="zai",
+            model="glm-5.3-flash",
+            polling_interval=60,
+            max_history=100,
+            allowed_chat_ids=[],
+            api_key="test-xai-key",
+            opencode_go_api_key="test-opencode-key",
+        )
+        assert _xai_fallback_key(settings) == ""
+        assert _opencode_go_key(settings) == ""
+
+        enabled = replace(settings, xai_fallback_enabled=True, opencode_go_enabled=True)
+        assert _xai_fallback_key(enabled) == "test-xai-key"
+        assert _opencode_go_key(enabled) == "test-opencode-key"
 
     def test_loads_ollama_and_nvidia_credentials_from_environment(
         self, config_file: Path, monkeypatch
@@ -152,6 +199,32 @@ class TestLoadSettings:
         assert settings.ai.nvidia_api_key == "test-nvidia-key"
         assert settings.ai.nvidia_model == "nvidia/test-model"
         assert settings.ai.nvidia_base_url == "https://integrate.api.nvidia.com/v1"
+
+    def test_blank_provider_models_use_safe_defaults(self, config_file: Path, monkeypatch) -> None:
+        monkeypatch.setenv("OLLAMA_MODEL", "")
+        monkeypatch.setenv("NVIDIA_MODEL", "")
+        monkeypatch.setenv("OLLAMA_BASE_URL", "")
+        monkeypatch.setenv("NVIDIA_BASE_URL", "")
+        raw = yaml.safe_load(config_file.read_text())
+        raw["ai"] = {
+            "enabled": True,
+            "provider": "zai",
+            "model": "glm-5.3-flash",
+            "opencode_go_base_url": "   ",
+            "fallback_base_url": " ",
+            "zai_base_url": "   ",
+        }
+        config_file.write_text(yaml.dump(raw))
+
+        settings = load_settings(config_file)
+
+        assert settings.ai.ollama_model == "gemma4:31b"
+        assert settings.ai.nvidia_model == "minimaxai/minimax-m3.1-flash"
+        assert settings.ai.ollama_base_url == "https://ollama.com/v1"
+        assert settings.ai.nvidia_base_url == "https://integrate.api.nvidia.com/v1"
+        assert settings.ai.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
+        assert settings.ai.zai_base_url == "https://api.z.ai/api/paas/v4"
+        assert settings.ai.fallback_base_url == "https://api.deepseek.com/v1"
 
     def test_invalid_type_raises_error(self) -> None:
         """Test that invalid types in config raise ValueError."""

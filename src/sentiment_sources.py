@@ -9,6 +9,7 @@ from __future__ import annotations
 SENTIMENT_ANSWERED_SOURCES = frozenset(
     {
         "xai_live",
+        "xai_fallback_live",
         "deepseek_fallback",
         "zai_live",
         "opencode_go_free_live",

@@ -301,6 +301,49 @@ async def test_wire_optional_strategy_dependencies_records_enriched_sentiment_ev
 
 
 @pytest.mark.asyncio
+async def test_xai_fallback_event_uses_fallback_model_when_missing() -> None:
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    engine = StrategyEngine(
+        EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[SentimentMeanReversionStrategy],
+            strategy_configs=[{}],
+        ),
+        MagicMock(),
+    )
+    event_log = FakeEventLog()
+    _wire_optional_strategy_dependencies(
+        engine,
+        xai_client=None,
+        event_log=event_log,
+        ai_model="primary-model",
+        xai_fallback_model="fallback-model",
+    )
+
+    strategy = engine._strategies["BTCUSDT"][0]  # pylint: disable=protected-access
+    scorer = strategy._scorer  # pylint: disable=protected-access
+    assert scorer is not None
+    assert scorer._observation_recorder is not None  # pylint: disable=protected-access
+    await scorer._observation_recorder(  # pylint: disable=protected-access
+        {
+            "symbol": "BTCUSDT",
+            "score": 64.0,
+            "source": "xai_fallback_live",
+            "provider": "xai-fallback",
+        }
+    )
+
+    assert event_log.events[0][1]["model"] == "fallback-model"
+    assert event_log.events[0][1]["provider"] == "xai-fallback"
+
+
+@pytest.mark.asyncio
 async def test_wire_records_deepseek_fallback_model_from_chat_result():
     """End-to-end: DeepSeek ChatResult model is persisted, not the xAI model."""
     from src.overseer.xai import ChatResult
@@ -425,6 +468,8 @@ async def test_wire_error_fallback_does_not_claim_grok_model():
     """Failed LLM calls are not attributed to the configured xAI model."""
 
     class FailingClient:
+        provider = "xai"
+
         async def chat(self, messages):
             raise RuntimeError("API timeout")
 

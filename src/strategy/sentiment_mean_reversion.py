@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
+from typing import Any, cast
 
 from src.sentiment_sources import SENTIMENT_NO_ANSWER_SOURCES
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
-_PROVIDER_DISPLAY_NAMES = {"deepseek": "DeepSeek", "xai": "xAI", "zai": "Z.AI"}
+_PROVIDER_DISPLAY_NAMES = {
+    "deepseek": "DeepSeek",
+    "nvidia": "NVIDIA NIM",
+    "ollama": "Ollama Cloud",
+    "opencode-go": "OpenCode Go",
+    "xai": "xAI",
+    "xai-fallback": "xAI fallback",
+    "zai": "Z.AI",
+}
 
 
 def _client_str_attr(client: object | None, name: str) -> str | None:
@@ -28,6 +38,26 @@ def configured_sentiment_provider(client: object | None) -> str | None:
 
 def configured_sentiment_model(client: object | None) -> str | None:
     return _client_str_attr(client, "model") or _client_str_attr(client, "_model")
+
+
+def _decode_sentiment_score(response: str) -> float:
+    data = json.loads(response)
+    if not isinstance(data, dict):
+        raise ValueError("Sentiment response must be a JSON object")
+    raw_score = data.get("score")
+    if isinstance(raw_score, bool) or not isinstance(raw_score, (int, float)):
+        raise ValueError("Sentiment response must contain a numeric score")
+    score = float(raw_score)
+    if not math.isfinite(score) or not 0.0 <= score <= 100.0:
+        raise ValueError("Sentiment score must be finite and between 0 and 100")
+    return score
+
+
+class InvalidSentimentResponse(ValueError):
+    def __init__(self, provider: str, model: str | None) -> None:
+        self.provider = provider
+        self.model = model
+        super().__init__("Invalid sentiment JSON response")
 
 
 class SentimentScorer:
@@ -97,20 +127,26 @@ class SentimentScorer:
 
         try:
             score, provider, answering_model = await self._query_llm(symbol)
+            source_by_provider = {
+                "xai": "xai_live",
+                "xai-fallback": "xai_fallback_live",
+                "zai": "zai_live",
+                "deepseek": "deepseek_fallback",
+                "opencode-go": "opencode_go_free_live",
+                "ollama": "ollama_cloud_live",
+                "nvidia": "nvidia_nim_live",
+            }
+            source = source_by_provider.get(provider)
+            if source is None:
+                raise ValueError(f"Unknown sentiment provider identity: {provider}")
+            await self._record_observation(
+                symbol,
+                score,
+                source=source,
+                model=answering_model,
+                provider=provider,
+            )
             self._cache[symbol] = (now, score)
-            if provider == "zai":
-                source = "zai_live"
-            elif provider == "deepseek":
-                source = "deepseek_fallback"
-            elif provider == "opencode-go":
-                source = "opencode_go_free_live"
-            elif provider == "ollama":
-                source = "ollama_cloud_live"
-            elif provider == "nvidia":
-                source = "nvidia_nim_live"
-            else:
-                source = "xai_live"
-            await self._record_observation(symbol, score, source=source, model=answering_model)
             return score
         except Exception as exc:
             self._logger.warning("Sentiment query failed for %s: %s", symbol, exc)
@@ -119,8 +155,11 @@ class SentimentScorer:
                 self._error_fallback_score,
                 source="error_fallback",
                 error=str(exc),
-                model=configured_sentiment_model(self._xai_client),
-                provider=configured_sentiment_provider(self._xai_client),
+                model=(getattr(exc, "model", None) or configured_sentiment_model(self._xai_client)),
+                provider=(
+                    getattr(exc, "provider", None)
+                    or configured_sentiment_provider(self._xai_client)
+                ),
             )
             return self._error_fallback_score
 
@@ -137,7 +176,10 @@ class SentimentScorer:
         # Track for degradation detection regardless of recorder
         self._recent_sources.append(source)
         self._recent_scores.append(score)
-        await self._check_degradation()
+        try:
+            await self._check_degradation()
+        except Exception as exc:  # noqa: BLE001
+            self._logger.warning("Sentiment degradation check failed for %s: %s", symbol, exc)
 
         if self._observation_recorder is None:
             return
@@ -231,7 +273,19 @@ class SentimentScorer:
             {"role": "user", "content": prompt},
         ]
 
-        result = await self._xai_client.chat(messages)  # type: ignore[union-attr]
+        def validate_response(content: str) -> None:
+            _decode_sentiment_score(content)
+
+        chat_with_validator = getattr(self._xai_client, "chat_with_validator", None)
+        if callable(chat_with_validator):
+            validated_chat = cast(
+                Callable[[list[dict[str, str]], Callable[[str], None]], Awaitable[object]],
+                chat_with_validator,
+            )
+            result = await validated_chat(messages, validate_response)
+        else:
+            result = await self._xai_client.chat(messages)  # type: ignore[union-attr]
+        result = cast(Any, result)
         if hasattr(result, "content") and hasattr(result, "provider"):
             response = str(result.content)
             provider = str(result.provider)
@@ -242,12 +296,13 @@ class SentimentScorer:
             answering_model = None
 
         try:
-            data = json.loads(response)
-            score = float(data.get("score", 50))
-            return max(0.0, min(100.0, score)), provider, answering_model
-        except (json.JSONDecodeError, ValueError, TypeError):
-            self._logger.warning("Could not parse sentiment response: %s", response[:200])
-            return 50.0, provider, answering_model
+            score = _decode_sentiment_score(response)
+        except (ValueError, TypeError) as exc:
+            self._logger.warning(
+                "Invalid sentiment JSON from %s (%s)", provider, answering_model or "unknown model"
+            )
+            raise InvalidSentimentResponse(provider, answering_model) from exc
+        return score, provider, answering_model
 
 
 class SentimentMeanReversionStrategy(BaseStrategy):

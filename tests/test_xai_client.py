@@ -1,11 +1,15 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
+from openai import AsyncOpenAI
 
-from src.overseer.xai import ChatResult, XAIClient
+from src.overseer.xai import ChatResult, XAIClient, _is_permanent_provider_error
+from src.strategy.sentiment_mean_reversion import _decode_sentiment_score
 
 
 def _make_completion(content: str) -> SimpleNamespace:
@@ -58,25 +62,21 @@ async def test_chat_returns_trimmed_content() -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_returns_fallback_when_content_missing() -> None:
+async def test_chat_raises_when_content_missing() -> None:
     completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=[]))])
     create = AsyncMock(return_value=completion)
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
         client = XAIClient(api_key="test-key", model="grok-3")
-        response = await client.chat([{"role": "user", "content": "status?"}])
+        with pytest.raises(RuntimeError, match="No response content returned by xAI API"):
+            await client.chat([{"role": "user", "content": "status?"}])
 
-    assert response == ChatResult(
-        content="No response content returned by xAI API.",
-        provider="xai",
-        model="grok-3",
-    )
+    create.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_chat_retries_on_transient_error_then_succeeds() -> None:
-    """Fails once with a connection error then succeeds on the second attempt."""
+async def test_general_chat_retries_transient_primary_error() -> None:
     create = AsyncMock(side_effect=[_make_connection_error(), _make_completion("recovered")])
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
@@ -87,35 +87,100 @@ async def test_chat_retries_on_transient_error_then_succeeds() -> None:
 
     assert response == ChatResult(content="recovered", provider="xai", model="grok-3")
     assert create.await_count == 2
-    mock_sleep.assert_awaited_once_with(1)  # 2**0 = 1s after first failure
+    mock_sleep.assert_awaited_once_with(1)
+    assert client._provider_retry_after == {}
 
 
 @pytest.mark.asyncio
-async def test_chat_raises_after_max_retries_exhausted() -> None:
-    """Raises the last exception after all 3 attempts fail."""
+async def test_normal_chat_ignores_sentiment_transient_cooldown() -> None:
+    create = AsyncMock(return_value=_make_completion("chat is available"))
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        client = XAIClient(api_key="test-key", model="grok-3")
+        client._provider_retry_after["primary"] = datetime.now(UTC) + timedelta(minutes=2)
+        response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == ChatResult(content="chat is available", provider="xai", model="grok-3")
+    create.assert_awaited_once()
+    assert "primary" in client._provider_retry_after
+
+
+@pytest.mark.asyncio
+async def test_normal_chat_transient_exhaustion_does_not_set_sentiment_cooldown() -> None:
     create = AsyncMock(
         side_effect=[_make_connection_error(), _make_connection_error(), _make_connection_error()]
     )
     fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
-        with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock):
             client = XAIClient(api_key="test-key", model="grok-3")
             with pytest.raises(openai.APIConnectionError):
                 await client.chat([{"role": "user", "content": "ping"}])
 
     assert create.await_count == 3
-    # Slept after attempt 1 (1s) and attempt 2 (2s), not after attempt 3
-    assert mock_sleep.await_count == 2
-    mock_sleep.assert_any_await(1)
-    mock_sleep.assert_any_await(2)
+    assert client._provider_retry_after == {}
 
 
 @pytest.mark.asyncio
-async def test_chat_uses_fallback_provider_after_xai_retries_exhausted() -> None:
-    primary_create = AsyncMock(
-        side_effect=[_make_connection_error(), _make_connection_error(), _make_connection_error()]
-    )
+async def test_chat_with_validator_uses_one_primary_attempt() -> None:
+    """Sentiment validation falls through after a single bad provider attempt."""
+    create = AsyncMock(side_effect=_make_connection_error())
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            client = XAIClient(api_key="test-key", model="grok-3")
+            with pytest.raises(openai.APIConnectionError):
+                await client.chat_with_validator(
+                    [{"role": "user", "content": "ping"}], lambda content: None
+                )
+
+    create.assert_awaited_once()
+    mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_validator_reports_provider_unavailability_during_cooldown() -> None:
+    create = AsyncMock()
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        client = XAIClient(api_key="test-key", model="glm-5.3-flash", provider="zai")
+        client._provider_retry_after["primary"] = datetime.now(UTC) + timedelta(minutes=2)
+        with pytest.raises(RuntimeError, match="No configured AI provider is currently available"):
+            await client.chat_with_validator(
+                [{"role": "user", "content": "sentiment"}], lambda _: None
+            )
+
+    create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sentiment_chain_has_overall_deadline() -> None:
+    fake_client = SimpleNamespace()
+
+    async def slow_request(*args, **kwargs) -> str:
+        await asyncio.sleep(1)
+        return "{}"
+
+    with patch("src.overseer.xai._SENTIMENT_CHAIN_TIMEOUT_SECONDS", 0.05):
+        with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+            client = XAIClient(api_key="test-key", model="glm-5.3-flash", provider="zai")
+            slow_call = AsyncMock(side_effect=slow_request)
+            with patch.object(client, "_chat_with_client", slow_call):
+                with pytest.raises(TimeoutError, match="provider chain exceeded"):
+                    await client.chat_with_validator(
+                        [{"role": "user", "content": "sentiment"}], lambda _: None
+                    )
+
+    slow_call.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_uses_fallback_provider_after_primary_transient_failure() -> None:
+    primary_create = AsyncMock(side_effect=_make_connection_error())
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
     )
@@ -136,14 +201,15 @@ async def test_chat_uses_fallback_provider_after_xai_retries_exhausted() -> None
                 fallback_api_key="deepseek-key",
                 fallback_model="deepseek-chat",
             )
-            response = await client.chat([{"role": "user", "content": "ping"}])
+            response = await client.chat_with_validator(
+                [{"role": "user", "content": "ping"}], lambda content: None
+            )
 
     assert response == ChatResult(content="fallback-ok", provider="deepseek", model="deepseek-chat")
-    assert primary_create.await_count == 3
+    primary_create.assert_awaited_once()
     fallback_create.assert_awaited_once()
     assert mock_openai.call_count == 2
-    mock_sleep.assert_any_await(1)
-    mock_sleep.assert_any_await(2)
+    mock_sleep.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -164,6 +230,37 @@ async def test_chat_does_not_retry_on_auth_error() -> None:
 
     assert create.await_count == 1
     mock_sleep.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_general_chat_retries_transient_fallback_error() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    fallback_create = AsyncMock(
+        side_effect=[_make_connection_error(), _make_completion("fallback recovered")]
+    )
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    fallback_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create))
+    )
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[primary_client, fallback_client]):
+        with patch("src.overseer.xai.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            client = XAIClient(
+                api_key="primary-key",
+                model="primary-model",
+                fallback_api_key="deepseek-key",
+                fallback_model="deepseek-chat",
+            )
+            response = await client.chat([{"role": "user", "content": "ping"}])
+
+    assert response == ChatResult(
+        content="fallback recovered", provider="deepseek", model="deepseek-chat"
+    )
+    primary_create.assert_awaited_once()
+    assert fallback_create.await_count == 2
+    mock_sleep.assert_awaited_once_with(1)
 
 
 @pytest.mark.asyncio
@@ -228,6 +325,154 @@ async def test_chat_skips_xai_after_permission_denied() -> None:
     assert second == ChatResult(content="second", provider="deepseek", model="deepseek-v4-pro")
     assert primary_create.await_count == 1
     assert fallback_create.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_invalid_response_uses_next_provider() -> None:
+    primary_create = AsyncMock(return_value=_make_completion('{"score": true}'))
+    fallback_create = AsyncMock(return_value=_make_completion('{"score": 42}'))
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    fallback_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fallback_create))
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, fallback_client],
+    ):
+        client = XAIClient(
+            api_key="primary-key",
+            model="primary-model",
+            fallback_api_key="deepseek-key",
+            fallback_model="deepseek-chat",
+        )
+        result = await client.chat_with_validator(
+            [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+        )
+
+    assert result == ChatResult(content='{"score": 42}', provider="deepseek", model="deepseek-chat")
+    primary_create.assert_awaited_once()
+    fallback_create.assert_awaited_once()
+    assert primary_create.await_args is not None
+    assert primary_create.await_args.kwargs["timeout"] == 10.0
+    assert fallback_create.await_args is not None
+    assert fallback_create.await_args.kwargs["timeout"] == 10.0
+    assert "primary" in client._provider_retry_after
+
+
+@pytest.mark.asyncio
+async def test_disabled_opencode_does_not_construct_catalog_client() -> None:
+    fake_client = SimpleNamespace()
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client) as mock_openai:
+        client = XAIClient(
+            api_key="primary-key",
+            model="primary-model",
+            provider="zai",
+            opencode_go_api_key="",
+        )
+
+    mock_openai.assert_called_once()
+    assert client._opencode_client is None
+
+
+@pytest.mark.asyncio
+async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="free-model")]))
+    opencode_create = AsyncMock(return_value=_make_completion('{"score": 42}'))
+    primary_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
+    )
+    opencode_client = SimpleNamespace(
+        models=SimpleNamespace(list=catalog_list),
+        chat=SimpleNamespace(completions=SimpleNamespace(create=opencode_create)),
+    )
+
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[primary_client, opencode_client],
+    ):
+        client = XAIClient(
+            api_key="primary-key",
+            model="primary-model",
+            provider="zai",
+            opencode_go_api_key="opencode-key",
+        )
+        result = await client.chat_with_validator(
+            [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+        )
+
+    assert result == ChatResult(content='{"score": 42}', provider="opencode-go", model="free-model")
+    catalog_list.assert_awaited_once_with(timeout=10.0)
+    assert opencode_create.await_args is not None
+    assert opencode_create.await_args.kwargs["timeout"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_chat_with_client_supports_single_attempt_fallback() -> None:
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.headers = {}
+    rate_limit = openai.RateLimitError(
+        "rate limit", response=mock_response, body={"error": {"message": "rate limit"}}
+    )
+    create = AsyncMock(side_effect=rate_limit)
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        client = XAIClient(api_key="test-key", model="test-model")
+
+    with pytest.raises(openai.RateLimitError):
+        await client._chat_with_client(
+            cast(AsyncOpenAI, fake_client),
+            "test-model",
+            [],
+            provider_name="fallback",
+            max_attempts=1,
+        )
+
+    create.assert_awaited_once()
+
+
+def test_provider_failures_recover_and_rolling_quota_is_not_permanent() -> None:
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.headers = {}
+    rate_limit = openai.RateLimitError(
+        "quota exceeded", response=mock_response, body={"error": {"message": "quota exceeded"}}
+    )
+
+    assert _is_permanent_provider_error(rate_limit) is False
+    assert _is_permanent_provider_error(_make_insufficient_balance()) is True
+
+    class StatusError(Exception):
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+            super().__init__(f"HTTP {status_code}")
+
+    assert _is_permanent_provider_error(StatusError(400)) is False
+    assert _is_permanent_provider_error(StatusError(404)) is False
+
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock()))
+    )
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
+        client = XAIClient(api_key="test-key", model="test-model")
+
+    client._record_provider_failure("primary", rate_limit)
+    assert "primary" not in client._provider_disabled_dates
+    retry_delay = client._provider_retry_after["primary"] - datetime.now(UTC)
+    assert 119 <= retry_delay.total_seconds() <= 120
+    assert client._provider_available("primary") is False
+    client._provider_retry_after["primary"] = datetime.now(UTC) - timedelta(seconds=1)
+    assert client._provider_available("primary") is True
+
+    client._record_provider_failure("primary", _make_insufficient_balance())
+    assert client._provider_available("primary") is False
+    client._provider_disabled_dates["primary"] = datetime.now(UTC).date() - timedelta(days=1)
+    assert client._provider_available("primary") is True
 
 
 @pytest.mark.asyncio
@@ -388,7 +633,7 @@ async def test_zai_tries_opencode_then_xai_fallback() -> None:
         response = await client.chat([{"role": "user", "content": "ping"}])
 
     assert response == ChatResult(
-        content="xai-fallback-ok", provider="xai", model="grok-4-1-fast-reasoning"
+        content="xai-fallback-ok", provider="xai-fallback", model="grok-4-1-fast-reasoning"
     )
     primary_create.assert_awaited_once()
     opencode_create.assert_awaited_once()
@@ -494,7 +739,7 @@ async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
     assert response == ChatResult(
         content="nvidia-answer",
         provider="nvidia",
-        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        model="minimaxai/minimax-m3.1-flash",
     )
     ollama_create.assert_awaited_once()
     nvidia_create.assert_awaited_once()

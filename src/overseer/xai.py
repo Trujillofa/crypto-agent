@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from typing import cast
 
 import openai
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from src.utils.logger import get_logger
 
@@ -22,11 +24,18 @@ _AUTH_ERRORS = (
     openai.PermissionDeniedError,
 )
 _MAX_ATTEMPTS = 3
+_TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
+_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
+_SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 
 
 def _is_permanent_provider_error(exc: Exception) -> bool:
-    """Detect auth/billing/plan exhaustion so poll loops do not hammer a dead key."""
-    if isinstance(exc, _AUTH_ERRORS) or getattr(exc, "status_code", None) in {402, 403}:
+    """Detect errors unlikely to recover without configuration/account changes.
+
+    Do not treat generic quota/rate-limit messages as permanent: many providers
+    apply short rolling windows, and those providers must be retried later.
+    """
+    if isinstance(exc, _AUTH_ERRORS) or getattr(exc, "status_code", None) in {401, 402, 403}:
         return True
     message = str(exc).lower()
     return any(
@@ -37,8 +46,6 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
             "credits exhausted",
             "spending limit",
             "billing limit",
-            "quota exceeded",
-            "usage limit reached",
         )
     )
 
@@ -48,8 +55,17 @@ class ChatResult:
     """LLM reply plus which provider and model actually answered."""
 
     content: str
-    provider: str  # "xai" | "deepseek" | "zai" | "opencode-go" | "ollama" | "nvidia"
+    provider: str  # xAI, xAI fallback, DeepSeek, Z.AI, OpenCode Go, Ollama, or NVIDIA
     model: str
+
+
+class ProviderResponseValidationError(ValueError):
+    """A provider answered, but failed the consumer's response contract."""
+
+    def __init__(self, provider: str, model: str) -> None:
+        self.provider = provider
+        self.model = model
+        super().__init__(f"{provider} returned an invalid response")
 
 
 class XAIClient:
@@ -71,12 +87,13 @@ class XAIClient:
         ollama_model: str = "gemma4:31b",
         ollama_base_url: str = "https://ollama.com/v1",
         nvidia_api_key: str = "",
-        nvidia_model: str = "nvidia/nemotron-3.5-lightning-30b-a3b",
+        nvidia_model: str = "minimaxai/minimax-m3.1-flash",
         nvidia_base_url: str = "https://integrate.api.nvidia.com/v1",
     ) -> None:
         self._provider = provider
         self._primary_name = {"deepseek": "DeepSeek", "zai": "Z.AI"}.get(provider, "xAI")
-        self._skip_primary = False
+        self._provider_disabled_dates: dict[str, date] = {}
+        self._provider_retry_after: dict[str, datetime] = {}
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -104,9 +121,6 @@ class XAIClient:
         self._opencode_model_date: date | None = None
         self._opencode_model: str | None = None
         self._opencode_model_lock = asyncio.Lock()
-        self._opencode_disabled_date: date | None = None
-        self._skip_fallback = False
-        self._skip_xai_fallback = False
         self._xai_fallback_client = None
         self._xai_fallback_model = xai_fallback_model
         if xai_fallback_api_key and provider != "xai":
@@ -127,7 +141,6 @@ class XAIClient:
             else None
         )
         self._ollama_model = ollama_model
-        self._skip_ollama = False
         self._nvidia_client = (
             AsyncOpenAI(
                 api_key=nvidia_api_key,
@@ -139,7 +152,6 @@ class XAIClient:
             else None
         )
         self._nvidia_model = nvidia_model
-        self._skip_nvidia = False
         self._logger = get_logger(self.__class__.__name__)
 
     @property
@@ -150,19 +162,78 @@ class XAIClient:
     def model(self) -> str:
         return self._model
 
-    async def chat(self, messages: Sequence[dict[str, str]]) -> ChatResult:
+    def _provider_available(self, provider: str, *, honor_transient_cooldown: bool = True) -> bool:
+        now = datetime.now(UTC)
+        disabled_date = self._provider_disabled_dates.get(provider)
+        if disabled_date == now.date():
+            return False
+        if disabled_date is not None:
+            self._provider_disabled_dates.pop(provider, None)
+
+        retry_after = self._provider_retry_after.get(provider) if honor_transient_cooldown else None
+        if retry_after is not None and retry_after > now:
+            return False
+        if retry_after is not None:
+            self._provider_retry_after.pop(provider, None)
+        return True
+
+    def _record_provider_failure(
+        self, provider: str, exc: Exception, *, apply_transient_cooldown: bool = True
+    ) -> None:
+        now = datetime.now(UTC)
+        if _is_permanent_provider_error(exc):
+            self._provider_disabled_dates[provider] = now.date()
+            self._provider_retry_after.pop(provider, None)
+        elif apply_transient_cooldown:
+            # 120s spans two 60s sentiment polling cycles, limiting retries for
+            # throttled providers without suppressing normal overseer chat.
+            self._provider_retry_after[provider] = now + _TRANSIENT_PROVIDER_COOLDOWN
+
+    async def chat_with_validator(
+        self,
+        messages: Sequence[dict[str, str]],
+        response_validator: Callable[[str], object],
+    ) -> ChatResult:
+        try:
+            async with asyncio.timeout(_SENTIMENT_CHAIN_TIMEOUT_SECONDS):
+                return await self.chat(
+                    messages,
+                    response_validator=response_validator,
+                    max_attempts=1,
+                    request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+                )
+        except TimeoutError as exc:
+            raise TimeoutError(
+                f"Sentiment provider chain exceeded the {_SENTIMENT_CHAIN_TIMEOUT_SECONDS:.0f}s budget"
+            ) from exc
+
+    async def chat(
+        self,
+        messages: Sequence[dict[str, str]],
+        *,
+        response_validator: Callable[[str], object] | None = None,
+        max_attempts: int = _MAX_ATTEMPTS,
+        request_timeout: float | None = None,
+    ) -> ChatResult:
+        use_transient_cooldown = response_validator is not None
         primary_error: Exception | None = None
-        if not self._skip_primary:
+        if self._provider_available("primary", honor_transient_cooldown=use_transient_cooldown):
             try:
                 content = await self._chat_with_client(
                     self._client,
                     self._model,
                     messages,
                     provider_name=self._primary_name,
+                    max_attempts=max_attempts,
+                    provider_id=self._provider,
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider=self._provider, model=self._model)
             except _AUTH_ERRORS as exc:
-                self._skip_primary = True
+                self._record_provider_failure(
+                    "primary", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 primary_error = exc
                 self._logger.warning(
                     "%s auth/permission denied (%s); skipping primary on later calls",
@@ -171,88 +242,130 @@ class XAIClient:
                 )
             except Exception as exc:
                 primary_error = exc
-                self._skip_primary = _is_permanent_provider_error(exc)
+                self._record_provider_failure(
+                    "primary", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 self._logger.warning(
                     "%s unavailable after retries; trying configured fallbacks",
                     self._primary_name,
                 )
 
-        today = datetime.now(UTC).date()
         opencode_error: Exception | None = None
-        if self._opencode_client is not None and self._opencode_disabled_date != today:
+        if self._opencode_client is not None and self._provider_available(
+            "opencode-go", honor_transient_cooldown=use_transient_cooldown
+        ):
             try:
-                model = await self._resolve_opencode_free_model()
+                model = await self._resolve_opencode_free_model(request_timeout=request_timeout)
                 content = await self._chat_with_client(
                     self._opencode_client,
                     model,
                     messages,
                     provider_name="OpenCode Go free model",
+                    max_attempts=max_attempts,
+                    provider_id="opencode-go",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider="opencode-go", model=model)
             except Exception as exc:
                 opencode_error = exc
-                if _is_permanent_provider_error(exc):
-                    self._opencode_disabled_date = today
+                self._record_provider_failure(
+                    "opencode-go", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 self._logger.warning("OpenCode Go free-model fallback failed: %s", exc)
 
         ollama_error: Exception | None = None
-        if self._ollama_client is not None and not self._skip_ollama:
+        if self._ollama_client is not None and self._provider_available(
+            "ollama", honor_transient_cooldown=use_transient_cooldown
+        ):
             try:
                 content = await self._chat_with_client(
                     self._ollama_client,
                     self._ollama_model,
                     messages,
                     provider_name="Ollama Cloud",
+                    max_attempts=max_attempts,
+                    provider_id="ollama",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider="ollama", model=self._ollama_model)
             except Exception as exc:
                 ollama_error = exc
-                self._skip_ollama = _is_permanent_provider_error(exc)
+                self._record_provider_failure(
+                    "ollama", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 self._logger.warning("Ollama fallback failed: %s", exc)
 
         nvidia_error: Exception | None = None
-        if self._nvidia_client is not None and not self._skip_nvidia:
+        if self._nvidia_client is not None and self._provider_available(
+            "nvidia", honor_transient_cooldown=use_transient_cooldown
+        ):
             try:
                 content = await self._chat_with_client(
                     self._nvidia_client,
                     self._nvidia_model,
                     messages,
                     provider_name="NVIDIA NIM",
+                    max_attempts=max_attempts,
+                    provider_id="nvidia",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider="nvidia", model=self._nvidia_model)
             except Exception as exc:
                 nvidia_error = exc
-                self._skip_nvidia = _is_permanent_provider_error(exc)
+                self._record_provider_failure(
+                    "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 self._logger.warning("NVIDIA NIM fallback failed: %s", exc)
 
         xai_error: Exception | None = None
-        if self._xai_fallback_client is not None and not self._skip_xai_fallback:
+        if self._xai_fallback_client is not None and self._provider_available(
+            "xai", honor_transient_cooldown=use_transient_cooldown
+        ):
             try:
                 content = await self._chat_with_client(
                     self._xai_fallback_client,
                     self._xai_fallback_model,
                     messages,
                     provider_name="xAI fallback",
+                    max_attempts=max_attempts,
+                    provider_id="xai-fallback",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
                 )
-                return ChatResult(content=content, provider="xai", model=self._xai_fallback_model)
+                return ChatResult(
+                    content=content, provider="xai-fallback", model=self._xai_fallback_model
+                )
             except Exception as exc:
                 xai_error = exc
-                self._skip_xai_fallback = _is_permanent_provider_error(exc)
+                self._record_provider_failure(
+                    "xai", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 self._logger.warning("xAI fallback failed: %s", exc)
 
         deepseek_error: Exception | None = None
-        if self._fallback_client is not None and not self._skip_fallback:
+        if self._fallback_client is not None and self._provider_available(
+            "deepseek", honor_transient_cooldown=use_transient_cooldown
+        ):
             try:
                 content = await self._chat_with_client(
                     self._fallback_client,
                     self._fallback_model,
                     messages,
                     provider_name="DeepSeek",
+                    max_attempts=max_attempts,
+                    provider_id="deepseek",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider="deepseek", model=self._fallback_model)
             except Exception as exc:
                 deepseek_error = exc
-                self._skip_fallback = _is_permanent_provider_error(exc)
+                self._record_provider_failure(
+                    "deepseek", exc, apply_transient_cooldown=use_transient_cooldown
+                )
                 self._logger.warning("DeepSeek fallback failed: %s", exc)
 
         if deepseek_error is not None:
@@ -267,11 +380,9 @@ class XAIClient:
             raise opencode_error
         if primary_error is not None:
             raise primary_error
-        raise RuntimeError(
-            f"{self._primary_name} is disabled and no fallback provider is configured"
-        )
+        raise RuntimeError("No configured AI provider is currently available")
 
-    async def _resolve_opencode_free_model(self) -> str:
+    async def _resolve_opencode_free_model(self, *, request_timeout: float | None = None) -> str:
         """Refresh the provider catalog once per UTC day and select only free IDs.
 
         Fail closed when the provider no longer advertises a free model; never
@@ -289,7 +400,10 @@ class XAIClient:
                 if self._opencode_model:
                     return self._opencode_model
                 raise RuntimeError("OpenCode Go catalog has no advertised free models")
-            response = await self._opencode_client.models.list()
+            if request_timeout is None:
+                response = await self._opencode_client.models.list()
+            else:
+                response = await self._opencode_client.models.list(timeout=request_timeout)
             model_ids = sorted(
                 model.id
                 for model in response.data
@@ -318,33 +432,55 @@ class XAIClient:
         messages: Sequence[dict[str, str]],
         *,
         provider_name: str,
+        max_attempts: int = _MAX_ATTEMPTS,
+        provider_id: str | None = None,
+        response_validator: Callable[[str], object] | None = None,
+        request_timeout: float | None = None,
     ) -> str:
+        chat_messages = cast(list[ChatCompletionMessageParam], list(messages))
         last_exc: Exception | None = None
-        for attempt in range(_MAX_ATTEMPTS):
+        for attempt in range(max_attempts):
             try:
-                completion = await client.chat.completions.create(
-                    model=model,
-                    messages=list(messages),
-                    temperature=0.2,
-                )
+                if request_timeout is None:
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=chat_messages,
+                        temperature=0.2,
+                    )
+                else:
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=chat_messages,
+                        temperature=0.2,
+                        timeout=request_timeout,
+                    )
                 choices = getattr(completion, "choices", [])
-                if choices:
-                    message = getattr(choices[0], "message", None)
-                    content = getattr(message, "content", None)
-                    if isinstance(content, str) and content.strip():
-                        return content.strip()
-                return f"No response content returned by {provider_name} API."
+                if not choices:
+                    raise RuntimeError(f"No response content returned by {provider_name} API.")
+                message = getattr(choices[0], "message", None)
+                content = getattr(message, "content", None)
+                if not isinstance(content, str) or not content.strip():
+                    raise RuntimeError(f"No response content returned by {provider_name} API.")
+                content = content.strip()
+                if response_validator is not None:
+                    try:
+                        response_validator(content)
+                    except Exception as exc:
+                        raise ProviderResponseValidationError(
+                            provider_id or provider_name, model
+                        ) from exc
+                return content
             except _RETRYABLE_ERRORS as exc:
                 if _is_permanent_provider_error(exc):
                     raise
                 last_exc = exc
-                if attempt < _MAX_ATTEMPTS - 1:
+                if attempt < max_attempts - 1:
                     delay = 2**attempt  # 1s, 2s
                     self._logger.warning(
                         "%s request failed (attempt %d/%d), retrying in %ds: %s",
                         provider_name,
                         attempt + 1,
-                        _MAX_ATTEMPTS,
+                        max_attempts,
                         delay,
                         exc,
                     )

@@ -38,11 +38,11 @@ telegram:
 
 ai:
   enabled: true
-  # Z.AI is primary; use only a general API/package credential (never a
-  # Coding Plan key for automated polling). OpenCode Go is the first fallback
-  # (credential is read only from OPENCODE_GO_API_KEY in .env): the client refreshes
-  # its model catalog daily and selects only model IDs explicitly marked free;
-  # it fails closed rather than choosing a paid model.
+  # Z.AI is primary; use only a general API/package credential, never a
+  # Coding Plan key for automated polling. OpenCode Go is not enabled by default.
+  # Its live model catalog must be verified before setting OPENCODE_GO_ENABLED=true.
+  # Credentials are read only from OPENCODE_GO_API_KEY in .env. The selection code
+  # fails closed rather than choosing a model whose ID is not explicitly marked free.
   provider: zai
   model: glm-5.3-flash
   polling_interval: 60.0

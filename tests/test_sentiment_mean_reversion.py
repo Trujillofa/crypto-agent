@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.strategy.sentiment_mean_reversion import (
     SentimentMeanReversionStrategy,
     SentimentScorer,
+    _decode_sentiment_score,
 )
 from src.strategy.signals import SignalType
 
@@ -33,6 +35,41 @@ def _make_strategy(**overrides) -> SentimentMeanReversionStrategy:
     }
     config.update(overrides)
     return SentimentMeanReversionStrategy(config)
+
+
+def test_decode_sentiment_score_accepts_finite_score_in_range() -> None:
+    assert _decode_sentiment_score('{"score": 42.5}') == 42.5
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        "not json",
+        "[42]",
+        '{"reason": "missing score"}',
+        '{"score": true}',
+        '{"score": "42"}',
+        '{"score": NaN}',
+        '{"score": 1e400}',
+        '{"score": -0.1}',
+        '{"score": 100.1}',
+    ],
+)
+def test_decode_sentiment_score_rejects_invalid_response(response: str) -> None:
+    with pytest.raises(ValueError):
+        _decode_sentiment_score(response)
+
+
+@pytest.mark.asyncio
+async def test_degradation_check_failure_does_not_discard_live_score() -> None:
+    scorer = SentimentScorer(xai_client=MagicMock())
+    query = AsyncMock(return_value=(67.0, "nvidia", "nim-model"))
+    scorer._query_llm = query
+    scorer._check_degradation = AsyncMock(side_effect=RuntimeError("metrics unavailable"))
+
+    assert await scorer.get_score("BTCUSDT") == 67.0
+    assert await scorer.get_score("BTCUSDT") == 67.0
+    query.assert_awaited_once()
 
 
 def _indicators(
@@ -340,6 +377,7 @@ class TestSentimentScorer:
                 "symbol": "BTCUSDT",
                 "score": 61.0,
                 "source": "xai_live",
+                "provider": "xai",
             }
         ]
 
@@ -401,6 +439,39 @@ class TestSentimentScorer:
         ]
 
     @pytest.mark.asyncio
+    async def test_malformed_response_is_recorded_as_error_fallback(self):
+        from src.overseer.xai import ChatResult
+
+        class MalformedClient:
+            async def chat(self, messages):
+                return ChatResult(
+                    content="not json", provider="nvidia", model="minimaxai/minimax-m3.1-flash"
+                )
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(
+            xai_client=MalformedClient(),
+            observation_recorder=recorder,
+        )
+        score = await scorer.get_score("SOLUSDT")
+
+        assert score == 30.0
+        assert observations == [
+            {
+                "symbol": "SOLUSDT",
+                "score": 30.0,
+                "source": "error_fallback",
+                "provider": "nvidia",
+                "model": "minimaxai/minimax-m3.1-flash",
+                "error": "Invalid sentiment JSON response",
+            }
+        ]
+
+    @pytest.mark.asyncio
     async def test_records_deepseek_fallback_when_provider_is_deepseek(self):
         """DeepSeek answers must not be mislabeled as xai_live."""
         from src.overseer.xai import ChatResult
@@ -432,6 +503,7 @@ class TestSentimentScorer:
                 "score": 55.0,
                 "source": "deepseek_fallback",
                 "model": "deepseek-v4-pro",
+                "provider": "deepseek",
             }
         ]
 
@@ -467,12 +539,17 @@ class TestSentimentScorer:
                 "score": 61.0,
                 "source": "zai_live",
                 "model": "glm-5.3",
+                "provider": "zai",
             }
         ]
 
     @pytest.mark.parametrize(
         ("provider", "expected_source"),
-        [("ollama", "ollama_cloud_live"), ("nvidia", "nvidia_nim_live")],
+        [
+            ("ollama", "ollama_cloud_live"),
+            ("nvidia", "nvidia_nim_live"),
+            ("xai-fallback", "xai_fallback_live"),
+        ],
     )
     @pytest.mark.asyncio
     async def test_records_cloud_provider_as_live(
@@ -502,6 +579,7 @@ class TestSentimentScorer:
 
         assert score == 63.0
         assert observations[0]["source"] == expected_source
+        assert observations[0]["provider"] == provider
         assert observations[0]["model"] == "test-model"
 
     @pytest.mark.asyncio
