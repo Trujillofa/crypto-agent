@@ -149,11 +149,15 @@ async def test_validator_reports_provider_unavailability_during_cooldown() -> No
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
         client = XAIClient(api_key="test-key", model="glm-5.3-flash", provider="zai")
         client._provider_retry_after["primary"] = datetime.now(UTC) + timedelta(minutes=2)
-        with pytest.raises(RuntimeError, match="No configured AI provider is currently available"):
+        with pytest.raises(
+            RuntimeError, match="No configured AI provider is currently available"
+        ) as raised:
             await client.chat_with_validator(
                 [{"role": "user", "content": "sentiment"}], lambda _: None
             )
 
+    assert raised.value.provider == "provider-chain"
+    assert raised.value.model == "none"
     create.assert_not_awaited()
 
 
@@ -170,12 +174,14 @@ async def test_sentiment_chain_has_overall_deadline() -> None:
             client = XAIClient(api_key="test-key", model="glm-5.3-flash", provider="zai")
             slow_call = AsyncMock(side_effect=slow_request)
             with patch.object(client, "_chat_with_client", slow_call):
-                with pytest.raises(TimeoutError, match="provider chain exceeded"):
+                with pytest.raises(TimeoutError, match="provider chain exceeded") as raised:
                     await client.chat_with_validator(
                         [{"role": "user", "content": "sentiment"}], lambda _: None
                     )
 
     slow_call.assert_awaited_once()
+    assert raised.value.provider == "provider-chain"
+    assert raised.value.model == "chain"
 
 
 @pytest.mark.asyncio
@@ -360,6 +366,77 @@ async def test_invalid_response_uses_next_provider() -> None:
     assert fallback_create.await_args is not None
     assert fallback_create.await_args.kwargs["timeout"] == 10.0
     assert "primary" in client._provider_retry_after
+
+
+@pytest.mark.asyncio
+async def test_zai_chain_uses_configured_deepseek_after_other_fallbacks_fail() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    ollama_create = AsyncMock(return_value=_make_completion("not-json"))
+    nvidia_create = AsyncMock(side_effect=_make_connection_error())
+    deepseek_create = AsyncMock(return_value=_make_completion('{"score": 61}'))
+    clients = [
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        for create in (primary_create, deepseek_create, ollama_create, nvidia_create)
+    ]
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=clients):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            fallback_api_key="deepseek-key",
+            fallback_model="deepseek-v4-pro",
+            ollama_api_key="ollama-key",
+            nvidia_api_key="nvidia-key",
+        )
+        result = await client.chat_with_validator(
+            [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+        )
+
+    assert result == ChatResult(
+        content='{"score": 61}', provider="deepseek", model="deepseek-v4-pro"
+    )
+    primary_create.assert_awaited_once()
+    ollama_create.assert_awaited_once()
+    nvidia_create.assert_awaited_once()
+    deepseek_create.assert_awaited_once()
+    assert primary_create.await_args is not None
+    assert "response_format" not in primary_create.await_args.kwargs
+    assert ollama_create.await_args is not None
+    assert ollama_create.await_args.kwargs["response_format"] == {"type": "json_object"}
+    assert ollama_create.await_args.kwargs["max_tokens"] == 256
+    assert deepseek_create.await_args is not None
+    assert deepseek_create.await_args.kwargs["response_format"] == {"type": "json_object"}
+    assert deepseek_create.await_args.kwargs["max_tokens"] == 256
+
+
+@pytest.mark.asyncio
+async def test_exhausted_chain_preserves_last_failing_provider_identity() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    ollama_create = AsyncMock(return_value=_make_completion("not-json"))
+    nvidia_error = _make_connection_error()
+    nvidia_create = AsyncMock(side_effect=nvidia_error)
+    clients = [
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        for create in (primary_create, ollama_create, nvidia_create)
+    ]
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=clients):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            ollama_api_key="ollama-key",
+            nvidia_api_key="nvidia-key",
+        )
+        with pytest.raises(openai.APIConnectionError) as raised:
+            await client.chat_with_validator(
+                [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+            )
+
+    assert raised.value.provider == "nvidia"
+    assert raised.value.model == "minimaxai/minimax-m3.1-flash"
+    assert str(raised.value) == str(nvidia_error)
 
 
 @pytest.mark.asyncio

@@ -249,8 +249,8 @@ class SentimentScorer:
     def _degradation_message(self, detail: str) -> str:
         label = self._provider_display_name()
         if label == "Sentiment":
-            return f"Sentiment degraded: {detail}"
-        return f"{label} sentiment degraded: {detail}"
+            return f"Sentiment provider chain degraded: {detail}"
+        return f"Sentiment provider chain degraded (primary {label}): {detail}"
 
     async def _query_llm(self, symbol: str) -> tuple[float, str, str | None]:
         """Query the configured LLM for sentiment analysis.

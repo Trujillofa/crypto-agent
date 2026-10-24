@@ -472,6 +472,27 @@ class TestSentimentScorer:
         ]
 
     @pytest.mark.asyncio
+    async def test_provider_timeout_fallback_records_actual_provider_and_model(self):
+        class ProviderTimeout(TimeoutError):
+            provider = "nvidia"
+            model = "minimaxai/minimax-m3.1-flash"
+
+        class FailingClient:
+            async def chat(self, messages):
+                raise ProviderTimeout("provider timeout")
+
+        observations: list[dict[str, object]] = []
+
+        async def recorder(payload: dict[str, object]) -> None:
+            observations.append(payload)
+
+        scorer = SentimentScorer(xai_client=FailingClient(), observation_recorder=recorder)
+        assert await scorer.get_score("SOLUSDT") == 30.0
+        assert observations[0]["source"] == "error_fallback"
+        assert observations[0]["provider"] == "nvidia"
+        assert observations[0]["model"] == "minimaxai/minimax-m3.1-flash"
+
+    @pytest.mark.asyncio
     async def test_records_deepseek_fallback_when_provider_is_deepseek(self):
         """DeepSeek answers must not be mislabeled as xai_live."""
         from src.overseer.xai import ChatResult
@@ -872,6 +893,8 @@ class TestDegradationAlert:
 
         assert len(alerts) == 1
         assert "Z.AI" in alerts[0]
+        assert "provider chain" in alerts[0]
+        assert "primary Z.AI" in alerts[0]
         assert "Grok" not in alerts[0]
         assert scorer.degraded is True
 

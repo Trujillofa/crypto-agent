@@ -50,6 +50,14 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
     )
 
 
+def _provider_error_summary(exc: Exception) -> str:
+    """Compact error type/status label for provider-client log messages."""
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return f"{type(exc).__name__} (HTTP {status_code})"
+    return type(exc).__name__
+
+
 @dataclass(frozen=True)
 class ChatResult:
     """LLM reply plus which provider and model actually answered."""
@@ -66,6 +74,14 @@ class ProviderResponseValidationError(ValueError):
         self.provider = provider
         self.model = model
         super().__init__(f"{provider} returned an invalid response")
+
+
+def _annotate_provider_error(exc: Exception, provider: str, model: str) -> None:
+    """Preserve the provider/model that produced a final failed response."""
+    if not getattr(exc, "provider", None):
+        exc.provider = provider  # type: ignore[attr-defined]
+    if not getattr(exc, "model", None):
+        exc.model = model  # type: ignore[attr-defined]
 
 
 class XAIClient:
@@ -181,13 +197,25 @@ class XAIClient:
         self, provider: str, exc: Exception, *, apply_transient_cooldown: bool = True
     ) -> None:
         now = datetime.now(UTC)
+        provider_label = self._primary_name if provider == "primary" else provider
         if _is_permanent_provider_error(exc):
             self._provider_disabled_dates[provider] = now.date()
             self._provider_retry_after.pop(provider, None)
+            self._logger.warning(
+                "%s disabled until UTC day rollover after %s",
+                provider_label,
+                _provider_error_summary(exc),
+            )
         elif apply_transient_cooldown:
             # 120s spans two 60s sentiment polling cycles, limiting retries for
             # throttled providers without suppressing normal overseer chat.
             self._provider_retry_after[provider] = now + _TRANSIENT_PROVIDER_COOLDOWN
+            self._logger.info(
+                "%s cooling down for %ds after %s",
+                provider_label,
+                int(_TRANSIENT_PROVIDER_COOLDOWN.total_seconds()),
+                _provider_error_summary(exc),
+            )
 
     async def chat_with_validator(
         self,
@@ -203,9 +231,11 @@ class XAIClient:
                     request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
                 )
         except TimeoutError as exc:
-            raise TimeoutError(
+            error = TimeoutError(
                 f"Sentiment provider chain exceeded the {_SENTIMENT_CHAIN_TIMEOUT_SECONDS:.0f}s budget"
-            ) from exc
+            )
+            _annotate_provider_error(error, "provider-chain", "chain")
+            raise error from exc
 
     async def chat(
         self,
@@ -238,7 +268,7 @@ class XAIClient:
                 self._logger.warning(
                     "%s auth/permission denied (%s); skipping primary on later calls",
                     self._primary_name,
-                    exc,
+                    _provider_error_summary(exc),
                 )
             except Exception as exc:
                 primary_error = exc
@@ -246,8 +276,9 @@ class XAIClient:
                     "primary", exc, apply_transient_cooldown=use_transient_cooldown
                 )
                 self._logger.warning(
-                    "%s unavailable after retries; trying configured fallbacks",
+                    "%s unavailable after retries (%s); trying configured fallbacks",
                     self._primary_name,
+                    _provider_error_summary(exc),
                 )
 
         opencode_error: Exception | None = None
@@ -269,10 +300,13 @@ class XAIClient:
                 return ChatResult(content=content, provider="opencode-go", model=model)
             except Exception as exc:
                 opencode_error = exc
+                _annotate_provider_error(exc, "opencode-go", self._opencode_model or "catalog")
                 self._record_provider_failure(
                     "opencode-go", exc, apply_transient_cooldown=use_transient_cooldown
                 )
-                self._logger.warning("OpenCode Go free-model fallback failed: %s", exc)
+                self._logger.warning(
+                    "OpenCode Go free-model fallback failed (%s)", _provider_error_summary(exc)
+                )
 
         ollama_error: Exception | None = None
         if self._ollama_client is not None and self._provider_available(
@@ -295,7 +329,7 @@ class XAIClient:
                 self._record_provider_failure(
                     "ollama", exc, apply_transient_cooldown=use_transient_cooldown
                 )
-                self._logger.warning("Ollama fallback failed: %s", exc)
+                self._logger.warning("Ollama fallback failed (%s)", _provider_error_summary(exc))
 
         nvidia_error: Exception | None = None
         if self._nvidia_client is not None and self._provider_available(
@@ -318,7 +352,9 @@ class XAIClient:
                 self._record_provider_failure(
                     "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
                 )
-                self._logger.warning("NVIDIA NIM fallback failed: %s", exc)
+                self._logger.warning(
+                    "NVIDIA NIM fallback failed (%s)", _provider_error_summary(exc)
+                )
 
         xai_error: Exception | None = None
         if self._xai_fallback_client is not None and self._provider_available(
@@ -343,7 +379,7 @@ class XAIClient:
                 self._record_provider_failure(
                     "xai", exc, apply_transient_cooldown=use_transient_cooldown
                 )
-                self._logger.warning("xAI fallback failed: %s", exc)
+                self._logger.warning("xAI fallback failed (%s)", _provider_error_summary(exc))
 
         deepseek_error: Exception | None = None
         if self._fallback_client is not None and self._provider_available(
@@ -366,7 +402,7 @@ class XAIClient:
                 self._record_provider_failure(
                     "deepseek", exc, apply_transient_cooldown=use_transient_cooldown
                 )
-                self._logger.warning("DeepSeek fallback failed: %s", exc)
+                self._logger.warning("DeepSeek fallback failed (%s)", _provider_error_summary(exc))
 
         if deepseek_error is not None:
             raise deepseek_error
@@ -380,7 +416,9 @@ class XAIClient:
             raise opencode_error
         if primary_error is not None:
             raise primary_error
-        raise RuntimeError("No configured AI provider is currently available")
+        error = RuntimeError("No configured AI provider is currently available")
+        _annotate_provider_error(error, "provider-chain", "none")
+        raise error
 
     async def _resolve_opencode_free_model(self, *, request_timeout: float | None = None) -> str:
         """Refresh the provider catalog once per UTC day and select only free IDs.
@@ -439,13 +477,34 @@ class XAIClient:
     ) -> str:
         chat_messages = cast(list[ChatCompletionMessageParam], list(messages))
         last_exc: Exception | None = None
+        json_mode = response_validator is not None and (provider_id or self._provider) in {
+            "deepseek",
+            "ollama",
+        }
         for attempt in range(max_attempts):
             try:
-                if request_timeout is None:
+                if request_timeout is None and json_mode:
                     completion = await client.chat.completions.create(
                         model=model,
                         messages=chat_messages,
                         temperature=0.2,
+                        max_tokens=256,
+                        response_format={"type": "json_object"},
+                    )
+                elif request_timeout is None:
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=chat_messages,
+                        temperature=0.2,
+                    )
+                elif json_mode:
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=chat_messages,
+                        temperature=0.2,
+                        timeout=request_timeout,
+                        max_tokens=256,
+                        response_format={"type": "json_object"},
                     )
                 else:
                     completion = await client.chat.completions.create(
@@ -472,17 +531,24 @@ class XAIClient:
                 return content
             except _RETRYABLE_ERRORS as exc:
                 if _is_permanent_provider_error(exc):
+                    _annotate_provider_error(exc, provider_id or provider_name, model)
                     raise
                 last_exc = exc
                 if attempt < max_attempts - 1:
                     delay = 2**attempt  # 1s, 2s
                     self._logger.warning(
-                        "%s request failed (attempt %d/%d), retrying in %ds: %s",
+                        "%s request failed (attempt %d/%d), retrying in %ds (%s)",
                         provider_name,
                         attempt + 1,
                         max_attempts,
                         delay,
-                        exc,
+                        _provider_error_summary(exc),
                     )
                     await asyncio.sleep(delay)
-        raise last_exc  # type: ignore[misc]
+            except Exception as exc:
+                _annotate_provider_error(exc, provider_id or provider_name, model)
+                raise
+        if last_exc is None:
+            raise RuntimeError(f"{provider_name} call failed without an exception")
+        _annotate_provider_error(last_exc, provider_id or provider_name, model)
+        raise last_exc
