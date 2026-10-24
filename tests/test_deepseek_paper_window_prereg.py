@@ -139,15 +139,17 @@ def test_lock_denominators_match_pre_t0_cadence() -> None:
     assert POLICY["degradation"]["no_answer_pct"] == 0.5
 
 
-def test_config_still_matches_locked_provider() -> None:
+def test_config_uses_zai_primary_and_free_opencode_fallback() -> None:
     overlay = yaml.safe_load(Path("config/settings.sentiment_macro.yaml").read_text())
     assert overlay["mode"] == "paper"
-    assert overlay["ai"]["provider"] == "deepseek"
+    assert overlay["ai"]["provider"] == "zai"
+    assert overlay["ai"]["model"] == "glm-5.3-flash"
     assert overlay["ai"]["fallback_model"] == "deepseek-v4-pro"
+    assert overlay["ai"]["opencode_go_base_url"] == "https://opencode.ai/zen/go/v1"
     assert overlay["trading_execution"]["enabled"] is False
     assert overlay["trading_execution"]["test_mode"] is True
     text = Path("config/settings.sentiment_macro.yaml").read_text()
-    assert "zai_base_url:" not in text
+    assert "Coding Plan" in text
     assert "api/coding/paas/v4" not in text
 
 

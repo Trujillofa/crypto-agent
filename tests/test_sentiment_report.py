@@ -159,6 +159,25 @@ def test_historical_xai_live_still_counts_as_live(capsys) -> None:
     assert "Low live rate" not in out
 
 
+def test_xai_fallback_source_counts_as_live(capsys) -> None:
+    lines = [
+        _event(
+            "xai_fallback_live",
+            score=float(50 + i * 2),
+            provider="xai-fallback",
+            model="grok-4-1-fast-reasoning",
+            ts=f"2026-08-16T16:{i:02d}:00+00:00",
+        )
+        for i in range(10)
+    ]
+
+    print_report(parse_jsonl(lines))
+    out = capsys.readouterr().out
+
+    assert "Healthy" in out
+    assert "Low live rate" not in out
+
+
 def test_historical_and_neutral_error_sources_still_parse_as_unanswered(capsys) -> None:
     """xai_error_fallback and the provider-neutral error source both count as errors."""
     lines = [

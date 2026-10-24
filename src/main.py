@@ -151,6 +151,25 @@ class AISettings:
     fallback_base_url: str = "https://api.deepseek.com/v1"
     zai_api_key: str = ""
     zai_base_url: str = "https://api.z.ai/api/paas/v4"
+    opencode_go_api_key: str = ""
+    opencode_go_base_url: str = "https://opencode.ai/zen/go/v1"
+    opencode_go_enabled: bool = False
+    xai_fallback_model: str = "grok-4-1-fast-reasoning"
+    xai_fallback_enabled: bool = False
+    ollama_api_key: str = ""
+    ollama_model: str = "gemma4:31b"
+    ollama_base_url: str = "https://ollama.com/v1"
+    nvidia_api_key: str = ""
+    nvidia_model: str = "minimaxai/minimax-m3.1-flash"
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+
+
+def _opencode_go_key(settings: AISettings) -> str:
+    return settings.opencode_go_api_key if settings.opencode_go_enabled else ""
+
+
+def _xai_fallback_key(settings: AISettings) -> str:
+    return settings.api_key if settings.xai_fallback_enabled else ""
 
 
 @dataclass(frozen=True)
@@ -414,6 +433,13 @@ def load_settings(config_path: Path) -> Settings:
     zai_api_key = _as_str(ai.get("zai_api_key"), "ai.zai_api_key", default="")
     if not zai_api_key:
         zai_api_key = os.getenv("ZAI_API_KEY", "").strip()
+    opencode_go_api_key = os.getenv("OPENCODE_GO_API_KEY", "").strip()
+    opencode_go_enabled = _as_bool(
+        os.getenv("OPENCODE_GO_ENABLED"), "OPENCODE_GO_ENABLED", default=False
+    )
+    xai_fallback_enabled = _as_bool(
+        os.getenv("XAI_FALLBACK_ENABLED"), "XAI_FALLBACK_ENABLED", default=False
+    )
 
     ai_settings = AISettings(
         enabled=_as_bool(ai.get("enabled"), "ai.enabled", default=False),
@@ -445,17 +471,48 @@ def load_settings(config_path: Path) -> Settings:
             "ai.fallback_model",
             default="deepseek-chat",
         ),
-        fallback_base_url=_as_str(
-            ai.get("fallback_base_url"),
-            "ai.fallback_base_url",
-            default="https://api.deepseek.com/v1",
+        fallback_base_url=(
+            _as_str(
+                ai.get("fallback_base_url"),
+                "ai.fallback_base_url",
+                default="https://api.deepseek.com/v1",
+            ).strip()
+            or "https://api.deepseek.com/v1"
         ),
         zai_api_key=zai_api_key,
-        zai_base_url=_as_str(
-            ai.get("zai_base_url"),
-            "ai.zai_base_url",
-            default="https://api.z.ai/api/paas/v4",
+        zai_base_url=(
+            _as_str(
+                ai.get("zai_base_url"),
+                "ai.zai_base_url",
+                default="https://api.z.ai/api/paas/v4",
+            ).strip()
+            or "https://api.z.ai/api/paas/v4"
         ),
+        opencode_go_api_key=opencode_go_api_key,
+        opencode_go_base_url=(
+            _as_str(
+                ai.get("opencode_go_base_url"),
+                "ai.opencode_go_base_url",
+                default="https://opencode.ai/zen/go/v1",
+            ).strip()
+            or "https://opencode.ai/zen/go/v1"
+        ),
+        opencode_go_enabled=opencode_go_enabled,
+        xai_fallback_enabled=xai_fallback_enabled,
+        xai_fallback_model=_as_str(
+            ai.get("xai_fallback_model"),
+            "ai.xai_fallback_model",
+            default="grok-4-1-fast-reasoning",
+        ),
+        ollama_api_key=os.getenv("OLLAMA_API_KEY", "").strip(),
+        ollama_model=os.getenv("OLLAMA_MODEL", "gemma4:31b").strip() or "gemma4:31b",
+        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "https://ollama.com/v1").strip()
+        or "https://ollama.com/v1",
+        nvidia_api_key=os.getenv("NVIDIA_API_KEY", "").strip(),
+        nvidia_model=os.getenv("NVIDIA_MODEL", "minimaxai/minimax-m3.1-flash").strip()
+        or "minimaxai/minimax-m3.1-flash",
+        nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").strip()
+        or "https://integrate.api.nvidia.com/v1",
     )
 
     # Parse and validate futures configuration
@@ -836,6 +893,7 @@ def _wire_optional_strategy_dependencies(
     telegram: TelegramNotifier | None = None,
     sentiment_cache_ttl_seconds: float = 1800.0,
     sentiment_error_fallback_score: float = 30.0,
+    xai_fallback_model: str = "",
 ) -> None:
     """Attach optional external dependencies to configured strategies.
 
@@ -850,17 +908,29 @@ def _wire_optional_strategy_dependencies(
         supplied_provider = str(payload.get("provider") or "").strip()
         if supplied_provider:
             provider = supplied_provider
-        elif source.startswith("deepseek"):
-            provider = "deepseek"
         elif source.startswith("zai"):
             provider = "zai"
+        elif source.startswith("deepseek"):
+            provider = "deepseek"
+        elif source.startswith("opencode_go"):
+            provider = "opencode-go"
+        elif source.startswith("ollama_cloud"):
+            provider = "ollama"
+        elif source.startswith("nvidia_nim"):
+            provider = "nvidia"
+        elif source.startswith("xai"):
+            provider = "xai"
         else:
-            provider = "xai" if xai_client is not None else "none"
+            provider = "none"
         supplied_model = str(payload.get("model") or "").strip()
+        fallback_model_by_source = {
+            "xai_live": ai_model,
+            "xai_fallback_live": xai_fallback_model,
+        }
         enriched_payload = {
             **payload,
             "provider": provider,
-            "model": supplied_model or (ai_model if source == "xai_live" else "none"),
+            "model": supplied_model or fallback_model_by_source.get(source, "") or "none",
         }
         await event_log.log("sentiment_score", enriched_payload)
 
@@ -1035,6 +1105,16 @@ async def run() -> None:
                     model=settings.ai.model,
                     base_url=settings.ai.zai_base_url,
                     provider="zai",
+                    opencode_go_api_key=_opencode_go_key(settings.ai),
+                    opencode_go_base_url=settings.ai.opencode_go_base_url,
+                    ollama_api_key=settings.ai.ollama_api_key,
+                    ollama_model=settings.ai.ollama_model,
+                    ollama_base_url=settings.ai.ollama_base_url,
+                    nvidia_api_key=settings.ai.nvidia_api_key,
+                    nvidia_model=settings.ai.nvidia_model,
+                    nvidia_base_url=settings.ai.nvidia_base_url,
+                    xai_fallback_api_key=_xai_fallback_key(settings.ai),
+                    xai_fallback_model=settings.ai.xai_fallback_model,
                 )
             else:
                 logger.warning(
@@ -1047,6 +1127,16 @@ async def run() -> None:
                     model=settings.ai.fallback_model,
                     base_url=settings.ai.fallback_base_url,
                     provider="deepseek",
+                    opencode_go_api_key=_opencode_go_key(settings.ai),
+                    opencode_go_base_url=settings.ai.opencode_go_base_url,
+                    ollama_api_key=settings.ai.ollama_api_key,
+                    ollama_model=settings.ai.ollama_model,
+                    ollama_base_url=settings.ai.ollama_base_url,
+                    nvidia_api_key=settings.ai.nvidia_api_key,
+                    nvidia_model=settings.ai.nvidia_model,
+                    nvidia_base_url=settings.ai.nvidia_base_url,
+                    xai_fallback_api_key=_xai_fallback_key(settings.ai),
+                    xai_fallback_model=settings.ai.xai_fallback_model,
                 )
             else:
                 logger.warning(
@@ -1060,6 +1150,14 @@ async def run() -> None:
                 fallback_api_key=settings.ai.fallback_api_key,
                 fallback_model=settings.ai.fallback_model,
                 fallback_base_url=settings.ai.fallback_base_url,
+                opencode_go_api_key=_opencode_go_key(settings.ai),
+                opencode_go_base_url=settings.ai.opencode_go_base_url,
+                ollama_api_key=settings.ai.ollama_api_key,
+                ollama_model=settings.ai.ollama_model,
+                ollama_base_url=settings.ai.ollama_base_url,
+                nvidia_api_key=settings.ai.nvidia_api_key,
+                nvidia_model=settings.ai.nvidia_model,
+                nvidia_base_url=settings.ai.nvidia_base_url,
             )
         else:
             logger.warning(
@@ -1277,6 +1375,7 @@ async def run() -> None:
         xai_client,
         event_log=event_log,
         ai_model=settings.ai.model,
+        xai_fallback_model=settings.ai.xai_fallback_model,
         telegram=telegram_notifier,
     )
 

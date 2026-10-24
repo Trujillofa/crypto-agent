@@ -38,12 +38,17 @@ telegram:
 
 ai:
   enabled: true
-  # Z.AI Coding Plan is not permitted for automated sentiment polling.
-  # DeepSeek is funded and remains the active provider. Z.AI implementation
-  # stays available for a future permitted general/API-package credential.
-  provider: deepseek
+  # Z.AI is primary; use only a general API/package credential, never a
+  # Coding Plan key for automated polling. OpenCode Go is not enabled by default.
+  # Its live model catalog must be verified before setting OPENCODE_GO_ENABLED=true.
+  # Credentials are read only from OPENCODE_GO_API_KEY in .env. The selection code
+  # fails closed rather than choosing a model whose ID is not explicitly marked free.
+  provider: zai
+  model: glm-5.3-flash
   polling_interval: 60.0
   fallback_model: deepseek-v4-pro
+  opencode_go_base_url: https://opencode.ai/zen/go/v1
+  xai_fallback_model: grok-4-1-fast-reasoning
 
 trading_execution:
   enabled: false

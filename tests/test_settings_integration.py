@@ -145,27 +145,31 @@ def test_sentiment_macro_config_resolves_sentiment_strategy_only():
     assert settings.telegram.daily_summary_send_empty is False
     assert settings.display_name == "sentiment-macro-1h-multiasset"
     assert settings.ai.enabled is True
-    assert settings.ai.provider == "deepseek"
+    assert settings.ai.provider == "zai"
+    assert settings.ai.model == "glm-5.3-flash"
     assert settings.ai.fallback_model == "deepseek-v4-pro"
+    assert settings.ai.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
     assert aggregator_config["buy_threshold"] == 0.6
 
 
-def test_sentiment_macro_config_selects_funded_deepseek_not_zai_coding_plan():
-    """Sentiment-macro uses funded DeepSeek; Z.AI Coding Plan is not selected."""
+def test_sentiment_macro_config_selects_zai_main_and_dynamic_opencode_free_fallback():
+    """Z.AI is primary; OpenCode fallback discovers free models, never paid models."""
     overlay_path = Path("config/settings.sentiment_macro.yaml")
     overlay_text = overlay_path.read_text(encoding="utf-8")
-    assert "provider: deepseek" in overlay_text
+    assert "provider: zai" in overlay_text
+    assert "model: glm-5.3-flash" in overlay_text
     assert "fallback_model: deepseek-v4-pro" in overlay_text
-    assert "zai_base_url:" not in overlay_text
+    assert "opencode_go_base_url: https://opencode.ai/zen/go/v1" in overlay_text
+    assert "Coding Plan" in overlay_text
     assert "api/coding/paas/v4" not in overlay_text
-    assert "glm-5.3" not in overlay_text
 
     settings = load_settings(overlay_path)
     assert settings.ai.enabled is True
-    assert settings.ai.provider == "deepseek"
+    assert settings.ai.provider == "zai"
     assert settings.ai.fallback_model == "deepseek-v4-pro"
     assert settings.ai.fallback_base_url == "https://api.deepseek.com/v1"
-    assert settings.ai.zai_base_url != "https://api.z.ai/api/coding/paas/v4"
+    assert settings.ai.zai_base_url == "https://api.z.ai/api/paas/v4"
+    assert settings.ai.opencode_go_base_url == "https://opencode.ai/zen/go/v1"
     assert settings.mode == "paper"
     assert settings.trading_execution.enabled is False
     assert settings.trading_execution.test_mode is True
@@ -297,6 +301,49 @@ async def test_wire_optional_strategy_dependencies_records_enriched_sentiment_ev
 
 
 @pytest.mark.asyncio
+async def test_xai_fallback_event_uses_fallback_model_when_missing() -> None:
+    class FakeEventLog:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict[str, object]]] = []
+
+        async def log(self, event_type: str, payload: dict[str, object]) -> None:
+            self.events.append((event_type, payload))
+
+    engine = StrategyEngine(
+        EngineConfig(
+            symbols=["BTCUSDT"],
+            strategy_classes=[SentimentMeanReversionStrategy],
+            strategy_configs=[{}],
+        ),
+        MagicMock(),
+    )
+    event_log = FakeEventLog()
+    _wire_optional_strategy_dependencies(
+        engine,
+        xai_client=None,
+        event_log=event_log,
+        ai_model="primary-model",
+        xai_fallback_model="fallback-model",
+    )
+
+    strategy = engine._strategies["BTCUSDT"][0]  # pylint: disable=protected-access
+    scorer = strategy._scorer  # pylint: disable=protected-access
+    assert scorer is not None
+    assert scorer._observation_recorder is not None  # pylint: disable=protected-access
+    await scorer._observation_recorder(  # pylint: disable=protected-access
+        {
+            "symbol": "BTCUSDT",
+            "score": 64.0,
+            "source": "xai_fallback_live",
+            "provider": "xai-fallback",
+        }
+    )
+
+    assert event_log.events[0][1]["model"] == "fallback-model"
+    assert event_log.events[0][1]["provider"] == "xai-fallback"
+
+
+@pytest.mark.asyncio
 async def test_wire_records_deepseek_fallback_model_from_chat_result():
     """End-to-end: DeepSeek ChatResult model is persisted, not the xAI model."""
     from src.overseer.xai import ChatResult
@@ -421,6 +468,8 @@ async def test_wire_error_fallback_does_not_claim_grok_model():
     """Failed LLM calls are not attributed to the configured xAI model."""
 
     class FailingClient:
+        provider = "xai"
+
         async def chat(self, messages):
             raise RuntimeError("API timeout")
 
