@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import importlib
+from dataclasses import replace
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.main import (
     _build_strategy_registry,
+    _build_zai_sentiment_client,
     _resolve_strategy_config,
     _wire_optional_strategy_dependencies,
     load_settings,
@@ -173,6 +175,49 @@ def test_sentiment_macro_config_selects_zai_main_and_dynamic_opencode_free_fallb
     assert settings.mode == "paper"
     assert settings.trading_execution.enabled is False
     assert settings.trading_execution.test_mode is True
+
+
+def test_zai_client_receives_configured_deepseek_fallback_without_enabling_opt_ins():
+    settings = load_settings(Path("config/settings.sentiment_macro.yaml"))
+    ai_settings = replace(
+        settings.ai,
+        zai_api_key="zai-test-key",
+        fallback_api_key="deepseek-test-key",
+        opencode_go_api_key="opencode-test-key",
+        opencode_go_enabled=False,
+        xai_fallback_enabled=False,
+    )
+
+    with patch("src.main.XAIClient") as client_factory:
+        client = _build_zai_sentiment_client(ai_settings)
+
+    assert client is client_factory.return_value
+    client_factory.assert_called_once_with(
+        api_key="zai-test-key",
+        model="glm-5.3-flash",
+        base_url="https://api.z.ai/api/paas/v4",
+        provider="zai",
+        fallback_api_key="deepseek-test-key",
+        fallback_model="deepseek-v4-pro",
+        fallback_base_url="https://api.deepseek.com/v1",
+        opencode_go_api_key="",
+        opencode_go_base_url="https://opencode.ai/zen/go/v1",
+        ollama_api_key=ai_settings.ollama_api_key,
+        ollama_model=ai_settings.ollama_model,
+        ollama_base_url=ai_settings.ollama_base_url,
+        nvidia_api_key=ai_settings.nvidia_api_key,
+        nvidia_model=ai_settings.nvidia_model,
+        nvidia_base_url=ai_settings.nvidia_base_url,
+        xai_fallback_api_key="",
+        xai_fallback_model=ai_settings.xai_fallback_model,
+    )
+
+
+def test_zai_client_is_not_constructed_without_primary_key():
+    settings = load_settings(Path("config/settings.sentiment_macro.yaml"))
+    with patch("src.main.XAIClient") as client_factory:
+        assert _build_zai_sentiment_client(replace(settings.ai, zai_api_key="")) is None
+    client_factory.assert_not_called()
 
 
 def test_sol_panic_block_paper_config_resolves_paper_safe_strategy():

@@ -172,6 +172,31 @@ def _xai_fallback_key(settings: AISettings) -> str:
     return settings.api_key if settings.xai_fallback_enabled else ""
 
 
+def _build_zai_sentiment_client(settings: AISettings) -> XAIClient | None:
+    """Build the Z.AI sentiment client with its configured fallback providers."""
+    if not settings.zai_api_key:
+        return None
+    return XAIClient(
+        api_key=settings.zai_api_key,
+        model=settings.model,
+        base_url=settings.zai_base_url,
+        provider="zai",
+        fallback_api_key=settings.fallback_api_key,
+        fallback_model=settings.fallback_model,
+        fallback_base_url=settings.fallback_base_url,
+        opencode_go_api_key=_opencode_go_key(settings),
+        opencode_go_base_url=settings.opencode_go_base_url,
+        ollama_api_key=settings.ollama_api_key,
+        ollama_model=settings.ollama_model,
+        ollama_base_url=settings.ollama_base_url,
+        nvidia_api_key=settings.nvidia_api_key,
+        nvidia_model=settings.nvidia_model,
+        nvidia_base_url=settings.nvidia_base_url,
+        xai_fallback_api_key=_xai_fallback_key(settings),
+        xai_fallback_model=settings.xai_fallback_model,
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
     agent_id: str
@@ -1100,22 +1125,7 @@ async def run() -> None:
         logger = get_logger("main")
         if settings.ai.provider == "zai":
             if settings.ai.zai_api_key:
-                xai_client = XAIClient(
-                    api_key=settings.ai.zai_api_key,
-                    model=settings.ai.model,
-                    base_url=settings.ai.zai_base_url,
-                    provider="zai",
-                    opencode_go_api_key=_opencode_go_key(settings.ai),
-                    opencode_go_base_url=settings.ai.opencode_go_base_url,
-                    ollama_api_key=settings.ai.ollama_api_key,
-                    ollama_model=settings.ai.ollama_model,
-                    ollama_base_url=settings.ai.ollama_base_url,
-                    nvidia_api_key=settings.ai.nvidia_api_key,
-                    nvidia_model=settings.ai.nvidia_model,
-                    nvidia_base_url=settings.ai.nvidia_base_url,
-                    xai_fallback_api_key=_xai_fallback_key(settings.ai),
-                    xai_fallback_model=settings.ai.xai_fallback_model,
-                )
+                xai_client = _build_zai_sentiment_client(settings.ai)
             else:
                 logger.warning(
                     "AI provider is zai but ZAI_API_KEY is empty; sentiment falls back to neutral"
