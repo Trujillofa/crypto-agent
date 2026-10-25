@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
@@ -41,7 +42,14 @@ def configured_sentiment_model(client: object | None) -> str | None:
 
 
 def _decode_sentiment_score(response: str) -> float:
-    data = json.loads(response)
+    # Some providers (e.g. Ollama Cloud) wrap the JSON object in markdown code
+    # fences even when asked for bare JSON; strip them before parsing instead
+    # of letting a valid score die on formatting.
+    text = response.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[A-Za-z0-9_-]*[ \t]*\r?\n?", "", text)
+        text = re.sub(r"\r?\n?[ \t]*```$", "", text).strip()
+    data = json.loads(text)
     if not isinstance(data, dict):
         raise ValueError("Sentiment response must be a JSON object")
     raw_score = data.get("score")

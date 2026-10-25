@@ -44,6 +44,25 @@ def test_decode_sentiment_score_accepts_finite_score_in_range() -> None:
 @pytest.mark.parametrize(
     "response",
     [
+        '```\n{"score": 72}\n```',  # bare fence
+        '```json\n{"score": 72}\n```',  # language-tagged fence (Ollama Cloud shape)
+        '```json\r\n{"score": 72}\r\n```',  # CRLF fence
+        '```json\n{"score": 72}\n```  ',  # trailing whitespace after fence
+        '  ```JSON\n{"score": 72}\n```',  # uppercase tag + leading whitespace
+    ],
+)
+def test_decode_sentiment_score_accepts_fenced_json(response: str) -> None:
+    assert _decode_sentiment_score(response) == 72.0
+
+
+def test_decode_sentiment_score_rejects_empty_fence() -> None:
+    with pytest.raises(ValueError):
+        _decode_sentiment_score("```json\n```")
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
         "not json",
         "[42]",
         '{"reason": "missing score"}',
