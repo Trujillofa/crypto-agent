@@ -57,7 +57,7 @@ def test_decode_sentiment_score_accepts_fenced_json(response: str) -> None:
 
 def test_decode_sentiment_score_rejects_empty_fence() -> None:
     with pytest.raises(ValueError):
-        _decode_sentiment_score('```json\n```')
+        _decode_sentiment_score("```json\n```")
 
 
 @pytest.mark.parametrize(
