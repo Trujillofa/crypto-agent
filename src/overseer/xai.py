@@ -26,6 +26,7 @@ _AUTH_ERRORS = (
 _MAX_ATTEMPTS = 3
 _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
+_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 
 
@@ -344,7 +345,11 @@ class XAIClient:
                     max_attempts=max_attempts,
                     provider_id="nvidia",
                     response_validator=response_validator,
-                    request_timeout=request_timeout,
+                    request_timeout=(
+                        max(request_timeout, _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS)
+                        if request_timeout is not None
+                        else None
+                    ),
                 )
                 return ChatResult(content=content, provider="nvidia", model=self._nvidia_model)
             except Exception as exc:
