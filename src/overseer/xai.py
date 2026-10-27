@@ -27,6 +27,13 @@ _MAX_ATTEMPTS = 3
 _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
 _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
+# Catalog-verified NVIDIA chat endpoints; redundancy helps model-specific outages,
+# not shared NVIDIA account quota/auth failures.
+_NVIDIA_FALLBACK_MODELS = (
+    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "nvidia/llama-3.1-nemotron-51b-instruct",
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+)
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 
 
@@ -336,30 +343,38 @@ class XAIClient:
         if self._nvidia_client is not None and self._provider_available(
             "nvidia", honor_transient_cooldown=use_transient_cooldown
         ):
-            try:
-                content = await self._chat_with_client(
-                    self._nvidia_client,
-                    self._nvidia_model,
-                    messages,
-                    provider_name="NVIDIA NIM",
-                    max_attempts=max_attempts,
-                    provider_id="nvidia",
-                    response_validator=response_validator,
-                    request_timeout=(
-                        max(request_timeout, _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS)
-                        if request_timeout is not None
-                        else None
-                    ),
-                )
-                return ChatResult(content=content, provider="nvidia", model=self._nvidia_model)
-            except Exception as exc:
-                nvidia_error = exc
-                self._record_provider_failure(
-                    "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
-                )
-                self._logger.warning(
-                    "NVIDIA NIM fallback failed (%s)", _provider_error_summary(exc)
-                )
+            # Alternate only for explicit model-specific not-found/unsupported errors.
+            # 429, auth, transport, timeout, and generic service failures are account/
+            # provider-wide signals; retrying other IDs cannot fix those conditions.
+            candidates = tuple(dict.fromkeys((self._nvidia_model, *_NVIDIA_FALLBACK_MODELS)))
+            for model in candidates:
+                try:
+                    content = await self._chat_with_client(
+                        self._nvidia_client,
+                        model,
+                        messages,
+                        provider_name="NVIDIA NIM",
+                        max_attempts=max_attempts,
+                        provider_id="nvidia",
+                        response_validator=response_validator,
+                        request_timeout=(
+                            max(request_timeout, _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS)
+                            if request_timeout is not None
+                            else None
+                        ),
+                    )
+                    return ChatResult(content=content, provider="nvidia", model=model)
+                except Exception as exc:
+                    nvidia_error = exc
+                    status = getattr(exc, "status_code", None)
+                    self._record_provider_failure(
+                        "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
+                    )
+                    self._logger.warning(
+                        "NVIDIA NIM model %s failed (%s)", model, _provider_error_summary(exc)
+                    )
+                    if status not in {400, 404}:
+                        break
 
         xai_error: Exception | None = None
         if self._xai_fallback_client is not None and self._provider_available(

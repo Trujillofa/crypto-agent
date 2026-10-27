@@ -851,3 +851,40 @@ async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
     )
     ollama_create.assert_awaited_once()
     nvidia_create.assert_awaited_once()
+
+
+def _make_http_error(error_type, status: int):
+    response = MagicMock()
+    response.status_code = status
+    response.headers = {}
+    return error_type("model unavailable", response=response, body=None)
+
+
+@pytest.mark.asyncio
+async def test_nvidia_model_not_found_tries_catalog_verified_alternative() -> None:
+    create = AsyncMock(side_effect=[
+        _make_http_error(openai.NotFoundError, 404), _make_completion("answer")
+    ])
+    client_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))), client_stub
+    ]):
+        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="missing/model")
+        result = await client.chat([{"role":"user", "content":"ping"}], max_attempts=1)
+    assert result == ChatResult("answer", "nvidia", "nvidia/llama-3.1-nemotron-70b-instruct")
+    assert [call.kwargs["model"] for call in create.await_args_list] == [
+        "missing/model", "nvidia/llama-3.1-nemotron-70b-instruct"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_nvidia_account_rate_limit_does_not_try_other_models() -> None:
+    create = AsyncMock(side_effect=_make_insufficient_balance())
+    nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))), nvidia_stub
+    ]):
+        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model")
+        with pytest.raises(openai.RateLimitError):
+            await client.chat([{"role":"user", "content":"ping"}], max_attempts=1)
+    create.assert_awaited_once()
