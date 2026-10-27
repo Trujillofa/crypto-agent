@@ -5,15 +5,64 @@ set -euo pipefail
 ROOT="${DEPLOY_ROOT:-/opt/crypto-agent}"
 cd "$ROOT"
 
-AGENTS=$(docker compose -f docker-compose.prod.yml config --services | grep '^agent_' | sort | tr '\n' ' ')
+# Durable host-local opt-in. Never source this file: it is data, not shell.
+COMMANDCODE_DEPLOY_CONFIG="${COMMANDCODE_DEPLOY_CONFIG:-/etc/crypto-agent/commandcode.deploy}"
+COMPOSE=(docker compose -f docker-compose.prod.yml)
+if [ -e "$COMMANDCODE_DEPLOY_CONFIG" ] || [ -L "$COMMANDCODE_DEPLOY_CONFIG" ]; then
+  if [ ! -f "$COMMANDCODE_DEPLOY_CONFIG" ] || [ -L "$COMMANDCODE_DEPLOY_CONFIG" ] || [ ! -r "$COMMANDCODE_DEPLOY_CONFIG" ]; then
+    echo "ERROR: Command Code deploy config must be a readable regular file, not a symlink" >&2
+    exit 1
+  fi
+  mapfile -t COMMANDCODE_CONFIG_LINES < "$COMMANDCODE_DEPLOY_CONFIG"
+  if [ "${#COMMANDCODE_CONFIG_LINES[@]}" -ne 1 ] || [ "${COMMANDCODE_CONFIG_LINES[0]}" != enabled ]; then
+    echo "ERROR: Command Code deploy config must contain exactly: enabled" >&2
+    exit 1
+  fi
+  export COMMANDCODE_ENV_FILE="${COMMANDCODE_ENV_FILE:-/etc/crypto-agent/commandcode.env}"
+  if [ ! -f "$COMMANDCODE_ENV_FILE" ] || [ -L "$COMMANDCODE_ENV_FILE" ] || [ ! -r "$COMMANDCODE_ENV_FILE" ] ||
+     [ "$(stat -c '%a:%u' "$COMMANDCODE_ENV_FILE")" != "600:$(id -u)" ]; then
+    echo "ERROR: Command Code env file must be a readable regular file owned by the deploy user with mode 0600" >&2
+    exit 1
+  fi
+  if [ ! -f docker-compose.commandcode.yml ]; then
+    echo "ERROR: Command Code overlay is missing" >&2
+    exit 1
+  fi
+  # Reject an overlay that adds or removes services before --remove-orphans.
+  BASE_SERVICES=$("${COMPOSE[@]}" config --services | sort)
+  COMPOSE+=(-f docker-compose.commandcode.yml)
+  OVERLAY_SERVICES=$("${COMPOSE[@]}" config --services | sort)
+  if [ "$BASE_SERVICES" != "$OVERLAY_SERVICES" ]; then
+    echo "ERROR: Command Code overlay must not add or remove services" >&2
+    exit 1
+  fi
+  # Check resolved service values, without emitting the secret to logs.
+  if ! "${COMPOSE[@]}" config --format json | python3 -c '
+import json, sys
+try:
+    env = json.load(sys.stdin)["services"]["agent_sentiment_macro"]["environment"]
+    valid = (env.get("COMMANDCODE_ENABLED", "").lower() == "true"
+             and bool(env.get("COMMANDCODE_API_KEY", "").strip())
+             and bool(env.get("COMMANDCODE_MODEL", "").strip()))
+except (ValueError, KeyError, TypeError, AttributeError):
+    valid = False
+sys.exit(0 if valid else 1)
+'; then
+    echo "ERROR: Command Code overlay requires enabled=true and nonempty key and model" >&2
+    exit 1
+  fi
+  echo "Command Code overlay enabled"
+fi
+
+AGENTS=$("${COMPOSE[@]}" config --services | grep '^agent_' | sort | tr '\n' ' ')
 if [ -z "$AGENTS" ]; then
   echo "ERROR: no agent_* services found in docker-compose.prod.yml"
   exit 1
 fi
 echo "Deploying agents: $AGENTS"
 
-docker compose -f docker-compose.prod.yml build $AGENTS
-docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS
+"${COMPOSE[@]}" build $AGENTS
+"${COMPOSE[@]}" up -d --remove-orphans $AGENTS
 
 # Recreate Prometheus so that changes to config/prometheus-alerts.yml take
 # effect.
@@ -40,10 +89,10 @@ docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS
 #
 # The rules are validated afterwards, so a broken rules file fails the
 # deploy loudly instead of silently leaving the previous rules active.
-if docker compose -f docker-compose.prod.yml ps --services --status running \
+if "${COMPOSE[@]}" ps --services --status running \
      | grep -qx prometheus; then
   echo "Recreating prometheus to pick up config/prometheus-alerts.yml"
-  docker compose -f docker-compose.prod.yml up -d --force-recreate prometheus
+  "${COMPOSE[@]}" up -d --force-recreate prometheus
   sleep 15
   RULE_COUNT=$(docker exec crypto-agent-prometheus-1 \
     promtool check rules /etc/prometheus/alerts.yml 2>&1 | grep -oE '[0-9]+ rules? found' | head -1)
@@ -67,11 +116,11 @@ else
 fi
 
 sleep 120
-NOT_READY=$(docker compose -f docker-compose.prod.yml ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE '\(healthy\)$' || true)
+NOT_READY=$("${COMPOSE[@]}" ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE '\(healthy\)$' || true)
 if [ -n "$NOT_READY" ]; then
   echo "ERROR: agents not healthy after 120s:"
   echo "$NOT_READY"
-  docker compose -f docker-compose.prod.yml ps $AGENTS
+  "${COMPOSE[@]}" ps $AGENTS
   exit 1
 fi
 
@@ -79,10 +128,10 @@ fi
 # is called a success. Without this check, a prometheus that failed to
 # come back up would leave the whole stack with no metrics and no
 # alerting, and the deploy would still report green.
-PROM_STATUS=$(docker compose -f docker-compose.prod.yml ps --format "{{.Status}}" prometheus 2>/dev/null | head -1)
+PROM_STATUS=$("${COMPOSE[@]}" ps --format "{{.Status}}" prometheus 2>/dev/null | head -1)
 if ! echo "$PROM_STATUS" | grep -qE '\(healthy\)$'; then
   echo "ERROR: prometheus not healthy after recreate: $PROM_STATUS"
-  docker compose -f docker-compose.prod.yml ps prometheus
+  "${COMPOSE[@]}" ps prometheus
   exit 1
 fi
 
