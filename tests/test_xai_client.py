@@ -862,9 +862,13 @@ def _make_http_error(error_type, status: int):
 
 @pytest.mark.asyncio
 async def test_nvidia_model_not_found_tries_catalog_verified_alternative() -> None:
-    create = AsyncMock(
-        side_effect=[_make_http_error(openai.NotFoundError, 404), _make_completion("answer")]
+    response = MagicMock(status_code=404, headers={})
+    model_not_found = openai.NotFoundError(
+        "Function missing/model Not found for account test-account",
+        response=response,
+        body={"error": {"message": "Function missing/model Not found for account test-account"}},
     )
+    create = AsyncMock(side_effect=[model_not_found, _make_completion("answer")])
     client_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
     with patch(
         "src.overseer.xai.AsyncOpenAI",
@@ -888,6 +892,73 @@ async def test_nvidia_model_not_found_tries_catalog_verified_alternative() -> No
         "missing/model",
         "nvidia/nemotron-3.5-bolt-e4b",
     ]
+    assert model_not_found.response is response
+
+
+@pytest.mark.asyncio
+async def test_nvidia_generic_route_404_does_not_try_other_models() -> None:
+    response = MagicMock(status_code=404, headers={})
+    route_error = openai.NotFoundError(
+        "Not Found", response=response, body={"error": {"message": "route not found"}}
+    )
+    create = AsyncMock(side_effect=route_error)
+    nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            nvidia_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model"
+        )
+        with pytest.raises(openai.NotFoundError) as raised:
+            await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
+    assert raised.value is route_error
+    assert raised.value.response is response
+    create.assert_awaited_once()
+    assert create.await_args is not None
+    assert create.await_args.kwargs["model"] == "configured/model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "malformed"])
+async def test_nvidia_timeout_and_malformed_response_do_not_try_other_models(failure: str) -> None:
+    if failure == "timeout":
+        create = AsyncMock(side_effect=openai.APITimeoutError(request=MagicMock()))
+        expected_error = openai.APITimeoutError
+    else:
+        create = AsyncMock(return_value=_make_completion("  "))
+        expected_error = RuntimeError
+    nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            nvidia_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model"
+        )
+        with pytest.raises(expected_error):
+            await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
+    create.assert_awaited_once()
+    assert create.await_args is not None
+    assert create.await_args.kwargs["model"] == "configured/model"
 
 
 @pytest.mark.asyncio

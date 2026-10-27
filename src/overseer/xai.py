@@ -57,16 +57,19 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
 def _is_model_specific_nvidia_error(exc: Exception) -> bool:
     """Whether an NVIDIA response identifies the requested model as the issue.
 
-    A 404 is model-specific. NVIDIA also uses 400 for both model validation and
-    request-wide errors, so only retry 400s whose error text explicitly reports
-    an unknown, missing, or unsupported model.
+    A 404 is not sufficient by itself: only explicit model-not-found/unsupported
+    wording (including NVIDIA's "Function ... Not found for account ...") qualifies.
+    NVIDIA also uses 400 for model validation and request-wide errors, so only
+    400s whose error text explicitly reports a model issue qualify.
     """
     status_code = getattr(exc, "status_code", None)
-    if status_code == 404:
-        return True
-    if status_code != 400:
+    if status_code not in {400, 404}:
         return False
 
+    # OpenAI SDK status errors retain the original response object. Prefer the
+    # parsed error body when available, but include the exception text because
+    # NVIDIA's 404s can identify a missing model as "Function ... Not found
+    # for account ..." rather than as a conventional model-not-found message.
     body = getattr(exc, "body", None)
     if isinstance(body, dict):
         error = body.get("error", body)
@@ -75,8 +78,11 @@ def _is_model_specific_nvidia_error(exc: Exception) -> bool:
         else:
             details = str(error)
     else:
-        details = str(exc)
-    details = details.lower()
+        details = ""
+    details = f"{details} {exc}".lower()
+
+    if status_code == 404 and re.search(r"function\s+.+?\s+not found for account\b", details):
+        return True
     return any(
         marker in details
         for marker in (
