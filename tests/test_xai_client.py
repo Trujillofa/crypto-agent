@@ -488,6 +488,37 @@ async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sentiment_gives_nvidia_a_longer_request_timeout() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    nvidia_create = AsyncMock(return_value=_make_completion('{"score": 67}'))
+    clients = [
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        for create in (primary_create, nvidia_create)
+    ]
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=clients):
+        client = XAIClient(
+            api_key="zai-key",
+            model="glm-5.3-flash",
+            provider="zai",
+            nvidia_api_key="nvidia-key",
+        )
+        response = await client.chat_with_validator(
+            [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+        )
+
+    assert response == ChatResult(
+        content='{"score": 67}', provider="nvidia", model="minimaxai/minimax-m3.1-flash"
+    )
+    primary_create.assert_awaited_once()
+    nvidia_create.assert_awaited_once()
+    assert primary_create.await_args is not None
+    assert primary_create.await_args.kwargs["timeout"] == 10.0
+    assert nvidia_create.await_args is not None
+    assert nvidia_create.await_args.kwargs["timeout"] == 30.0
+
+
+@pytest.mark.asyncio
 async def test_chat_with_client_supports_single_attempt_fallback() -> None:
     mock_response = MagicMock()
     mock_response.status_code = 429
