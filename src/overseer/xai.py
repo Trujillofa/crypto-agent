@@ -29,11 +29,7 @@ _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
 _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
 # Catalog-verified NVIDIA chat endpoints; redundancy helps model-specific outages,
 # not shared NVIDIA account quota/auth failures.
-_NVIDIA_FALLBACK_MODELS = (
-    "nvidia/llama-3.1-nemotron-70b-instruct",
-    "nvidia/llama-3.1-nemotron-51b-instruct",
-    "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-)
+_NVIDIA_FALLBACK_MODELS = ("nvidia/nemotron-3.5-bolt-e4b",)
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 
 
@@ -75,9 +71,7 @@ def _is_model_specific_nvidia_error(exc: Exception) -> bool:
     if isinstance(body, dict):
         error = body.get("error", body)
         if isinstance(error, dict):
-            details = " ".join(
-                str(error.get(key, "")) for key in ("code", "type", "message")
-            )
+            details = " ".join(str(error.get(key, "")) for key in ("code", "type", "message"))
         else:
             details = str(error)
     else:

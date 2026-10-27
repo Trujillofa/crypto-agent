@@ -862,18 +862,31 @@ def _make_http_error(error_type, status: int):
 
 @pytest.mark.asyncio
 async def test_nvidia_model_not_found_tries_catalog_verified_alternative() -> None:
-    create = AsyncMock(side_effect=[
-        _make_http_error(openai.NotFoundError, 404), _make_completion("answer")
-    ])
+    create = AsyncMock(
+        side_effect=[_make_http_error(openai.NotFoundError, 404), _make_completion("answer")]
+    )
     client_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))), client_stub
-    ]):
-        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="missing/model")
-        result = await client.chat([{"role":"user", "content":"ping"}], max_attempts=1)
-    assert result == ChatResult("answer", "nvidia", "nvidia/llama-3.1-nemotron-70b-instruct")
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            client_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="missing/model"
+        )
+        result = await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
+    assert result == ChatResult("answer", "nvidia", "nvidia/nemotron-3.5-bolt-e4b")
     assert [call.kwargs["model"] for call in create.await_args_list] == [
-        "missing/model", "nvidia/llama-3.1-nemotron-70b-instruct"
+        "missing/model",
+        "nvidia/nemotron-3.5-bolt-e4b",
     ]
 
 
@@ -886,11 +899,22 @@ async def test_nvidia_request_wide_bad_request_does_not_try_other_models() -> No
     )
     create = AsyncMock(side_effect=request_error)
     nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))),
-        nvidia_stub,
-    ]):
-        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model")
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            nvidia_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model"
+        )
         with pytest.raises(openai.BadRequestError):
             await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
     create.assert_awaited_once()
@@ -907,15 +931,27 @@ async def test_nvidia_model_specific_bad_request_tries_alternative() -> None:
     )
     create = AsyncMock(side_effect=[model_error, _make_completion("answer")])
     nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))),
-        nvidia_stub,
-    ]):
-        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model")
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            nvidia_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model"
+        )
         result = await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
     assert result.provider == "nvidia"
     assert [call.kwargs["model"] for call in create.await_args_list] == [
-        "configured/model", "nvidia/llama-3.1-nemotron-70b-instruct"
+        "configured/model",
+        "nvidia/nemotron-3.5-bolt-e4b",
     ]
 
 
@@ -924,11 +960,22 @@ async def test_nvidia_auth_error_does_not_try_other_models() -> None:
     auth_error = _make_permission_denied()
     create = AsyncMock(side_effect=auth_error)
     nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))),
-        nvidia_stub,
-    ]):
-        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model")
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            nvidia_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model"
+        )
         with pytest.raises(openai.PermissionDeniedError):
             await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
     create.assert_awaited_once()
@@ -940,10 +987,22 @@ async def test_nvidia_auth_error_does_not_try_other_models() -> None:
 async def test_nvidia_account_rate_limit_does_not_try_other_models() -> None:
     create = AsyncMock(side_effect=_make_insufficient_balance())
     nvidia_stub = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    with patch("src.overseer.xai.AsyncOpenAI", side_effect=[
-        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=_make_permission_denied())))), nvidia_stub
-    ]):
-        client = XAIClient(api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model")
+    with patch(
+        "src.overseer.xai.AsyncOpenAI",
+        side_effect=[
+            SimpleNamespace(
+                chat=SimpleNamespace(
+                    completions=SimpleNamespace(
+                        create=AsyncMock(side_effect=_make_permission_denied())
+                    )
+                )
+            ),
+            nvidia_stub,
+        ],
+    ):
+        client = XAIClient(
+            api_key="x", model="primary", nvidia_api_key="n", nvidia_model="configured/model"
+        )
         with pytest.raises(openai.RateLimitError):
-            await client.chat([{"role":"user", "content":"ping"}], max_attempts=1)
+            await client.chat([{"role": "user", "content": "ping"}], max_attempts=1)
     create.assert_awaited_once()
