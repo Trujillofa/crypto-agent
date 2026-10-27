@@ -58,6 +58,49 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
     )
 
 
+def _is_model_specific_nvidia_error(exc: Exception) -> bool:
+    """Whether an NVIDIA response identifies the requested model as the issue.
+
+    A 404 is model-specific. NVIDIA also uses 400 for both model validation and
+    request-wide errors, so only retry 400s whose error text explicitly reports
+    an unknown, missing, or unsupported model.
+    """
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 404:
+        return True
+    if status_code != 400:
+        return False
+
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict):
+            details = " ".join(
+                str(error.get(key, "")) for key in ("code", "type", "message")
+            )
+        else:
+            details = str(error)
+    else:
+        details = str(exc)
+    details = details.lower()
+    return any(
+        marker in details
+        for marker in (
+            "model not found",
+            "model does not exist",
+            "unknown model",
+            "unsupported model",
+            "model is not supported",
+            "model not available",
+            "model is unavailable",
+            "model unavailable",
+            "invalid model",
+            "model_not_found",
+            "model_not_supported",
+        )
+    )
+
+
 def _provider_error_summary(exc: Exception) -> str:
     """Compact error type/status label for provider-client log messages."""
     status_code = getattr(exc, "status_code", None)
@@ -366,14 +409,13 @@ class XAIClient:
                     return ChatResult(content=content, provider="nvidia", model=model)
                 except Exception as exc:
                     nvidia_error = exc
-                    status = getattr(exc, "status_code", None)
                     self._record_provider_failure(
                         "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
                     )
                     self._logger.warning(
                         "NVIDIA NIM model %s failed (%s)", model, _provider_error_summary(exc)
                     )
-                    if status not in {400, 404}:
+                    if not _is_model_specific_nvidia_error(exc):
                         break
 
         xai_error: Exception | None = None
