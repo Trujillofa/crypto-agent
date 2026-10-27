@@ -14,6 +14,7 @@ from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
 
 _PROVIDER_DISPLAY_NAMES = {
+    "commandcode": "Command Code",
     "deepseek": "DeepSeek",
     "nvidia": "NVIDIA NIM",
     "ollama": "Ollama Cloud",
@@ -136,6 +137,7 @@ class SentimentScorer:
         try:
             score, provider, answering_model = await self._query_llm(symbol)
             source_by_provider = {
+                "commandcode": "commandcode_live",
                 "xai": "xai_live",
                 "xai-fallback": "xai_fallback_live",
                 "zai": "zai_live",
@@ -157,12 +159,21 @@ class SentimentScorer:
             self._cache[symbol] = (now, score)
             return score
         except Exception as exc:
-            self._logger.warning("Sentiment query failed for %s: %s", symbol, exc)
+            # Provider exception messages may include prompts, response bodies or keys.
+            status = getattr(exc, "status_code", None)
+            error = (
+                "Invalid sentiment JSON response"
+                if isinstance(exc, InvalidSentimentResponse)
+                else f"{type(exc).__name__} (HTTP {status})"
+                if isinstance(status, int)
+                else type(exc).__name__
+            )
+            self._logger.warning("Sentiment query failed for %s: %s", symbol, error)
             await self._record_observation(
                 symbol,
                 self._error_fallback_score,
                 source="error_fallback",
-                error=str(exc),
+                error=error,
                 model=(getattr(exc, "model", None) or configured_sentiment_model(self._xai_client)),
                 provider=(
                     getattr(exc, "provider", None)

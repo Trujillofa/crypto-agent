@@ -95,10 +95,13 @@ def test_coordinated_rebuild_and_health_checks_remain() -> None:
     assert "git fetch origin main" in align
     assert "git pull --ff-only origin main" in align
     assert "grep '^agent_'" in rebuild
-    assert "docker compose -f docker-compose.prod.yml build $AGENTS" in rebuild
-    assert "docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS" in rebuild
+    assert "COMPOSE=(docker compose -f docker-compose.prod.yml)" in rebuild
+    assert '"${COMPOSE[@]}" build $AGENTS' in rebuild
+    assert '"${COMPOSE[@]}" up -d --remove-orphans $AGENTS' in rebuild
     assert "sleep 120" in rebuild
-    assert r"grep -vE '\(healthy\)$'" in rebuild
+    assert "EXPECTED_AGENTS" in rebuild
+    assert '"$EXPECTED_AGENTS" != "$ACTUAL_AGENTS"' in rebuild
+    assert "DUPLICATE_AGENTS" in rebuild
     assert "appleboy/telegram-action@" in raw
     assert "inputs.deploy_sha" in raw
     assert "github.event.workflow_run" not in raw
@@ -202,6 +205,7 @@ def test_docs_do_not_bypass_deploy_contract() -> None:
     assert "build agent &&" not in claude
     assert "docker-compose up -d --build" not in combined
     assert "align_prod_checkout.sh" in agents
-    assert "sleep 120" in agents
+    assert "rebuild_prod_agents.sh" in agents
     assert "docker-compose.prod.yml" in agents
-    assert 'grep "^agent_"' in agents or "grep '^agent_'" in agents
+    # Agent selection lives in the shared script, not in a doc-only snippet.
+    assert "grep '^agent_'" in REBUILD.read_text(encoding="utf-8")

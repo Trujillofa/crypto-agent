@@ -402,7 +402,7 @@ class TestSentimentScorer:
 
     @pytest.mark.asyncio
     async def test_records_error_fallback_on_llm_failure(self):
-        """xAI failures are recorded as error fallbacks with truncated error text."""
+        """xAI failures are recorded without provider-supplied error text."""
 
         class FailingClient:
             async def chat(self, messages):
@@ -426,7 +426,7 @@ class TestSentimentScorer:
                 "symbol": "BTCUSDT",
                 "score": 30.0,
                 "source": "error_fallback",
-                "error": "API timeout",
+                "error": "RuntimeError",
             }
         ]
 
@@ -453,7 +453,7 @@ class TestSentimentScorer:
                 "source": "error_fallback",
                 "provider": "deepseek",
                 "model": "deepseek-v4-pro",
-                "error": "Error code: 402 - Insufficient Balance",
+                "error": "RuntimeError",
             }
         ]
 
@@ -645,7 +645,7 @@ class TestSentimentScorer:
                 "source": "error_fallback",
                 "provider": "zai",
                 "model": "glm-5.3",
-                "error": "Error code: 1113",
+                "error": "RuntimeError",
             }
         ]
 

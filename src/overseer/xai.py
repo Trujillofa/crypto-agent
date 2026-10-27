@@ -28,6 +28,7 @@ _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
 _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
+_COMMANDCODE_RESERVED_SECONDS = 10.0
 
 
 def _is_permanent_provider_error(exc: Exception) -> bool:
@@ -64,7 +65,7 @@ class ChatResult:
     """LLM reply plus which provider and model actually answered."""
 
     content: str
-    provider: str  # xAI, xAI fallback, DeepSeek, Z.AI, OpenCode Go, Ollama, or NVIDIA
+    provider: str  # actual provider identity
     model: str
 
 
@@ -77,7 +78,7 @@ class ProviderResponseValidationError(ValueError):
         super().__init__(f"{provider} returned an invalid response")
 
 
-def _annotate_provider_error(exc: Exception, provider: str, model: str) -> None:
+def _annotate_provider_error(exc: BaseException, provider: str, model: str) -> None:
     """Preserve the provider/model that produced a final failed response."""
     if not getattr(exc, "provider", None):
         exc.provider = provider  # type: ignore[attr-defined]
@@ -106,6 +107,8 @@ class XAIClient:
         nvidia_api_key: str = "",
         nvidia_model: str = "minimaxai/minimax-m3.1-flash",
         nvidia_base_url: str = "https://integrate.api.nvidia.com/v1",
+        commandcode_api_key: str = "",
+        commandcode_model: str = "",
     ) -> None:
         self._provider = provider
         self._primary_name = {"deepseek": "DeepSeek", "zai": "Z.AI"}.get(provider, "xAI")
@@ -169,7 +172,37 @@ class XAIClient:
             else None
         )
         self._nvidia_model = nvidia_model
+        self._commandcode_client = (
+            AsyncOpenAI(
+                api_key=commandcode_api_key,
+                base_url="https://api.commandcode.ai/provider/v1",
+                timeout=timeout_seconds,
+                max_retries=0,
+            )
+            if commandcode_api_key.strip() and commandcode_model.strip()
+            else None
+        )
+        self._commandcode_model = commandcode_model.strip()
         self._logger = get_logger(self.__class__.__name__)
+
+    async def close(self) -> None:
+        """Close all owned provider transports after consumers have stopped."""
+        clients = (
+            self._client,
+            self._fallback_client,
+            self._opencode_client,
+            self._xai_fallback_client,
+            self._ollama_client,
+            self._nvidia_client,
+            self._commandcode_client,
+        )
+        results = await asyncio.gather(
+            *(client.close() for client in clients if client is not None),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                self._logger.warning("Provider client close failed (%s)", type(result).__name__)
 
     @property
     def provider(self) -> str:
@@ -223,20 +256,84 @@ class XAIClient:
         messages: Sequence[dict[str, str]],
         response_validator: Callable[[str], object],
     ) -> ChatResult:
+        command_available = self._commandcode_client is not None and self._provider_available(
+            "commandcode", honor_transient_cooldown=True
+        )
+        chain_timeout = asyncio.timeout(_SENTIMENT_CHAIN_TIMEOUT_SECONDS)
         try:
-            async with asyncio.timeout(_SENTIMENT_CHAIN_TIMEOUT_SECONDS):
-                return await self.chat(
-                    messages,
-                    response_validator=response_validator,
-                    max_attempts=1,
-                    request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+            async with chain_timeout:
+                prior_budget = max(
+                    0.0, _SENTIMENT_CHAIN_TIMEOUT_SECONDS - _COMMANDCODE_RESERVED_SECONDS
                 )
+                prior_timeout = asyncio.timeout(prior_budget if command_available else None)
+                try:
+                    # Reserve time for the last provider even if earlier calls hang.
+                    async with prior_timeout:
+                        return await self.chat(
+                            messages,
+                            response_validator=response_validator,
+                            max_attempts=1,
+                            request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+                        )
+                except TimeoutError as exc:
+                    if prior_timeout.expired():
+                        self._cooldown_timed_out_provider(exc)
+                    if not command_available:
+                        raise
+                except Exception:
+                    if not command_available:
+                        raise
+                return await self._chat_commandcode(messages, response_validator)
         except TimeoutError as exc:
+            if not chain_timeout.expired():
+                raise
+            self._cooldown_timed_out_provider(exc)
             error = TimeoutError(
                 f"Sentiment provider chain exceeded the {_SENTIMENT_CHAIN_TIMEOUT_SECONDS:.0f}s budget"
             )
-            _annotate_provider_error(error, "provider-chain", "chain")
-            raise error from exc
+            cause = exc.__cause__
+            _annotate_provider_error(
+                error,
+                getattr(cause, "provider", "provider-chain"),
+                getattr(cause, "model", "chain"),
+            )
+            raise error from None
+
+    def _cooldown_timed_out_provider(self, exc: TimeoutError) -> None:
+        """Only our own deadline, not caller cancellation, marks a provider slow."""
+        provider = getattr(exc.__cause__, "provider", None)
+        if provider:
+            provider = "primary" if provider == self._provider else provider
+            provider = "xai" if provider == "xai-fallback" else provider
+            self._record_provider_failure(provider, TimeoutError())
+
+    async def _chat_commandcode(
+        self, messages: Sequence[dict[str, str]], response_validator: Callable[[str], object]
+    ) -> ChatResult:
+        assert self._commandcode_client is not None
+        try:
+            content = await self._chat_with_client(
+                self._commandcode_client,
+                self._commandcode_model,
+                messages,
+                provider_name="Command Code",
+                max_attempts=1,
+                provider_id="commandcode",
+                response_validator=response_validator,
+                request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+            )
+            return ChatResult(
+                content=content, provider="commandcode", model=self._commandcode_model
+            )
+        except Exception as exc:
+            self._record_provider_failure("commandcode", exc)
+            self._logger.warning("Command Code fallback failed (%s)", _provider_error_summary(exc))
+            error = RuntimeError(f"Command Code fallback failed ({_provider_error_summary(exc)})")
+            status = getattr(exc, "status_code", None)
+            if isinstance(status, int):
+                error.status_code = status  # type: ignore[attr-defined]
+            _annotate_provider_error(error, "commandcode", self._commandcode_model)
+            raise error from None
 
     async def chat(
         self,
@@ -299,6 +396,9 @@ class XAIClient:
                     request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider="opencode-go", model=model)
+            except asyncio.CancelledError as exc:
+                _annotate_provider_error(exc, "opencode-go", self._opencode_model or "catalog")
+                raise
             except Exception as exc:
                 opencode_error = exc
                 _annotate_provider_error(exc, "opencode-go", self._opencode_model or "catalog")
@@ -511,6 +611,14 @@ class XAIClient:
                         max_tokens=256,
                         response_format={"type": "json_object"},
                     )
+                elif provider_id == "commandcode":
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=chat_messages,
+                        temperature=0.2,
+                        timeout=request_timeout,
+                        max_tokens=256,
+                    )
                 else:
                     completion = await client.chat.completions.create(
                         model=model,
@@ -534,6 +642,9 @@ class XAIClient:
                             provider_id or provider_name, model
                         ) from exc
                 return content
+            except asyncio.CancelledError as exc:
+                _annotate_provider_error(exc, provider_id or provider_name, model)
+                raise
             except _RETRYABLE_ERRORS as exc:
                 if _is_permanent_provider_error(exc):
                     _annotate_provider_error(exc, provider_id or provider_name, model)

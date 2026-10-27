@@ -130,10 +130,15 @@ Example:
 
 ```bash
 ssh crypto-agent "cd /opt/crypto-agent && git pull"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build agent_sentiment_macro"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d agent_sentiment_macro"
+ssh crypto-agent "cd /opt/crypto-agent && DEPLOY_ROOT=/opt/crypto-agent bash scripts/rebuild_prod_agents.sh"
 ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml logs agent_sentiment_macro --tail=200 --no-log-prefix"
 ```
+
+Use `scripts/rebuild_prod_agents.sh` rather than a hand-written `docker compose build/up`:
+the script selects the full Compose file set, including any host-enabled opt-in overlay
+(for example `docker-compose.commandcode.yml`). A base-only `up -d` recreates the container
+without that overlay and silently drops the opt-in configuration. The logs command above is
+read-only and safe to run on its own.
 
 ## Troubleshooting
 
