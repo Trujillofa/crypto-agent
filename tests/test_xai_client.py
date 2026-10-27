@@ -557,6 +557,47 @@ async def test_nvidia_model_specific_failure_uses_one_alternate_model(failure: s
 
 
 @pytest.mark.asyncio
+async def test_sentiment_nvidia_successful_alternate_does_not_cool_down_provider() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    nvidia_create = AsyncMock(
+        side_effect=[
+            openai.APITimeoutError(request=MagicMock()),
+            _make_completion('{"score": 73}'),
+            _make_completion('{"score": 74}'),
+        ]
+    )
+    clients = [
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        for create in (primary_create, nvidia_create)
+    ]
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=clients):
+        client = XAIClient(
+            api_key="zai-key", model="glm-5.3-flash", provider="zai", nvidia_api_key="nvidia-key"
+        )
+        first_result = await client.chat_with_validator(
+            [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+        )
+        second_result = await client.chat_with_validator(
+            [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+        )
+
+    assert first_result == ChatResult(
+        content='{"score": 73}', provider="nvidia", model="nvidia/nemotron-3.5-bolt-e4b"
+    )
+    assert second_result == ChatResult(
+        content='{"score": 74}', provider="nvidia", model="minimaxai/minimax-m3.1-flash"
+    )
+    primary_create.assert_awaited_once()
+    assert nvidia_create.await_count == 3
+    assert [call.kwargs["model"] for call in nvidia_create.await_args_list] == [
+        "minimaxai/minimax-m3.1-flash",
+        "nvidia/nemotron-3.5-bolt-e4b",
+        "minimaxai/minimax-m3.1-flash",
+    ]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["rate-limit", "auth", "network"])
 async def test_nvidia_account_or_network_failure_does_not_try_another_model(failure: str) -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
@@ -589,6 +630,34 @@ async def test_nvidia_account_or_network_failure_does_not_try_another_model(fail
 
     primary_create.assert_awaited_once()
     nvidia_create.assert_awaited_once()
+    assert not client._provider_available("nvidia")
+
+
+@pytest.mark.asyncio
+async def test_nvidia_exhausted_model_specific_failures_cool_down_provider() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    nvidia_create = AsyncMock(
+        side_effect=[
+            openai.APITimeoutError(request=MagicMock()),
+            openai.APITimeoutError(request=MagicMock()),
+        ]
+    )
+    clients = [
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        for create in (primary_create, nvidia_create)
+    ]
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=clients):
+        client = XAIClient(
+            api_key="zai-key", model="glm-5.3-flash", provider="zai", nvidia_api_key="nvidia-key"
+        )
+        with pytest.raises(openai.APITimeoutError):
+            await client.chat_with_validator(
+                [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+            )
+
+    assert nvidia_create.await_count == 2
+    assert not client._provider_available("nvidia")
 
 
 @pytest.mark.asyncio

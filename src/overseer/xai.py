@@ -414,15 +414,20 @@ class XAIClient:
                     return ChatResult(content=content, provider="nvidia", model=model)
                 except Exception as exc:
                     nvidia_error = exc
-                    self._record_provider_failure(
-                        "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
+                    model_specific = _is_model_specific_nvidia_error(
+                        exc, sentiment=response_validator is not None
                     )
+                    # A model-specific failure is not provider-wide: defer cooldown
+                    # until every configured model has failed. Account/quota and
+                    # other provider-wide failures still cool down immediately.
+                    if not model_specific or model == candidates[-1]:
+                        self._record_provider_failure(
+                            "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
+                        )
                     self._logger.warning(
                         "NVIDIA NIM model %s failed (%s)", model, _provider_error_summary(exc)
                     )
-                    if not _is_model_specific_nvidia_error(
-                        exc, sentiment=response_validator is not None
-                    ):
+                    if not model_specific:
                         break
 
         xai_error: Exception | None = None
