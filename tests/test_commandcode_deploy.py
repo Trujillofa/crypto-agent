@@ -43,7 +43,15 @@ case "$*" in
   *"ps --services --status running"*) echo prometheus ;;
   *"promtool check rules"*) echo '5 rules found' ;;
   *"stat -c %i"*) stat -c %i "$DEPLOY_ROOT/config/prometheus-alerts.yml" ;;
-  *"ps --format {{.Service}} {{.Status}}"*) echo 'agent_sentiment_macro Up (healthy)' ;;
+  *"ps --format {{.Service}} {{.Status}}"*)
+    case "$FAULT" in
+      missing-agent) ;;
+      duplicate-agent) printf 'agent_sentiment_macro Up (healthy)\\nagent_sentiment_macro Up (healthy)\\n' ;;
+      bad-status) echo 'agent_sentiment_macro Up (starting)' ;;
+      no-status) echo 'agent_sentiment_macro' ;;
+      extra-agent) printf 'agent_sentiment_macro Up (healthy)\\nghost_agent Up (healthy)\\n' ;;
+      *) echo 'agent_sentiment_macro Up (healthy)' ;;
+    esac ;;
   *"ps --format {{.Status}} prometheus"*) echo 'Up (healthy)' ;;
 esac
 """)
@@ -152,3 +160,32 @@ def test_real_compose_merge_preserves_services_and_scopes_dummy_environment(tmp_
         else:
             assert "COMMANDCODE_API_KEY" not in service.get("environment", {})
         assert service == base["services"][name]
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing-agent", "duplicate-agent", "bad-status", "no-status", "extra-agent"]
+)
+def test_health_gate_fails_closed_on_incomplete_status(tmp_path: Path, fault: str) -> None:
+    result, calls = run_script(tmp_path, None, fault=fault)
+    assert result.returncode != 0, result.stdout
+    output = result.stdout + result.stderr
+    assert "ERROR: agents not healthy" in output
+    assert "deploy_services=" not in result.stdout
+    # The failed gate must not claim success through the prune/marker path.
+    assert not any("image prune" in call for call in calls)
+
+
+DEPLOY_DOCS = ("AGENTS.md", "docs/QUICKREF.md", "docs/TRADING_EXECUTION.md")
+COMMAND_PREFIXES = ("ssh ", "cd ", "docker ", "sudo ")
+
+
+@pytest.mark.parametrize("name", DEPLOY_DOCS)
+def test_deploy_docs_route_through_marker_aware_script(name: str) -> None:
+    text = (ROOT / name).read_text()
+    assert "rebuild_prod_agents.sh" in text
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(COMMAND_PREFIXES):
+            continue
+        assert "docker-compose.prod.yml up" not in stripped, stripped
+        assert "docker-compose.prod.yml build" not in stripped, stripped

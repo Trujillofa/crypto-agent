@@ -22,9 +22,11 @@ python -m src.main              # Local (requires .env)
 ### Deploy to Production
 ```bash
 ssh crypto-agent "cd /opt/crypto-agent && git pull"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml build <service>"
-ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.yml up -d <service>"
+ssh crypto-agent "cd /opt/crypto-agent && DEPLOY_ROOT=/opt/crypto-agent bash scripts/rebuild_prod_agents.sh"
 ```
+The script rebuilds every agent with the full Compose file set. Don't hand-run
+`docker compose -f docker-compose.prod.yml build/up <service>`: a base-only invocation
+drops any host-enabled opt-in overlay (e.g. Command Code sentiment).
 
 ### View Logs
 ```bash

@@ -116,10 +116,21 @@ else
 fi
 
 sleep 120
-NOT_READY=$("${COMPOSE[@]}" ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE '\(healthy\)$' || true)
-if [ -n "$NOT_READY" ]; then
-  echo "ERROR: agents not healthy after 120s:"
-  echo "$NOT_READY"
+# Fail closed on the exact agent set: an empty or partial `compose ps` output
+# must never read as "everything is healthy". Compare the returned service set
+# against the expected agents, reject duplicates, and require each status line
+# to end in (healthy).
+EXPECTED_AGENTS=$(echo "$AGENTS" | tr ' ' '\n' | grep . | sort)
+STATUS_ROWS=$("${COMPOSE[@]}" ps --format "{{.Service}} {{.Status}}" $AGENTS 2>/dev/null || true)
+ACTUAL_AGENTS=$(printf '%s\n' "$STATUS_ROWS" | awk 'NF >= 2 {print $1}' | sort)
+DUPLICATE_AGENTS=$(printf '%s\n' "$ACTUAL_AGENTS" | grep . | uniq -d || true)
+NOT_READY=$(printf '%s\n' "$STATUS_ROWS" | grep -vE '^[^ ]+ .*\(healthy\)$' || true)
+if [ -n "$DUPLICATE_AGENTS" ] || [ "$EXPECTED_AGENTS" != "$ACTUAL_AGENTS" ] || [ -n "$NOT_READY" ]; then
+  echo "ERROR: agents not healthy after 120s (status set must match the configured agents exactly):"
+  echo "expected: $(echo "$EXPECTED_AGENTS" | paste -sd, -)"
+  echo "reported: $(echo "$ACTUAL_AGENTS" | grep . | paste -sd, -)"
+  if [ -n "$DUPLICATE_AGENTS" ]; then echo "duplicate: $(echo "$DUPLICATE_AGENTS" | paste -sd, -)"; fi
+  if [ -n "$NOT_READY" ]; then echo "$NOT_READY"; fi
   "${COMPOSE[@]}" ps $AGENTS
   exit 1
 fi
