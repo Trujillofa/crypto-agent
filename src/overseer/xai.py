@@ -26,7 +26,7 @@ _AUTH_ERRORS = (
 _MAX_ATTEMPTS = 3
 _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
-_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
+_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 20.0  # reserve time for one alternate model
 # Catalog-verified NVIDIA chat endpoints; redundancy helps model-specific outages,
 # not shared NVIDIA account quota/auth failures.
 _NVIDIA_FALLBACK_MODELS = ("nvidia/nemotron-3.5-bolt-e4b",)
@@ -54,14 +54,19 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
     )
 
 
-def _is_model_specific_nvidia_error(exc: Exception) -> bool:
+def _is_model_specific_nvidia_error(exc: Exception, *, sentiment: bool = False) -> bool:
     """Whether an NVIDIA response identifies the requested model as the issue.
 
-    A 404 is not sufficient by itself: only explicit model-not-found/unsupported
-    wording (including NVIDIA's "Function ... Not found for account ...") qualifies.
-    NVIDIA also uses 400 for model validation and request-wide errors, so only
-    400s whose error text explicitly reports a model issue qualify.
+    In sentiment mode, a bounded request timeout or invalid payload can be
+    model-specific: try one alternate ID. 429, auth/permission, transport, and
+    generic service failures are provider/account-wide. Existing non-sentiment
+    chat keeps its previous model-failover behavior.
     """
+    if sentiment and isinstance(exc, openai.APITimeoutError):
+        return True
+    if sentiment and isinstance(exc, ProviderResponseValidationError):
+        return getattr(exc, "provider", None) == "nvidia"
+
     status_code = getattr(exc, "status_code", None)
     if status_code not in {400, 404}:
         return False
@@ -415,7 +420,9 @@ class XAIClient:
                     self._logger.warning(
                         "NVIDIA NIM model %s failed (%s)", model, _provider_error_summary(exc)
                     )
-                    if not _is_model_specific_nvidia_error(exc):
+                    if not _is_model_specific_nvidia_error(
+                        exc, sentiment=response_validator is not None
+                    ):
                         break
 
         xai_error: Exception | None = None
