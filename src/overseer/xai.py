@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -135,6 +136,14 @@ class XAIClient:
             self._opencode_client = AsyncOpenAI(
                 api_key=opencode_go_api_key,
                 base_url=opencode_go_base_url,
+                # The Go endpoint rejects every request without a session id
+                # (HTTP 400 MissingSessionID); a stable per-deployment id is
+                # enough for routing. Verified live 2026-10-31: same key,
+                # no header -> 400, header -> 200.
+                default_headers={
+                    "x-opencode-session": os.getenv("OPENCODE_GO_SESSION_ID", "").strip()
+                    or "crypto-agent-sentiment",
+                },
                 timeout=timeout_seconds,
                 max_retries=0,
             )

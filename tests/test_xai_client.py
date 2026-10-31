@@ -455,6 +455,22 @@ async def test_disabled_opencode_does_not_construct_catalog_client() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enabled_opencode_client_sends_session_header() -> None:
+    """The Go endpoint 400s (MissingSessionID) without x-opencode-session."""
+    fake_client = SimpleNamespace()
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client) as mock_openai:
+        XAIClient(
+            api_key="primary-key",
+            model="primary-model",
+            provider="zai",
+            opencode_go_api_key="opencode-key",
+        )
+
+    _, kwargs = mock_openai.call_args
+    assert kwargs["default_headers"]["x-opencode-session"] == "crypto-agent-sentiment"
+
+
+@pytest.mark.asyncio
 async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="free-model")]))
