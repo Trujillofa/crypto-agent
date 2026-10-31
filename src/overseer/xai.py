@@ -141,9 +141,7 @@ class XAIClient:
                 # enough for routing. Verified live 2026-10-31: same key,
                 # no header -> 400, header -> 200.
                 default_headers={
-                    "x-opencode-session": os.getenv(
-                        "OPENCODE_GO_SESSION_ID", ""
-                    ).strip()
+                    "x-opencode-session": os.getenv("OPENCODE_GO_SESSION_ID", "").strip()
                     or "crypto-agent-sentiment",
                 },
                 timeout=timeout_seconds,
