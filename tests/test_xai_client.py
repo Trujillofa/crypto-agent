@@ -473,7 +473,7 @@ async def test_enabled_opencode_client_sends_session_header() -> None:
 @pytest.mark.asyncio
 async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
-    catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="free-model")]))
+    catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")]))
     opencode_create = AsyncMock(return_value=_make_completion('{"score": 42}'))
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
@@ -497,7 +497,7 @@ async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
             [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
         )
 
-    assert result == ChatResult(content='{"score": 42}', provider="opencode-go", model="free-model")
+    assert result == ChatResult(content='{"score": 42}', provider="opencode-go", model="beam-free")
     catalog_list.assert_awaited_once_with(timeout=10.0)
     assert opencode_create.await_args is not None
     assert opencode_create.await_args.kwargs["timeout"] == 10.0
@@ -657,7 +657,7 @@ async def test_chat_uses_daily_discovered_opencode_free_fallback() -> None:
             base_url="https://api.z.ai/api/paas/v4",
             opencode_go_api_key="opencode-test-key",
         )
-        response = await client.chat([{"role": "user", "content": "ping"}])
+        response = await client.chat([{"role": "user", "content": "ping"}], workload="sentiment")
 
     assert response == ChatResult(
         content="free-fallback-ok", provider="opencode-go", model="beam-free"
@@ -675,7 +675,7 @@ async def test_opencode_catalog_refreshes_daily_and_never_selects_paid_models() 
     model_list = AsyncMock(
         side_effect=[
             SimpleNamespace(data=[SimpleNamespace(id="beam-free"), SimpleNamespace(id="paid")]),
-            SimpleNamespace(data=[SimpleNamespace(id="new-free-model")]),
+            SimpleNamespace(data=[SimpleNamespace(id="beam-free"), SimpleNamespace(id="paid")]),
         ]
     )
     fake_client = SimpleNamespace(
@@ -697,7 +697,7 @@ async def test_opencode_catalog_refreshes_daily_and_never_selects_paid_models() 
         second = await client._resolve_opencode_free_model()
 
     assert first == "beam-free"
-    assert second == "new-free-model"
+    assert second == "beam-free"
     assert model_list.await_count == 2
 
 
@@ -706,7 +706,21 @@ async def test_opencode_catalog_without_free_models_fails_closed() -> None:
     fake_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock())),
         models=SimpleNamespace(
-            list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="paid-model")]))
+            list=AsyncMock(
+                return_value=SimpleNamespace(
+                    data=[
+                        SimpleNamespace(id=i)
+                        for i in (
+                            "paid-model",
+                            "unknown-free",
+                            "iceman-contributor-free",
+                            "mimo-v2.6-flash-free",
+                            "BEAM-FREE",
+                            "beam-free-extra",
+                        )
+                    ]
+                )
+            )
         ),
     )
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
@@ -716,9 +730,9 @@ async def test_opencode_catalog_without_free_models_fails_closed() -> None:
             provider="zai",
             opencode_go_api_key="opencode-test-key",
         )
-        with pytest.raises(RuntimeError, match="no advertised free models"):
+        with pytest.raises(RuntimeError, match="no approved free models"):
             await client._resolve_opencode_free_model()
-        with pytest.raises(RuntimeError, match="no advertised free models"):
+        with pytest.raises(RuntimeError, match="no approved free models"):
             await client._resolve_opencode_free_model()
 
     fake_client.models.list.assert_awaited_once()
@@ -754,7 +768,7 @@ async def test_zai_tries_opencode_then_xai_fallback() -> None:
             opencode_go_api_key="opencode-test-key",
             xai_fallback_api_key="xai-test-key",
         )
-        response = await client.chat([{"role": "user", "content": "ping"}])
+        response = await client.chat([{"role": "user", "content": "ping"}], workload="sentiment")
 
     assert response == ChatResult(
         content="xai-fallback-ok", provider="xai-fallback", model="grok-4-1-fast-reasoning"
@@ -787,8 +801,8 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
                 provider="zai",
                 opencode_go_api_key="opencode-test-key",
             )
-            first = await client.chat([{"role": "user", "content": "one"}])
-            second = await client.chat([{"role": "user", "content": "two"}])
+            first = await client.chat([{"role": "user", "content": "one"}], workload="sentiment")
+            second = await client.chat([{"role": "user", "content": "two"}], workload="sentiment")
 
     assert first.provider == "opencode-go"
     assert second.provider == "opencode-go"

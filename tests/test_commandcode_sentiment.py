@@ -140,7 +140,7 @@ async def test_full_fallback_order() -> None:
         for name in ("primary", "deepseek", "opencode", "xai", "ollama", "nvidia", "commandcode")
     )
     opencode.models = SimpleNamespace(
-        list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="model-free")]))
+        list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")]))
     )
     with patch(
         "src.overseer.xai.AsyncOpenAI",
@@ -280,7 +280,7 @@ async def test_slow_prior_chain_reserves_time_and_cools_nvidia() -> None:
         )
     ]
     opencode.models = SimpleNamespace(
-        list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="model-free")]))
+        list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")]))
     )
     with (
         patch(
