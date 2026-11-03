@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -30,6 +29,10 @@ _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
 _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 _COMMANDCODE_RESERVED_SECONDS = 10.0
+# Go privacy table, reviewed 2026-11-03: Beam is not used for training,
+# but is retained for 30 days. Unknown and training-enabled IDs are excluded.
+# https://opencode.ai/v2/docs/console/go#privacy
+_OPENCODE_APPROVED_FREE_MODELS = frozenset({"beam-free"})
 
 
 def _is_permanent_provider_error(exc: Exception) -> bool:
@@ -535,10 +538,10 @@ class XAIClient:
         raise error
 
     async def _resolve_opencode_free_model(self, *, request_timeout: float | None = None) -> str:
-        """Refresh the provider catalog once per UTC day and select only free IDs.
+        """Select only explicitly reviewed free IDs advertised by the Go catalog.
 
-        Fail closed when the provider no longer advertises a free model; never
-        silently fall back to a paid model from the same catalog.
+        Names do not establish either privacy or price. Never infer approval for
+        newly advertised models, and never substitute a paid model.
         """
         if self._opencode_client is None:
             raise RuntimeError("OpenCode Go is not configured")
@@ -546,25 +549,23 @@ class XAIClient:
         if self._opencode_model_date == today:
             if self._opencode_model:
                 return self._opencode_model
-            raise RuntimeError("OpenCode Go catalog has no advertised free models")
+            raise RuntimeError("OpenCode Go catalog has no approved free models")
         async with self._opencode_model_lock:
             if self._opencode_model_date == today:
                 if self._opencode_model:
                     return self._opencode_model
-                raise RuntimeError("OpenCode Go catalog has no advertised free models")
+                raise RuntimeError("OpenCode Go catalog has no approved free models")
             if request_timeout is None:
                 response = await self._opencode_client.models.list()
             else:
                 response = await self._opencode_client.models.list(timeout=request_timeout)
             model_ids = sorted(
-                model.id
-                for model in response.data
-                if re.search(r"(?:^|[-_.])free(?:$|[-_.])", model.id, re.IGNORECASE)
+                {model.id for model in response.data if model.id in _OPENCODE_APPROVED_FREE_MODELS}
             )
             if not model_ids:
                 self._opencode_model = None
                 self._opencode_model_date = today
-                raise RuntimeError("OpenCode Go catalog has no advertised free models")
+                raise RuntimeError("OpenCode Go catalog has no approved free models")
             # Deterministic daily choice rotates across whatever the live catalog
             # currently advertises, without pinning a model that may disappear.
             selected = model_ids[today.toordinal() % len(model_ids)]
