@@ -657,7 +657,7 @@ async def test_chat_uses_daily_discovered_opencode_free_fallback() -> None:
             base_url="https://api.z.ai/api/paas/v4",
             opencode_go_api_key="opencode-test-key",
         )
-        response = await client.chat([{"role": "user", "content": "ping"}])
+        response = await client.chat([{"role": "user", "content": "ping"}], workload="sentiment")
 
     assert response == ChatResult(
         content="free-fallback-ok", provider="opencode-go", model="beam-free"
@@ -768,7 +768,7 @@ async def test_zai_tries_opencode_then_xai_fallback() -> None:
             opencode_go_api_key="opencode-test-key",
             xai_fallback_api_key="xai-test-key",
         )
-        response = await client.chat([{"role": "user", "content": "ping"}])
+        response = await client.chat([{"role": "user", "content": "ping"}], workload="sentiment")
 
     assert response == ChatResult(
         content="xai-fallback-ok", provider="xai-fallback", model="grok-4-1-fast-reasoning"
@@ -801,8 +801,8 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
                 provider="zai",
                 opencode_go_api_key="opencode-test-key",
             )
-            first = await client.chat([{"role": "user", "content": "one"}])
-            second = await client.chat([{"role": "user", "content": "two"}])
+            first = await client.chat([{"role": "user", "content": "one"}], workload="sentiment")
+            second = await client.chat([{"role": "user", "content": "two"}], workload="sentiment")
 
     assert first.provider == "opencode-go"
     assert second.provider == "opencode-go"

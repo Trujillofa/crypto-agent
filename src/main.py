@@ -168,7 +168,8 @@ class AISettings:
 
 
 def _opencode_go_key(settings: AISettings) -> str:
-    return settings.opencode_go_api_key if settings.opencode_go_enabled else ""
+    # An enable flag is not provider permission for non-coding traffic.
+    return ""
 
 
 def _xai_fallback_key(settings: AISettings) -> str:

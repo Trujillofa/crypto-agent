@@ -177,7 +177,7 @@ class TestLoadSettings:
 
         enabled = replace(settings, xai_fallback_enabled=True, opencode_go_enabled=True)
         assert _xai_fallback_key(enabled) == "test-xai-key"
-        assert _opencode_go_key(enabled) == "test-opencode-key"
+        assert _opencode_go_key(enabled) == ""
 
     def test_loads_ollama_and_nvidia_credentials_from_environment(
         self, config_file: Path, monkeypatch

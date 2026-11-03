@@ -286,6 +286,7 @@ class XAIClient:
                             response_validator=response_validator,
                             max_attempts=1,
                             request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+                            workload="sentiment",
                         )
                 except TimeoutError as exc:
                     if prior_timeout.expired():
@@ -354,6 +355,7 @@ class XAIClient:
         response_validator: Callable[[str], object] | None = None,
         max_attempts: int = _MAX_ATTEMPTS,
         request_timeout: float | None = None,
+        workload: str = "general",
     ) -> ChatResult:
         use_transient_cooldown = response_validator is not None
         primary_error: Exception | None = None
@@ -392,8 +394,12 @@ class XAIClient:
                 )
 
         opencode_error: Exception | None = None
-        if self._opencode_client is not None and self._provider_available(
-            "opencode-go", honor_transient_cooldown=use_transient_cooldown
+        if (
+            workload == "sentiment"
+            and self._opencode_client is not None
+            and self._provider_available(
+                "opencode-go", honor_transient_cooldown=use_transient_cooldown
+            )
         ):
             try:
                 model = await self._resolve_opencode_free_model(request_timeout=request_timeout)
