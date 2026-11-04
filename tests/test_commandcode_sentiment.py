@@ -111,7 +111,7 @@ async def test_last_fallback_success_order_and_attribution() -> None:
     assert factory.call_args.kwargs["base_url"] == "https://api.commandcode.ai/provider/v1"
     assert factory.call_args.kwargs["max_retries"] == 0
     assert calls[-1][1]["timeout"] == 10.0
-    assert calls[-1][1]["max_tokens"] == 256
+    assert calls[-1][1]["max_tokens"] == 2048
     assert calls[-1][1]["model"] == "chosen-model"
 
 

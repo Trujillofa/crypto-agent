@@ -633,12 +633,16 @@ class XAIClient:
                         response_format={"type": "json_object"},
                     )
                 elif provider_id == "commandcode":
+                    # m3.1/beam-class models burn hundreds of tokens on hidden
+                    # reasoning before any content; a 256 cap yields finish=length
+                    # with empty content (verified live), so 2048 keeps enough
+                    # headroom for reasoning + the short JSON answer.
                     completion = await client.chat.completions.create(
                         model=model,
                         messages=chat_messages,
                         temperature=0.2,
                         timeout=request_timeout,
-                        max_tokens=256,
+                        max_tokens=2048,
                     )
                 else:
                     completion = await client.chat.completions.create(
