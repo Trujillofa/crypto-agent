@@ -26,7 +26,8 @@ _AUTH_ERRORS = (
 _MAX_ATTEMPTS = 3
 _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
-_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 30.0  # NVIDIA NIM can take >20s to answer
+_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 45.0  # NVIDIA NIM free-tier latency is volatile:
+# measured 1-7s in healthy windows, 30-58s under throttle, and uncapped reasoning runs 90s+.
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 _COMMANDCODE_RESERVED_SECONDS = 10.0
 # Go privacy table, reviewed 2026-11-03: Beam is not used for training,
@@ -427,30 +428,11 @@ class XAIClient:
                     "OpenCode Go free-model fallback failed (%s)", _provider_error_summary(exc)
                 )
 
-        ollama_error: Exception | None = None
-        if self._ollama_client is not None and self._provider_available(
-            "ollama", honor_transient_cooldown=use_transient_cooldown
-        ):
-            try:
-                content = await self._chat_with_client(
-                    self._ollama_client,
-                    self._ollama_model,
-                    messages,
-                    provider_name="Ollama Cloud",
-                    max_attempts=max_attempts,
-                    provider_id="ollama",
-                    response_validator=response_validator,
-                    request_timeout=request_timeout,
-                )
-                return ChatResult(content=content, provider="ollama", model=self._ollama_model)
-            except Exception as exc:
-                ollama_error = exc
-                self._record_provider_failure(
-                    "ollama", exc, apply_transient_cooldown=use_transient_cooldown
-                )
-                self._logger.warning("Ollama fallback failed (%s)", _provider_error_summary(exc))
-
         nvidia_error: Exception | None = None
+        # NVIDIA sits ahead of Ollama: it's the only fallback that returns live
+        # answers in practice, while the Ollama Cloud free tier 429s on most calls.
+        # Requested per-request timeout is _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS;
+        # the chain-level budget (`prior_timeout`) still caps the total.
         if self._nvidia_client is not None and self._provider_available(
             "nvidia", honor_transient_cooldown=use_transient_cooldown
         ):
@@ -478,6 +460,29 @@ class XAIClient:
                 self._logger.warning(
                     "NVIDIA NIM fallback failed (%s)", _provider_error_summary(exc)
                 )
+
+        ollama_error: Exception | None = None
+        if self._ollama_client is not None and self._provider_available(
+            "ollama", honor_transient_cooldown=use_transient_cooldown
+        ):
+            try:
+                content = await self._chat_with_client(
+                    self._ollama_client,
+                    self._ollama_model,
+                    messages,
+                    provider_name="Ollama Cloud",
+                    max_attempts=max_attempts,
+                    provider_id="ollama",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
+                )
+                return ChatResult(content=content, provider="ollama", model=self._ollama_model)
+            except Exception as exc:
+                ollama_error = exc
+                self._record_provider_failure(
+                    "ollama", exc, apply_transient_cooldown=use_transient_cooldown
+                )
+                self._logger.warning("Ollama fallback failed (%s)", _provider_error_summary(exc))
 
         xai_error: Exception | None = None
         if self._xai_fallback_client is not None and self._provider_available(

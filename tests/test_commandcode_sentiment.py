@@ -161,7 +161,7 @@ async def test_full_fallback_order() -> None:
         assert (
             await client.chat_with_validator([], _decode_sentiment_score)
         ).provider == "commandcode"
-    assert order == ["primary", "opencode", "ollama", "nvidia", "xai", "deepseek", "commandcode"]
+    assert order == ["primary", "opencode", "nvidia", "ollama", "xai", "deepseek", "commandcode"]
 
 
 async def test_no_key_and_general_chat_do_not_attempt_paid_fallback() -> None:
@@ -305,7 +305,9 @@ async def test_slow_prior_chain_reserves_time_and_cools_nvidia() -> None:
         start = asyncio.get_running_loop().time()
         result = await client.chat_with_validator([], _decode_sentiment_score)
         elapsed = asyncio.get_running_loop().time() - start
-    assert calls == ["primary", "opencode", "ollama", "nvidia", "commandcode"]
+    # The slow NVIDIA attempt (now tried before Ollama) eats the prior-chain budget;
+    # Ollama after it is cancelled and the reserved CommandCode call still happens.
+    assert calls == ["primary", "opencode", "nvidia", "commandcode"]
     assert result.provider == "commandcode"
     assert elapsed < 0.12
     assert not client._provider_available("nvidia")

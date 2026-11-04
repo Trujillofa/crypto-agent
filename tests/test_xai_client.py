@@ -27,6 +27,10 @@ def _make_permission_denied() -> openai.PermissionDeniedError:
     return openai.PermissionDeniedError("forbidden", response=mock_response, body=None)
 
 
+def _make_timeout_error() -> openai.APITimeoutError:
+    return openai.APITimeoutError(request=MagicMock())
+
+
 def _make_insufficient_balance() -> openai.RateLimitError:
     mock_response = MagicMock()
     mock_response.status_code = 429
@@ -531,7 +535,7 @@ async def test_sentiment_gives_nvidia_a_longer_request_timeout() -> None:
     assert primary_create.await_args is not None
     assert primary_create.await_args.kwargs["timeout"] == 10.0
     assert nvidia_create.await_args is not None
-    assert nvidia_create.await_args.kwargs["timeout"] == 30.0
+    assert nvidia_create.await_args.kwargs["timeout"] == 45.0
 
 
 @pytest.mark.asyncio
@@ -813,7 +817,7 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
 
 
 @pytest.mark.asyncio
-async def test_zai_falls_back_to_ollama_cloud_before_nvidia_nim() -> None:
+async def test_zai_falls_back_to_nvidia_nim_before_ollama_cloud() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
@@ -840,23 +844,27 @@ async def test_zai_falls_back_to_ollama_cloud_before_nvidia_nim() -> None:
         )
         response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(content="ollama-answer", provider="ollama", model="gemma4:31b")
+    assert response == ChatResult(
+        content="nvidia-answer",
+        provider="nvidia",
+        model="minimaxai/minimax-m3.1-flash",
+    )
     primary_create.assert_awaited_once()
-    ollama_create.assert_awaited_once()
-    nvidia_create.assert_not_awaited()
+    nvidia_create.assert_awaited_once()
+    ollama_create.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
+async def test_ollama_cloud_fallback_is_used_when_nvidia_fails() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
     )
-    ollama_create = AsyncMock(side_effect=_make_permission_denied())
+    ollama_create = AsyncMock(return_value=_make_completion("ollama-answer"))
     ollama_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=ollama_create))
     )
-    nvidia_create = AsyncMock(return_value=_make_completion("nvidia-answer"))
+    nvidia_create = AsyncMock(side_effect=_make_permission_denied())
     nvidia_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=nvidia_create))
     )
@@ -874,10 +882,6 @@ async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
         )
         response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(
-        content="nvidia-answer",
-        provider="nvidia",
-        model="minimaxai/minimax-m3.1-flash",
-    )
-    ollama_create.assert_awaited_once()
+    assert response == ChatResult(content="ollama-answer", provider="ollama", model="gemma4:31b")
     nvidia_create.assert_awaited_once()
+    ollama_create.assert_awaited_once()
