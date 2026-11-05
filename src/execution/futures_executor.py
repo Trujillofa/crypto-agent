@@ -20,8 +20,8 @@ from src.execution.metrics import ExecutionMetrics
 from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
-from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.entry_control import EntryControl
+from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
