@@ -1771,8 +1771,13 @@ class TestDurableEntryBrake:
             return rows
 
         config = FuturesTradingConfig(
-            api_key="k", api_secret="s", test_mode=True, enabled=True,
-            symbols=["BTCUSDT"], default_leverage=5, max_leverage=10,
+            api_key="k",
+            api_secret="s",
+            test_mode=True,
+            enabled=True,
+            symbols=["BTCUSDT"],
+            default_leverage=5,
+            max_leverage=10,
         )
         risk_manager = MagicMock(spec=RiskManager)
         risk_manager.is_trading_allowed.return_value = (True, "OK")
@@ -1808,8 +1813,13 @@ class TestDurableEntryBrake:
             return [{"agent_id": "all", "armed": False, "reduce_only": True, "reason": "flat"}]
 
         config = FuturesTradingConfig(
-            api_key="k", api_secret="s", test_mode=True, enabled=True,
-            symbols=["BTCUSDT"], default_leverage=5, max_leverage=10,
+            api_key="k",
+            api_secret="s",
+            test_mode=True,
+            enabled=True,
+            symbols=["BTCUSDT"],
+            default_leverage=5,
+            max_leverage=10,
         )
         risk_manager = MagicMock(spec=RiskManager)
         risk_manager.is_close_allowed.return_value = (True, "OK")

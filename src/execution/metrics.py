@@ -62,9 +62,7 @@ entry_control_reduce_only = Gauge(
 entry_control_read_age_seconds = Gauge(
     "entry_control_read_age_seconds", "Age of the last successful control read"
 )
-entry_control_fault = Gauge(
-    "entry_control_fault", "1 when the control row could not be read"
-)
+entry_control_fault = Gauge("entry_control_fault", "1 when the control row could not be read")
 
 # Counter for API errors
 api_errors_total = Counter(
