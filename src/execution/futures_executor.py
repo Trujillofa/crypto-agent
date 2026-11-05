@@ -124,6 +124,7 @@ class FuturesTradingExecutor:
         await self._client.__aenter__()
         await self._client.load_exchange_info(self._config.symbols)
         await self._notifier.__aenter__()
+        await self._announce_entry_control()
         self._metrics.start_trading()
 
         try:
@@ -155,6 +156,25 @@ class FuturesTradingExecutor:
 
         self._logger.info("FuturesTradingExecutor initialized")
         return self
+
+    async def _announce_entry_control(self) -> None:
+        """Read the brake at startup so its state is visible before the first signal.
+
+        Without this the metrics stay NaN until the first order attempt, which can
+        be days on a quiet strategy - and that means a disarmed agent looks
+        identical to one that simply has not traded.
+        """
+        state = await self._entry_control.state(force=True)
+        self._metrics.record_entry_control(
+            armed=state.armed,
+            reduce_only=state.reduce_only,
+            read_age_s=self._entry_control.last_success_age_s,
+            fault=state.source == "fail_closed",
+        )
+        if state.entries_allowed:
+            self._logger.info("Entry control: %s", state.describe())
+        else:
+            self._logger.warning("Entry control: %s", state.describe())
 
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         if self._client is not None:
