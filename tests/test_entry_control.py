@@ -171,3 +171,23 @@ async def test_both_ids_are_requested_so_a_global_row_is_never_missed() -> None:
 
     await control(fetch, agent_id="agent2").state()
     assert seen == [["agent2", "all"]]
+
+
+async def test_the_agent_id_comes_from_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_ID", "sol-4h-panic-block-paper")
+    seen: list[list[str]] = []
+
+    async def fetch(ids):
+        seen.append(list(ids))
+        return rows(("all", True, False, "armed"))
+
+    brake = EntryControl(fetch_rows=fetch, clock=Clock())
+    await brake.state()
+    assert brake.agent_id == "sol-4h-panic-block-paper"
+    assert seen == [["sol-4h-panic-block-paper", "all"]]
+
+
+async def test_an_explicit_id_wins_over_the_environment(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_ID", "from-env")
+    brake = EntryControl(agent_id="explicit", fetch_rows=None, clock=Clock())
+    assert brake.agent_id == "explicit"
