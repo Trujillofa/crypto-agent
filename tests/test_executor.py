@@ -9,6 +9,7 @@ from src.execution.binance_client import OrderInfo
 from src.execution.executor import TradingConfig, TradingExecutor
 from src.execution.metrics import ExecutionMetrics
 from src.portfolio.manager import PortfolioManager
+from src.risk.entry_control import EntryControl
 from src.risk.manager import RiskManager
 
 
@@ -431,7 +432,13 @@ def _make_futures_executor(
     risk_manager.check_max_leverage.return_value = (True, "")
     risk_manager.check_margin_usage.return_value = (True, "")
     metrics = MagicMock(spec=ExecutionMetrics)
-    executor = FuturesTradingExecutor(config, risk_manager, metrics)
+
+    async def armed(_ids):
+        return [{"agent_id": "all", "armed": True, "reduce_only": False, "reason": "test"}]
+
+    executor = FuturesTradingExecutor(
+        config, risk_manager, metrics, entry_control=EntryControl(fetch_rows=armed)
+    )
     return executor
 
 
