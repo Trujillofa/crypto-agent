@@ -62,6 +62,16 @@ entry_control_reduce_only = Gauge(
 entry_control_read_age_seconds = Gauge(
     "entry_control_read_age_seconds", "Age of the last successful control read"
 )
+entry_control_checked = Gauge(
+    "entry_control_checked", "1 once the executor has actually consulted the brake"
+)
+
+# Unknown is not disarmed. A gauge defaults to 0, which would read as "inhibited"
+# before the first order of the day - the same lie as reporting $0.00 exposure for
+# a book that cannot be measured. NaN says "no measurement" instead.
+entry_control_armed.set(float("nan"))
+entry_control_reduce_only.set(float("nan"))
+entry_control_read_age_seconds.set(float("nan"))
 entry_control_fault = Gauge("entry_control_fault", "1 when the control row could not be read")
 
 # Counter for API errors
@@ -102,6 +112,7 @@ class ExecutionMetrics:
         self.entry_control_reduce_only = entry_control_reduce_only
         self.entry_control_read_age = entry_control_read_age_seconds
         self.entry_control_fault = entry_control_fault
+        self.entry_control_checked = entry_control_checked
         self.api_errors = api_errors_total
         self.risk_blocks = risk_blocks_total
         self.signals = signals_total
@@ -115,6 +126,7 @@ class ExecutionMetrics:
         fault: bool,
     ) -> None:
         """Publish what the executor actually believes about the brake."""
+        self.entry_control_checked.set(1)
         self.entry_control_armed.set(1 if armed else 0)
         self.entry_control_reduce_only.set(1 if reduce_only else 0)
         self.entry_control_fault.set(1 if fault else 0)

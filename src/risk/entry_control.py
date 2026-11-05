@@ -17,6 +17,7 @@ behaviour. Three rules make it a brake instead of a dashboard.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -66,14 +67,16 @@ class EntryControl:
 
     def __init__(
         self,
-        agent_id: str = GLOBAL_AGENT_ID,
+        agent_id: str | None = None,
         *,
         ttl_s: float = DEFAULT_TTL_S,
         max_stale_s: float = DEFAULT_MAX_STALE_S,
         fetch_rows: FetchRows | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.agent_id = agent_id
+        # Each service already carries AGENT_ID, so a per-agent row is addressable
+        # without new configuration - and the global row still applies on top of it.
+        self.agent_id = agent_id or os.getenv("AGENT_ID") or GLOBAL_AGENT_ID
         self._ttl_s = ttl_s
         self._max_stale_s = max_stale_s
         self._fetch_rows = fetch_rows or _fetch_from_pool
