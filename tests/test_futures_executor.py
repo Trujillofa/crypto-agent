@@ -17,6 +17,7 @@ from src.execution.futures_client import (
 )
 from src.execution.futures_executor import FuturesTradingConfig, FuturesTradingExecutor
 from src.execution.metrics import ExecutionMetrics
+from src.risk.entry_control import EntryControl
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 
@@ -93,10 +94,17 @@ class TestFuturesTradingExecutor:
 
         metrics = MagicMock(spec=ExecutionMetrics)
 
+        # The durable brake fails closed, so a test that places orders has to say
+        # what the control row says. Without this the executor is correctly
+        # refusing entries because no control row exists.
+        async def armed(_ids):
+            return [{"agent_id": "all", "armed": True, "reduce_only": False, "reason": "test"}]
+
         return FuturesTradingExecutor(
             config=config,
             risk_manager=risk_manager,
             metrics=metrics,
+            entry_control=EntryControl(fetch_rows=armed),
         )
 
     def test_executor_initialization(self, executor):
@@ -1753,3 +1761,79 @@ class TestFuturesTradingExecutor:
         # Only one BUY order should have been placed
         assert mock_client.place_order.call_count == 1
         assert mock_client.place_order.call_args.kwargs["symbol"] == "BTCUSDT"
+
+
+class TestDurableEntryBrake:
+    """The control row is the only thing here that outlives the process."""
+
+    def _executor(self, rows):
+        async def fetch(_ids):
+            return rows
+
+        config = FuturesTradingConfig(
+            api_key="k", api_secret="s", test_mode=True, enabled=True,
+            symbols=["BTCUSDT"], default_leverage=5, max_leverage=10,
+        )
+        risk_manager = MagicMock(spec=RiskManager)
+        risk_manager.is_trading_allowed.return_value = (True, "OK")
+        risk_manager.is_close_allowed.return_value = (True, "OK")
+        return FuturesTradingExecutor(
+            config=config,
+            risk_manager=risk_manager,
+            metrics=MagicMock(spec=ExecutionMetrics),
+            entry_control=EntryControl(fetch_rows=fetch),
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_disarmed_row_refuses_the_entry(self):
+        executor = self._executor(
+            [{"agent_id": "all", "armed": False, "reduce_only": False, "reason": "drawdown 9.1%"}]
+        )
+        executor._client = MagicMock()
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await executor.place_futures_order("BTCUSDT", "BUY", 0.01, reference_price=50000.0)
+
+        assert "control" in str(exc_info.value).lower()
+        assert "drawdown 9.1%" in str(exc_info.value)
+        executor._client.place_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_brake_is_never_consulted_for_an_exit(self):
+        """A brake that traps a losing position is a bigger risk than the one it brakes."""
+        reads: list[list[str]] = []
+
+        async def fetch(ids):
+            reads.append(list(ids))
+            return [{"agent_id": "all", "armed": False, "reduce_only": True, "reason": "flat"}]
+
+        config = FuturesTradingConfig(
+            api_key="k", api_secret="s", test_mode=True, enabled=True,
+            symbols=["BTCUSDT"], default_leverage=5, max_leverage=10,
+        )
+        risk_manager = MagicMock(spec=RiskManager)
+        risk_manager.is_close_allowed.return_value = (True, "OK")
+        risk_manager.is_trading_allowed.return_value = (True, "OK")
+        executor = FuturesTradingExecutor(
+            config=config,
+            risk_manager=risk_manager,
+            metrics=MagicMock(spec=ExecutionMetrics),
+            entry_control=EntryControl(fetch_rows=fetch),
+        )
+        executor._client = MagicMock()
+        executor._client.place_order = AsyncMock(
+            return_value=MagicMock(
+                order_id="1", status="FILLED", executed_qty=0.01, avg_price=50000.0
+            )
+        )
+
+        try:
+            await executor.place_futures_order(
+                "BTCUSDT", "SELL", 0.01, reduce_only=True, reference_price=50000.0
+            )
+        except RuntimeError:
+            pass  # downstream checks may object; what matters is the brake:
+
+        assert reads == [], "control row must not gate a reduce_only order"
+        assert risk_manager.is_close_allowed.called
+        assert not risk_manager.is_trading_allowed.called

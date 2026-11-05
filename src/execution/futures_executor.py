@@ -21,6 +21,7 @@ from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
 from src.risk.guards import GuardContext, GuardPipeline
+from src.risk.entry_control import EntryControl
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
 from src.utils.logger import get_logger
@@ -78,6 +79,7 @@ class FuturesTradingExecutor:
         event_log: EventLog | None = None,
         guard_pipeline: GuardPipeline | None = None,
         staged_manager: StagedOrderManager | None = None,
+        entry_control: EntryControl | None = None,
     ) -> None:
         self._config = config
         self._risk_manager = risk_manager
@@ -88,6 +90,9 @@ class FuturesTradingExecutor:
         self._event_log = event_log
         self._guard_pipeline = guard_pipeline
         self._staged_manager = staged_manager
+        # Durable brake. Present in every environment: with no control row it
+        # fails closed, which is the point.
+        self._entry_control = entry_control or EntryControl()
         self._client: BinanceFuturesClient | None = None
         self._running = False
         self._positions: dict[str, dict[str, Any]] = {}  # Track futures positions
@@ -751,6 +756,24 @@ class FuturesTradingExecutor:
         if reduce_only:
             is_allowed, reason = self._risk_manager.is_close_allowed()
         else:
+            # Durable external brake, checked immediately before the exchange call
+            # so a disarm written mid-decision is still honoured. Never consulted
+            # for reduce_only: exits must remain possible while disarmed.
+            control = await self._entry_control.state()
+            self._metrics.record_entry_control(
+                armed=control.armed,
+                reduce_only=control.reduce_only,
+                read_age_s=self._entry_control.last_success_age_s,
+                fault=control.source == "fail_closed",
+            )
+            if not control.entries_allowed:
+                self._logger.warning(
+                    "Entry blocked by durable control for %s: %s",
+                    symbol,
+                    control.describe(),
+                )
+                self._metrics.record_risk_block(symbol, f"entry_control: {control.reason}")
+                raise RuntimeError(f"Futures entry blocked by control: {control.reason}")
             is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             self._metrics.record_risk_block(symbol, reason)

@@ -51,6 +51,21 @@ trading_active = Gauge(
     "execution_trading_active", "Whether trading is active (1=active, 0=inactive)"
 )
 
+# Durable entry brake (agent_control table). Read by the executor before every
+# entry order; published here so the coordinator can prove the agent honours it.
+entry_control_armed = Gauge(
+    "entry_control_armed", "1 when the durable entry brake allows new entries"
+)
+entry_control_reduce_only = Gauge(
+    "entry_control_reduce_only", "1 when the control row permits exits only"
+)
+entry_control_read_age_seconds = Gauge(
+    "entry_control_read_age_seconds", "Age of the last successful control read"
+)
+entry_control_fault = Gauge(
+    "entry_control_fault", "1 when the control row could not be read"
+)
+
 # Counter for API errors
 api_errors_total = Counter(
     "execution_api_errors_total",
@@ -85,9 +100,28 @@ class ExecutionMetrics:
         self.realized_pnl = realized_pnl_total
         self.account_balance = account_balance
         self.trading_active = trading_active
+        self.entry_control_armed = entry_control_armed
+        self.entry_control_reduce_only = entry_control_reduce_only
+        self.entry_control_read_age = entry_control_read_age_seconds
+        self.entry_control_fault = entry_control_fault
         self.api_errors = api_errors_total
         self.risk_blocks = risk_blocks_total
         self.signals = signals_total
+
+    def record_entry_control(
+        self,
+        *,
+        armed: bool,
+        reduce_only: bool,
+        read_age_s: float | None,
+        fault: bool,
+    ) -> None:
+        """Publish what the executor actually believes about the brake."""
+        self.entry_control_armed.set(1 if armed else 0)
+        self.entry_control_reduce_only.set(1 if reduce_only else 0)
+        self.entry_control_fault.set(1 if fault else 0)
+        if read_age_s is not None:
+            self.entry_control_read_age.set(read_age_s)
 
     def start_trading(self) -> None:
         """Mark trading as active."""
