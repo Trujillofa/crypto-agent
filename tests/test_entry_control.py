@@ -191,3 +191,17 @@ async def test_an_explicit_id_wins_over_the_environment(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_ID", "from-env")
     brake = EntryControl(agent_id="explicit", fetch_rows=None, clock=Clock())
     assert brake.agent_id == "explicit"
+
+
+async def test_reduce_only_says_why_entries_are_blocked() -> None:
+    async def fetch(_ids):
+        return rows(("all", True, True, "breaker tripped"))
+
+    control_ = control(fetch)
+    allowed, detail = await control_.entries_allowed()
+
+    assert allowed is False
+    # The reason is what an operator reads in the log line and the alert. Reporting
+    # "armed" while refusing entries is the opposite of the truth.
+    assert "reduce_only" in detail
+    assert "blocked" in detail
