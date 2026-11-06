@@ -162,6 +162,9 @@ class EntryControl:
                 reasons.append(str(row.get("reason") or f"{row['agent_id']}: disarmed"))
             if row.get("reduce_only") is True:
                 reduce_only = True
+                # Without this the block reason read "armed" while entries were
+                # refused: the operator-facing text said the opposite of the truth.
+                reasons.append(f"{row['agent_id']}: reduce_only")
         return EntryControlState(
             armed=armed,
             reduce_only=reduce_only,
