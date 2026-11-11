@@ -8,10 +8,12 @@ from dataclasses import dataclass, field
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
 from src.execution.binance_client import OrderInfo
+from src.execution.entry_admission import admit
 from src.execution.metrics import ExecutionMetrics
 from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
+from src.risk.entry_control import EntryControl
 from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
@@ -97,7 +99,10 @@ class PaperExecutor:
         event_log: EventLog | None = None,
         guard_pipeline: GuardPipeline | None = None,
         staged_manager: StagedOrderManager | None = None,
+        entry_control: EntryControl | None = None,
     ) -> None:
+        self._entry_control = entry_control or EntryControl(agent_id=agent_id)
+        self._entry_lock = asyncio.Lock()
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
@@ -622,6 +627,10 @@ class PaperExecutor:
         return current_price
 
     async def _handle_buy(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
+        async with self._entry_lock:
+            await self._handle_buy_locked(signal, market_tag, is_futures)
+
+    async def _handle_buy_locked(self, signal: Signal, market_tag: str, is_futures: bool) -> None:
         pos_key = self._position_key(signal.symbol, market_tag)
 
         if pos_key in self._positions:
@@ -784,6 +793,7 @@ class PaperExecutor:
                         },
                     )
 
+            await admit(self._entry_control, self._metrics, signal.symbol)
             # Simulate fill with fee
             fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
             fee = order_usdt * fee_rate
@@ -954,6 +964,10 @@ class PaperExecutor:
         )
 
     async def _handle_short_entry(self, signal: Signal, market_tag: str) -> None:
+        async with self._entry_lock:
+            await self._handle_short_entry_locked(signal, market_tag)
+
+    async def _handle_short_entry_locked(self, signal: Signal, market_tag: str) -> None:
         pos_key = self._position_key(signal.symbol, market_tag)
         if pos_key in self._positions:
             self._logger.info(
@@ -1072,6 +1086,7 @@ class PaperExecutor:
         ):
             return
 
+        await admit(self._entry_control, self._metrics, signal.symbol)
         fee = order_usdt * self._config.fee_rate_futures
         self._balance -= margin_needed + fee
         self._total_fees += fee

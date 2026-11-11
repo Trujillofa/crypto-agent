@@ -14,7 +14,12 @@ from src.execution.paper_executor import (
     PaperTradingConfig,
 )
 from src.portfolio.models import Position
+from src.risk.entry_control import EntryControl
 from src.strategy.signals import Signal, SignalType
+
+
+async def _armed(_ids):
+    return [{"agent_id": "all", "armed": True, "reduce_only": False}]
 
 
 def _make_config(**overrides) -> PaperTradingConfig:
@@ -53,6 +58,7 @@ def _make_executor(
     portfolio_manager.close_position = AsyncMock()
     return PaperExecutor(
         config=config,
+        entry_control=EntryControl(fetch_rows=_armed),
         risk_manager=risk_manager,
         metrics=metrics,
         notifier=notifier,

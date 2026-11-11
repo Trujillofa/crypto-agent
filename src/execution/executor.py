@@ -10,10 +10,12 @@ from src.execution.binance_client import (
     BinancePrivateClient,
     OrderInfo,
 )
+from src.execution.entry_admission import admit
 from src.execution.metrics import ExecutionMetrics
 from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
+from src.risk.entry_control import EntryControl
 from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
@@ -54,7 +56,10 @@ class TradingExecutor:
         event_log: EventLog | None = None,
         guard_pipeline: GuardPipeline | None = None,
         staged_manager: StagedOrderManager | None = None,
+        entry_control: EntryControl | None = None,
     ) -> None:
+        self._entry_control = entry_control or EntryControl()
+        self._entry_lock = asyncio.Lock()
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
@@ -233,7 +238,19 @@ class TradingExecutor:
     async def place_market_order(
         self,
         symbol: str,
-        side: str,  # "BUY" or "SELL"
+        side: str,
+        quantity: float | None = None,
+        price: float | None = None,
+    ) -> OrderInfo:
+        if side == "SELL":
+            return await self._place_market_order(symbol, side, quantity, price)
+        async with self._entry_lock:
+            return await self._place_market_order(symbol, side, quantity, price)
+
+    async def _place_market_order(
+        self,
+        symbol: str,
+        side: str,
         quantity: float | None = None,
         price: float | None = None,
     ) -> OrderInfo:
@@ -372,6 +389,8 @@ class TradingExecutor:
                         },
                     )
 
+            if side != "SELL":
+                await admit(self._entry_control, self._metrics, symbol)
             order = await self._client.place_market_order(
                 symbol=symbol, side=side, quantity=quantity
             )
@@ -517,7 +536,19 @@ class TradingExecutor:
     async def place_limit_order(
         self,
         symbol: str,
-        side: str,  # "BUY" or "SELL"
+        side: str,
+        price: float,
+        quantity: float | None = None,
+    ) -> OrderInfo:
+        if side == "SELL":
+            return await self._place_limit_order(symbol, side, price, quantity)
+        async with self._entry_lock:
+            return await self._place_limit_order(symbol, side, price, quantity)
+
+    async def _place_limit_order(
+        self,
+        symbol: str,
+        side: str,
         price: float,
         quantity: float | None = None,
     ) -> OrderInfo:
@@ -656,6 +687,8 @@ class TradingExecutor:
                         },
                     )
 
+            if side != "SELL":
+                await admit(self._entry_control, self._metrics, symbol)
             order = await self._client.place_limit_order(
                 symbol=symbol,
                 side=side,

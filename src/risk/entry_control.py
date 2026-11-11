@@ -17,6 +17,7 @@ behaviour. Three rules make it a brake instead of a dashboard.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -109,11 +110,19 @@ class EntryControl:
             )
 
         try:
-            rows = await self._fetch_rows([self.agent_id, GLOBAL_AGENT_ID])
+            rows = await asyncio.wait_for(
+                self._fetch_rows([self.agent_id, GLOBAL_AGENT_ID]), timeout=5.0
+            )
+            resolved = self._combine(rows)
         except Exception as exc:  # noqa: BLE001 - a brake may not raise into the hot path
             self.last_fault = f"{type(exc).__name__}: {exc}"
             age = self.last_success_age_s
-            if self._cached is not None and age is not None and age <= self._max_stale_s:
+            if (
+                not force
+                and self._cached is not None
+                and age is not None
+                and age <= self._max_stale_s
+            ):
                 self._logger.warning(
                     "Entry control read failed (%s); using value %.0fs old",
                     self.last_fault,
@@ -136,7 +145,6 @@ class EntryControl:
                 source="fail_closed",
             )
 
-        resolved = self._combine(rows)
         self._cached = resolved
         self._cached_at = now
         self._last_ok_at = now
@@ -156,6 +164,10 @@ class EntryControl:
         reduce_only = False
         reasons: list[str] = []
         for row in rows:
+            if row.get("agent_id") not in {self.agent_id, GLOBAL_AGENT_ID}:
+                raise ValueError("unexpected control scope")
+            if type(row.get("armed")) is not bool or type(row.get("reduce_only")) is not bool:
+                raise ValueError("invalid control flags")
             # Strict identity: NULL, 0 or a string must never read as "armed".
             if row["armed"] is not True:
                 armed = False
