@@ -139,9 +139,16 @@ class FuturesTradingExecutor:
         # are announced, never guessed, and cleared once the gap is settled.
         self._accounting_gaps: dict[str, str] = {}
         # symbol → realized PnL that could not be fed to the circuit breakers
-        # because no live balance was available at close time. Folded into the
-        # next close that *does* have one.
+        # because no live balance was available at close time. Account-wide, so
+        # the next close that *does* have a balance settles every entry, not
+        # just its own symbol. Mirrored into the risk state so a restart
+        # replays it instead of forgetting the loss.
         self._deferred_risk_pnl: dict[str, float] = {}
+        # symbol → timestamp when a live venue conditional was first seen
+        # covering the same trigger as the software bracket. The software exit
+        # waits one grace window so the venue order wins the race instead of
+        # two market closes racing for one position.
+        self._software_standdown: dict[str, float] = {}
 
     async def __aenter__(self) -> FuturesTradingExecutor:
         if not self._config.enabled:
@@ -162,6 +169,7 @@ class FuturesTradingExecutor:
         await self._notifier.__aenter__()
         await self._announce_entry_control()
         self._metrics.start_trading()
+        self._hydrate_deferred_pnl()
 
         try:
             account_position_mode = await self._client.get_position_mode()
@@ -491,19 +499,20 @@ class FuturesTradingExecutor:
                 positions = await self._client.get_position_risk(symbol)
                 for pos in positions:
                     # Check liquidation buffer
-                    if pos.liquidation_price > 0:
-                        risk_side = pos.position_side
+                    if float(getattr(pos, "liquidation_price", 0.0) or 0.0) > 0:
+                        risk_side = str(getattr(pos, "position_side", "") or "")
+                        amount = float(getattr(pos, "position_amt", 0.0) or 0.0)
                         if risk_side not in {"LONG", "SHORT"}:
-                            if pos.position_amt > 0:
+                            if amount > 0:
                                 risk_side = "LONG"
-                            elif pos.position_amt < 0:
+                            elif amount < 0:
                                 risk_side = "SHORT"
                             else:
                                 continue
 
                         allowed, reason = self._risk_manager.check_liquidation_buffer(
-                            mark_price=pos.mark_price,
-                            liquidation_price=pos.liquidation_price,
+                            mark_price=float(getattr(pos, "mark_price", 0.0) or 0.0),
+                            liquidation_price=float(pos.liquidation_price),
                             position_side=risk_side,
                             buffer_pct=self._config.liquidation_buffer_pct,
                         )
@@ -518,19 +527,39 @@ class FuturesTradingExecutor:
                                 f"LIQUIDATION RISK: {symbol} {pos.position_side}\n{reason}"
                             )
 
-                    # Update internal position tracking
-                    self._positions[symbol] = {
-                        "side": pos.position_side,
-                        "amount": pos.position_amt,
-                        "entry_price": pos.entry_price,
-                        "mark_price": pos.mark_price,
-                        "liquidation_price": pos.liquidation_price,
-                        "leverage": pos.leverage,
-                        "unrealized_pnl": pos.unrealized_pnl,
-                    }
+                # The venue book is authoritative, but only for the leg this
+                # agent owns. In hedge mode the other leg can belong to another
+                # agent, so "positions[0]" (or the last leg this loop saw)
+                # describes someone else's exposure and must never drive a close
+                # or a tracker overwrite.
+                owned_leg = self._select_owned_leg(symbol, positions)
+                owned_qty = (
+                    abs(float(owned_leg.position_amt)) if owned_leg is not None else 0.0
+                )
+                if owned_leg is not None:
+                    tracked = self._positions.setdefault(symbol, {})
+                    tracked.update(
+                        {
+                            "side": self._leg_side(owned_leg),
+                            "entry_price": float(getattr(owned_leg, "entry_price", 0.0) or 0.0),
+                            "mark_price": float(getattr(owned_leg, "mark_price", 0.0) or 0.0),
+                            "liquidation_price": float(
+                                getattr(owned_leg, "liquidation_price", 0.0) or 0.0
+                            ),
+                            "leverage": getattr(owned_leg, "leverage", 0),
+                            "unrealized_pnl": float(
+                                getattr(owned_leg, "unrealized_pnl", 0.0) or 0.0
+                            ),
+                        }
+                    )
+                    # Never inflate the tracked size from the venue book: a
+                    # larger venue leg may include another agent's volume. The
+                    # tracked amount is only ever adopted when nothing is
+                    # registered, and only ever reduced by a proven fill.
+                    tracked.setdefault("amount", owned_qty)
 
                 # Position closed by exchange-side SL/TP — clean up tracking
-                if not positions and symbol in self._sl_tp_orders:
+                if owned_qty <= _QUANTITY_TOLERANCE and symbol in self._sl_tp_orders:
                     self._logger.info(
                         "Position %s closed by exchange SL/TP — clearing order tracking",
                         symbol,
@@ -541,6 +570,9 @@ class FuturesTradingExecutor:
                     tracked_orders = self._sl_tp_orders.get(symbol, {})
                     sw_prices = self._sl_tp_prices.get(symbol, {})
                     sl_px = sw_prices.get("sl_price", 0.0)
+                    # Set when the confirmed-fill path below releases the risk
+                    # slot, so the cleanup tail does not release it twice.
+                    risk_released = False
                     close_details = await self._resolve_close_execution_details(
                         symbol=symbol,
                         tracked_orders=tracked_orders,
@@ -630,6 +662,7 @@ class FuturesTradingExecutor:
                         )
                         if risk_pnl is not None:
                             await self._record_risk_close(symbol, risk_pnl, self._account_balance)
+                            risk_released = True
                         else:
                             self._logger.warning(
                                 "Confirmed exchange close for %s but no usable PnL for risk "
@@ -645,12 +678,24 @@ class FuturesTradingExecutor:
 
                     self._sl_tp_orders.pop(symbol, None)
                     self._sl_tp_prices.pop(symbol, None)
-                    self._positions.pop(symbol, None)
+                    if self._positions.pop(symbol, None) is not None and not risk_released:
+                        # The venue proves the leg is gone, so any risk slot
+                        # still registered for it is a phantom. Skipped when
+                        # the confirmed-fill path above already released it.
+                        self._risk_manager.register_close_position(symbol, market="futures")
+                        self._clear_accounting_gap(symbol)
+                elif owned_qty <= _QUANTITY_TOLERANCE and symbol in self._positions:
+                    # Flat at the venue with no exchange bracket left to resolve
+                    # (a signal exit pops the bracket before the position can be
+                    # marked closed). This is the bounded repair for a
+                    # tracker/risk divergence: without it the phantom slot
+                    # outlives the exposure and blocks every later entry.
+                    self._release_flat_tracking(symbol)
 
                 # Software exits: enforce SL/TP, ATR trailing, and time stops.
                 sw = self._sl_tp_prices.get(symbol)
-                if sw and positions:
-                    mark = positions[0].mark_price
+                if sw and owned_leg is not None:
+                    mark = float(getattr(owned_leg, "mark_price", 0.0) or 0.0)
                     sl = sw.get("sl_price", 0.0)
                     tp = sw.get("tp_price", 0.0)
                     entry_price = sw.get("entry_price", 0.0)
@@ -680,6 +725,8 @@ class FuturesTradingExecutor:
                         sw_close_reason = "time_stop"
 
                     if sw_close_reason is not None:
+                        if self._defer_to_live_conditional(symbol, sw_close_reason):
+                            continue
                         reason_str = (
                             f"SL {sl:.4f}"
                             if sw_close_reason == "stop_loss"
@@ -709,12 +756,25 @@ class FuturesTradingExecutor:
                         sw_snapshot = dict(sw)
                         self._sl_tp_prices.pop(symbol, None)
                         try:
-                            held_qty = abs(float(positions[0].position_amt))
+                            held_qty = owned_qty
                             # Derive the closing side from the position's sign:
                             # a hardcoded SELL/LONG would open exposure instead of
                             # closing a short leg.
-                            close_side, close_leg = self._close_leg_for(positions[0].position_amt)
+                            close_side, close_leg = self._close_leg_for(
+                                float(owned_leg.position_amt)
+                            )
                             mode = self._position_mode()
+                            if mode == "hedge":
+                                # Same holdings proof place_futures_order runs:
+                                # a bracket is already cancelled here, so an
+                                # unreadable or absent leg must stop the exit
+                                # instead of sending a market order blind. The
+                                # size is existence-checked only - it came from
+                                # this pass's own venue read and is verified
+                                # against the fill (overshoot, flat confirmation).
+                                await self._verify_hedge_reduce_holdings(
+                                    symbol, close_side, close_leg, None
+                                )
                             await self._cancel_sl_tp_orders(symbol)
                             close_order = await self._client.place_order(
                                 symbol=symbol,
@@ -808,6 +868,17 @@ class FuturesTradingExecutor:
                                         "corrected, PnL deferred",
                                     )
 
+                                if close_realized_pnl is not None:
+                                    # The remainder keeps running with this loss
+                                    # already realized: it must reach the
+                                    # breakers now, not only when the last
+                                    # slice closes.
+                                    await self._book_partial_pnl(
+                                        symbol,
+                                        close_realized_pnl,
+                                        max(sw_entry_px, 0.0) * max(held_qty, executed),
+                                    )
+
                                 state = self._positions.setdefault(symbol, {})
                                 state["amount"] = remaining_qty
                                 # Restore protection for what is still held.
@@ -829,6 +900,25 @@ class FuturesTradingExecutor:
                                     remaining_qty,
                                 )
                             else:
+                                # Fully flat per the fill. In hedge mode the leg
+                                # is unambiguously ours, so demand the venue
+                                # agree before the tracker and the risk slot are
+                                # released: a leg that is still open means we did
+                                # not close what we think we closed.
+                                if mode == "hedge" and not await self._confirm_leg_flat(
+                                    symbol, close_leg
+                                ):
+                                    self._sl_tp_prices[symbol] = sw_snapshot
+                                    self._mark_accounting_gap(
+                                        symbol,
+                                        f"software {sw_close_reason} close not confirmed flat "
+                                        f"for {close_leg}: tracker, risk slot and "
+                                        "protection kept",
+                                    )
+                                    raise PositionStateDivergence(
+                                        f"{symbol} {close_leg} leg is still open after closing "
+                                        f"{executed:.8f}; refusing to release the risk slot"
+                                    )
                                 # Fully flat at the exchange.
                                 if (
                                     self._portfolio_manager is not None
@@ -906,9 +996,193 @@ class FuturesTradingExecutor:
                                 reason_str,
                                 close_exc,
                             )
+                            if (
+                                symbol in self._positions
+                                and symbol not in self._sl_tp_prices
+                            ):
+                                # The exit did not complete while the leg is
+                                # still open: its bracket must not be lost.
+                                self._sl_tp_prices[symbol] = sw_snapshot
 
             except Exception as exc:
                 self._logger.error("Failed to get position risk for %s: %s", symbol, exc)
+
+    # ------------------------------------------------------------------ #
+    # Venue-authoritative position book
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _leg_side(leg: Any) -> str:
+        """Normalize a venue leg to LONG/SHORT (one-way 'BOTH' by amount sign)."""
+        side = str(getattr(leg, "position_side", "") or "").upper()
+        if side in {"LONG", "SHORT"}:
+            return side
+        try:
+            amount = float(getattr(leg, "position_amt", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return ""
+        if amount > 0:
+            return "LONG"
+        if amount < 0:
+            return "SHORT"
+        return ""
+
+    def _tracked_side(self, symbol: str) -> str | None:
+        """The side this agent believes it holds for ``symbol``, if any.
+
+        The signed amount wins over the stored label: the amount is maintained
+        from fills and the venue, while the label records the entry side and
+        goes stale the moment the position is flipped or partially closed the
+        other way. The label is only used when the amount says nothing.
+        """
+        tracked = self._positions.get(symbol) or {}
+        try:
+            amount = float(tracked.get("amount") or 0.0)
+        except (TypeError, ValueError):
+            amount = 0.0
+        if amount > 0:
+            return "LONG"
+        if amount < 0:
+            return "SHORT"
+        side = str(tracked.get("side") or "").upper()
+        if side in {"LONG", "SHORT"}:
+            return side
+        return None
+
+    def _select_owned_leg(self, symbol: str, positions: list[Any] | None) -> Any | None:
+        """Return the venue leg this agent owns, or None when it owns none.
+
+        Hedge mode keeps one leg per side, so the tracked side identifies ours
+        and the other side legitimately belongs to somebody else. One-way mode
+        has a single net leg. A leg that cannot be attributed to this agent is
+        never guessed at: the caller treats None as "no owned exposure" and only
+        releases state when the tracker agrees.
+        """
+        if not positions:
+            return None
+        try:
+            mode = self._position_mode()
+        except Exception:  # noqa: BLE001 - unknown mode: do not pick a leg
+            return None
+        live = []
+        for pos in positions:
+            try:
+                if abs(float(getattr(pos, "position_amt", 0.0) or 0.0)) <= _QUANTITY_TOLERANCE:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            live.append(pos)
+        if not live:
+            return None
+        if mode == "hedge":
+            side = self._tracked_side(symbol)
+            if side is not None:
+                for pos in live:
+                    if str(getattr(pos, "position_side", "") or "").upper() == side:
+                        return pos
+                # The side we hold is gone at the venue. Anything else that is
+                # open belongs to another agent, so this agent is flat.
+                return None
+            # Untracked symbol (startup recovery): adopt the first live leg.
+            return live[0]
+        # One-way: a single net leg covers both sides.
+        for pos in live:
+            if str(getattr(pos, "position_side", "") or "").upper() in {"BOTH", ""}:
+                return pos
+        return live[0]
+
+    def _release_flat_tracking(self, symbol: str) -> None:
+        """Release tracker + risk slot once the venue proves the leg is flat.
+
+        Divergence deliberately leaves both registered so nothing is released
+        on a guess. This is the bounded repair (the monitor loop is the bound:
+        one pass per cycle) that lets entries resume once the venue book says
+        the exposure is gone.
+        """
+        tracked = self._positions.pop(symbol, None)
+        self._sl_tp_prices.pop(symbol, None)
+        self._sl_tp_orders.pop(symbol, None)
+        self._software_standdown.pop(symbol, None)
+        self._risk_manager.register_close_position(symbol, market="futures")
+        self._clear_accounting_gap(symbol)
+        self._logger.warning(
+            "Reconciled %s flat against the venue book (tracked amount %s): "
+            "released the tracker and the risk slot",
+            symbol,
+            tracked.get("amount") if tracked else None,
+        )
+
+    async def _confirm_leg_flat(
+        self, symbol: str, position_side: str, tolerance: float = _QUANTITY_TOLERANCE
+    ) -> bool:
+        """True only when the venue confirms no `position_side` leg is left."""
+        if self._client is None:
+            return False
+        try:
+            positions = await self._client.get_position_risk(symbol)
+        except Exception as exc:  # noqa: BLE001 - unproven is not flat
+            self._mark_accounting_gap(
+                symbol, f"venue flat confirmation unavailable after close: {exc}"
+            )
+            return False
+        for pos in positions or []:
+            if str(getattr(pos, "position_side", "") or "").upper() != position_side.upper():
+                continue
+            try:
+                held = abs(float(getattr(pos, "position_amt", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                return False
+            if held > tolerance:
+                return False
+        return True
+
+    # Grace window for letting a live venue conditional win a trigger it
+    # already covers. One monitor cycle is enough for a STOP_MARKET to fire;
+    # after that the software stop takes over in case the venue order is dead.
+    _SW_EXCHANGE_GRACE_S = 45.0
+
+    def _live_conditional_covers(self, symbol: str, reason: str) -> bool:
+        tracked = self._sl_tp_orders.get(symbol) or {}
+        if reason == "stop_loss":
+            return bool(tracked.get("sl_order_id")) and bool(tracked.get("sl_is_algo"))
+        if reason == "take_profit":
+            return bool(tracked.get("tp_order_id")) and bool(tracked.get("tp_is_algo"))
+        return False
+
+    def _defer_to_live_conditional(self, symbol: str, reason: str) -> bool:
+        """Let a live venue conditional win the trigger before the software exit.
+
+        A STOP_MARKET/TAKE_PROFIT_MARKET already sitting at this level closes
+        the position at the venue. Racing it with our own market close is a
+        duplicate exit: two orders for one position, and once the venue one
+        fills the second has nothing left to close. Protection is intact
+        either way (venue order plus the software bracket), so waiting one
+        grace window costs nothing - and if the venue order never triggers, the
+        software stop picks it up on the next pass.
+        """
+        if not self._live_conditional_covers(symbol, reason):
+            self._software_standdown.pop(symbol, None)
+            return False
+        first_seen = self._software_standdown.setdefault(symbol, time.time())
+        waited = time.time() - first_seen
+        if waited < self._SW_EXCHANGE_GRACE_S:
+            self._logger.info(
+                "Software %s for %s deferred %.0fs: a live exchange conditional "
+                "already covers this trigger",
+                reason,
+                symbol,
+                self._SW_EXCHANGE_GRACE_S - waited,
+            )
+            return True
+        self._logger.warning(
+            "Software %s taking over for %s: the live exchange conditional did not "
+            "close the position within %.0fs",
+            reason,
+            symbol,
+            self._SW_EXCHANGE_GRACE_S,
+        )
+        self._software_standdown.pop(symbol, None)
+        return False
 
     def _mark_accounting_gap(self, symbol: str, reason: str) -> None:
         """Announce a deferred post-fill accounting decision instead of guessing.
@@ -952,6 +1226,128 @@ class FuturesTradingExecutor:
             )
         return balance
 
+    def _ledger_exposure(self, symbol: str) -> tuple[float, float]:
+        """Return (entry_price, quantity) the portfolio ledger believes is open."""
+        if self._portfolio_manager is None:
+            return 0.0, 0.0
+        try:
+            tracked = self._portfolio_manager.get_position(symbol, market="futures")
+        except Exception:  # noqa: BLE001 - absence is a normal answer
+            return 0.0, 0.0
+        if tracked is None:
+            return 0.0, 0.0
+        try:
+            entry = float(getattr(tracked, "entry_price", 0.0) or 0.0)
+            qty = abs(float(getattr(tracked, "quantity", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            return 0.0, 0.0
+        return entry, qty
+
+    async def _reference_held_qty(self, symbol: str) -> float:
+        """Establish how much is held when the tracker has nothing registered.
+
+        Order of witnesses: the venue book first (it is the authority on what
+        is actually held), then the portfolio ledger (which will book the
+        remainder). Returns 0.0 only when every witness is empty or unreadable -
+        the caller must treat that as "unknown", never as "flat".
+        """
+        if self._client is not None:
+            try:
+                positions = await self._client.get_position_risk(symbol)
+            except Exception as exc:  # noqa: BLE001 - surfaced by the caller
+                self._mark_accounting_gap(
+                    symbol, f"reduce reference quantity unavailable: {exc}"
+                )
+                positions = None
+            if positions is not None:
+                held = 0.0
+                for pos in positions or []:
+                    try:
+                        held = max(held, abs(float(getattr(pos, "position_amt", 0.0) or 0.0)))
+                    except (TypeError, ValueError):
+                        continue
+                if held > _QUANTITY_TOLERANCE:
+                    return held
+        _entry, ledger_qty = self._ledger_exposure(symbol)
+        return ledger_qty
+
+    def _sync_deferred_pnl(self) -> None:
+        """Mirror the deferred-PnL ledger into the durable risk state."""
+        setter = getattr(self._risk_manager, "set_deferred_realized_pnl", None)
+        if not callable(setter):
+            return
+        try:
+            setter(dict(self._deferred_risk_pnl))
+        except Exception as exc:  # noqa: BLE001 - persistence is best effort, logged
+            self._logger.error("Could not persist deferred risk PnL: %s", exc)
+
+    def _defer_risk_pnl(self, symbol: str, total: float) -> None:
+        self._deferred_risk_pnl[symbol] = total
+        self._sync_deferred_pnl()
+
+    def _take_deferred_pnl(self) -> float:
+        """Drain every deferred PnL entry, not just this symbol's.
+
+        The breakers are account-wide, so a loss deferred on BTCUSDT must be
+        settled by the next close that has a balance *wherever* it happens.
+        Keying the replay on the symbol stranded the loss forever.
+        """
+        if not self._deferred_risk_pnl:
+            return 0.0
+        total = sum(float(value) for value in self._deferred_risk_pnl.values())
+        self._deferred_risk_pnl.clear()
+        self._sync_deferred_pnl()
+        return total
+
+    def _hydrate_deferred_pnl(self) -> None:
+        """Replay deferred PnL persisted by a previous process."""
+        getter = getattr(self._risk_manager, "deferred_realized_pnl", None)
+        if not callable(getter):
+            return
+        try:
+            stored = getter()
+        except Exception as exc:  # noqa: BLE001 - logged, never fatal
+            self._logger.error("Could not read persisted deferred risk PnL: %s", exc)
+            return
+        if not isinstance(stored, dict) or not stored:
+            return
+        for symbol, value in stored.items():
+            try:
+                self._deferred_risk_pnl[str(symbol)] = float(value)
+            except (TypeError, ValueError):
+                continue
+        if self._deferred_risk_pnl:
+            self._logger.warning(
+                "Replaying %d deferred risk PnL entries persisted by a previous run: %s",
+                len(self._deferred_risk_pnl),
+                self._deferred_risk_pnl,
+            )
+
+    async def _book_partial_pnl(self, symbol: str, pnl: float, notional: float) -> None:
+        """Feed the PnL of a partial reduce to the breakers.
+
+        A partial reduce leaves the position open, so the account keeps running
+        with that loss already realized. Feeding ``record_trade`` a balance of
+        0 would silently skip every percentage gate, which is how a 99% loss
+        used to pass without tripping max_single_loss. With no live balance the
+        notional of the leg this fill reduced is the only base actually known
+        to be at risk, so it is used - and marked, because it is a proxy.
+        """
+        balance = await self._live_account_balance()
+        total_pnl = pnl + self._take_deferred_pnl()
+        if balance > 0:
+            self._risk_manager.record_trade(symbol, total_pnl, balance)
+            self._metrics.record_realized_pnl(symbol, total_pnl)
+            return
+        proxy_base = max(abs(notional), abs(total_pnl))
+        self._risk_manager.record_trade(symbol, total_pnl, proxy_base)
+        self._metrics.record_realized_pnl(symbol, total_pnl)
+        self._mark_accounting_gap(
+            symbol,
+            "partial reduce PnL measured against the reduced notional: no live "
+            "balance for the percentage gate",
+        )
+
     async def _record_risk_close(
         self,
         symbol: str,
@@ -967,21 +1363,27 @@ class FuturesTradingExecutor:
         divide by.
         """
         if pnl is not None:
-            balance = await self._live_account_balance(portfolio_value)
-            deferred = self._deferred_risk_pnl.pop(symbol, 0.0)
-            total_pnl = pnl + deferred
-            if balance > 0:
-                self._risk_manager.record_trade(symbol, total_pnl, balance)
-                self._metrics.record_realized_pnl(symbol, total_pnl)
-                self._clear_accounting_gap(symbol)
-            else:
-                self._deferred_risk_pnl[symbol] = total_pnl
-                self._metrics.record_realized_pnl(symbol, pnl)
-                self._mark_accounting_gap(
-                    symbol,
-                    "risk-close deferred: no live balance for circuit-breaker accounting",
-                )
+            await self._book_realized_pnl(symbol, pnl, portfolio_value)
         self._risk_manager.register_close_position(symbol, market="futures")
+
+    async def _book_realized_pnl(
+        self, symbol: str, pnl: float, portfolio_value: float
+    ) -> bool:
+        """Record one realized close against the breakers, or defer it durably."""
+        balance = await self._live_account_balance(portfolio_value)
+        total_pnl = pnl + self._take_deferred_pnl()
+        if balance > 0:
+            self._risk_manager.record_trade(symbol, total_pnl, balance)
+            self._metrics.record_realized_pnl(symbol, total_pnl)
+            self._clear_accounting_gap(symbol)
+            return True
+        self._defer_risk_pnl(symbol, total_pnl)
+        self._metrics.record_realized_pnl(symbol, pnl)
+        self._mark_accounting_gap(
+            symbol,
+            "risk-close deferred: no live balance for circuit-breaker accounting",
+        )
+        return False
 
     def _can_prepare_request_clock(self) -> bool:
         """True only for a client that exposes the preparation seam.
@@ -1074,7 +1476,7 @@ class FuturesTradingExecutor:
         symbol: str,
         side: str,
         position_side: str,
-        quantity: float,
+        quantity: float | None,
     ) -> float:
         """Prove a hedge-mode close against the leg the exchange actually holds.
 
@@ -1086,7 +1488,10 @@ class FuturesTradingExecutor:
         it, and an oversized one silently "closes" more than we hold.
 
         Returns the held quantity. Raises (fail-closed) when the leg cannot be
-        verified.
+        verified. ``quantity=None`` asks only for an existence/shape proof, for
+        callers whose size came from the same pass's venue read and is checked
+        against the fill afterwards (overshoot and, in hedge mode, the flat
+        confirmation).
         """
         if self._client is None:
             raise RuntimeError("hedge reduce rejected: futures client not initialized")
@@ -1114,7 +1519,7 @@ class FuturesTradingExecutor:
             )
 
         held_qty = abs(amount)
-        if quantity - held_qty > _QUANTITY_TOLERANCE:
+        if quantity is not None and quantity - held_qty > _QUANTITY_TOLERANCE:
             raise RuntimeError(
                 f"hedge reduce rejected: {quantity} exceeds held {position_side} "
                 f"quantity {held_qty} for {symbol}"
@@ -1154,6 +1559,14 @@ class FuturesTradingExecutor:
         tracked = self._positions.get(symbol, {})
         entry_price = float(tracked.get("entry_price") or 0.0)
         tracked_qty = abs(float(tracked.get("amount") or 0.0))
+        if entry_price <= 0 or tracked_qty <= 0:
+            # No tracker entry (restart, or a cleanup pop): the portfolio ledger
+            # is the next witness for what this fill actually reduced.
+            ledger_entry, ledger_qty = self._ledger_exposure(symbol)
+            if entry_price <= 0:
+                entry_price = ledger_entry
+            if tracked_qty <= 0:
+                tracked_qty = ledger_qty
 
         fill_price = float(order.price) if order.price and order.price > 0 else None
         close_pnl: float | None = None
@@ -1227,9 +1640,9 @@ class FuturesTradingExecutor:
                 )
 
         if close_pnl is not None:
-            balance = await self._live_account_balance()
-            self._risk_manager.record_trade(symbol, close_pnl, balance)
-            self._metrics.record_realized_pnl(symbol, close_pnl)
+            await self._book_partial_pnl(
+                symbol, close_pnl, entry_price * max(closed_qty + remaining_qty, tracked_qty)
+            )
         if entry_price > 0:
             notional = remaining_qty * entry_price
             if not self._risk_manager.adjust_open_position(symbol, notional, market="futures"):
@@ -1322,7 +1735,26 @@ class FuturesTradingExecutor:
         tracked_state = self._positions.get(symbol)
         tracked_qty = abs(float(tracked_state.get("amount", 0.0) or 0.0)) if tracked_state else 0.0
         reference_qty = exchange_held if exchange_held is not None else tracked_qty
-        if reference_qty > 0 and executed - reference_qty > _QUANTITY_TOLERANCE:
+        if reference_qty <= _QUANTITY_TOLERANCE:
+            # The tracker is empty but the fill is real: a restart before the
+            # first monitor tick, or a cleanup pop, both leave the venue holding
+            # an exposure the tracker no longer describes. Ask the other
+            # witnesses (ledger, then the venue book) instead of defaulting the
+            # reference to zero, which turned a 0.4-of-1.0 reduce into a full
+            # close and released the slot with 0.6 still open.
+            reference_qty = await self._reference_held_qty(symbol)
+        if reference_qty <= _QUANTITY_TOLERANCE:
+            self._mark_accounting_gap(
+                symbol,
+                f"reduce fill executed {executed:.8f} with no reference quantity "
+                "(tracker, ledger and venue all report nothing held)",
+            )
+            raise PostFillAccountingError(
+                f"Reduce fill for {symbol} executed {executed:.8f} but no reference "
+                "quantity could be established; refusing to book a full close or "
+                "release the risk slot"
+            )
+        if executed - reference_qty > _QUANTITY_TOLERANCE:
             self._mark_accounting_gap(
                 symbol,
                 f"reduce fill overshoot: executed {executed:.8f} > held {reference_qty:.8f}",
@@ -1332,7 +1764,7 @@ class FuturesTradingExecutor:
                 f"{reference_qty:.8f} is held; refusing to unregister exposure"
             )
 
-        remaining_qty = max(0.0, reference_qty - executed) if reference_qty > 0 else 0.0
+        remaining_qty = max(0.0, reference_qty - executed)
         if exchange_held is not None:
             # Hedge-mode close: verify at the venue that the leg actually shrank
             # before booking anything as closed.
@@ -1354,6 +1786,12 @@ class FuturesTradingExecutor:
         # means executed covers everything held (overshoot is rejected above).
         close_pnl: float | None = None
         fill_price = float(order.price) if order.price and order.price > 0 else None
+        # The breakers gate on trading performance; commission is booked by the
+        # ledger (and reported separately by the venue), so the risk figure is
+        # the price PnL of the fill. Deriving it here instead of borrowing the
+        # ledger's fee-adjusted number keeps the deferred/replayed amount
+        # comparable with a close that has no ledger row to read.
+        risk_pnl = self._price_pnl(symbol, side, executed, fill_price)
         if self._portfolio_manager is not None and fill_price is not None:
             try:
                 _, close_pnl = await self._portfolio_manager.close_position(
@@ -1381,12 +1819,75 @@ class FuturesTradingExecutor:
             self._mark_accounting_gap(
                 symbol, "close fill price unknown: ledger size cleared, PnL deferred"
             )
-        await self._record_risk_close(symbol, close_pnl, self._account_balance)
+        await self._record_risk_close(
+            symbol,
+            self._reconcile_close_pnl(symbol, close_pnl, risk_pnl, executed, fill_price),
+            self._account_balance,
+        )
         # Clear in-memory tracker so max_concurrent_longs frees the slot.
         # The monitor-loop cleanup only fires while _sl_tp_orders still has the
         # symbol, but signal-driven closes pop it beforehand.
         self._positions.pop(symbol, None)
         self._logger.info("Futures position closed: %s %s (qty: %.4f)", side, symbol, executed)
+
+    def _price_pnl(
+        self, symbol: str, side: str, quantity: float, fill_price: float | None
+    ) -> float | None:
+        """Price PnL of a fill against the entry this agent recorded.
+
+        The circuit breakers gate on trading performance; the venue reports
+        commission as its own field and the ledger books it. Using the price PnL
+        keeps the figure comparable across closes (one with a ledger row, one
+        after a restart) instead of mixing fee-adjusted and gross numbers.
+        Returns None when either side of the trade is unknown - a fabricated 0
+        would hide a real loss.
+        """
+        if fill_price is None or fill_price <= 0 or quantity <= 0:
+            return None
+        entry_price = float((self._positions.get(symbol) or {}).get("entry_price") or 0.0)
+        if entry_price <= 0:
+            # No tracked entry: the ledger's own close figure stands (it is a
+            # real booking, not an invention) and nothing is derived here.
+            return None
+        direction = 1.0 if side.upper() == "SELL" else -1.0
+        return (fill_price - entry_price) * quantity * direction
+
+    # Round-trip commission headroom used to tell "the ledger nets out fees from
+    # the same trade" apart from "the ledger is quoting a different trade".
+    _FEE_TOLERANCE = 0.002
+
+    def _reconcile_close_pnl(
+        self,
+        symbol: str,
+        ledger_pnl: float | None,
+        price_pnl: float | None,
+        quantity: float,
+        fill_price: float | None,
+    ) -> float | None:
+        """Choose the PnL figure the breakers see, and announce a real mismatch.
+
+        The ledger books fees into realized PnL while the venue reports
+        commission separately, so a ledger figure that differs from the
+        fill-derived price PnL by about one round trip of commission is the same
+        trade. The price PnL is preferred there (it is the trading result the
+        breakers exist to gate, and it stays comparable with a close that has no
+        ledger row at all). A materially different figure is a different trade -
+        venue override, funding, stale entry - and then the ledger wins with the
+        difference flagged rather than silently replaced.
+        """
+        if ledger_pnl is None:
+            return price_pnl
+        if price_pnl is None:
+            return ledger_pnl
+        notional = abs((fill_price or 0.0) * quantity)
+        if abs(ledger_pnl - price_pnl) <= notional * self._FEE_TOLERANCE + 1e-9:
+            return price_pnl
+        self._mark_accounting_gap(
+            symbol,
+            f"close PnL mismatch: ledger {ledger_pnl:.4f} vs fill-derived "
+            f"{price_pnl:.4f}; ledger figure kept",
+        )
+        return ledger_pnl
 
     async def place_futures_order(
         self,
@@ -1396,6 +1897,7 @@ class FuturesTradingExecutor:
         position_side: str = "LONG",
         reduce_only: bool = False,
         reference_price: float | None = None,
+        _verified_held: float | None = None,
     ) -> FuturesOrderInfo:
         """Place a futures order with risk checks.
 
@@ -1406,6 +1908,9 @@ class FuturesTradingExecutor:
             position_side: "LONG" or "SHORT"
             reduce_only: If True, order will only reduce position
             reference_price: Current market price used to enforce opening notional limits
+            _verified_held: Internal. The held quantity a caller already proved
+                for this exact exit attempt (used by ``on_signal`` so the proof
+                happens before protection is cancelled). Not a public seam.
 
         Returns:
             FuturesOrderInfo: Information about placed order
@@ -1433,9 +1938,15 @@ class FuturesTradingExecutor:
             if mode == "hedge":
                 if (side, position_side) not in {("SELL", "LONG"), ("BUY", "SHORT")}:
                     raise ValueError("invalid hedge reduce-only side and position_side")
-                exchange_held = await self._verify_hedge_reduce_holdings(
-                    symbol, side, position_side, quantity
-                )
+                if _verified_held is not None:
+                    # on_signal proved this leg before it cancelled protection;
+                    # re-reading here would double the signed-GET cost and could
+                    # contradict the read the cancel decision was based on.
+                    exchange_held = _verified_held
+                else:
+                    exchange_held = await self._verify_hedge_reduce_holdings(
+                        symbol, side, position_side, quantity
+                    )
         elif mode == "hedge" and position_side not in {"LONG", "SHORT"}:
             raise ValueError("hedge-mode orders require position_side LONG or SHORT")
 
@@ -1630,6 +2141,36 @@ class FuturesTradingExecutor:
 
         return order
 
+    async def _resolve_entry_fill_price(
+        self, symbol: str, order: FuturesOrderInfo
+    ) -> float | None:
+        """Ask the exchange what an entry actually filled at.
+
+        ``order.price`` is the venue's average fill price when it reports one;
+        otherwise the trade history for this order id is the only honest
+        source. Nothing here falls back to a mark price: an entry recorded at a
+        price that never traded poisons every later PnL.
+        """
+        try:
+            price = float(order.price) if order.price and float(order.price) > 0 else None
+        except (TypeError, ValueError):
+            price = None
+        if price is not None:
+            return price
+        if self._client is None:
+            return None
+        trades: list[FuturesUserTrade] = []
+        try:
+            raw = await self._client.get_user_trades(
+                symbol, order_id=str(order.order_id) if order.order_id else None
+            )
+            trades = list(raw or [])
+        except Exception as exc:  # noqa: BLE001 - caller defers with a marker
+            self._logger.warning("Could not read entry fill price for %s: %s", symbol, exc)
+            return None
+        aggregated, _pnl = self._summarize_user_trades(trades)
+        return aggregated
+
     async def _register_open_fill(
         self,
         symbol: str,
@@ -1651,11 +2192,33 @@ class FuturesTradingExecutor:
                 symbol, "entry fill reported no executed quantity: requested size assumed"
             )
         recorded_qty = executed if executed is not None else requested_qty
+        entry_price = await self._resolve_entry_fill_price(symbol, order)
+        if entry_price is None and reference_price and reference_price > 0:
+            # The reference price is a real decision-time price, not an
+            # invention - but it is not the fill, so it is announced.
+            entry_price = float(reference_price)
+            self._mark_accounting_gap(
+                symbol,
+                "entry fill price unavailable from the exchange: reference price used "
+                "for the ledger and the risk notional",
+            )
+        if entry_price is None or entry_price <= 0:
+            # No price anywhere. A 0.0 entry price would book a 100% profit on
+            # the eventual close, so the ledger row and the risk notional are
+            # left to the accounting gap instead of being fabricated.
+            self._mark_accounting_gap(
+                symbol,
+                "entry fill price unknown: ledger entry price and risk notional "
+                "not registered",
+            )
+            self._positions[symbol]["amount"] = recorded_qty
+            self._positions[symbol]["side"] = "SHORT" if side.upper() == "SELL" else "LONG"
+            return
         if self._portfolio_manager is not None:
             await self._portfolio_manager.open_position(
                 symbol=symbol,
                 quantity=recorded_qty,
-                price=float(order.price) if order.price else 0.0,
+                price=entry_price,
                 order_id=str(order.order_id),
                 market="futures",
                 position_side="SHORT" if side == "SELL" else "LONG",
@@ -1671,18 +2234,11 @@ class FuturesTradingExecutor:
         # Immediately reflect filled qty so max_concurrent_longs guard
         # works within the same evaluation cycle (before next monitoring tick).
         self._positions[symbol]["amount"] = recorded_qty
-        self._positions[symbol]["side"] = "LONG"
-        executed_price = float(order.price) if order.price else reference_price
-        if executed_price is None or executed_price <= 0:
-            # Cannot value the entry: book nothing rather than a zero notional.
-            self._mark_accounting_gap(
-                symbol, "entry fill price unknown: risk notional not registered"
-            )
-            return
+        self._positions[symbol]["side"] = "SHORT" if side.upper() == "SELL" else "LONG"
         self._risk_manager.register_open_position(
             symbol,
-            recorded_qty * executed_price,
-            executed_price,
+            recorded_qty * entry_price,
+            entry_price,
             market="futures",
         )
 
@@ -1967,17 +2523,41 @@ class FuturesTradingExecutor:
                         )
                         return
 
-                # Snapshot software protection before cancelling: a partial fill
+                # Snapshot protection before cancelling anything: a partial fill
                 # leaves exposure behind and it must not be left unprotected.
                 previous_sl_tp = dict(self._sl_tp_prices.get(signal.symbol) or {})
+                previous_sl_tp_orders = dict(self._sl_tp_orders.get(signal.symbol) or {})
+                verified_held: float | None = None
+                if self._position_mode() == "hedge":
+                    # Refuse before cancel. The holdings read is the most likely
+                    # step to fail (it is an extra signed GET), and cancelling
+                    # the bracket first meant a failed read left a leveraged
+                    # position with no stop, no target and nothing to re-arm it.
+                    verified_held = await self._verify_hedge_reduce_holdings(
+                        signal.symbol, "SELL", "LONG", agent_position_qty
+                    )
                 await self._cancel_sl_tp_orders(signal.symbol)
-                order = await self.place_futures_order(
-                    symbol=signal.symbol,
-                    side="SELL",
-                    quantity=agent_position_qty,  # Use agent-owned qty, not full exchange position
-                    position_side="LONG",
-                    reduce_only=True,
-                )
+                try:
+                    order = await self.place_futures_order(
+                        symbol=signal.symbol,
+                        side="SELL",
+                        quantity=agent_position_qty,  # Use agent-owned qty
+                        position_side="LONG",
+                        reduce_only=True,
+                        _verified_held=verified_held,
+                    )
+                except Exception:
+                    # The bracket is gone and the exit did not reach the venue.
+                    # Restore protection before surfacing the failure rather
+                    # than leaving the position naked.
+                    await self._restore_protection(
+                        signal.symbol,
+                        previous_sl_tp,
+                        previous_sl_tp_orders,
+                        agent_position_qty,
+                        position_side="LONG",
+                    )
+                    raise
 
                 if order.status == "FILLED":
                     # The order only counts what the exchange says it filled.
@@ -2261,6 +2841,67 @@ class FuturesTradingExecutor:
                     symbol,
                     exc,
                 )
+
+    async def _restore_protection(
+        self,
+        symbol: str,
+        prices: dict[str, Any] | None,
+        orders: dict[str, Any] | None,
+        quantity: float,
+        position_side: str = "LONG",
+    ) -> None:
+        """Put a bracket that was cancelled for an exit back on the book.
+
+        Called only when protection was already cancelled and the exit then
+        failed. The software bracket is restored immediately (it is the
+        always-on layer), and the venue conditionals are re-placed at their
+        original trigger prices. If a re-arm fails the position is still covered
+        by the software monitor and the failure is announced - the one outcome
+        that must never happen is an open leveraged position with nothing on it.
+        """
+        if prices:
+            self._sl_tp_prices.setdefault(symbol, dict(prices))
+        if not orders or self._client is None or quantity <= 0:
+            return
+        try:
+            mode = self._position_mode()
+        except Exception:  # noqa: BLE001 - unknown mode: software layer only
+            return
+        leg = position_side if mode == "hedge" else "BOTH"
+        rearmed: dict[str, Any] = {}
+        for key, price_key, order_type in (
+            ("sl", "sl_price", "STOP_MARKET"),
+            ("tp", "tp_price", "TAKE_PROFIT_MARKET"),
+        ):
+            order_id = orders.get(f"{key}_order_id")
+            if not order_id:
+                continue
+            try:
+                price = float((prices or {}).get(price_key) or 0.0)
+            except (TypeError, ValueError):
+                price = 0.0
+            if price <= 0:
+                continue
+            try:
+                new_id = await self._place_exchange_conditional(
+                    symbol, order_type, price, quantity, leg
+                )
+            except Exception as exc:  # noqa: BLE001 - software layer still covers it
+                self._mark_accounting_gap(
+                    symbol,
+                    f"{order_type} re-arm failed after a refused exit: {exc}",
+                )
+                continue
+            if new_id:
+                rearmed[f"{key}_order_id"] = new_id
+                rearmed[f"{key}_is_algo"] = True
+        if rearmed:
+            self._sl_tp_orders.setdefault(symbol, {}).update(rearmed)
+            self._logger.warning(
+                "Restored protective orders for %s after a failed exit: %s",
+                symbol,
+                sorted(rearmed),
+            )
 
     async def _fetch_latest_atr(self, symbol: str, timeframe: str) -> float:
         """Return the most recent ATR_14 for symbol+timeframe from the DB, or 0.0 on failure."""

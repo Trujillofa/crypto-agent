@@ -99,6 +99,12 @@ class RiskManager:
         self._kill_switch_triggered: bool = False
         self._kill_switch_triggered_at: float = 0.0
         self._reconciliation_block: str | None = None
+        # Realized PnL that could not be fed to the circuit breakers because no
+        # live account balance was available at close time. Persisted with the
+        # rest of the state so a restart still replays it, and summed across
+        # symbols (not per symbol) because the breakers are account-wide: the
+        # next close that *does* have a balance settles all of it.
+        self._deferred_pnl: dict[str, float] = {}
         self._stale_anchor_warning_emitted: bool = False
         self._circuit_breakers: dict[str, bool] = {
             "consecutive_losses": False,
@@ -169,6 +175,10 @@ class RiskManager:
             self._kill_switch_triggered = state.get("kill_switch_triggered", False)
             self._kill_switch_triggered_at = state.get("kill_switch_triggered_at", 0.0)
             self._reconciliation_block = state.get("reconciliation_block")
+            self._deferred_pnl = {
+                str(symbol): float(value)
+                for symbol, value in (state.get("deferred_pnl") or {}).items()
+            }
             self._circuit_breakers = state.get("circuit_breakers", self._circuit_breakers)
             self._last_reset = state.get("last_reset", time.time())
             # Legacy state files keyed positions by bare symbol. Normalize them
@@ -409,6 +419,7 @@ class RiskManager:
                 "kill_switch_triggered": self._kill_switch_triggered,
                 "kill_switch_triggered_at": self._kill_switch_triggered_at,
                 "reconciliation_block": self._reconciliation_block,
+                "deferred_pnl": self._deferred_pnl,
                 "circuit_breakers": self._circuit_breakers,
                 "last_reset": self._last_reset,
                 "updated_at": datetime.now(UTC).isoformat(),
@@ -417,6 +428,22 @@ class RiskManager:
                 json.dump(state, f, indent=2)
         except Exception as exc:
             self._logger.error(f"Failed to save risk state: {exc}")
+
+    def deferred_realized_pnl(self) -> dict[str, float]:
+        """Realized PnL awaiting a live balance before it can feed the breakers."""
+        return dict(self._deferred_pnl)
+
+    def set_deferred_realized_pnl(self, entries: dict[str, float]) -> None:
+        """Persist the deferred-PnL ledger.
+
+        The executor owns the in-memory decision (which close deferred what);
+        this mirrors it into the durable risk state so a restart can still
+        settle a loss against the breakers instead of forgetting it.
+        """
+        self._deferred_pnl = {
+            str(symbol): float(value) for symbol, value in (entries or {}).items()
+        }
+        self._save_state()
 
     def check_position_limit(
         self, symbol: str, quantity_usdt: float, portfolio_value: float
