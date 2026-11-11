@@ -52,6 +52,22 @@ def _executor(control: EntryControl, risk: MagicMock | None = None):
     return executor
 
 
+def _held(executor, *amounts: float):
+    """Serve the LONG leg size the exchange reports on successive reads.
+
+    Hedge closes are verified against real holdings, so tests have to model the
+    venue: the pre-flight read sees the position as it is, the post-fill read
+    sees it after the fill. The last amount repeats.
+    """
+    values = list(amounts) or [0.0]
+
+    async def _position_risk(_symbol):
+        amount = values.pop(0) if len(values) > 1 else values[0]
+        return [SimpleNamespace(position_side="LONG", position_amt=amount)]
+
+    executor._client.get_position_risk = AsyncMock(side_effect=_position_risk)
+
+
 def _filled(order_id="1", side="SELL", price=100.0, executed=1.0):
     return FuturesOrderInfo(
         order_id=order_id,
@@ -80,6 +96,7 @@ async def test_exit_skips_account_and_leverage_checks_and_reaches_transport():
     risk.check_max_leverage.return_value = (False, "leverage blocked")
     risk.is_trading_allowed.return_value = (False, "kill switch active")
     executor = _executor(_no_reads(), risk)
+    _held(executor, 1.0)
     executor._client.place_order = AsyncMock(side_effect=RuntimeError("transport sentinel"))
 
     with pytest.raises(RuntimeError, match="transport sentinel"):
@@ -100,6 +117,7 @@ async def test_reconciliation_block_still_refuses_an_exit():
     risk = _risk()
     risk.is_close_allowed.return_value = (False, "Reconciliation block: divergence")
     executor = _executor(_no_reads(), risk)
+    _held(executor, 1.0)
     executor._client.place_order = AsyncMock(side_effect=RuntimeError("transport sentinel"))
 
     with pytest.raises(RuntimeError, match="Reconciliation block"):
@@ -121,6 +139,7 @@ async def test_partial_hedge_close_keeps_remaining_volume_and_risk_registered():
     executor._portfolio_manager = MagicMock()
     executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), 0.0, 1.0))
     executor._portfolio_manager.close_position = AsyncMock()
+    _held(executor, 2.0, 1.0)
     executor._client.place_order = AsyncMock(return_value=_filled())
 
     await executor.place_futures_order(
@@ -148,6 +167,7 @@ async def test_full_hedge_close_unregisters_only_when_flat():
     executor._portfolio_manager = MagicMock()
     executor._portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), 2.0))
     executor._portfolio_manager.reduce_position = AsyncMock()
+    _held(executor, 1.0, 0.0)
     executor._client.place_order = AsyncMock(return_value=_filled())
 
     await executor.place_futures_order(
@@ -173,6 +193,7 @@ async def test_second_partial_fill_releases_the_position_only_when_flat():
     executor._portfolio_manager = MagicMock()
     executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), 0.0, 1.0))
     executor._portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), 2.0))
+    _held(executor, 2.0, 1.0, 1.0, 0.0)
     executor._client.place_order = AsyncMock(
         side_effect=[_filled(executed=1.0), _filled(executed=1.0)]
     )
@@ -211,19 +232,49 @@ async def test_signal_partial_exit_restores_software_stop_for_the_remainder():
     )
     executor._client = MagicMock()
     executor._client.get_position_risk = AsyncMock(
-        return_value=[
-            FuturesPositionInfo(
-                symbol="BTCUSDT",
-                position_side="LONG",
-                position_amt=1.0,
-                entry_price=100.0,
-                mark_price=100.0,
-                liquidation_price=50.0,
-                leverage=1,
-                isolated_margin=100.0,
-                unrealized_pnl=0.0,
-                notional_value=100.0,
-            )
+        side_effect=[
+            [
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=1.0,
+                    entry_price=100.0,
+                    mark_price=100.0,
+                    liquidation_price=50.0,
+                    leverage=1,
+                    isolated_margin=100.0,
+                    unrealized_pnl=0.0,
+                    notional_value=100.0,
+                )
+            ],
+            [
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=1.0,
+                    entry_price=100.0,
+                    mark_price=100.0,
+                    liquidation_price=50.0,
+                    leverage=1,
+                    isolated_margin=100.0,
+                    unrealized_pnl=0.0,
+                    notional_value=100.0,
+                )
+            ],
+            [
+                FuturesPositionInfo(
+                    symbol="BTCUSDT",
+                    position_side="LONG",
+                    position_amt=0.6,
+                    entry_price=100.0,
+                    mark_price=100.0,
+                    liquidation_price=50.0,
+                    leverage=1,
+                    isolated_margin=60.0,
+                    unrealized_pnl=0.0,
+                    notional_value=60.0,
+                )
+            ],
         ]
     )
     executor._client.place_order = AsyncMock(return_value=_filled(executed=0.4))

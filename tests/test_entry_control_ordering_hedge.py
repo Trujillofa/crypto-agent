@@ -35,6 +35,14 @@ def executor(control, mode="hedge"):
         return_value=SimpleNamespace(total_margin_balance=1000, available_balance=1000)
     )
     ex._client.place_order = AsyncMock(side_effect=RuntimeError("transport sentinel"))
+    # Hedge closes are proven against the leg the exchange actually holds; both
+    # legs are present here so a request for either direction can be verified.
+    ex._client.get_position_risk = AsyncMock(
+        return_value=[
+            SimpleNamespace(position_side="LONG", position_amt=1.0, entry_price=100.0),
+            SimpleNamespace(position_side="SHORT", position_amt=-1.0, entry_price=100.0),
+        ]
+    )
     return ex
 
 

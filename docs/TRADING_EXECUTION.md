@@ -122,6 +122,41 @@ Execution metrics are exported via Prometheus (port `8000`):
 
 Use `/metrics` and Grafana dashboards for continuous monitoring.
 
+## Fail-closed exit rules
+
+A fill is final. Once the exchange reports it, local uncertainty is recorded as
+an **accounting gap** (`execution_accounting_gaps_total{symbol,reason}` plus a
+logged error) instead of being resolved by guessing.
+
+- **Hedge-mode exits.** Binance rejects `reduceOnly` in hedge mode, so reduction
+  is enforced by naming the leg (`SELL`+`LONG`, `BUY`+`SHORT`). That only holds
+  if the leg is really held: every hedge exit reads `positionRisk` first and is
+  rejected if the leg is missing, points the wrong way, or is smaller than the
+  order. After the fill the leg is read again and the close is refused if the
+  leg did not shrink by the executed amount.
+- **Overshoot.** A fill larger than the held/tracked quantity raises
+  `PositionStateDivergence`. The tracker and the risk slot stay registered so
+  entries keep being blocked until reconciliation repairs the books; it is never
+  clamped away.
+- **Unknown fill price.** No price means no PnL: the ledger's *size* is corrected
+  (`update_quantity`) and PnL is left unbooked with a gap marker. The mark price
+  is never substituted for a fill price.
+- **Tracked size.** A partial close sets tracked size to at most
+  `held - executed`; a stale ledger remainder can never inflate open exposure.
+- **SL/TP and time-stop closes.** These reconcile executed quantity exactly like
+  signal exits (partial fills keep the remainder tracked and restore the software
+  bracket), and they derive the closing side from the sign of `position_amt`.
+- **Post-fill errors.** Booking failures raise `PostFillAccountingError`
+  (`retryable = False`) and are reported as "order filled, accounting pending",
+  never as `FAILED` or "signal rejected" — a retry would double the fill.
+- **Risk accounting.** Closes read a live balance; when none is available the PnL
+  is deferred with a marker and folded into the next close that has one, so
+  circuit breakers are never fed a fabricated base.
+- **Entry ordering.** Spot and futures both sync the exchange clock *before* the
+  final admission read, so no awaited network call sits between the decision and
+  the signed POST. If the admission outlives the clock's freshness window the
+  entry is re-decided once and then refused.
+
 ## Production Operations
 
 Production uses `docker-compose.prod.yml` and `Dockerfile.prod` (no source bind-mount for code/config). After changing execution code or config, rebuild the target service image.

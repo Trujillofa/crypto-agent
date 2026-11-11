@@ -1110,9 +1110,16 @@ class TestFuturesTradingExecutor:
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
         )
-        # MARKET close order
+        # MARKET close order — executed quantity must match the held position:
+        # an oversized close is now rejected rather than clamped.
         mock_client.place_order = AsyncMock(
-            return_value=_make_order(order_id="market_close_1", side="SELL", reduce_only=True)
+            return_value=_make_order(
+                order_id="market_close_1",
+                side="SELL",
+                quantity=0.001,
+                price=74_949.1,
+                reduce_only=True,
+            )
         )
         # get_user_trades returns the actual fill for the MARKET close order
         mock_client.get_user_trades = AsyncMock(
