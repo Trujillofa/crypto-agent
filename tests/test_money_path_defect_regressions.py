@@ -19,8 +19,11 @@ Each test pins one way the money path used to fail *unsafe* rather than closed:
 Nothing here touches the network: every exchange seam is an ``AsyncMock``.
 """
 
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.execution.futures_client import FuturesOrderInfo
 from src.execution.futures_executor import FuturesTradingConfig, FuturesTradingExecutor
@@ -99,6 +102,11 @@ def _futures(mode: str = "one-way", *, legs=None, balance: float | None = 1000.0
     )
     client.get_user_trades = AsyncMock(return_value=[])
     client.place_order = AsyncMock(return_value=_order())
+    # Cancels succeed by default: a test that wants an unproven cancel makes
+    # these raise. Without them the seam is a MagicMock, whose cancel is not
+    # awaitable and therefore (correctly) unprovable.
+    client.cancel_order = AsyncMock()
+    client.cancel_algo_order = AsyncMock()
     executor._client = client
     executor._notifier = AsyncMock()
     executor._portfolio_manager = MagicMock()
@@ -506,3 +514,287 @@ async def test_software_stop_stands_down_for_a_live_exchange_conditional():
     executor._client.place_order.assert_not_awaited()
     executor._client.cancel_order.assert_not_called()
     assert executor._sl_tp_prices["BTCUSDT"]["sl_price"] == 90.0
+
+
+# --------------------------------------------------------------------------- #
+# A non-FILLED exit is not a no-op: book what executed, protect the rest
+# --------------------------------------------------------------------------- #
+
+
+def _exit_order(executed: float, status: str, price: float = 100.0) -> FuturesOrderInfo:
+    return FuturesOrderInfo(
+        order_id="42",
+        symbol="BTCUSDT",
+        side="SELL",
+        position_side="LONG",
+        order_type="MARKET",
+        quantity=1.0,
+        price=price,
+        status=status,
+        executed_quantity=executed,
+        create_time=1,
+        reduce_only=True,
+    )
+
+
+async def test_partial_signal_exit_books_the_fill_and_protects_the_remainder():
+    executor = _signal_ready(_futures(mode="hedge"))
+    partial = _exit_order(0.4, "PARTIALLY_FILLED")
+    executor._client.place_order = AsyncMock(return_value=partial)
+    executor._client.get_order_status = AsyncMock(return_value=partial)
+    executor._portfolio_manager.reduce_position = AsyncMock(
+        return_value=(MagicMock(), -4.0, 0.6)
+    )
+    executor._client.place_algo_order = AsyncMock(
+        side_effect=[SimpleNamespace(algo_id="re_sl"), SimpleNamespace(algo_id="re_tp")]
+    )
+
+    await executor.on_signal(_sell_signal())
+
+    # What the venue executed is booked; the status label does not discard it.
+    executor._portfolio_manager.reduce_position.assert_awaited_once()
+    assert executor._portfolio_manager.reduce_position.await_args.kwargs[
+        "quantity"
+    ] == pytest.approx(0.4)
+    assert executor._positions["BTCUSDT"]["amount"] == pytest.approx(0.6)
+    # The remainder is protected by the software bracket and the venue again.
+    assert executor._sl_tp_prices["BTCUSDT"]["sl_price"] == 90.0
+    assert executor._sl_tp_prices["BTCUSDT"]["tp_price"] == 120.0
+    assert executor._sl_tp_orders["BTCUSDT"]["sl_order_id"] == "re_sl"
+    assert executor._sl_tp_orders["BTCUSDT"]["tp_order_id"] == "re_tp"
+
+
+async def test_unfilled_signal_exit_restores_protection_and_books_nothing():
+    executor = _signal_ready(_futures(mode="hedge"))
+    expired = _exit_order(0.0, "EXPIRED")
+    executor._client.place_order = AsyncMock(return_value=expired)
+    executor._client.get_order_status = AsyncMock(return_value=expired)
+    executor._client.place_algo_order = AsyncMock(
+        side_effect=[SimpleNamespace(algo_id="re_sl"), SimpleNamespace(algo_id="re_tp")]
+    )
+
+    await executor.on_signal(_sell_signal())
+
+    executor._portfolio_manager.reduce_position.assert_not_awaited()
+    executor._portfolio_manager.close_position.assert_not_awaited()
+    executor._risk_manager.record_trade.assert_not_called()
+    assert executor._positions["BTCUSDT"]["amount"] == pytest.approx(1.0)
+    assert executor._sl_tp_prices["BTCUSDT"]["sl_price"] == 90.0
+    assert executor._sl_tp_orders["BTCUSDT"]["sl_order_id"] == "re_sl"
+
+
+# --------------------------------------------------------------------------- #
+# The flat repair books a completed close before it releases tracking
+# --------------------------------------------------------------------------- #
+
+
+async def test_venue_flat_repair_books_the_completed_close_before_releasing():
+    executor = _futures(mode="hedge")
+    executor._portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), -20.0))
+    executor._client.place_order = AsyncMock(return_value=_order(executed=1.0, price=80.0))
+    _track(executor, amount=1.0)
+    _bracket(executor)
+    executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "sl_1", "tp_order_id": "tp_1"}
+
+    leg = SimpleNamespace(
+        symbol="BTCUSDT",
+        position_side="LONG",
+        position_amt=1.0,
+        entry_price=100.0,
+        mark_price=80.0,
+        liquidation_price=50.0,
+        leverage=1,
+        unrealized_pnl=-20.0,
+        notional_value=80.0,
+    )
+    reads: list[object] = [
+        [leg],  # own leg
+        [leg],  # holdings proof before the cancel
+        RuntimeError("positionRisk timed out"),  # flat confirmation fails
+        [],  # next pass: the venue proves flat
+    ]
+
+    def _next(*_args, **_kwargs):
+        item = reads.pop(0) if len(reads) > 1 else reads[0]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    executor._client.get_position_risk = AsyncMock(side_effect=_next)
+
+    # Pass 1: the fill completes, the release is refused, nothing is booked.
+    await executor._monitor_and_update()
+    assert "BTCUSDT" in executor._positions
+    executor._portfolio_manager.close_position.assert_not_awaited()
+
+    # Pass 2: the venue proves flat. The loss must reach the ledger and the
+    # breakers before the tracker and the risk slot are released.
+    await executor._monitor_and_update()
+
+    executor._portfolio_manager.close_position.assert_awaited_once()
+    booked = executor._portfolio_manager.close_position.await_args.kwargs
+    assert booked["price"] == pytest.approx(80.0)
+    assert booked["closing_side"] == "SELL"
+    executor._risk_manager.record_trade.assert_called_once()
+    assert executor._risk_manager.record_trade.call_args.args[1] == pytest.approx(-20.0)
+    assert "BTCUSDT" not in executor._positions
+    executor._risk_manager.register_close_position.assert_called_once_with(
+        "BTCUSDT", market="futures"
+    )
+    assert "BTCUSDT" not in executor._accounting_gaps
+
+
+# --------------------------------------------------------------------------- #
+# A tracked SHORT is visible to the monitor
+# --------------------------------------------------------------------------- #
+
+
+async def test_registered_short_stays_owned_and_is_not_unregistered():
+    executor = _futures(mode="hedge")
+    fill = FuturesOrderInfo(
+        order_id="7",
+        symbol="BTCUSDT",
+        side="SELL",
+        position_side="SHORT",
+        order_type="MARKET",
+        quantity=1.0,
+        price=100.0,
+        status="FILLED",
+        executed_quantity=1.0,
+        create_time=1,
+        reduce_only=False,
+    )
+
+    await executor._register_open_fill("BTCUSDT", "SELL", fill, 1.0, "SHORT", 100.0)
+
+    # The size stays a positive magnitude; the side is recorded beside it.
+    assert executor._positions["BTCUSDT"]["amount"] == pytest.approx(1.0)
+    assert executor._tracked_side("BTCUSDT") == "SHORT"
+
+    _bracket(executor)
+    executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "11", "tp_order_id": "12"}
+    executor._client.get_position_risk = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                symbol="BTCUSDT",
+                position_side="SHORT",
+                position_amt=-1.0,
+                entry_price=100.0,
+                mark_price=95.0,
+                liquidation_price=150.0,
+                leverage=1,
+                unrealized_pnl=5.0,
+                notional_value=95.0,
+            )
+        ]
+    )
+
+    await executor._monitor_and_update()
+
+    assert "BTCUSDT" in executor._positions
+    assert "BTCUSDT" in executor._sl_tp_orders
+    executor._client.place_order.assert_not_awaited()
+
+
+# --------------------------------------------------------------------------- #
+# The stand-down compares the trigger, and dies with its position
+# --------------------------------------------------------------------------- #
+
+
+async def test_standdown_ignores_a_looser_venue_trigger():
+    executor = _monitor(_futures(mode="hedge"), [("LONG", 1.0)], mark=104.0)
+    executor._client.place_order = AsyncMock(return_value=_order(executed=1.0, price=104.0))
+    # Trailing ratcheted the software stop to 105 while the venue post is at 90.
+    executor._sl_tp_prices["BTCUSDT"]["sl_price"] = 105.0
+    executor._sl_tp_orders["BTCUSDT"] = {
+        "sl_order_id": "algo_sl",
+        "sl_is_algo": True,
+        "sl_trigger": 90.0,
+        "tp_order_id": "algo_tp",
+        "tp_is_algo": True,
+        "tp_trigger": 120.0,
+    }
+
+    await executor._monitor_and_update()
+
+    # The venue trigger does not cover 105, so the tightened stop is enforced.
+    executor._client.place_order.assert_awaited()
+
+
+async def test_position_end_clears_the_standdown():
+    executor = _futures(mode="hedge")
+    _track(executor, amount=1.0)
+    _bracket(executor)
+    # An exchange bracket with no confirmed fill: the cleanup branch runs.
+    executor._sl_tp_orders["BTCUSDT"] = {"sl_order_id": "11", "tp_order_id": "12"}
+    executor._software_standdown["BTCUSDT"] = time.time() - 600.0
+    executor._standdown_owner["BTCUSDT"] = (("old",), time.time() - 600.0)
+    executor._client.get_position_risk = AsyncMock(return_value=[])
+
+    await executor._monitor_and_update()
+
+    assert "BTCUSDT" not in executor._software_standdown
+    assert "BTCUSDT" not in executor._standdown_owner
+    assert "BTCUSDT" not in executor._positions
+
+
+async def test_fresh_position_gets_its_own_standdown_window():
+    executor = _monitor(_futures(mode="hedge"), [("LONG", 1.0)])
+    # A timestamp left behind by a previous position: long past the window.
+    executor._software_standdown["BTCUSDT"] = time.time() - 600.0
+    executor._sl_tp_orders["BTCUSDT"] = {
+        "sl_order_id": "algo_sl",
+        "sl_is_algo": True,
+        "sl_trigger": 90.0,
+        "tp_order_id": "algo_tp",
+        "tp_is_algo": True,
+        "tp_trigger": 120.0,
+    }
+
+    await executor._monitor_and_update()
+
+    # The stale stamp cannot skip the new position's grace: no race this pass.
+    executor._client.place_order.assert_not_awaited()
+    assert time.time() - executor._software_standdown["BTCUSDT"] > 100
+
+
+# --------------------------------------------------------------------------- #
+# Restore only re-arms what it can prove is gone
+# --------------------------------------------------------------------------- #
+
+
+async def test_restore_refuses_to_rearm_an_unproven_cancel():
+    executor = _signal_ready(_futures(mode="hedge"))
+    executor._client.cancel_order = AsyncMock(side_effect=RuntimeError("cancel timeout"))
+    executor._client.get_order_status = AsyncMock(
+        side_effect=RuntimeError("status unavailable")
+    )
+    executor._client.place_order = AsyncMock(side_effect=RuntimeError("post timed out"))
+    executor._client.place_algo_order = AsyncMock()
+
+    await executor.on_signal(_sell_signal())
+
+    # A replacement beside a possibly-live stop would close the position twice.
+    executor._client.place_algo_order.assert_not_awaited()
+    # ... but the software layer is back and the unproven cancel is announced.
+    assert executor._sl_tp_prices["BTCUSDT"]["sl_price"] == 90.0
+    assert "cancel unproven" in executor._accounting_gaps["BTCUSDT"]
+
+
+# --------------------------------------------------------------------------- #
+# A PnL mismatch marker is not erased by the booking that surfaced it
+# --------------------------------------------------------------------------- #
+
+
+async def test_pnl_mismatch_marker_survives_its_own_booking():
+    executor = _futures(mode="one-way")
+    _track(executor, amount=1.0)
+    executor._client.place_order = AsyncMock(return_value=_order(executed=1.0, price=110.0))
+    executor._portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), 12.0))
+
+    await executor.place_futures_order(
+        "BTCUSDT", "SELL", 1.0, position_side="LONG", reduce_only=True
+    )
+
+    executor._risk_manager.record_trade.assert_called_once()
+    assert "close PnL mismatch" in executor._accounting_gaps["BTCUSDT"]

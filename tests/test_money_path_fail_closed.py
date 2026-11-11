@@ -421,7 +421,10 @@ async def test_risk_close_without_a_balance_defers_and_replays_the_pnl():
 
     executor._risk_manager.record_trade.assert_called_once_with("BTCUSDT", 3.0, 4000.0)
     assert "BTCUSDT" not in executor._deferred_risk_pnl
-    assert "BTCUSDT" not in executor._accounting_gaps
+    # The deferral is settled, but the ledger/fill PnL disagreement this close
+    # surfaced is not something the booking resolved: it stays visible instead
+    # of being erased by its own booking.
+    assert "close PnL mismatch" in executor._accounting_gaps["BTCUSDT"]
 
 
 # --------------------------------------------------------------------------- #
