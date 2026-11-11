@@ -769,6 +769,13 @@ class FuturesTradingExecutor:
         if not self._config.enabled:
             raise RuntimeError("Futures trading executor is disabled")
 
+        # Hedge mode drops reduceOnly at the exchange: only the opposite side
+        # of an explicit hedge leg is intrinsically a close. Reject ambiguous
+        # or exposure-increasing requests before staging or any transport.
+        if reduce_only and self._active_position_mode != "one-way":
+            if (side, position_side) not in {("SELL", "LONG"), ("BUY", "SHORT")}:
+                raise ValueError("invalid hedge reduce-only side and position_side")
+
         # A reduce-only BUY closes a short; neither close side is an entry.
         if reduce_only:
             is_allowed, reason = self._risk_manager.is_close_allowed()

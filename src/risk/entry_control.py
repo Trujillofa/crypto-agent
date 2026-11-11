@@ -86,9 +86,9 @@ class EntryControl:
         self._cached_at: float | None = None
         self._last_ok_at: float | None = None
         self.last_fault: str | None = None
-        self._issued = 0
-        self._settled = 0
-        self._latest: EntryControlState | None = None
+        # Serialize the actual database snapshots, not merely their issuance.
+        # Cache readers also wait so they cannot return permission during a refresh.
+        self._read_lock = asyncio.Lock()
 
     @property
     def last_success_age_s(self) -> float | None:
@@ -97,6 +97,10 @@ class EntryControl:
         return max(0.0, self._clock() - self._last_ok_at)
 
     async def state(self, *, force: bool = False) -> EntryControlState:
+        async with self._read_lock:
+            return await self._state_locked(force=force)
+
+    async def _state_locked(self, *, force: bool) -> EntryControlState:
         now = self._clock()
         if (
             not force
@@ -111,9 +115,10 @@ class EntryControl:
                 source="cache",
             )
 
-        self._issued += 1
-        generation = self._issued
         fault = None
+        # A cancelled refresh must not leave a previously cached allow behind.
+        self._cached = None
+        self._cached_at = None
         try:
             rows = await asyncio.wait_for(
                 self._fetch_rows([self.agent_id, GLOBAL_AGENT_ID]), timeout=5.0
@@ -128,15 +133,6 @@ class EntryControl:
                 source="fail_closed",
             )
 
-        # A later-started read supersedes this one. Never let a delayed allow
-        # overwrite a newer disarm/fault, or report stale metrics to the caller.
-        if generation != self._issued:
-            if self._settled == self._issued and self._latest is not None:
-                return self._latest
-            return EntryControlState(False, True, "newer control read pending", "fail_closed")
-
-        self._settled = generation
-        self._latest = resolved
         self.last_fault = fault
         if fault is not None:
             self._cached = None

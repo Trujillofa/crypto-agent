@@ -29,7 +29,7 @@ def risk():
     return r
 
 
-async def test_late_old_allow_cannot_overwrite_new_disarm_or_metrics():
+async def test_reads_serialize_and_later_disarm_updates_cache_and_metrics():
     started, release = asyncio.Event(), asyncio.Event()
     calls = 0
 
@@ -45,9 +45,12 @@ async def test_late_old_allow_cannot_overwrite_new_disarm_or_metrics():
     control, metrics = EntryControl(fetch_rows=fetch), MagicMock()
     old = asyncio.create_task(refresh(control, metrics))
     await started.wait()
-    assert not (await refresh(control, metrics)).entries_allowed
+    new = asyncio.create_task(refresh(control, metrics))
+    await asyncio.sleep(0)
+    assert calls == 1
     release.set()
-    assert not (await old).entries_allowed
+    assert (await old).entries_allowed
+    assert not (await new).entries_allowed
     assert not (await control.state()).entries_allowed
     assert metrics.record_entry_control.call_args.kwargs["armed"] is False
 
