@@ -348,6 +348,90 @@ class PortfolioManager:
 
             return position, realized_pnl
 
+    async def reduce_position(
+        self,
+        symbol: str,
+        quantity: float,
+        price: float,
+        order_id: str | None = None,
+        market: str = "spot",
+        closing_side: str | None = None,
+    ) -> tuple[Position, float, float]:
+        """Reduce an open position, keeping the remainder open.
+
+        A filled reduce-only order is not always a full close: a partial fill or
+        a quantity smaller than the tracked position leaves exposure behind.
+        Booking the whole position as closed would drop that remainder from the
+        portfolio ledger and risk accounting while it is still open at the
+        exchange. Returns ``(position, realized_pnl, remaining_quantity)``.
+        """
+        if quantity <= 0:
+            raise ValueError("Reduce quantity must be positive")
+
+        async with self._db_lock:
+            key = self._position_key(symbol, market)
+            position = self._positions.get(key)
+            if position is None:
+                raise ValueError(f"No open position for {symbol} ({market})")
+
+            closed_qty = min(quantity, position.quantity)
+            remaining_qty = position.quantity - closed_qty
+            if remaining_qty <= 0:
+                raise ValueError(
+                    f"Reduce quantity {quantity} covers the whole {symbol} position; "
+                    "use close_position"
+                )
+
+            exit_time = datetime.now(UTC)
+            direction = -1.0 if position.position_side == "SHORT" else 1.0
+            raw_pnl = (price - position.entry_price) * closed_qty * direction
+            fees = (position.entry_price + price) * closed_qty * position.fee_rate
+            realized_pnl = raw_pnl - fees
+
+            close_trade_side = closing_side or (
+                "BUY" if position.position_side == "SHORT" else "SELL"
+            )
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        """
+                        UPDATE positions
+                        SET quantity = $1
+                        WHERE id = $2 AND agent_id = $3
+                        """,
+                        remaining_qty,
+                        position.id,
+                        self._agent_id,
+                    )
+                    await conn.execute(
+                        """
+                        INSERT INTO trades (time, symbol, market, side, quantity, price, order_id, pnl, position_id, agent_id)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        """,
+                        exit_time,
+                        self._scope_symbol(symbol),
+                        market,
+                        close_trade_side,
+                        closed_qty,
+                        price,
+                        order_id,
+                        realized_pnl,
+                        position.id,
+                        self._agent_id,
+                    )
+
+            position.quantity = remaining_qty
+            self._logger.info(
+                "Reduced position: %s @ %s by %s (remaining %s, PnL %.2f)",
+                symbol,
+                price,
+                closed_qty,
+                remaining_qty,
+                realized_pnl,
+            )
+            return position, realized_pnl, remaining_qty
+
     def get_position(self, symbol: str, market: str = "spot") -> Position | None:
         """Get current open position for symbol."""
         return self._positions.get(self._position_key(symbol, market))

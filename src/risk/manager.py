@@ -480,6 +480,28 @@ class RiskManager:
         }
         self._save_state()
 
+    def adjust_open_position(
+        self,
+        symbol: str,
+        quantity_usdt: float,
+        market: str = "spot",
+    ) -> bool:
+        """Resize a tracked position without resetting its age or entry price.
+
+        Used when a reduce-only fill leaves a remainder open: the exposure is
+        smaller, but the position is the same one, so its entry time must not
+        restart (that would delay time-based stops).
+
+        Returns ``False`` when the position is not tracked.
+        """
+        key = self._canonical_position_key(symbol, market)
+        entry = self._positions.get(key)
+        if not isinstance(entry, dict):
+            return False
+        entry["quantity_usdt"] = max(0.0, float(quantity_usdt))
+        self._save_state()
+        return True
+
     def get_position_notional(self, symbol: str, market: str = "spot") -> float:
         """Return the current open position's notional in quote currency.
 

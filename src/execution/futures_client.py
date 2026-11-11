@@ -137,6 +137,11 @@ class BinanceFuturesClient:
     # first attempt actually reached the exchange.
     RETRY_CONFIG = RetryConfig(max_attempts=3, base_delay=1.0, max_delay=10.0)
 
+    # A clock prepared for a submission stays usable for this long. Binance
+    # signs with a 5 s recvWindow, so this leaves headroom for transport while
+    # keeping the prepared timestamp fresh at POST time.
+    PREPARED_REQUEST_TTL_S = 2.0
+
     def __init__(
         self,
         api_key: str,
@@ -153,6 +158,10 @@ class BinanceFuturesClient:
         self._time_offset_ms = 0
         self._last_time_sync = 0.0
         self._time_sync_interval_seconds = 60.0
+        # Single-use marker set by prepare_signed_request(); lets an order
+        # submission consume a clock that was synced *before* its final
+        # admission read instead of syncing after it.
+        self._prepared_at: float | None = None
         self._symbol_filters: dict[str, dict[str, float]] = {}
         self._price_filters: dict[str, dict[str, float]] = {}
 
@@ -266,7 +275,12 @@ class BinanceFuturesClient:
         headers = {"X-MBX-APIKEY": self._api_key}
 
         if signed:
-            await self._ensure_time_sync()
+            # Consume any clock prepared before the caller's final decision.
+            # One-shot: a second signed request must sync on its own again.
+            prepared_age = self.prepared_request_age_s()
+            self._prepared_at = None
+            if prepared_age is None or prepared_age > self.PREPARED_REQUEST_TTL_S:
+                await self._ensure_time_sync()
             params["timestamp"] = self._current_timestamp_ms()
             params["recvWindow"] = 5000
 
@@ -349,6 +363,25 @@ class BinanceFuturesClient:
 
     def _current_timestamp_ms(self) -> int:
         return int(time.time() * 1000) + self._time_offset_ms
+
+    async def prepare_signed_request(self) -> None:
+        """Sync the server clock *before* the caller's final admission read.
+
+        Signed requests normally sync lazily inside ``_request``. That lazy sync
+        is awaited network work: if it runs after a fresh risk read, the control
+        row can change between the decision and the POST. Callers that must make
+        their last read the final word call this first; ``_request`` then
+        consumes the prepared clock without awaiting anything else, so the
+        timestamp is still minted at POST time.
+        """
+        await self._ensure_time_sync()
+        self._prepared_at = time.monotonic()
+
+    def prepared_request_age_s(self) -> float | None:
+        """Age in seconds of a prepared clock, or ``None`` when none is pending."""
+        if self._prepared_at is None:
+            return None
+        return max(0.0, time.monotonic() - self._prepared_at)
 
     async def _ensure_time_sync(self) -> None:
         if (time.time() - self._last_time_sync) < self._time_sync_interval_seconds:

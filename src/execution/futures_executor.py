@@ -741,6 +741,128 @@ class FuturesTradingExecutor:
             self._metrics.record_realized_pnl(symbol, pnl)
         self._risk_manager.register_close_position(symbol, market="futures")
 
+    def _can_prepare_request_clock(self) -> bool:
+        """True only for a client that exposes the preparation seam.
+
+        Checked on the class, not the instance, so lightweight test doubles do
+        not grow an arbitrary attribute that fails when awaited.
+        """
+        return getattr(type(self._client), "prepare_signed_request", None) is not None
+
+    async def _prepare_request_clock(self) -> bool:
+        """Run the exchange clock sync before the final admission read."""
+        if self._client is None or not self._can_prepare_request_clock():
+            return False
+        await self._client.prepare_signed_request()
+        return True
+
+    async def _prepare_request_clock_or_reject(self, staged_order_id: str | None) -> bool:
+        """Prepare the clock; a failure must not strand a staged order."""
+        try:
+            return await self._prepare_request_clock()
+        except BaseException:
+            if staged_order_id is not None and self._staged_manager is not None:
+                await self._staged_manager.mark_rejected(
+                    staged_order_id,
+                    "exchange clock sync failed before submission",
+                )
+            raise
+
+    def _prepared_clock_expired(self) -> bool:
+        """True when the prepared clock can no longer stamp a fresh POST."""
+        if self._client is None or not self._can_prepare_request_clock():
+            return False
+        ttl = float(getattr(type(self._client), "PREPARED_REQUEST_TTL_S", 0.0))
+        age = self._client.prepared_request_age_s()
+        return age is not None and age > ttl
+
+    async def _admit_entry(self, symbol: str, staged_order_id: str | None) -> None:
+        """Take the final, freshest entry decision; reject the stage on refusal."""
+        try:
+            await admit(self._entry_control, self._metrics, symbol)
+        except BaseException:
+            if staged_order_id is not None and self._staged_manager is not None:
+                await self._staged_manager.mark_rejected(
+                    staged_order_id, "entry admission failed before submission"
+                )
+            raise
+
+    def _reported_fill_quantity(self, order: FuturesOrderInfo, requested: float) -> float:
+        """Filled quantity from an order, falling back to the requested size."""
+        executed = getattr(order, "executed_quantity", None)
+        if isinstance(executed, (int, float)) and not isinstance(executed, bool) and executed > 0:
+            return float(executed)
+        return float(requested)
+
+    async def _apply_partial_reduce(
+        self,
+        symbol: str,
+        side: str,
+        order: FuturesOrderInfo,
+        closed_qty: float,
+        remaining_qty: float,
+    ) -> float | None:
+        """Keep the unclosed remainder registered after a partial fill.
+
+        The exchange fill is final, so local tracking, the portfolio ledger and
+        the risk manager are all reduced to the remaining volume in place of
+        the full-close path. Returns the realized PnL booked for this fill.
+        """
+        fill_price = float(order.price) if order.price else 0.0
+        tracked = self._positions.get(symbol, {})
+        entry_price = float(tracked.get("entry_price") or 0.0)
+        direction = 1.0 if side.upper() == "SELL" else -1.0
+        close_pnl: float | None = None
+        if fill_price > 0 and entry_price > 0:
+            close_pnl = (fill_price - entry_price) * closed_qty * direction
+
+        if self._portfolio_manager is not None:
+            try:
+                (
+                    _,
+                    portfolio_pnl,
+                    portfolio_remaining,
+                ) = await self._portfolio_manager.reduce_position(
+                    symbol=symbol,
+                    quantity=closed_qty,
+                    price=fill_price,
+                    order_id=str(order.order_id) if order.order_id else None,
+                    market="futures",
+                    closing_side=side,
+                )
+            except ValueError as exc:
+                self._logger.error(
+                    "Partial close of %s not booked in portfolio ledger: %s", symbol, exc
+                )
+            else:
+                close_pnl = portfolio_pnl
+                remaining_qty = max(0.0, float(portfolio_remaining))
+
+        if close_pnl is not None:
+            self._risk_manager.record_trade(symbol, close_pnl, self._account_balance)
+            self._metrics.record_realized_pnl(symbol, close_pnl)
+        if entry_price > 0:
+            notional = remaining_qty * entry_price
+            if not self._risk_manager.adjust_open_position(symbol, notional, market="futures"):
+                self._risk_manager.register_open_position(
+                    symbol,
+                    notional,
+                    entry_price,
+                    market="futures",
+                )
+        tracked["amount"] = remaining_qty
+        self._positions[symbol] = tracked
+        if close_pnl is not None:
+            self._recent_close_pnl[symbol] = close_pnl
+        self._logger.warning(
+            "Futures position partially closed: %s %s qty %.4f, remaining %.4f",
+            side,
+            symbol,
+            closed_qty,
+            remaining_qty,
+        )
+        return close_pnl
+
     async def place_futures_order(
         self,
         symbol: str,
@@ -769,6 +891,10 @@ class FuturesTradingExecutor:
         if not self._config.enabled:
             raise RuntimeError("Futures trading executor is disabled")
 
+        client = self._client
+        if client is None:
+            raise RuntimeError("Futures client not initialized")
+
         # Hedge mode drops reduceOnly at the exchange: only the opposite side
         # of an explicit hedge leg is intrinsically a close. Reject ambiguous
         # or exposure-increasing requests before staging or any transport.
@@ -777,6 +903,10 @@ class FuturesTradingExecutor:
                 raise ValueError("invalid hedge reduce-only side and position_side")
 
         # A reduce-only BUY closes a short; neither close side is an entry.
+        # Exits consult only the close gate: a reconciliation block stays fatal
+        # (we may not be closing what we think we are), while kill switches,
+        # circuit breakers, leverage and margin limits all describe opening
+        # risk and must never trap an exit.
         if reduce_only:
             is_allowed, reason = self._risk_manager.is_close_allowed()
         else:
@@ -785,23 +915,23 @@ class FuturesTradingExecutor:
             self._metrics.record_risk_block(symbol, reason)
             raise RuntimeError(f"Futures trading blocked: {reason}")
 
-        # Get account info for margin check
-        try:
-            account_info = await self._client.get_account_info()
-        except Exception as exc:
-            self._logger.error("Failed to get account info: %s", exc)
-            raise RuntimeError("Failed to get account info") from exc
-
-        # Check leverage limit
-        leverage_allowed, leverage_reason = self._risk_manager.check_max_leverage(
-            self._config.default_leverage
-        )
-        if not leverage_allowed:
-            self._metrics.record_risk_block(symbol, leverage_reason)
-            raise RuntimeError(f"Leverage check failed: {leverage_reason}")
-
-        # Check margin usage — skip for reduce-only orders (closing frees margin, never consumes it)
+        account_info = None
         if not reduce_only:
+            # Opening risk still needed below: margin headroom is measured
+            # against the live account, and both limit checks are entry-only.
+            try:
+                account_info = await client.get_account_info()
+            except Exception as exc:
+                self._logger.error("Failed to get account info: %s", exc)
+                raise RuntimeError("Failed to get account info") from exc
+
+            leverage_allowed, leverage_reason = self._risk_manager.check_max_leverage(
+                self._config.default_leverage
+            )
+            if not leverage_allowed:
+                self._metrics.record_risk_block(symbol, leverage_reason)
+                raise RuntimeError(f"Leverage check failed: {leverage_reason}")
+
             if reference_price is None or reference_price <= 0:
                 raise ValueError("reference_price must be positive for opening futures orders")
 
@@ -850,22 +980,40 @@ class FuturesTradingExecutor:
             )
             staged_order_id = staged_order.order_id
 
+        # Every awaited preparatory step (account read, staging, the exchange
+        # clock sync) runs before the final decision. The clock is prepared
+        # here, not inside the POST, so a disarm that lands while the sync is
+        # in flight is still observed by the fresh admission read below.
+        clock_prepared = await self._prepare_request_clock_or_reject(staged_order_id)
         # Force a fresh decision after all awaited preflight and staging work.
         # Exits do not consult the entry brake.
         if not reduce_only:
-            try:
-                await admit(self._entry_control, self._metrics, symbol)
-            except BaseException:
-                if staged_order_id is not None:
-                    await self._staged_manager.mark_rejected(
-                        staged_order_id, "entry admission failed before submission"
+            await self._admit_entry(symbol, staged_order_id)
+            if clock_prepared and self._prepared_clock_expired():
+                # The admission read outlived the prepared clock. Re-sync and
+                # re-decide rather than POST a stale timestamp: the risk read
+                # must remain the last awaited work before submission.
+                await self._prepare_request_clock_or_reject(staged_order_id)
+                await self._admit_entry(symbol, staged_order_id)
+                if self._prepared_clock_expired():
+                    # Two slow reads in a row. An entry can wait for the next
+                    # signal; sending it without a fresh timestamp (or behind a
+                    # second clock sync) is the race this ordering exists to
+                    # prevent. Exits never take this branch.
+                    self._metrics.record_risk_block(symbol, "entry_control: stale admission")
+                    if staged_order_id is not None and self._staged_manager is not None:
+                        await self._staged_manager.mark_rejected(
+                            staged_order_id,
+                            "entry admission exceeded timestamp freshness window",
+                        )
+                    raise RuntimeError(
+                        "Entry blocked: admission exceeded the timestamp freshness window"
                     )
-                raise
 
         # Place order
         start_time = time.perf_counter()
         try:
-            order = await self._client.place_order(
+            order = await client.place_order(
                 symbol=symbol,
                 side=side,
                 quantity=quantity,
@@ -877,7 +1025,7 @@ class FuturesTradingExecutor:
                 initial_status = order.status
                 for _ in range(4):
                     await asyncio.sleep(0.25)
-                    order = await self._client.get_order_status(symbol, order.order_id)
+                    order = await client.get_order_status(symbol, order.order_id)
                     if order.status == "FILLED":
                         self._logger.info(
                             "Futures order %s transitioned %s -> FILLED for %s",
@@ -901,32 +1049,49 @@ class FuturesTradingExecutor:
                 self._metrics.record_order_filled(symbol, side)
 
                 if reduce_only:
-                    # Position was reduced/closed
-                    close_pnl: float | None = None
-                    if self._portfolio_manager is not None:
-                        _, close_pnl = await self._portfolio_manager.close_position(
-                            symbol=symbol,
-                            price=float(order.price) if order.price else 0.0,
-                            order_id=str(order.order_id),
-                            market="futures",
-                            closing_side=side,
+                    # A reduce-only fill can leave a remainder: partial fills and
+                    # quantities smaller than the tracked position both leave
+                    # exposure open. Only an actually-flat result unregisters it.
+                    tracked_state = self._positions.get(symbol)
+                    tracked_qty = (
+                        abs(float(tracked_state.get("amount", 0.0) or 0.0))
+                        if tracked_state
+                        else 0.0
+                    )
+                    closed_qty = self._reported_fill_quantity(order, quantity)
+                    remaining_qty = max(0.0, tracked_qty - closed_qty)
+                    if remaining_qty > 0:
+                        await self._apply_partial_reduce(
+                            symbol, side, order, closed_qty, remaining_qty
                         )
-                        self._recent_close_pnl[symbol] = close_pnl
-                    self._record_risk_close(
-                        symbol,
-                        close_pnl,
-                        account_info.total_margin_balance,
-                    )
-                    # Clear in-memory tracker so max_concurrent_longs frees the slot.
-                    # The monitor-loop cleanup at line ~313 only fires when _sl_tp_orders
-                    # still has the symbol, but signal-driven closes pop it beforehand.
-                    self._positions.pop(symbol, None)
-                    self._logger.info(
-                        "Futures position closed: %s %s (qty: %.4f)",
-                        side,
-                        symbol,
-                        quantity,
-                    )
+                    else:
+                        # Fully flat: book the close and release the risk slot.
+                        close_pnl: float | None = None
+                        if self._portfolio_manager is not None:
+                            _, close_pnl = await self._portfolio_manager.close_position(
+                                symbol=symbol,
+                                price=float(order.price) if order.price else 0.0,
+                                order_id=str(order.order_id),
+                                market="futures",
+                                closing_side=side,
+                            )
+                            if close_pnl is not None:
+                                self._recent_close_pnl[symbol] = close_pnl
+                        self._record_risk_close(
+                            symbol,
+                            close_pnl,
+                            self._account_balance,
+                        )
+                        # Clear in-memory tracker so max_concurrent_longs frees the slot.
+                        # The monitor-loop cleanup at line ~313 only fires when _sl_tp_orders
+                        # still has the symbol, but signal-driven closes pop it beforehand.
+                        self._positions.pop(symbol, None)
+                        self._logger.info(
+                            "Futures position closed: %s %s (qty: %.4f)",
+                            side,
+                            symbol,
+                            quantity,
+                        )
                 else:
                     # Update position tracking
                     if symbol not in self._positions:
@@ -1261,6 +1426,9 @@ class FuturesTradingExecutor:
                         )
                         return
 
+                # Snapshot software protection before cancelling: a partial fill
+                # leaves exposure behind and it must not be left unprotected.
+                previous_sl_tp = dict(self._sl_tp_prices.get(signal.symbol) or {})
                 await self._cancel_sl_tp_orders(signal.symbol)
                 order = await self.place_futures_order(
                     symbol=signal.symbol,
@@ -1276,6 +1444,20 @@ class FuturesTradingExecutor:
                         if order.executed_quantity > 0
                         else agent_position_qty
                     )
+                    remaining_state = self._positions.get(signal.symbol)
+                    remaining_qty = (
+                        float(remaining_state.get("amount", 0.0) or 0.0) if remaining_state else 0.0
+                    )
+                    if remaining_qty > 0 and previous_sl_tp:
+                        # Exchange conditionals were cancelled for the exit; the
+                        # software monitor is the always-on fallback and still
+                        # covers the remainder at the same stop/target levels.
+                        self._sl_tp_prices[signal.symbol] = previous_sl_tp
+                        self._logger.warning(
+                            "Partial exit for %s left %.4f open — software SL/TP restored",
+                            signal.symbol,
+                            remaining_qty,
+                        )
                     filled_price = float(order.price) if order.price else signal.price
                     stashed_pnl = self._recent_close_pnl.pop(signal.symbol, None)
                     pnl = (
@@ -1287,12 +1469,22 @@ class FuturesTradingExecutor:
                         self._estimate_bars_held(agent_pos.entry_time) if agent_pos else None
                     )
 
-                    self._logger.info(
-                        "Futures position closed: %s SELL (qty: %.4f, pnl: %.2f)",
-                        signal.symbol,
-                        filled_quantity,
-                        pnl,
-                    )
+                    if remaining_qty > 0:
+                        self._logger.info(
+                            "Futures position partially closed: %s SELL (qty: %.4f, "
+                            "remaining: %.4f, pnl: %.2f)",
+                            signal.symbol,
+                            filled_quantity,
+                            remaining_qty,
+                            pnl,
+                        )
+                    else:
+                        self._logger.info(
+                            "Futures position closed: %s SELL (qty: %.4f, pnl: %.2f)",
+                            signal.symbol,
+                            filled_quantity,
+                            pnl,
+                        )
 
                     await self._notifier.send_trade_alert(
                         symbol=signal.symbol,
