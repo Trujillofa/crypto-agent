@@ -769,12 +769,17 @@ class FuturesTradingExecutor:
             raise
 
     def _prepared_clock_expired(self) -> bool:
-        """True when the prepared clock can no longer stamp a fresh POST."""
+        """True when the prepared clock can no longer stamp a fresh POST.
+
+        A missing clock counts as expired: another submission may have consumed
+        the shared marker while this one was awaiting its admission read, which
+        would send the POST back to a lazy sync after the decision.
+        """
         if self._client is None or not self._can_prepare_request_clock():
             return False
         ttl = float(getattr(type(self._client), "PREPARED_REQUEST_TTL_S", 0.0))
         age = self._client.prepared_request_age_s()
-        return age is not None and age > ttl
+        return age is None or age > ttl
 
     async def _admit_entry(self, symbol: str, staged_order_id: str | None) -> None:
         """Take the final, freshest entry decision; reject the stage on refusal."""

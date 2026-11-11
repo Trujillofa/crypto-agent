@@ -9,6 +9,7 @@ behind the decision.
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -76,7 +77,7 @@ async def test_disarm_during_clock_sync_is_seen_by_final_read_and_blocks_post():
         await release_sync.wait()
 
     client._ensure_time_sync = sync
-    client._session = _PostingSession(posts)
+    cast(Any, client)._session = _PostingSession(posts)
 
     order = asyncio.create_task(
         executor.place_futures_order("BTCUSDT", "BUY", 1, reference_price=100)
@@ -107,7 +108,7 @@ async def test_clock_sync_runs_before_final_admission_and_post_is_still_sent():
         events.append("sync")
 
     client._ensure_time_sync = sync
-    client._session = _PostingSession(events)
+    cast(Any, client)._session = _PostingSession(events)
 
     with pytest.raises(RuntimeError, match="POST sentinel"):
         await executor.place_futures_order("BTCUSDT", "BUY", 1, reference_price=100)
@@ -130,7 +131,7 @@ async def test_stale_prepared_clock_resyncs_redecides_then_fails_closed():
         events.append("sync")
 
     client._ensure_time_sync = sync
-    client._session = _PostingSession(events)
+    cast(Any, client)._session = _PostingSession(events)
     # Pretend every admission read outlives the prepared timestamp.
     client.prepared_request_age_s = lambda: 3.0
 
@@ -140,6 +141,30 @@ async def test_stale_prepared_clock_resyncs_redecides_then_fails_closed():
     # One re-sync plus a second admission read; then the entry fails closed
     # instead of POSTing behind a stale decision. Nothing reached the exchange.
     assert events == ["sync", "admit", "sync", "admit"]
+
+
+async def test_clock_consumed_by_another_submission_forces_resync_and_readmit():
+    events: list[str] = []
+
+    async def fetch(_ids):
+        events.append("admit")
+        return [{"agent_id": "all", "armed": True, "reduce_only": False}]
+
+    control = EntryControl(fetch_rows=fetch)
+    executor, client = _executor(control)
+
+    async def sync():
+        events.append("sync")
+
+    client._ensure_time_sync = sync
+    cast(Any, client)._session = _PostingSession(events)
+    ages = iter([None, 0.0])  # marker stolen, then fresh after the re-sync
+    client.prepared_request_age_s = lambda: next(ages, 0.0)
+
+    with pytest.raises(RuntimeError, match="POST sentinel"):
+        await executor.place_futures_order("BTCUSDT", "BUY", 1, reference_price=100)
+
+    assert events == ["sync", "admit", "sync", "admit", "post"]
 
 
 async def test_clock_sync_failure_rejects_the_staged_order():
@@ -181,7 +206,7 @@ class _GetSession:
 
 async def test_prepared_clock_is_single_use_at_the_client():
     client = BinanceFuturesClient("dummy", "dummy")
-    client._session = _GetSession()
+    cast(Any, client)._session = _GetSession()
     syncs = 0
 
     async def counting_sync():
