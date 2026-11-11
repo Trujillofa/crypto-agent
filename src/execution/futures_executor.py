@@ -11,6 +11,7 @@ from typing import Any
 from src.backtest.sizing import calculate_futures_order_quantity
 from src.core.event_log import EventLog
 from src.db.pool import get_pool
+from src.execution.entry_admission import admit
 from src.execution.futures_client import (
     BinanceFuturesClient,
     FuturesOrderInfo,
@@ -768,32 +769,10 @@ class FuturesTradingExecutor:
         if not self._config.enabled:
             raise RuntimeError("Futures trading executor is disabled")
 
-        if reduce_only and side != "SELL":
-            raise ValueError(f"reduce_only=True is only valid for SELL orders, got side={side!r}")
-
-        # Close orders only block on reconciliation; kill switch / circuit breakers protect against
-        # new risk and must not trap the account in an open losing position.
+        # A reduce-only BUY closes a short; neither close side is an entry.
         if reduce_only:
             is_allowed, reason = self._risk_manager.is_close_allowed()
         else:
-            # Durable external brake, checked immediately before the exchange call
-            # so a disarm written mid-decision is still honoured. Never consulted
-            # for reduce_only: exits must remain possible while disarmed.
-            control = await self._entry_control.state()
-            self._metrics.record_entry_control(
-                armed=control.armed,
-                reduce_only=control.reduce_only,
-                read_age_s=self._entry_control.last_success_age_s,
-                fault=control.source == "fail_closed",
-            )
-            if not control.entries_allowed:
-                self._logger.warning(
-                    "Entry blocked by durable control for %s: %s",
-                    symbol,
-                    control.describe(),
-                )
-                self._metrics.record_risk_block(symbol, f"entry_control: {control.reason}")
-                raise RuntimeError(f"Futures entry blocked by control: {control.reason}")
             is_allowed, reason = self._risk_manager.is_trading_allowed()
         if not is_allowed:
             self._metrics.record_risk_block(symbol, reason)
@@ -863,6 +842,18 @@ class FuturesTradingExecutor:
                 },
             )
             staged_order_id = staged_order.order_id
+
+        # Force a fresh decision after all awaited preflight and staging work.
+        # Exits do not consult the entry brake.
+        if not reduce_only:
+            try:
+                await admit(self._entry_control, self._metrics, symbol)
+            except BaseException:
+                if staged_order_id is not None:
+                    await self._staged_manager.mark_rejected(
+                        staged_order_id, "entry admission failed before submission"
+                    )
+                raise
 
         # Place order
         start_time = time.perf_counter()

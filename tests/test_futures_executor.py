@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1795,6 +1796,12 @@ class TestDurableEntryBrake:
             [{"agent_id": "all", "armed": False, "reduce_only": False, "reason": "drawdown 9.1%"}]
         )
         executor._client = MagicMock()
+        executor._client.get_account_info = AsyncMock(
+            return_value=SimpleNamespace(total_margin_balance=1000, available_balance=1000)
+        )
+        executor._risk_manager.check_max_leverage.return_value = (True, "")
+        executor._risk_manager.check_position_limit.return_value = (True, "")
+        executor._risk_manager.check_margin_usage.return_value = (True, "")
 
         with pytest.raises(RuntimeError) as exc_info:
             await executor.place_futures_order("BTCUSDT", "BUY", 0.01, reference_price=50000.0)

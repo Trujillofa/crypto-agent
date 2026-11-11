@@ -793,7 +793,14 @@ class PaperExecutor:
                         },
                     )
 
-            await admit(self._entry_control, self._metrics, signal.symbol)
+            try:
+                await admit(self._entry_control, self._metrics, signal.symbol)
+            except asyncio.CancelledError:
+                if staged_order is not None:
+                    await self._staged_manager.mark_rejected(
+                        staged_order.order_id, "cancelled before fill"
+                    )
+                raise
             # Simulate fill with fee
             fee_rate = self._config.fee_rate_futures if is_futures else self._config.fee_rate_spot
             fee = order_usdt * fee_rate

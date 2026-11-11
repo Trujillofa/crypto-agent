@@ -9,10 +9,9 @@ behaviour. Three rules make it a brake instead of a dashboard.
    an unknown answer as permission.
 2. **Exits are never gated.** A brake that traps a losing position turns a
    risk-off event into a bigger risk. Only entries consult this module.
-3. **The cache has a hard expiry.** A short TTL keeps the hot path cheap; past
-   ``max_stale_s`` the cached value is discarded, so a database outage stops new
-   entries within that window instead of leaving the last known answer in force
-   forever.
+3. **A failed read invalidates permission.** Cached answers are used only
+   within the TTL and are discarded immediately on any observed read failure.
+   Execution boundaries force a fresh read before submitting entries.
 """
 
 from __future__ import annotations
@@ -87,6 +86,9 @@ class EntryControl:
         self._cached_at: float | None = None
         self._last_ok_at: float | None = None
         self.last_fault: str | None = None
+        self._issued = 0
+        self._settled = 0
+        self._latest: EntryControlState | None = None
 
     @property
     def last_success_age_s(self) -> float | None:
@@ -109,46 +111,42 @@ class EntryControl:
                 source="cache",
             )
 
+        self._issued += 1
+        generation = self._issued
+        fault = None
         try:
             rows = await asyncio.wait_for(
                 self._fetch_rows([self.agent_id, GLOBAL_AGENT_ID]), timeout=5.0
             )
             resolved = self._combine(rows)
-        except Exception as exc:  # noqa: BLE001 - a brake may not raise into the hot path
-            self.last_fault = f"{type(exc).__name__}: {exc}"
-            age = self.last_success_age_s
-            if (
-                not force
-                and self._cached is not None
-                and age is not None
-                and age <= self._max_stale_s
-            ):
-                self._logger.warning(
-                    "Entry control read failed (%s); using value %.0fs old",
-                    self.last_fault,
-                    age,
-                )
-                return EntryControlState(
-                    armed=self._cached.armed,
-                    reduce_only=self._cached.reduce_only,
-                    reason=self._cached.reason,
-                    source="cache",
-                )
-            self._logger.error(
-                "Entry control unreadable and no fresh value (%s); blocking entries",
-                self.last_fault,
-            )
-            return EntryControlState(
+        except Exception as exc:  # noqa: BLE001 - unreadable must fail closed
+            fault = f"{type(exc).__name__}: {exc}"
+            resolved = EntryControlState(
                 armed=False,
                 reduce_only=True,
-                reason=f"control unreadable: {self.last_fault}",
+                reason=f"control unreadable: {fault}",
                 source="fail_closed",
             )
 
-        self._cached = resolved
-        self._cached_at = now
-        self._last_ok_at = now
-        self.last_fault = None
+        # A later-started read supersedes this one. Never let a delayed allow
+        # overwrite a newer disarm/fault, or report stale metrics to the caller.
+        if generation != self._issued:
+            if self._settled == self._issued and self._latest is not None:
+                return self._latest
+            return EntryControlState(False, True, "newer control read pending", "fail_closed")
+
+        self._settled = generation
+        self._latest = resolved
+        self.last_fault = fault
+        if fault is not None:
+            self._cached = None
+            self._cached_at = None
+            self._logger.error("Entry control unreadable (%s); blocking entries", fault)
+        else:
+            completed = self._clock()
+            self._cached = resolved
+            self._cached_at = completed
+            self._last_ok_at = completed
         return resolved
 
     def _combine(self, rows: Sequence[Mapping[str, Any]]) -> EntryControlState:

@@ -10,7 +10,7 @@ async def refresh(control: EntryControl, metrics: ExecutionMetrics):
         armed=state.armed,
         reduce_only=state.reduce_only,
         read_age_s=control.last_success_age_s,
-        fault=control.last_fault is not None,
+        fault=state.source == "fail_closed" or control.last_fault is not None,
     )
     return state
 

@@ -390,7 +390,15 @@ class TradingExecutor:
                     )
 
             if side != "SELL":
-                await admit(self._entry_control, self._metrics, symbol)
+                try:
+                    await admit(self._entry_control, self._metrics, symbol)
+                except asyncio.CancelledError:
+                    # No transport handoff has occurred at this point.
+                    if staged_order_id is not None:
+                        await self._staged_manager.mark_rejected(
+                            staged_order_id, "cancelled before submission"
+                        )
+                    raise
             order = await self._client.place_market_order(
                 symbol=symbol, side=side, quantity=quantity
             )
@@ -688,7 +696,15 @@ class TradingExecutor:
                     )
 
             if side != "SELL":
-                await admit(self._entry_control, self._metrics, symbol)
+                try:
+                    await admit(self._entry_control, self._metrics, symbol)
+                except asyncio.CancelledError:
+                    # No transport handoff has occurred at this point.
+                    if staged_order_id is not None:
+                        await self._staged_manager.mark_rejected(
+                            staged_order_id, "cancelled before submission"
+                        )
+                    raise
             order = await self._client.place_limit_order(
                 symbol=symbol,
                 side=side,

@@ -92,7 +92,7 @@ async def test_an_unreadable_control_with_no_history_fails_closed() -> None:
     assert "RuntimeError" in state.reason
 
 
-async def test_a_short_outage_keeps_the_last_good_answer() -> None:
+async def test_a_short_outage_invalidates_last_good_answer() -> None:
     clock = Clock()
     calls = {"n": 0}
 
@@ -107,8 +107,8 @@ async def test_a_short_outage_keeps_the_last_good_answer() -> None:
 
     clock.advance(60.0)  # cached value expired, but the read is still recent
     state = await brake.state()
-    assert state.entries_allowed is True
-    assert state.source == "cache"
+    assert state.entries_allowed is False
+    assert state.source == "fail_closed"
 
 
 async def test_a_long_outage_eventually_blocks() -> None:
