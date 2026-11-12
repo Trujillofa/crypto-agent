@@ -21,6 +21,7 @@ from src.execution import (
     TradingConfig,
     TradingExecutor,
 )
+from src.execution.entry_admission import refresh
 from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
 from src.execution.reconciliation import (
@@ -39,6 +40,7 @@ from src.ingest.websocket import BinanceWebSocketIngestor
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.overseer import OverseerAgent, XAIClient
 from src.portfolio import PortfolioManager
+from src.risk.entry_control import EntryControl
 from src.risk.guards import (
     CircuitBreakerGuard,
     CooldownGuard,
@@ -1234,6 +1236,9 @@ async def run() -> None:
     )
     staged_manager = StagedOrderManager(auto_commit=True)
 
+    entry_control = EntryControl(agent_id=settings.agent_id)
+    await refresh(entry_control, execution_metrics)
+
     if use_paper:
         # Internal paper trading — no Binance API calls for execution
         futures_symbols = (
@@ -1279,6 +1284,7 @@ async def run() -> None:
             event_log=event_log,
             guard_pipeline=guard_pipeline,
             staged_manager=staged_manager,
+            entry_control=entry_control,
         )
         get_logger("main").info("Paper mode: using internal PaperExecutor (no Binance API)")
     else:
@@ -1292,6 +1298,7 @@ async def run() -> None:
             event_log=event_log,
             guard_pipeline=guard_pipeline,
             staged_manager=staged_manager,
+            entry_control=entry_control,
         )
 
         if settings.futures and settings.futures.enabled:
@@ -1335,6 +1342,7 @@ async def run() -> None:
                 event_log=event_log,
                 guard_pipeline=guard_pipeline,
                 staged_manager=staged_manager,
+                entry_control=entry_control,
             )
 
             # Initialize futures mark price WebSocket
@@ -1707,6 +1715,7 @@ async def run() -> None:
             """Periodically probe the database for health status."""
             while True:
                 await update_health_status()
+                await refresh(entry_control, execution_metrics)
                 await asyncio.sleep(5)
 
         async def daily_summary_loop() -> None:

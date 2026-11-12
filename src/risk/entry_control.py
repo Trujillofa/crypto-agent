@@ -9,14 +9,14 @@ behaviour. Three rules make it a brake instead of a dashboard.
    an unknown answer as permission.
 2. **Exits are never gated.** A brake that traps a losing position turns a
    risk-off event into a bigger risk. Only entries consult this module.
-3. **The cache has a hard expiry.** A short TTL keeps the hot path cheap; past
-   ``max_stale_s`` the cached value is discarded, so a database outage stops new
-   entries within that window instead of leaving the last known answer in force
-   forever.
+3. **A failed read invalidates permission.** Cached answers are used only
+   within the TTL and are discarded immediately on any observed read failure.
+   Execution boundaries force a fresh read before submitting entries.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -86,6 +86,9 @@ class EntryControl:
         self._cached_at: float | None = None
         self._last_ok_at: float | None = None
         self.last_fault: str | None = None
+        # Serialize the actual database snapshots, not merely their issuance.
+        # Cache readers also wait so they cannot return permission during a refresh.
+        self._read_lock = asyncio.Lock()
 
     @property
     def last_success_age_s(self) -> float | None:
@@ -94,6 +97,10 @@ class EntryControl:
         return max(0.0, self._clock() - self._last_ok_at)
 
     async def state(self, *, force: bool = False) -> EntryControlState:
+        async with self._read_lock:
+            return await self._state_locked(force=force)
+
+    async def _state_locked(self, *, force: bool) -> EntryControlState:
         now = self._clock()
         if (
             not force
@@ -108,39 +115,34 @@ class EntryControl:
                 source="cache",
             )
 
+        fault = None
+        # A cancelled refresh must not leave a previously cached allow behind.
+        self._cached = None
+        self._cached_at = None
         try:
-            rows = await self._fetch_rows([self.agent_id, GLOBAL_AGENT_ID])
-        except Exception as exc:  # noqa: BLE001 - a brake may not raise into the hot path
-            self.last_fault = f"{type(exc).__name__}: {exc}"
-            age = self.last_success_age_s
-            if self._cached is not None and age is not None and age <= self._max_stale_s:
-                self._logger.warning(
-                    "Entry control read failed (%s); using value %.0fs old",
-                    self.last_fault,
-                    age,
-                )
-                return EntryControlState(
-                    armed=self._cached.armed,
-                    reduce_only=self._cached.reduce_only,
-                    reason=self._cached.reason,
-                    source="cache",
-                )
-            self._logger.error(
-                "Entry control unreadable and no fresh value (%s); blocking entries",
-                self.last_fault,
+            rows = await asyncio.wait_for(
+                self._fetch_rows([self.agent_id, GLOBAL_AGENT_ID]), timeout=5.0
             )
-            return EntryControlState(
+            resolved = self._combine(rows)
+        except Exception as exc:  # noqa: BLE001 - unreadable must fail closed
+            fault = f"{type(exc).__name__}: {exc}"
+            resolved = EntryControlState(
                 armed=False,
                 reduce_only=True,
-                reason=f"control unreadable: {self.last_fault}",
+                reason=f"control unreadable: {fault}",
                 source="fail_closed",
             )
 
-        resolved = self._combine(rows)
-        self._cached = resolved
-        self._cached_at = now
-        self._last_ok_at = now
-        self.last_fault = None
+        self.last_fault = fault
+        if fault is not None:
+            self._cached = None
+            self._cached_at = None
+            self._logger.error("Entry control unreadable (%s); blocking entries", fault)
+        else:
+            completed = self._clock()
+            self._cached = resolved
+            self._cached_at = completed
+            self._last_ok_at = completed
         return resolved
 
     def _combine(self, rows: Sequence[Mapping[str, Any]]) -> EntryControlState:
@@ -156,6 +158,10 @@ class EntryControl:
         reduce_only = False
         reasons: list[str] = []
         for row in rows:
+            if row.get("agent_id") not in {self.agent_id, GLOBAL_AGENT_ID}:
+                raise ValueError("unexpected control scope")
+            if type(row.get("armed")) is not bool or type(row.get("reduce_only")) is not bool:
+                raise ValueError("invalid control flags")
             # Strict identity: NULL, 0 or a string must never read as "armed".
             if row["armed"] is not True:
                 armed = False

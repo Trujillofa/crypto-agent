@@ -95,6 +95,16 @@ signals_total = Counter(
     ["symbol", "trading_mode", "signal_type"],
 )
 
+# Accounting gaps are not order failures: the exchange fill is final, but a
+# piece of local bookkeeping (fill price, PnL, balance) could not be resolved
+# and was deliberately deferred instead of being guessed. Publishing them
+# separately keeps "order FAILED" meaning "nothing executed".
+accounting_gaps_total = Counter(
+    "execution_accounting_gaps_total",
+    "Total number of post-fill bookkeeping gaps deferred instead of guessed",
+    ["symbol", "reason"],
+)
+
 
 class ExecutionMetrics:
     """Container for trading execution metrics."""
@@ -116,6 +126,7 @@ class ExecutionMetrics:
         self.api_errors = api_errors_total
         self.risk_blocks = risk_blocks_total
         self.signals = signals_total
+        self.accounting_gaps = accounting_gaps_total
 
     def record_entry_control(
         self,
@@ -167,6 +178,15 @@ class ExecutionMetrics:
     def record_api_error(self, endpoint: str, error_code: str) -> None:
         """Record an API error."""
         self.api_errors.labels(endpoint=endpoint, error_code=error_code).inc()
+
+    def record_accounting_gap(self, symbol: str, reason: str) -> None:
+        """Record a deferred post-fill bookkeeping gap.
+
+        Use this instead of ``record_api_error``/``status="FAILED"`` when the
+        exchange fill already happened: the order did not fail, the local
+        accounting decision was postponed.
+        """
+        self.accounting_gaps.labels(symbol=symbol, reason=reason).inc()
 
     def record_signal(self, symbol: str, trading_mode: str, signal_type: str) -> None:
         self.signals.labels(

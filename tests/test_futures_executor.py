@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1109,9 +1110,16 @@ class TestFuturesTradingExecutor:
         mock_client.get_account_info = AsyncMock(
             return_value=MagicMock(total_margin_balance=5000.0, available_balance=5000.0)
         )
-        # MARKET close order
+        # MARKET close order — executed quantity must match the held position:
+        # an oversized close is now rejected rather than clamped.
         mock_client.place_order = AsyncMock(
-            return_value=_make_order(order_id="market_close_1", side="SELL", reduce_only=True)
+            return_value=_make_order(
+                order_id="market_close_1",
+                side="SELL",
+                quantity=0.001,
+                price=74_949.1,
+                reduce_only=True,
+            )
         )
         # get_user_trades returns the actual fill for the MARKET close order
         mock_client.get_user_trades = AsyncMock(
@@ -1795,6 +1803,12 @@ class TestDurableEntryBrake:
             [{"agent_id": "all", "armed": False, "reduce_only": False, "reason": "drawdown 9.1%"}]
         )
         executor._client = MagicMock()
+        executor._client.get_account_info = AsyncMock(
+            return_value=SimpleNamespace(total_margin_balance=1000, available_balance=1000)
+        )
+        executor._risk_manager.check_max_leverage.return_value = (True, "")
+        executor._risk_manager.check_position_limit.return_value = (True, "")
+        executor._risk_manager.check_margin_usage.return_value = (True, "")
 
         with pytest.raises(RuntimeError) as exc_info:
             await executor.place_futures_order("BTCUSDT", "BUY", 0.01, reference_price=50000.0)

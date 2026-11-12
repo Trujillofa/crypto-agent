@@ -373,7 +373,9 @@ signal = Signal(
 The futures MVP is **LONG-only**:
 
 - **BUY signal**: Opens or adds to LONG position
-- **SELL signal**: Closes LONG position with `reduceOnly`
+- **SELL signal**: Closes the held LONG leg — `reduceOnly` in one-way mode, the
+  named `LONG` leg in hedge mode (Binance rejects `reduceOnly` there), verified
+  against the exchange holding before submission
 
 SHORT positions will be added in v2 after validating the LONG-only pipeline.
 

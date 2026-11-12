@@ -13,6 +13,10 @@ from src.risk.entry_control import EntryControl
 from src.risk.manager import RiskManager
 
 
+async def _armed_control_rows(_ids):
+    return [{"agent_id": "all", "armed": True, "reduce_only": False}]
+
+
 class MockBinanceClient:
     def __init__(self):
         self.place_market_order = AsyncMock()
@@ -45,7 +49,13 @@ async def test_place_market_order_polling():
     metrics = MagicMock(spec=ExecutionMetrics)
     portfolio_manager = MagicMock(spec=PortfolioManager)
 
-    executor = TradingExecutor(config, risk_manager, metrics, portfolio_manager)
+    executor = TradingExecutor(
+        config,
+        risk_manager,
+        metrics,
+        portfolio_manager,
+        entry_control=EntryControl(fetch_rows=_armed_control_rows),
+    )
 
     # Mock client
     mock_client = MockBinanceClient()
@@ -132,7 +142,9 @@ async def test_place_limit_order_polling_timeout():
 
     metrics = MagicMock(spec=ExecutionMetrics)
 
-    executor = TradingExecutor(config, risk_manager, metrics)
+    executor = TradingExecutor(
+        config, risk_manager, metrics, entry_control=EntryControl(fetch_rows=_armed_control_rows)
+    )
     mock_client = MockBinanceClient()
     executor._client = mock_client
 
