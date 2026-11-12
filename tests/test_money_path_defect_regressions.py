@@ -80,9 +80,7 @@ def _futures(mode: str = "one-way", *, legs=None, balance: float | None = 1000.0
         client.get_account_info = AsyncMock(side_effect=_no_account)
     else:
         client.get_account_info = AsyncMock(
-            return_value=SimpleNamespace(
-                total_margin_balance=balance, available_balance=balance
-            )
+            return_value=SimpleNamespace(total_margin_balance=balance, available_balance=balance)
         )
     client.get_position_risk = AsyncMock(
         return_value=[
@@ -111,9 +109,7 @@ def _futures(mode: str = "one-way", *, legs=None, balance: float | None = 1000.0
     executor._notifier = AsyncMock()
     executor._portfolio_manager = MagicMock()
     executor._portfolio_manager.get_position = MagicMock(return_value=None)
-    executor._portfolio_manager.reduce_position = AsyncMock(
-        return_value=(MagicMock(), 0.0, 0.0)
-    )
+    executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), 0.0, 0.0))
     executor._portfolio_manager.close_position = AsyncMock(return_value=(MagicMock(), 0.0))
     executor._portfolio_manager.update_quantity = AsyncMock()
     executor._portfolio_manager.open_position = AsyncMock(return_value=MagicMock())
@@ -308,9 +304,7 @@ async def test_partial_reduce_without_a_tracker_entry_is_not_a_full_close():
             symbol="BTCUSDT", quantity=1.0, entry_price=100.0, position_side="LONG"
         )
     )
-    executor._portfolio_manager.reduce_position = AsyncMock(
-        return_value=(MagicMock(), 4.0, 0.6)
-    )
+    executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), 4.0, 0.6))
     executor._client.place_order = AsyncMock(return_value=_order(executed=0.4, price=110.0))
 
     await executor.place_futures_order(
@@ -380,9 +374,7 @@ async def test_software_stop_closes_the_owned_long_and_not_the_foreign_short():
 async def test_partial_software_close_books_the_pnl_to_the_risk_manager():
     executor = _monitor(_futures(mode="one-way"), [("BOTH", 1.0)])
     executor._client.place_order = AsyncMock(return_value=_order(executed=0.4, price=85.0))
-    executor._portfolio_manager.reduce_position = AsyncMock(
-        return_value=(MagicMock(), -6.0, 0.6)
-    )
+    executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), -6.0, 0.6))
 
     await executor._monitor_and_update()
 
@@ -406,9 +398,7 @@ async def test_partial_reduce_still_trips_the_breakers_without_a_balance(tmp_pat
             symbol="BTCUSDT", quantity=2.0, entry_price=100.0, position_side="LONG"
         )
     )
-    executor._portfolio_manager.reduce_position = AsyncMock(
-        return_value=(MagicMock(), -99.0, 1.0)
-    )
+    executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), -99.0, 1.0))
     executor._client.place_order = AsyncMock(return_value=_order(executed=1.0, price=1.0))
 
     await executor.place_futures_order(
@@ -481,9 +471,7 @@ async def test_hedge_software_close_keeps_the_slot_until_the_venue_is_flat():
 
 async def test_hedge_software_close_releases_once_the_venue_is_flat():
     # Loop read, pre-submit holdings proof, then the post-fill flat confirmation.
-    executor = _monitor(
-        _futures(mode="hedge"), [[("LONG", 1.0)], [("LONG", 1.0)], [("LONG", 0.0)]]
-    )
+    executor = _monitor(_futures(mode="hedge"), [[("LONG", 1.0)], [("LONG", 1.0)], [("LONG", 0.0)]])
     executor._client.place_order = AsyncMock(return_value=_order(executed=1.0, price=80.0))
 
     await executor._monitor_and_update()
@@ -542,9 +530,7 @@ async def test_partial_signal_exit_books_the_fill_and_protects_the_remainder():
     partial = _exit_order(0.4, "PARTIALLY_FILLED")
     executor._client.place_order = AsyncMock(return_value=partial)
     executor._client.get_order_status = AsyncMock(return_value=partial)
-    executor._portfolio_manager.reduce_position = AsyncMock(
-        return_value=(MagicMock(), -4.0, 0.6)
-    )
+    executor._portfolio_manager.reduce_position = AsyncMock(return_value=(MagicMock(), -4.0, 0.6))
     executor._client.place_algo_order = AsyncMock(
         side_effect=[SimpleNamespace(algo_id="re_sl"), SimpleNamespace(algo_id="re_tp")]
     )
@@ -766,9 +752,7 @@ async def test_fresh_position_gets_its_own_standdown_window():
 async def test_restore_refuses_to_rearm_an_unproven_cancel():
     executor = _signal_ready(_futures(mode="hedge"))
     executor._client.cancel_order = AsyncMock(side_effect=RuntimeError("cancel timeout"))
-    executor._client.get_order_status = AsyncMock(
-        side_effect=RuntimeError("status unavailable")
-    )
+    executor._client.get_order_status = AsyncMock(side_effect=RuntimeError("status unavailable"))
     executor._client.place_order = AsyncMock(side_effect=RuntimeError("post timed out"))
     executor._client.place_algo_order = AsyncMock()
 

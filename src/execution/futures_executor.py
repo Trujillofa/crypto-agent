@@ -548,9 +548,7 @@ class FuturesTradingExecutor:
                 # describes someone else's exposure and must never drive a close
                 # or a tracker overwrite.
                 owned_leg = self._select_owned_leg(symbol, positions)
-                owned_qty = (
-                    abs(float(owned_leg.position_amt)) if owned_leg is not None else 0.0
-                )
+                owned_qty = abs(float(owned_leg.position_amt)) if owned_leg is not None else 0.0
                 if owned_leg is not None:
                     tracked = self._positions.setdefault(symbol, {})
                     tracked.update(
@@ -1067,10 +1065,7 @@ class FuturesTradingExecutor:
                                 reason_str,
                                 close_exc,
                             )
-                            if (
-                                symbol in self._positions
-                                and symbol not in self._sl_tp_prices
-                            ):
+                            if symbol in self._positions and symbol not in self._sl_tp_prices:
                                 # The exit did not complete while the leg is
                                 # still open: its bracket must not be lost.
                                 self._sl_tp_prices[symbol] = sw_snapshot
@@ -1546,9 +1541,7 @@ class FuturesTradingExecutor:
             try:
                 positions = await self._client.get_position_risk(symbol)
             except Exception as exc:  # noqa: BLE001 - surfaced by the caller
-                self._mark_accounting_gap(
-                    symbol, f"reduce reference quantity unavailable: {exc}"
-                )
+                self._mark_accounting_gap(symbol, f"reduce reference quantity unavailable: {exc}")
                 positions = None
             if positions is not None:
                 held = 0.0
@@ -1658,9 +1651,7 @@ class FuturesTradingExecutor:
             await self._book_realized_pnl(symbol, pnl, portfolio_value)
         self._risk_manager.register_close_position(symbol, market="futures")
 
-    async def _book_realized_pnl(
-        self, symbol: str, pnl: float, portfolio_value: float
-    ) -> bool:
+    async def _book_realized_pnl(self, symbol: str, pnl: float, portfolio_value: float) -> bool:
         """Record one realized close against the breakers, or defer it durably."""
         balance = await self._live_account_balance(portfolio_value)
         total_pnl = pnl + self._take_deferred_pnl()
@@ -2106,9 +2097,7 @@ class FuturesTradingExecutor:
                 # Ledger had nothing open (already reconciled): the exchange is
                 # flat either way, so release risk and record the gap.
                 self._logger.error("Closed %s not booked in portfolio ledger: %s", symbol, exc)
-                self._mark_accounting_gap(
-                    symbol, "close not in portfolio ledger", kind="close"
-                )
+                self._mark_accounting_gap(symbol, "close not in portfolio ledger", kind="close")
             else:
                 if close_pnl is not None:
                     self._recent_close_pnl[symbol] = close_pnl
@@ -2479,9 +2468,7 @@ class FuturesTradingExecutor:
 
         return order
 
-    async def _resolve_entry_fill_price(
-        self, symbol: str, order: FuturesOrderInfo
-    ) -> float | None:
+    async def _resolve_entry_fill_price(self, symbol: str, order: FuturesOrderInfo) -> float | None:
         """Ask the exchange what an entry actually filled at.
 
         ``order.price`` is the venue's average fill price when it reports one;
@@ -2546,14 +2533,11 @@ class FuturesTradingExecutor:
             # left to the accounting gap instead of being fabricated.
             self._mark_accounting_gap(
                 symbol,
-                "entry fill price unknown: ledger entry price and risk notional "
-                "not registered",
+                "entry fill price unknown: ledger entry price and risk notional not registered",
             )
             self._positions[symbol]["amount"] = recorded_qty
             self._positions[symbol]["side"] = "SHORT" if side.upper() == "SELL" else "LONG"
-            self._positions[symbol]["tracked_side"] = (
-                "SHORT" if side.upper() == "SELL" else "LONG"
-            )
+            self._positions[symbol]["tracked_side"] = "SHORT" if side.upper() == "SELL" else "LONG"
             return
         if self._portfolio_manager is not None:
             await self._portfolio_manager.open_position(
@@ -2578,9 +2562,7 @@ class FuturesTradingExecutor:
         self._positions[symbol]["side"] = "SHORT" if side.upper() == "SELL" else "LONG"
         # Recorded explicitly, not inferred from the sign of a positive size:
         # the selector needs this to find a SHORT leg in hedge mode.
-        self._positions[symbol]["tracked_side"] = (
-            "SHORT" if side.upper() == "SELL" else "LONG"
-        )
+        self._positions[symbol]["tracked_side"] = "SHORT" if side.upper() == "SELL" else "LONG"
         self._risk_manager.register_open_position(
             symbol,
             recorded_qty * entry_price,
@@ -3244,9 +3226,7 @@ class FuturesTradingExecutor:
         "FINISHED",
     }
 
-    async def _cancel_conditional(
-        self, symbol: str, order_id: str, is_algo: bool
-    ) -> str:
+    async def _cancel_conditional(self, symbol: str, order_id: str, is_algo: bool) -> str:
         """Cancel one protective order, returning "cancelled" or "unknown".
 
         "unknown" means the order may still be live: the cancel raised and a
