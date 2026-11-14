@@ -331,7 +331,9 @@ class XAIClient:
                 self._commandcode_model,
                 messages,
                 provider_name="Command Code",
-                max_attempts=1,
+                # One bounded retry for intermittent 503s, not rate limits or timeouts.
+                max_attempts=2,
+                retry_503_only=True,
                 provider_id="commandcode",
                 response_validator=response_validator,
                 request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
@@ -600,6 +602,7 @@ class XAIClient:
         provider_id: str | None = None,
         response_validator: Callable[[str], object] | None = None,
         request_timeout: float | None = None,
+        retry_503_only: bool = False,
     ) -> str:
         chat_messages = cast(list[ChatCompletionMessageParam], list(messages))
         last_exc: Exception | None = None
@@ -671,7 +674,9 @@ class XAIClient:
                 _annotate_provider_error(exc, provider_id or provider_name, model)
                 raise
             except _RETRYABLE_ERRORS as exc:
-                if _is_permanent_provider_error(exc):
+                if _is_permanent_provider_error(exc) or (
+                    retry_503_only and getattr(exc, "status_code", None) != 503
+                ):
                     _annotate_provider_error(exc, provider_id or provider_name, model)
                     raise
                 last_exc = exc
@@ -685,7 +690,11 @@ class XAIClient:
                         delay,
                         _provider_error_summary(exc),
                     )
-                    await asyncio.sleep(delay)
+                    try:
+                        await asyncio.sleep(delay)
+                    except asyncio.CancelledError as exc:
+                        _annotate_provider_error(exc, provider_id or provider_name, model)
+                        raise
             except Exception as exc:
                 _annotate_provider_error(exc, provider_id or provider_name, model)
                 raise
