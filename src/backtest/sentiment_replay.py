@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+from src.sentiment_sources import SENTIMENT_ERROR_SOURCES
 from src.utils.logger import get_logger
 
 
@@ -13,7 +14,11 @@ class ReplaySentimentScorer:
     """Replays persisted sentiment_score observations from the event log.
 
     Looks up the most recent score at or before the requested candle timestamp for a symbol.
-    Falls back to neutral 50.0 when no historical observation exists.
+    Error-source observations start a gap until the next usable observation;
+    they never carry their synthetic score or an older score forward. Missing
+    sources and non-error sources retain their historical replay behavior.
+    Falls back to neutral 50.0 (or the configured fallback) during a gap or
+    when no historical observation exists.
     """
 
     def __init__(
@@ -27,7 +32,7 @@ class ReplaySentimentScorer:
         self._max_age_seconds = max_age_seconds
         self._fallback_score = fallback_score
         self._logger = get_logger(self.__class__.__name__)
-        self._timeline: dict[str, list[tuple[datetime, float]]] = defaultdict(list)
+        self._timeline: dict[str, list[tuple[datetime, float | None]]] = defaultdict(list)
         self._timestamps: dict[str, list[datetime]] = {}
         self._hits = 0
         self._misses = 0
@@ -55,12 +60,19 @@ class ReplaySentimentScorer:
                     payload = event.get("payload", {}) or {}
                     symbol = payload.get("symbol")
                     score = payload.get("score")
+                    source = payload.get("source")
+                    is_error = isinstance(source, str) and source in SENTIMENT_ERROR_SOURCES
                     ts = event.get("ts")
-                    if not symbol or score is None or not ts:
+                    if not symbol or not ts:
                         continue
                     try:
                         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                        val = float(score)
+                        if is_error:
+                            val = None
+                        elif score is not None:
+                            val = float(score)
+                        else:
+                            continue
                     except (ValueError, TypeError):
                         continue
                     self._timeline[str(symbol)].append((dt, val))
@@ -85,6 +97,9 @@ class ReplaySentimentScorer:
             self._misses += 1
             return self._fallback_score
         if at_time is None:
+            if items[-1][1] is None:
+                self._misses += 1
+                return self._fallback_score
             self._hits += 1
             return items[-1][1]
 
@@ -95,6 +110,9 @@ class ReplaySentimentScorer:
             return self._fallback_score
 
         ts, score = items[idx]
+        if score is None:
+            self._misses += 1
+            return self._fallback_score
         if self._max_age_seconds is not None:
             age = (at_time - ts).total_seconds()
             if age > self._max_age_seconds:
