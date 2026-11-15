@@ -105,3 +105,29 @@ async def test_same_timestamp_last_event_wins_and_stale_boundary(tmp_path):
     assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1, minutes=30, seconds=1)) == 50
     assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=2)) == 50
     assert replay.stats()["stale_misses"] == 1
+
+
+@pytest.mark.asyncio
+async def test_strategy_clock_never_falls_through_to_future_sentiment(tmp_path):
+    from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
+
+    replay = scorer(tmp_path, [event(0, 70, "xai_live"), event(2, 90, "xai_live")])
+    strategy = SentimentMeanReversionStrategy()
+    strategy.set_scorer(replay)
+    for clock in ("2024-01-01T01:00:00+00:00", datetime(2024, 1, 1, 1)):
+        assert await strategy._get_sentiment("SOLUSDT", {"time": clock}) == 70
+    for indicators in ({}, {"time": None}, {"time": "invalid"}):
+        assert await strategy._get_sentiment("SOLUSDT", indicators) == 50
+    assert replay.stats()["misses"] == 3
+
+
+@pytest.mark.asyncio
+async def test_mixed_clock_offsets_are_sorted_and_equal_instants_keep_log_order(tmp_path):
+    rows = [event(0, 70, "xai_live"), event(1, None, "error_fallback"), event(1, 75, "xai_live")]
+    rows[0]["ts"] = "2024-01-01T00:00:00"  # legacy UTC-naive
+    rows[1]["ts"] = "2024-01-01T03:00:00+02:00"
+    rows[2]["ts"] = "2024-01-01T01:00:00Z"
+    replay = scorer(tmp_path, rows)
+    assert await replay.get_score("SOLUSDT", "2024-01-01T00:59:59Z") == 70
+    assert await replay.get_score("SOLUSDT", "2024-01-01T01:00:00Z") == 75
+    assert replay.stats()["loaded_observations"] == 3

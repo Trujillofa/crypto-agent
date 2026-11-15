@@ -381,7 +381,10 @@ class SentimentMeanReversionStrategy(BaseStrategy):
             return 50.0
 
         row_time = indicators.get("time")
-        if row_time is not None:
+        replay_lookup = getattr(self._scorer, "get_score_for_candle", None)
+        if callable(replay_lookup):
+            score = await replay_lookup(symbol, row_time)
+        elif row_time is not None:
             try:
                 score = await self._scorer.get_score(symbol, row_time)
             except TypeError:

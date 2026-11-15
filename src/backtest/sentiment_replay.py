@@ -3,11 +3,22 @@ from __future__ import annotations
 import json
 from bisect import bisect_right
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.sentiment_sources import SENTIMENT_ERROR_SOURCES
 from src.utils.logger import get_logger
+
+
+def _utc_timestamp(value: datetime | str) -> datetime:
+    """Normalize supported candle/log times; legacy naive timestamps mean UTC."""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not isinstance(value, datetime):
+        raise ValueError("timestamp must be a datetime or ISO timestamp")
+    if value.tzinfo is None or value.utcoffset() is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 class ReplaySentimentScorer:
@@ -66,7 +77,7 @@ class ReplaySentimentScorer:
                     if not symbol or not ts:
                         continue
                     try:
-                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        dt = _utc_timestamp(ts)
                         if is_error:
                             val = None
                         elif score is not None:
@@ -91,7 +102,18 @@ class ReplaySentimentScorer:
         except Exception as exc:  # noqa: BLE001
             self._logger.error("Failed to load replay sentiment log %s: %s", self._path, exc)
 
-    async def get_score(self, symbol: str, at_time: datetime | None = None) -> float:
+    async def get_score_for_candle(self, symbol: str, at_time: datetime | str | None) -> float:
+        """Never use the latest observation if a replay candle lacks a valid clock."""
+        try:
+            if at_time is None:
+                raise ValueError("missing candle timestamp")
+            when = _utc_timestamp(at_time)
+        except (ValueError, TypeError, OverflowError):
+            self._misses += 1
+            return self._fallback_score
+        return await self.get_score(symbol, when)
+
+    async def get_score(self, symbol: str, at_time: datetime | str | None = None) -> float:
         items = self._timeline.get(symbol)
         if not items:
             self._misses += 1
@@ -103,6 +125,11 @@ class ReplaySentimentScorer:
             self._hits += 1
             return items[-1][1]
 
+        try:
+            at_time = _utc_timestamp(at_time)
+        except (ValueError, TypeError, OverflowError):
+            self._misses += 1
+            return self._fallback_score
         timestamps = self._timestamps.get(symbol, [])
         idx = bisect_right(timestamps, at_time) - 1
         if idx < 0:
