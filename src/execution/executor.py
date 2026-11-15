@@ -10,10 +10,12 @@ from src.execution.binance_client import (
     BinancePrivateClient,
     OrderInfo,
 )
+from src.execution.entry_admission import admit
 from src.execution.metrics import ExecutionMetrics
 from src.execution.staged_orders import StagedOrderManager
 from src.notifications.telegram import TelegramNotifier
 from src.portfolio.manager import PortfolioManager
+from src.risk.entry_control import EntryControl
 from src.risk.guards import GuardContext, GuardPipeline
 from src.risk.manager import RiskManager
 from src.strategy.signals import Signal, SignalType
@@ -54,7 +56,10 @@ class TradingExecutor:
         event_log: EventLog | None = None,
         guard_pipeline: GuardPipeline | None = None,
         staged_manager: StagedOrderManager | None = None,
+        entry_control: EntryControl | None = None,
     ) -> None:
+        self._entry_control = entry_control or EntryControl()
+        self._entry_lock = asyncio.Lock()
         self._config = config
         self._risk_manager = risk_manager
         self._metrics = metrics
@@ -233,7 +238,98 @@ class TradingExecutor:
     async def place_market_order(
         self,
         symbol: str,
-        side: str,  # "BUY" or "SELL"
+        side: str,
+        quantity: float | None = None,
+        price: float | None = None,
+    ) -> OrderInfo:
+        if side == "SELL":
+            return await self._place_market_order(symbol, side, quantity, price)
+        async with self._entry_lock:
+            return await self._place_market_order(symbol, side, quantity, price)
+
+    def _can_prepare_request_clock(self) -> bool:
+        """Whether the client supports preparing a signed-request clock.
+
+        Checked on the class, not the instance, so lightweight test doubles do
+        not grow an arbitrary attribute that fails when awaited.
+        """
+        return self._client is not None and (
+            getattr(type(self._client), "prepare_signed_request", None) is not None
+        )
+
+    async def _prepare_request_clock(self, staged_order_id: str | None = None) -> bool:
+        """Sync the exchange clock before the final admission read.
+
+        Returns False when the client offers no preparation seam. A failure to
+        sync is fatal for this submission: the point of the seam is ordering, so
+        falling back to the lazy sync would restore the race. The staged order is
+        rejected and the error propagates.
+        """
+        client = self._client
+        if client is None or not self._can_prepare_request_clock():
+            return False
+        try:
+            await client.prepare_signed_request()
+        except BaseException:
+            if staged_order_id is not None and self._staged_manager is not None:
+                await self._staged_manager.mark_rejected(
+                    staged_order_id, "exchange clock sync failed before submission"
+                )
+            raise
+        return True
+
+    def _prepared_clock_expired(self) -> bool:
+        """True when the prepared clock can no longer stamp a fresh POST.
+
+        A missing clock counts as expired: another submission may have consumed
+        the shared marker while this one was awaiting its admission read, which
+        would send the POST back to a lazy sync after the decision.
+        """
+        client = self._client
+        if client is None or not self._can_prepare_request_clock():
+            return False
+        ttl = float(getattr(type(client), "PREPARED_REQUEST_TTL_S", 0.0))
+        age = client.prepared_request_age_s()
+        return age is None or age > ttl
+
+    async def _admit_spot_entry(self, symbol: str, staged_order_id: str | None) -> None:
+        """Admit a spot entry with its timestamp already prepared.
+
+        Spot has no reduce-only/position-side concerns, but it shares the same
+        money-path race as futures: the signed POST used to sync the clock
+        *after* admission, so an awaited network call sat between the decision
+        and submission. Prepare the clock first; if the admission read outlives
+        its freshness window, re-sync and re-decide once, then refuse rather than
+        POST a stale timestamp.
+        """
+        clock_prepared = await self._prepare_request_clock(staged_order_id)
+        try:
+            await admit(self._entry_control, self._metrics, symbol)
+            if clock_prepared and self._prepared_clock_expired():
+                await self._prepare_request_clock(staged_order_id)
+                await admit(self._entry_control, self._metrics, symbol)
+                if self._prepared_clock_expired():
+                    self._metrics.record_risk_block(symbol, "entry_control: stale admission")
+                    if staged_order_id is not None and self._staged_manager is not None:
+                        await self._staged_manager.mark_rejected(
+                            staged_order_id,
+                            "entry admission exceeded timestamp freshness window",
+                        )
+                    raise RuntimeError(
+                        "Entry blocked: admission exceeded the timestamp freshness window"
+                    )
+        except asyncio.CancelledError:
+            # No transport handoff has occurred at this point.
+            if staged_order_id is not None and self._staged_manager is not None:
+                await self._staged_manager.mark_rejected(
+                    staged_order_id, "cancelled before submission"
+                )
+            raise
+
+    async def _place_market_order(
+        self,
+        symbol: str,
+        side: str,
         quantity: float | None = None,
         price: float | None = None,
     ) -> OrderInfo:
@@ -372,6 +468,8 @@ class TradingExecutor:
                         },
                     )
 
+            if side != "SELL":
+                await self._admit_spot_entry(symbol, staged_order_id)
             order = await self._client.place_market_order(
                 symbol=symbol, side=side, quantity=quantity
             )
@@ -517,7 +615,19 @@ class TradingExecutor:
     async def place_limit_order(
         self,
         symbol: str,
-        side: str,  # "BUY" or "SELL"
+        side: str,
+        price: float,
+        quantity: float | None = None,
+    ) -> OrderInfo:
+        if side == "SELL":
+            return await self._place_limit_order(symbol, side, price, quantity)
+        async with self._entry_lock:
+            return await self._place_limit_order(symbol, side, price, quantity)
+
+    async def _place_limit_order(
+        self,
+        symbol: str,
+        side: str,
         price: float,
         quantity: float | None = None,
     ) -> OrderInfo:
@@ -656,6 +766,8 @@ class TradingExecutor:
                         },
                     )
 
+            if side != "SELL":
+                await self._admit_spot_entry(symbol, staged_order_id)
             order = await self._client.place_limit_order(
                 symbol=symbol,
                 side=side,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -26,11 +27,17 @@ _AUTH_ERRORS = (
 _MAX_ATTEMPTS = 3
 _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
-_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 20.0  # reserve time for one alternate model
+_NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 45.0  # NVIDIA NIM free-tier latency is volatile:
+# measured 1-7s in healthy windows, 30-58s under throttle, and uncapped reasoning runs 90s+.
 # Catalog-verified NVIDIA chat endpoints; redundancy helps model-specific outages,
-# not shared NVIDIA account quota/auth failures.
+# not shared NVIDIA account quota/auth failures. Keep this list to live-tested IDs.
 _NVIDIA_FALLBACK_MODELS = ("nvidia/nemotron-3.5-bolt-e4b",)
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
+_COMMANDCODE_RESERVED_SECONDS = 10.0
+# Go privacy table, reviewed 2026-11-03: Beam is not used for training,
+# but is retained for 30 days. Unknown and training-enabled IDs are excluded.
+# https://opencode.ai/v2/docs/console/go#privacy
+_OPENCODE_APPROVED_FREE_MODELS = frozenset({"beam-free"})
 
 
 def _is_permanent_provider_error(exc: Exception) -> bool:
@@ -57,13 +64,14 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
 def _is_model_specific_nvidia_error(exc: Exception, *, sentiment: bool = False) -> bool:
     """Whether an NVIDIA response identifies the requested model as the issue.
 
-    In sentiment mode, a bounded request timeout or invalid payload can be
-    model-specific: try one alternate ID. 429, auth/permission, transport, and
-    generic service failures are provider/account-wide. Existing non-sentiment
-    chat keeps its previous model-failover behavior.
+    Only fast, explicit model faults qualify. In sentiment mode an invalid
+    payload also qualifies: a different model may satisfy the response contract.
+    Timeouts are not model-specific here: NVIDIA's free tier slows down as a
+    provider, so a swap cannot recover the request inside the chain budget.
+    429, auth/permission, transport, and generic service failures are likewise
+    provider/account-wide. Existing non-sentiment chat keeps its previous
+    model-failover behavior.
     """
-    if sentiment and isinstance(exc, openai.APITimeoutError):
-        return True
     if sentiment and isinstance(exc, ProviderResponseValidationError):
         return getattr(exc, "provider", None) == "nvidia"
 
@@ -119,7 +127,7 @@ class ChatResult:
     """LLM reply plus which provider and model actually answered."""
 
     content: str
-    provider: str  # xAI, xAI fallback, DeepSeek, Z.AI, OpenCode Go, Ollama, or NVIDIA
+    provider: str  # actual provider identity
     model: str
 
 
@@ -132,7 +140,7 @@ class ProviderResponseValidationError(ValueError):
         super().__init__(f"{provider} returned an invalid response")
 
 
-def _annotate_provider_error(exc: Exception, provider: str, model: str) -> None:
+def _annotate_provider_error(exc: BaseException, provider: str, model: str) -> None:
     """Preserve the provider/model that produced a final failed response."""
     if not getattr(exc, "provider", None):
         exc.provider = provider  # type: ignore[attr-defined]
@@ -161,6 +169,8 @@ class XAIClient:
         nvidia_api_key: str = "",
         nvidia_model: str = "minimaxai/minimax-m3.1-flash",
         nvidia_base_url: str = "https://integrate.api.nvidia.com/v1",
+        commandcode_api_key: str = "",
+        commandcode_model: str = "",
     ) -> None:
         self._provider = provider
         self._primary_name = {"deepseek": "DeepSeek", "zai": "Z.AI"}.get(provider, "xAI")
@@ -187,6 +197,14 @@ class XAIClient:
             self._opencode_client = AsyncOpenAI(
                 api_key=opencode_go_api_key,
                 base_url=opencode_go_base_url,
+                # The Go endpoint rejects every request without a session id
+                # (HTTP 400 MissingSessionID); a stable per-deployment id is
+                # enough for routing. Verified live 2026-10-31: same key,
+                # no header -> 400, header -> 200.
+                default_headers={
+                    "x-opencode-session": os.getenv("OPENCODE_GO_SESSION_ID", "").strip()
+                    or "crypto-agent-sentiment",
+                },
                 timeout=timeout_seconds,
                 max_retries=0,
             )
@@ -224,7 +242,37 @@ class XAIClient:
             else None
         )
         self._nvidia_model = nvidia_model
+        self._commandcode_client = (
+            AsyncOpenAI(
+                api_key=commandcode_api_key,
+                base_url="https://api.commandcode.ai/provider/v1",
+                timeout=timeout_seconds,
+                max_retries=0,
+            )
+            if commandcode_api_key.strip() and commandcode_model.strip()
+            else None
+        )
+        self._commandcode_model = commandcode_model.strip()
         self._logger = get_logger(self.__class__.__name__)
+
+    async def close(self) -> None:
+        """Close all owned provider transports after consumers have stopped."""
+        clients = (
+            self._client,
+            self._fallback_client,
+            self._opencode_client,
+            self._xai_fallback_client,
+            self._ollama_client,
+            self._nvidia_client,
+            self._commandcode_client,
+        )
+        results = await asyncio.gather(
+            *(client.close() for client in clients if client is not None),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                self._logger.warning("Provider client close failed (%s)", type(result).__name__)
 
     @property
     def provider(self) -> str:
@@ -278,20 +326,87 @@ class XAIClient:
         messages: Sequence[dict[str, str]],
         response_validator: Callable[[str], object],
     ) -> ChatResult:
+        command_available = self._commandcode_client is not None and self._provider_available(
+            "commandcode", honor_transient_cooldown=True
+        )
+        chain_timeout = asyncio.timeout(_SENTIMENT_CHAIN_TIMEOUT_SECONDS)
         try:
-            async with asyncio.timeout(_SENTIMENT_CHAIN_TIMEOUT_SECONDS):
-                return await self.chat(
-                    messages,
-                    response_validator=response_validator,
-                    max_attempts=1,
-                    request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+            async with chain_timeout:
+                prior_budget = max(
+                    0.0, _SENTIMENT_CHAIN_TIMEOUT_SECONDS - _COMMANDCODE_RESERVED_SECONDS
                 )
+                prior_timeout = asyncio.timeout(prior_budget if command_available else None)
+                try:
+                    # Reserve time for the last provider even if earlier calls hang.
+                    async with prior_timeout:
+                        return await self.chat(
+                            messages,
+                            response_validator=response_validator,
+                            max_attempts=1,
+                            request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+                            workload="sentiment",
+                        )
+                except TimeoutError as exc:
+                    if prior_timeout.expired():
+                        self._cooldown_timed_out_provider(exc)
+                    if not command_available:
+                        raise
+                except Exception:
+                    if not command_available:
+                        raise
+                return await self._chat_commandcode(messages, response_validator)
         except TimeoutError as exc:
+            if not chain_timeout.expired():
+                raise
+            self._cooldown_timed_out_provider(exc)
             error = TimeoutError(
                 f"Sentiment provider chain exceeded the {_SENTIMENT_CHAIN_TIMEOUT_SECONDS:.0f}s budget"
             )
-            _annotate_provider_error(error, "provider-chain", "chain")
-            raise error from exc
+            cause = exc.__cause__
+            _annotate_provider_error(
+                error,
+                getattr(cause, "provider", "provider-chain"),
+                getattr(cause, "model", "chain"),
+            )
+            raise error from None
+
+    def _cooldown_timed_out_provider(self, exc: TimeoutError) -> None:
+        """Only our own deadline, not caller cancellation, marks a provider slow."""
+        provider = getattr(exc.__cause__, "provider", None)
+        if provider:
+            provider = "primary" if provider == self._provider else provider
+            provider = "xai" if provider == "xai-fallback" else provider
+            self._record_provider_failure(provider, TimeoutError())
+
+    async def _chat_commandcode(
+        self, messages: Sequence[dict[str, str]], response_validator: Callable[[str], object]
+    ) -> ChatResult:
+        assert self._commandcode_client is not None
+        try:
+            content = await self._chat_with_client(
+                self._commandcode_client,
+                self._commandcode_model,
+                messages,
+                provider_name="Command Code",
+                # One bounded retry for intermittent 503s, not rate limits or timeouts.
+                max_attempts=2,
+                retry_503_only=True,
+                provider_id="commandcode",
+                response_validator=response_validator,
+                request_timeout=_SENTIMENT_REQUEST_TIMEOUT_SECONDS,
+            )
+            return ChatResult(
+                content=content, provider="commandcode", model=self._commandcode_model
+            )
+        except Exception as exc:
+            self._record_provider_failure("commandcode", exc)
+            self._logger.warning("Command Code fallback failed (%s)", _provider_error_summary(exc))
+            error = RuntimeError(f"Command Code fallback failed ({_provider_error_summary(exc)})")
+            status = getattr(exc, "status_code", None)
+            if isinstance(status, int):
+                error.status_code = status  # type: ignore[attr-defined]
+            _annotate_provider_error(error, "commandcode", self._commandcode_model)
+            raise error from None
 
     async def chat(
         self,
@@ -300,6 +415,7 @@ class XAIClient:
         response_validator: Callable[[str], object] | None = None,
         max_attempts: int = _MAX_ATTEMPTS,
         request_timeout: float | None = None,
+        workload: str = "general",
     ) -> ChatResult:
         use_transient_cooldown = response_validator is not None
         primary_error: Exception | None = None
@@ -338,8 +454,12 @@ class XAIClient:
                 )
 
         opencode_error: Exception | None = None
-        if self._opencode_client is not None and self._provider_available(
-            "opencode-go", honor_transient_cooldown=use_transient_cooldown
+        if (
+            workload == "sentiment"
+            and self._opencode_client is not None
+            and self._provider_available(
+                "opencode-go", honor_transient_cooldown=use_transient_cooldown
+            )
         ):
             try:
                 model = await self._resolve_opencode_free_model(request_timeout=request_timeout)
@@ -354,6 +474,9 @@ class XAIClient:
                     request_timeout=request_timeout,
                 )
                 return ChatResult(content=content, provider="opencode-go", model=model)
+            except asyncio.CancelledError as exc:
+                _annotate_provider_error(exc, "opencode-go", self._opencode_model or "catalog")
+                raise
             except Exception as exc:
                 opencode_error = exc
                 _annotate_provider_error(exc, "opencode-go", self._opencode_model or "catalog")
@@ -364,36 +487,18 @@ class XAIClient:
                     "OpenCode Go free-model fallback failed (%s)", _provider_error_summary(exc)
                 )
 
-        ollama_error: Exception | None = None
-        if self._ollama_client is not None and self._provider_available(
-            "ollama", honor_transient_cooldown=use_transient_cooldown
-        ):
-            try:
-                content = await self._chat_with_client(
-                    self._ollama_client,
-                    self._ollama_model,
-                    messages,
-                    provider_name="Ollama Cloud",
-                    max_attempts=max_attempts,
-                    provider_id="ollama",
-                    response_validator=response_validator,
-                    request_timeout=request_timeout,
-                )
-                return ChatResult(content=content, provider="ollama", model=self._ollama_model)
-            except Exception as exc:
-                ollama_error = exc
-                self._record_provider_failure(
-                    "ollama", exc, apply_transient_cooldown=use_transient_cooldown
-                )
-                self._logger.warning("Ollama fallback failed (%s)", _provider_error_summary(exc))
-
         nvidia_error: Exception | None = None
+        # NVIDIA sits ahead of Ollama: it's the only fallback that returns live
+        # answers in practice, while the Ollama Cloud free tier 429s on most calls.
+        # Requested per-request timeout is _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS;
+        # the chain-level budget (`prior_timeout`) still caps the total.
         if self._nvidia_client is not None and self._provider_available(
             "nvidia", honor_transient_cooldown=use_transient_cooldown
         ):
-            # Alternate only for explicit model-specific not-found/unsupported errors.
-            # 429, auth, transport, timeout, and generic service failures are account/
-            # provider-wide signals; retrying other IDs cannot fix those conditions.
+            # Alternate only for explicit model-specific faults: not-found/unsupported,
+            # or (for sentiment) an invalid payload. 429, auth, transport, timeout, and
+            # generic service failures are account/provider-wide; another ID cannot fix
+            # those, and the free tier throttles across models at once.
             candidates = tuple(dict.fromkeys((self._nvidia_model, *_NVIDIA_FALLBACK_MODELS)))
             for model in candidates:
                 try:
@@ -429,6 +534,29 @@ class XAIClient:
                     )
                     if not model_specific:
                         break
+
+        ollama_error: Exception | None = None
+        if self._ollama_client is not None and self._provider_available(
+            "ollama", honor_transient_cooldown=use_transient_cooldown
+        ):
+            try:
+                content = await self._chat_with_client(
+                    self._ollama_client,
+                    self._ollama_model,
+                    messages,
+                    provider_name="Ollama Cloud",
+                    max_attempts=max_attempts,
+                    provider_id="ollama",
+                    response_validator=response_validator,
+                    request_timeout=request_timeout,
+                )
+                return ChatResult(content=content, provider="ollama", model=self._ollama_model)
+            except Exception as exc:
+                ollama_error = exc
+                self._record_provider_failure(
+                    "ollama", exc, apply_transient_cooldown=use_transient_cooldown
+                )
+                self._logger.warning("Ollama fallback failed (%s)", _provider_error_summary(exc))
 
         xai_error: Exception | None = None
         if self._xai_fallback_client is not None and self._provider_available(
@@ -495,10 +623,10 @@ class XAIClient:
         raise error
 
     async def _resolve_opencode_free_model(self, *, request_timeout: float | None = None) -> str:
-        """Refresh the provider catalog once per UTC day and select only free IDs.
+        """Select only explicitly reviewed free IDs advertised by the Go catalog.
 
-        Fail closed when the provider no longer advertises a free model; never
-        silently fall back to a paid model from the same catalog.
+        Names do not establish either privacy or price. Never infer approval for
+        newly advertised models, and never substitute a paid model.
         """
         if self._opencode_client is None:
             raise RuntimeError("OpenCode Go is not configured")
@@ -506,25 +634,23 @@ class XAIClient:
         if self._opencode_model_date == today:
             if self._opencode_model:
                 return self._opencode_model
-            raise RuntimeError("OpenCode Go catalog has no advertised free models")
+            raise RuntimeError("OpenCode Go catalog has no approved free models")
         async with self._opencode_model_lock:
             if self._opencode_model_date == today:
                 if self._opencode_model:
                     return self._opencode_model
-                raise RuntimeError("OpenCode Go catalog has no advertised free models")
+                raise RuntimeError("OpenCode Go catalog has no approved free models")
             if request_timeout is None:
                 response = await self._opencode_client.models.list()
             else:
                 response = await self._opencode_client.models.list(timeout=request_timeout)
             model_ids = sorted(
-                model.id
-                for model in response.data
-                if re.search(r"(?:^|[-_.])free(?:$|[-_.])", model.id, re.IGNORECASE)
+                {model.id for model in response.data if model.id in _OPENCODE_APPROVED_FREE_MODELS}
             )
             if not model_ids:
                 self._opencode_model = None
                 self._opencode_model_date = today
-                raise RuntimeError("OpenCode Go catalog has no advertised free models")
+                raise RuntimeError("OpenCode Go catalog has no approved free models")
             # Deterministic daily choice rotates across whatever the live catalog
             # currently advertises, without pinning a model that may disappear.
             selected = model_ids[today.toordinal() % len(model_ids)]
@@ -548,6 +674,7 @@ class XAIClient:
         provider_id: str | None = None,
         response_validator: Callable[[str], object] | None = None,
         request_timeout: float | None = None,
+        retry_503_only: bool = False,
     ) -> str:
         chat_messages = cast(list[ChatCompletionMessageParam], list(messages))
         last_exc: Exception | None = None
@@ -580,6 +707,18 @@ class XAIClient:
                         max_tokens=256,
                         response_format={"type": "json_object"},
                     )
+                elif provider_id == "commandcode":
+                    # m3.1/beam-class models burn hundreds of tokens on hidden
+                    # reasoning before any content; a 256 cap yields finish=length
+                    # with empty content (verified live), so 2048 keeps enough
+                    # headroom for reasoning + the short JSON answer.
+                    completion = await client.chat.completions.create(
+                        model=model,
+                        messages=chat_messages,
+                        temperature=0.2,
+                        timeout=request_timeout,
+                        max_tokens=2048,
+                    )
                 else:
                     completion = await client.chat.completions.create(
                         model=model,
@@ -603,8 +742,13 @@ class XAIClient:
                             provider_id or provider_name, model
                         ) from exc
                 return content
+            except asyncio.CancelledError as exc:
+                _annotate_provider_error(exc, provider_id or provider_name, model)
+                raise
             except _RETRYABLE_ERRORS as exc:
-                if _is_permanent_provider_error(exc):
+                if _is_permanent_provider_error(exc) or (
+                    retry_503_only and getattr(exc, "status_code", None) != 503
+                ):
                     _annotate_provider_error(exc, provider_id or provider_name, model)
                     raise
                 last_exc = exc
@@ -618,7 +762,11 @@ class XAIClient:
                         delay,
                         _provider_error_summary(exc),
                     )
-                    await asyncio.sleep(delay)
+                    try:
+                        await asyncio.sleep(delay)
+                    except asyncio.CancelledError as exc:
+                        _annotate_provider_error(exc, provider_id or provider_name, model)
+                        raise
             except Exception as exc:
                 _annotate_provider_error(exc, provider_id or provider_name, model)
                 raise

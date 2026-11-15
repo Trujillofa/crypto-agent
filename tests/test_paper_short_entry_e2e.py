@@ -9,9 +9,14 @@ import pytest
 from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
 from src.features.reader import IndicatorReader
+from src.risk.entry_control import EntryControl
 from src.strategy.base import BaseStrategy
 from src.strategy.engine import EngineConfig, StrategyEngine
 from src.strategy.signals import Signal, SignalType
+
+
+async def _armed(_ids):
+    return [{"agent_id": "all", "armed": True, "reduce_only": False}]
 
 
 class _SellFromFlatStrategy(BaseStrategy):
@@ -72,6 +77,7 @@ def _paper_executor(*, allow_short_entry: bool) -> PaperExecutor:
             futures_leverage=3,
             allow_short_entry=allow_short_entry,
         ),
+        entry_control=EntryControl(fetch_rows=_armed),
         risk_manager=risk_manager,
         metrics=MagicMock(spec=ExecutionMetrics),
         notifier=notifier,

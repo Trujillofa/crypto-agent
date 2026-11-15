@@ -227,6 +227,10 @@ class StagedOrderManager:
         """
         async with self._lock:
             order = self._staged[order_id]
+            if order.stage is OrderStage.REJECTED:
+                # Keep the first reason: it names the step that actually refused
+                # the order, while later callers only know "something failed".
+                return order
             order.stage = OrderStage.REJECTED
             order.reject_reason = reason
 

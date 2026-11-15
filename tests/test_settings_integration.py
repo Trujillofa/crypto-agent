@@ -208,6 +208,8 @@ def test_zai_client_receives_configured_deepseek_fallback_without_enabling_opt_i
         nvidia_api_key=ai_settings.nvidia_api_key,
         nvidia_model=ai_settings.nvidia_model,
         nvidia_base_url=ai_settings.nvidia_base_url,
+        commandcode_api_key="",
+        commandcode_model=ai_settings.commandcode_model,
         xai_fallback_api_key="",
         xai_fallback_model=ai_settings.xai_fallback_model,
     )
@@ -544,7 +546,7 @@ async def test_wire_error_fallback_does_not_claim_grok_model():
     assert payload["provider"] == "xai"
     assert payload["model"] == "none"
     assert payload["score"] == 30.0
-    assert "API timeout" in str(payload["error"])
+    assert payload["error"] == "RuntimeError"
 
 
 @pytest.mark.asyncio
@@ -584,7 +586,7 @@ async def test_wire_records_deepseek_402_with_provider_and_model():
     assert payload["provider"] == "deepseek"
     assert payload["model"] == "deepseek-v4-pro"
     assert payload["score"] == 30.0
-    assert "402" in str(payload["error"])
+    assert payload["error"] == "RuntimeError"
 
 
 @pytest.mark.asyncio

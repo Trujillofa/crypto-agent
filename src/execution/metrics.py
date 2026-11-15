@@ -51,6 +51,29 @@ trading_active = Gauge(
     "execution_trading_active", "Whether trading is active (1=active, 0=inactive)"
 )
 
+# Durable entry brake (agent_control table). Read by the executor before every
+# entry order; published here so the coordinator can prove the agent honours it.
+entry_control_armed = Gauge(
+    "entry_control_armed", "1 when the durable entry brake allows new entries"
+)
+entry_control_reduce_only = Gauge(
+    "entry_control_reduce_only", "1 when the control row permits exits only"
+)
+entry_control_read_age_seconds = Gauge(
+    "entry_control_read_age_seconds", "Age of the last successful control read"
+)
+entry_control_checked = Gauge(
+    "entry_control_checked", "1 once the executor has actually consulted the brake"
+)
+
+# Unknown is not disarmed. A gauge defaults to 0, which would read as "inhibited"
+# before the first order of the day - the same lie as reporting $0.00 exposure for
+# a book that cannot be measured. NaN says "no measurement" instead.
+entry_control_armed.set(float("nan"))
+entry_control_reduce_only.set(float("nan"))
+entry_control_read_age_seconds.set(float("nan"))
+entry_control_fault = Gauge("entry_control_fault", "1 when the control row could not be read")
+
 # Counter for API errors
 api_errors_total = Counter(
     "execution_api_errors_total",
@@ -72,6 +95,16 @@ signals_total = Counter(
     ["symbol", "trading_mode", "signal_type"],
 )
 
+# Accounting gaps are not order failures: the exchange fill is final, but a
+# piece of local bookkeeping (fill price, PnL, balance) could not be resolved
+# and was deliberately deferred instead of being guessed. Publishing them
+# separately keeps "order FAILED" meaning "nothing executed".
+accounting_gaps_total = Counter(
+    "execution_accounting_gaps_total",
+    "Total number of post-fill bookkeeping gaps deferred instead of guessed",
+    ["symbol", "reason"],
+)
+
 
 class ExecutionMetrics:
     """Container for trading execution metrics."""
@@ -85,9 +118,31 @@ class ExecutionMetrics:
         self.realized_pnl = realized_pnl_total
         self.account_balance = account_balance
         self.trading_active = trading_active
+        self.entry_control_armed = entry_control_armed
+        self.entry_control_reduce_only = entry_control_reduce_only
+        self.entry_control_read_age = entry_control_read_age_seconds
+        self.entry_control_fault = entry_control_fault
+        self.entry_control_checked = entry_control_checked
         self.api_errors = api_errors_total
         self.risk_blocks = risk_blocks_total
         self.signals = signals_total
+        self.accounting_gaps = accounting_gaps_total
+
+    def record_entry_control(
+        self,
+        *,
+        armed: bool,
+        reduce_only: bool,
+        read_age_s: float | None,
+        fault: bool,
+    ) -> None:
+        """Publish what the executor actually believes about the brake."""
+        self.entry_control_checked.set(1)
+        self.entry_control_armed.set(1 if armed else 0)
+        self.entry_control_reduce_only.set(1 if reduce_only else 0)
+        self.entry_control_fault.set(1 if fault else 0)
+        if read_age_s is not None:
+            self.entry_control_read_age.set(read_age_s)
 
     def start_trading(self) -> None:
         """Mark trading as active."""
@@ -123,6 +178,15 @@ class ExecutionMetrics:
     def record_api_error(self, endpoint: str, error_code: str) -> None:
         """Record an API error."""
         self.api_errors.labels(endpoint=endpoint, error_code=error_code).inc()
+
+    def record_accounting_gap(self, symbol: str, reason: str) -> None:
+        """Record a deferred post-fill bookkeeping gap.
+
+        Use this instead of ``record_api_error``/``status="FAILED"`` when the
+        exchange fill already happened: the order did not fail, the local
+        accounting decision was postponed.
+        """
+        self.accounting_gaps.labels(symbol=symbol, reason=reason).inc()
 
     def record_signal(self, symbol: str, trading_mode: str, signal_type: str) -> None:
         self.signals.labels(

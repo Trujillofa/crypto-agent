@@ -49,23 +49,20 @@ ssh crypto-agent "cd /opt/crypto-agent && docker compose -f docker-compose.prod.
 ```
 
 **Break-glass SSH** (GitHub Actions unavailable only). Same contract as the workflow:
-pin SHA, abort before pull on mismatch, rebuild **all** `agent_*` via
-`docker-compose.prod.yml`, wait 120s, fail closed unless every agent is healthy.
-Do not build a single service. Do not use `docker-compose.yml`.
+pin SHA, abort before pull on mismatch, then rebuild **all** `agent_*` through
+`scripts/rebuild_prod_agents.sh`, which owns the Compose file set — including any
+host-enabled opt-in overlay. Wait 120s, fail closed unless every configured agent
+reports healthy. Do not build a single service. Do not use `docker-compose.yml`.
+Never invoke `docker compose -f docker-compose.prod.yml up` directly for agents: a
+base-only invocation recreates agents without an enabled overlay and silently drops
+the opt-in configuration.
 
 ```bash
 git fetch origin main
 SHA=$(git rev-parse origin/main)
 ssh crypto-agent "REQUESTED_SHA=$SHA DEPLOY_ROOT=/opt/crypto-agent bash -s" \
   < scripts/align_prod_checkout.sh
-ssh crypto-agent 'set -euo pipefail
-cd /opt/crypto-agent
-AGENTS=$(docker compose -f docker-compose.prod.yml config --services | grep "^agent_" | sort | tr "\n" " ")
-docker compose -f docker-compose.prod.yml build $AGENTS
-docker compose -f docker-compose.prod.yml up -d --remove-orphans $AGENTS
-sleep 120
-NOT_READY=$(docker compose -f docker-compose.prod.yml ps --format "{{.Service}} {{.Status}}" $AGENTS | grep -vE "\(healthy\)$" || true)
-if [ -n "$NOT_READY" ]; then echo "$NOT_READY"; exit 1; fi'
+ssh crypto-agent "DEPLOY_ROOT=/opt/crypto-agent bash /opt/crypto-agent/scripts/rebuild_prod_agents.sh"
 ```
 
 ## Architecture Surprises

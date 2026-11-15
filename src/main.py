@@ -21,6 +21,7 @@ from src.execution import (
     TradingConfig,
     TradingExecutor,
 )
+from src.execution.entry_admission import refresh
 from src.execution.metrics import ExecutionMetrics
 from src.execution.paper_executor import PaperExecutor, PaperTradingConfig
 from src.execution.reconciliation import (
@@ -39,6 +40,7 @@ from src.ingest.websocket import BinanceWebSocketIngestor
 from src.notifications.telegram import TelegramConfig, TelegramNotifier
 from src.overseer import OverseerAgent, XAIClient
 from src.portfolio import PortfolioManager
+from src.risk.entry_control import EntryControl
 from src.risk.guards import (
     CircuitBreakerGuard,
     CooldownGuard,
@@ -162,14 +164,22 @@ class AISettings:
     nvidia_api_key: str = ""
     nvidia_model: str = "minimaxai/minimax-m3.1-flash"
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    commandcode_api_key: str = field(default="", repr=False)
+    commandcode_enabled: bool = False
+    commandcode_model: str = ""
 
 
 def _opencode_go_key(settings: AISettings) -> str:
-    return settings.opencode_go_api_key if settings.opencode_go_enabled else ""
+    # An enable flag is not provider permission for non-coding traffic.
+    return ""
 
 
 def _xai_fallback_key(settings: AISettings) -> str:
     return settings.api_key if settings.xai_fallback_enabled else ""
+
+
+def _commandcode_key(settings: AISettings) -> str:
+    return settings.commandcode_api_key if settings.commandcode_enabled else ""
 
 
 def _build_zai_sentiment_client(settings: AISettings) -> XAIClient | None:
@@ -192,6 +202,8 @@ def _build_zai_sentiment_client(settings: AISettings) -> XAIClient | None:
         nvidia_api_key=settings.nvidia_api_key,
         nvidia_model=settings.nvidia_model,
         nvidia_base_url=settings.nvidia_base_url,
+        commandcode_api_key=_commandcode_key(settings),
+        commandcode_model=settings.commandcode_model,
         xai_fallback_api_key=_xai_fallback_key(settings),
         xai_fallback_model=settings.xai_fallback_model,
     )
@@ -538,6 +550,11 @@ def load_settings(config_path: Path) -> Settings:
         or "minimaxai/minimax-m3.1-flash",
         nvidia_base_url=os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").strip()
         or "https://integrate.api.nvidia.com/v1",
+        commandcode_api_key=os.getenv("COMMANDCODE_API_KEY", "").strip(),
+        commandcode_enabled=_as_bool(
+            os.getenv("COMMANDCODE_ENABLED"), "COMMANDCODE_ENABLED", default=False
+        ),
+        commandcode_model=os.getenv("COMMANDCODE_MODEL", "").strip(),
     )
 
     # Parse and validate futures configuration
@@ -943,6 +960,8 @@ def _wire_optional_strategy_dependencies(
             provider = "ollama"
         elif source.startswith("nvidia_nim"):
             provider = "nvidia"
+        elif source.startswith("commandcode"):
+            provider = "commandcode"
         elif source.startswith("xai"):
             provider = "xai"
         else:
@@ -1146,6 +1165,8 @@ async def run() -> None:
                     nvidia_model=settings.ai.nvidia_model,
                     nvidia_base_url=settings.ai.nvidia_base_url,
                     xai_fallback_api_key=_xai_fallback_key(settings.ai),
+                    commandcode_api_key=_commandcode_key(settings.ai),
+                    commandcode_model=settings.ai.commandcode_model,
                     xai_fallback_model=settings.ai.xai_fallback_model,
                 )
             else:
@@ -1168,6 +1189,8 @@ async def run() -> None:
                 nvidia_api_key=settings.ai.nvidia_api_key,
                 nvidia_model=settings.ai.nvidia_model,
                 nvidia_base_url=settings.ai.nvidia_base_url,
+                commandcode_api_key=_commandcode_key(settings.ai),
+                commandcode_model=settings.ai.commandcode_model,
             )
         else:
             logger.warning(
@@ -1212,6 +1235,9 @@ async def run() -> None:
         ]
     )
     staged_manager = StagedOrderManager(auto_commit=True)
+
+    entry_control = EntryControl(agent_id=settings.agent_id)
+    await refresh(entry_control, execution_metrics)
 
     if use_paper:
         # Internal paper trading — no Binance API calls for execution
@@ -1258,6 +1284,7 @@ async def run() -> None:
             event_log=event_log,
             guard_pipeline=guard_pipeline,
             staged_manager=staged_manager,
+            entry_control=entry_control,
         )
         get_logger("main").info("Paper mode: using internal PaperExecutor (no Binance API)")
     else:
@@ -1271,6 +1298,7 @@ async def run() -> None:
             event_log=event_log,
             guard_pipeline=guard_pipeline,
             staged_manager=staged_manager,
+            entry_control=entry_control,
         )
 
         if settings.futures and settings.futures.enabled:
@@ -1314,6 +1342,7 @@ async def run() -> None:
                 event_log=event_log,
                 guard_pipeline=guard_pipeline,
                 staged_manager=staged_manager,
+                entry_control=entry_control,
             )
 
             # Initialize futures mark price WebSocket
@@ -1686,6 +1715,7 @@ async def run() -> None:
             """Periodically probe the database for health status."""
             while True:
                 await update_health_status()
+                await refresh(entry_control, execution_metrics)
                 await asyncio.sleep(5)
 
         async def daily_summary_loop() -> None:
@@ -1803,6 +1833,8 @@ async def run() -> None:
             *indicator_tasks,
         )
 
+        if xai_client is not None:
+            await xai_client.close()
         await close_pool()
 
 

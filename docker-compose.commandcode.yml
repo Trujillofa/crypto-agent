@@ -1,0 +1,5 @@
+# Optional production overlay; the existing shared .env remains unchanged.
+services:
+  agent_sentiment_macro:
+    env_file:
+      - ${COMMANDCODE_ENV_FILE:-/etc/crypto-agent/commandcode.env}

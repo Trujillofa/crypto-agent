@@ -27,6 +27,10 @@ def _make_permission_denied() -> openai.PermissionDeniedError:
     return openai.PermissionDeniedError("forbidden", response=mock_response, body=None)
 
 
+def _make_timeout_error() -> openai.APITimeoutError:
+    return openai.APITimeoutError(request=MagicMock())
+
+
 def _make_insufficient_balance() -> openai.RateLimitError:
     mock_response = MagicMock()
     mock_response.status_code = 429
@@ -455,9 +459,25 @@ async def test_disabled_opencode_does_not_construct_catalog_client() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enabled_opencode_client_sends_session_header() -> None:
+    """The Go endpoint 400s (MissingSessionID) without x-opencode-session."""
+    fake_client = SimpleNamespace()
+    with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client) as mock_openai:
+        XAIClient(
+            api_key="primary-key",
+            model="primary-model",
+            provider="zai",
+            opencode_go_api_key="opencode-key",
+        )
+
+    _, kwargs = mock_openai.call_args
+    assert kwargs["default_headers"]["x-opencode-session"] == "crypto-agent-sentiment"
+
+
+@pytest.mark.asyncio
 async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
-    catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="free-model")]))
+    catalog_list = AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="beam-free")]))
     opencode_create = AsyncMock(return_value=_make_completion('{"score": 42}'))
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
@@ -481,14 +501,14 @@ async def test_sentiment_timeout_bounds_opencode_catalog_lookup() -> None:
             [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
         )
 
-    assert result == ChatResult(content='{"score": 42}', provider="opencode-go", model="free-model")
+    assert result == ChatResult(content='{"score": 42}', provider="opencode-go", model="beam-free")
     catalog_list.assert_awaited_once_with(timeout=10.0)
     assert opencode_create.await_args is not None
     assert opencode_create.await_args.kwargs["timeout"] == 10.0
 
 
 @pytest.mark.asyncio
-async def test_sentiment_nvidia_request_timeout_leaves_room_for_alternate() -> None:
+async def test_sentiment_gives_nvidia_a_longer_request_timeout() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     nvidia_create = AsyncMock(return_value=_make_completion('{"score": 67}'))
     clients = [
@@ -515,18 +535,15 @@ async def test_sentiment_nvidia_request_timeout_leaves_room_for_alternate() -> N
     assert primary_create.await_args is not None
     assert primary_create.await_args.kwargs["timeout"] == 10.0
     assert nvidia_create.await_args is not None
-    assert nvidia_create.await_args.kwargs["timeout"] == 20.0
+    assert nvidia_create.await_args.kwargs["timeout"] == 45.0
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["timeout", "invalid-json"])
-async def test_nvidia_model_specific_failure_uses_one_alternate_model(failure: str) -> None:
+async def test_sentiment_nvidia_invalid_response_uses_one_alternate_model() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     first_nvidia_create = AsyncMock(
         side_effect=[
-            openai.APITimeoutError(request=MagicMock())
-            if failure == "timeout"
-            else _make_completion("not-json"),
+            _make_completion("not-json"),
             _make_completion('{"score": 73}'),
         ]
     )
@@ -553,15 +570,42 @@ async def test_nvidia_model_specific_failure_uses_one_alternate_model(failure: s
     assert first_nvidia_create.await_count == 2
     assert first_nvidia_create.await_args_list[0].kwargs["model"] == "minimaxai/minimax-m3.1-flash"
     assert first_nvidia_create.await_args_list[1].kwargs["model"] == "nvidia/nemotron-3.5-bolt-e4b"
-    assert all(call.kwargs["timeout"] == 20.0 for call in first_nvidia_create.await_args_list)
+    assert all(call.kwargs["timeout"] == 45.0 for call in first_nvidia_create.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_sentiment_nvidia_timeout_does_not_try_another_model() -> None:
+    primary_create = AsyncMock(side_effect=_make_permission_denied())
+    nvidia_create = AsyncMock(side_effect=openai.APITimeoutError(request=MagicMock()))
+    clients = [
+        SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        for create in (primary_create, nvidia_create)
+    ]
+
+    with patch("src.overseer.xai.AsyncOpenAI", side_effect=clients):
+        client = XAIClient(
+            api_key="zai-key", model="glm-5.3-flash", provider="zai", nvidia_api_key="nvidia-key"
+        )
+        with pytest.raises(openai.APITimeoutError):
+            await client.chat_with_validator(
+                [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
+            )
+
+    assert nvidia_create.await_count == 1
+    assert not client._provider_available("nvidia")
 
 
 @pytest.mark.asyncio
 async def test_sentiment_nvidia_successful_alternate_does_not_cool_down_provider() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
+    model_not_found = openai.NotFoundError(
+        "Model is unavailable",
+        response=MagicMock(status_code=404, headers={}),
+        body={"error": {"message": "Model is unavailable"}},
+    )
     nvidia_create = AsyncMock(
         side_effect=[
-            openai.APITimeoutError(request=MagicMock()),
+            model_not_found,
             _make_completion('{"score": 73}'),
             _make_completion('{"score": 74}'),
         ]
@@ -638,8 +682,16 @@ async def test_nvidia_exhausted_model_specific_failures_cool_down_provider() -> 
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     nvidia_create = AsyncMock(
         side_effect=[
-            openai.APITimeoutError(request=MagicMock()),
-            openai.APITimeoutError(request=MagicMock()),
+            openai.NotFoundError(
+                "Model is unavailable",
+                response=MagicMock(status_code=404, headers={}),
+                body={"error": {"message": "Model is unavailable"}},
+            ),
+            openai.NotFoundError(
+                "Model is unavailable",
+                response=MagicMock(status_code=404, headers={}),
+                body={"error": {"message": "Model is unavailable"}},
+            ),
         ]
     )
     clients = [
@@ -651,7 +703,7 @@ async def test_nvidia_exhausted_model_specific_failures_cool_down_provider() -> 
         client = XAIClient(
             api_key="zai-key", model="glm-5.3-flash", provider="zai", nvidia_api_key="nvidia-key"
         )
-        with pytest.raises(openai.APITimeoutError):
+        with pytest.raises(openai.NotFoundError):
             await client.chat_with_validator(
                 [{"role": "user", "content": "sentiment"}], _decode_sentiment_score
             )
@@ -783,7 +835,7 @@ async def test_chat_uses_daily_discovered_opencode_free_fallback() -> None:
             base_url="https://api.z.ai/api/paas/v4",
             opencode_go_api_key="opencode-test-key",
         )
-        response = await client.chat([{"role": "user", "content": "ping"}])
+        response = await client.chat([{"role": "user", "content": "ping"}], workload="sentiment")
 
     assert response == ChatResult(
         content="free-fallback-ok", provider="opencode-go", model="beam-free"
@@ -801,7 +853,7 @@ async def test_opencode_catalog_refreshes_daily_and_never_selects_paid_models() 
     model_list = AsyncMock(
         side_effect=[
             SimpleNamespace(data=[SimpleNamespace(id="beam-free"), SimpleNamespace(id="paid")]),
-            SimpleNamespace(data=[SimpleNamespace(id="new-free-model")]),
+            SimpleNamespace(data=[SimpleNamespace(id="beam-free"), SimpleNamespace(id="paid")]),
         ]
     )
     fake_client = SimpleNamespace(
@@ -823,7 +875,7 @@ async def test_opencode_catalog_refreshes_daily_and_never_selects_paid_models() 
         second = await client._resolve_opencode_free_model()
 
     assert first == "beam-free"
-    assert second == "new-free-model"
+    assert second == "beam-free"
     assert model_list.await_count == 2
 
 
@@ -832,7 +884,21 @@ async def test_opencode_catalog_without_free_models_fails_closed() -> None:
     fake_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock())),
         models=SimpleNamespace(
-            list=AsyncMock(return_value=SimpleNamespace(data=[SimpleNamespace(id="paid-model")]))
+            list=AsyncMock(
+                return_value=SimpleNamespace(
+                    data=[
+                        SimpleNamespace(id=i)
+                        for i in (
+                            "paid-model",
+                            "unknown-free",
+                            "iceman-contributor-free",
+                            "mimo-v2.6-flash-free",
+                            "BEAM-FREE",
+                            "beam-free-extra",
+                        )
+                    ]
+                )
+            )
         ),
     )
     with patch("src.overseer.xai.AsyncOpenAI", return_value=fake_client):
@@ -842,9 +908,9 @@ async def test_opencode_catalog_without_free_models_fails_closed() -> None:
             provider="zai",
             opencode_go_api_key="opencode-test-key",
         )
-        with pytest.raises(RuntimeError, match="no advertised free models"):
+        with pytest.raises(RuntimeError, match="no approved free models"):
             await client._resolve_opencode_free_model()
-        with pytest.raises(RuntimeError, match="no advertised free models"):
+        with pytest.raises(RuntimeError, match="no approved free models"):
             await client._resolve_opencode_free_model()
 
     fake_client.models.list.assert_awaited_once()
@@ -880,7 +946,7 @@ async def test_zai_tries_opencode_then_xai_fallback() -> None:
             opencode_go_api_key="opencode-test-key",
             xai_fallback_api_key="xai-test-key",
         )
-        response = await client.chat([{"role": "user", "content": "ping"}])
+        response = await client.chat([{"role": "user", "content": "ping"}], workload="sentiment")
 
     assert response == ChatResult(
         content="xai-fallback-ok", provider="xai-fallback", model="grok-4-1-fast-reasoning"
@@ -913,8 +979,8 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
                 provider="zai",
                 opencode_go_api_key="opencode-test-key",
             )
-            first = await client.chat([{"role": "user", "content": "one"}])
-            second = await client.chat([{"role": "user", "content": "two"}])
+            first = await client.chat([{"role": "user", "content": "one"}], workload="sentiment")
+            second = await client.chat([{"role": "user", "content": "two"}], workload="sentiment")
 
     assert first.provider == "opencode-go"
     assert second.provider == "opencode-go"
@@ -925,7 +991,7 @@ async def test_primary_insufficient_balance_skips_retries_and_opencode_model_lis
 
 
 @pytest.mark.asyncio
-async def test_zai_falls_back_to_ollama_cloud_before_nvidia_nim() -> None:
+async def test_zai_falls_back_to_nvidia_nim_before_ollama_cloud() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
@@ -952,23 +1018,27 @@ async def test_zai_falls_back_to_ollama_cloud_before_nvidia_nim() -> None:
         )
         response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(content="ollama-answer", provider="ollama", model="gemma4:31b")
+    assert response == ChatResult(
+        content="nvidia-answer",
+        provider="nvidia",
+        model="minimaxai/minimax-m3.1-flash",
+    )
     primary_create.assert_awaited_once()
-    ollama_create.assert_awaited_once()
-    nvidia_create.assert_not_awaited()
+    nvidia_create.assert_awaited_once()
+    ollama_create.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
+async def test_ollama_cloud_fallback_is_used_when_nvidia_fails() -> None:
     primary_create = AsyncMock(side_effect=_make_permission_denied())
     primary_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=primary_create))
     )
-    ollama_create = AsyncMock(side_effect=_make_permission_denied())
+    ollama_create = AsyncMock(return_value=_make_completion("ollama-answer"))
     ollama_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=ollama_create))
     )
-    nvidia_create = AsyncMock(return_value=_make_completion("nvidia-answer"))
+    nvidia_create = AsyncMock(side_effect=_make_permission_denied())
     nvidia_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=nvidia_create))
     )
@@ -986,20 +1056,11 @@ async def test_nvidia_nim_fallback_is_used_when_ollama_fails() -> None:
         )
         response = await client.chat([{"role": "user", "content": "ping"}])
 
-    assert response == ChatResult(
-        content="nvidia-answer",
-        provider="nvidia",
-        model="minimaxai/minimax-m3.1-flash",
-    )
-    ollama_create.assert_awaited_once()
+    assert response == ChatResult(content="ollama-answer", provider="ollama", model="gemma4:31b")
     nvidia_create.assert_awaited_once()
+    ollama_create.assert_awaited_once()
 
-
-def _make_http_error(error_type, status: int):
-    response = MagicMock()
-    response.status_code = status
-    response.headers = {}
-    return error_type("model unavailable", response=response, body=None)
+    ollama_create.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ SENTIMENT_ANSWERED_SOURCES = frozenset(
         "opencode_go_free_live",
         "ollama_cloud_live",
         "nvidia_nim_live",
+        "commandcode_live",
     }
 )
 SENTIMENT_ERROR_SOURCES = frozenset({"xai_error_fallback", "error_fallback"})
