@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -28,6 +29,9 @@ _TRANSIENT_PROVIDER_COOLDOWN = timedelta(seconds=120)
 _SENTIMENT_REQUEST_TIMEOUT_SECONDS = 10.0
 _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS = 45.0  # NVIDIA NIM free-tier latency is volatile:
 # measured 1-7s in healthy windows, 30-58s under throttle, and uncapped reasoning runs 90s+.
+# Catalog-verified NVIDIA chat endpoints; redundancy helps model-specific outages,
+# not shared NVIDIA account quota/auth failures. Keep this list to live-tested IDs.
+_NVIDIA_FALLBACK_MODELS = ("nvidia/nemotron-3.5-bolt-e4b",)
 _SENTIMENT_CHAIN_TIMEOUT_SECONDS = 50.0  # leaves headroom in the 60s poll cycle
 _COMMANDCODE_RESERVED_SECONDS = 10.0
 # Go privacy table, reviewed 2026-11-03: Beam is not used for training,
@@ -53,6 +57,59 @@ def _is_permanent_provider_error(exc: Exception) -> bool:
             "credits exhausted",
             "spending limit",
             "billing limit",
+        )
+    )
+
+
+def _is_model_specific_nvidia_error(exc: Exception, *, sentiment: bool = False) -> bool:
+    """Whether an NVIDIA response identifies the requested model as the issue.
+
+    Only fast, explicit model faults qualify. In sentiment mode an invalid
+    payload also qualifies: a different model may satisfy the response contract.
+    Timeouts are not model-specific here: NVIDIA's free tier slows down as a
+    provider, so a swap cannot recover the request inside the chain budget.
+    429, auth/permission, transport, and generic service failures are likewise
+    provider/account-wide. Existing non-sentiment chat keeps its previous
+    model-failover behavior.
+    """
+    if sentiment and isinstance(exc, ProviderResponseValidationError):
+        return getattr(exc, "provider", None) == "nvidia"
+
+    status_code = getattr(exc, "status_code", None)
+    if status_code not in {400, 404}:
+        return False
+
+    # OpenAI SDK status errors retain the original response object. Prefer the
+    # parsed error body when available, but include the exception text because
+    # NVIDIA's 404s can identify a missing model as "Function ... Not found
+    # for account ..." rather than as a conventional model-not-found message.
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict):
+            details = " ".join(str(error.get(key, "")) for key in ("code", "type", "message"))
+        else:
+            details = str(error)
+    else:
+        details = ""
+    details = f"{details} {exc}".lower()
+
+    if status_code == 404 and re.search(r"function\s+.+?\s+not found for account\b", details):
+        return True
+    return any(
+        marker in details
+        for marker in (
+            "model not found",
+            "model does not exist",
+            "unknown model",
+            "unsupported model",
+            "model is not supported",
+            "model not available",
+            "model is unavailable",
+            "model unavailable",
+            "invalid model",
+            "model_not_found",
+            "model_not_supported",
         )
     )
 
@@ -438,30 +495,45 @@ class XAIClient:
         if self._nvidia_client is not None and self._provider_available(
             "nvidia", honor_transient_cooldown=use_transient_cooldown
         ):
-            try:
-                content = await self._chat_with_client(
-                    self._nvidia_client,
-                    self._nvidia_model,
-                    messages,
-                    provider_name="NVIDIA NIM",
-                    max_attempts=max_attempts,
-                    provider_id="nvidia",
-                    response_validator=response_validator,
-                    request_timeout=(
-                        max(request_timeout, _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS)
-                        if request_timeout is not None
-                        else None
-                    ),
-                )
-                return ChatResult(content=content, provider="nvidia", model=self._nvidia_model)
-            except Exception as exc:
-                nvidia_error = exc
-                self._record_provider_failure(
-                    "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
-                )
-                self._logger.warning(
-                    "NVIDIA NIM fallback failed (%s)", _provider_error_summary(exc)
-                )
+            # Alternate only for explicit model-specific faults: not-found/unsupported,
+            # or (for sentiment) an invalid payload. 429, auth, transport, timeout, and
+            # generic service failures are account/provider-wide; another ID cannot fix
+            # those, and the free tier throttles across models at once.
+            candidates = tuple(dict.fromkeys((self._nvidia_model, *_NVIDIA_FALLBACK_MODELS)))
+            for model in candidates:
+                try:
+                    content = await self._chat_with_client(
+                        self._nvidia_client,
+                        model,
+                        messages,
+                        provider_name="NVIDIA NIM",
+                        max_attempts=max_attempts,
+                        provider_id="nvidia",
+                        response_validator=response_validator,
+                        request_timeout=(
+                            max(request_timeout, _NVIDIA_SENTIMENT_REQUEST_TIMEOUT_SECONDS)
+                            if request_timeout is not None
+                            else None
+                        ),
+                    )
+                    return ChatResult(content=content, provider="nvidia", model=model)
+                except Exception as exc:
+                    nvidia_error = exc
+                    model_specific = _is_model_specific_nvidia_error(
+                        exc, sentiment=response_validator is not None
+                    )
+                    # A model-specific failure is not provider-wide: defer cooldown
+                    # until every configured model has failed. Account/quota and
+                    # other provider-wide failures still cool down immediately.
+                    if not model_specific or model == candidates[-1]:
+                        self._record_provider_failure(
+                            "nvidia", exc, apply_transient_cooldown=use_transient_cooldown
+                        )
+                    self._logger.warning(
+                        "NVIDIA NIM model %s failed (%s)", model, _provider_error_summary(exc)
+                    )
+                    if not model_specific:
+                        break
 
         ollama_error: Exception | None = None
         if self._ollama_client is not None and self._provider_available(

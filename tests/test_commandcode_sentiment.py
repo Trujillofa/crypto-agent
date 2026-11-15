@@ -161,7 +161,18 @@ async def test_full_fallback_order() -> None:
         assert (
             await client.chat_with_validator([], _decode_sentiment_score)
         ).provider == "commandcode"
-    assert order == ["primary", "opencode", "nvidia", "ollama", "xai", "deepseek", "commandcode"]
+    assert order == [
+        "primary",
+        "opencode",
+        "nvidia",
+        # Invalid payloads are model-specific, so the configured model and its
+        # one verified alternate are both attempted before the provider cools down.
+        "nvidia",
+        "ollama",
+        "xai",
+        "deepseek",
+        "commandcode",
+    ]
 
 
 async def test_no_key_and_general_chat_do_not_attempt_paid_fallback() -> None:
