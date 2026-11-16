@@ -2,9 +2,26 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
+
+
+def _bar_clock(value: object) -> datetime | None:
+    """Normalize ISO/datetime bar clocks to UTC; reject unorderable clocks."""
+    if isinstance(value, datetime):
+        clock = value
+    elif isinstance(value, str):
+        try:
+            clock = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    else:
+        return None
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=UTC)
+    return clock.astimezone(UTC)
 
 
 @dataclass(frozen=True)
@@ -126,17 +143,47 @@ class TrendPullbackStrategy(BaseStrategy):
             bar_time=bar_time, rsi=rsi_14, macd_hist=macd_hist, close=close_price
         )
         seen_bar = self._seen_bar.get(symbol)
+        clock = _bar_clock(bar_time) if bar_time is not None else None
+        seen_clock = (
+            _bar_clock(seen_bar.bar_time)
+            if seen_bar is not None and seen_bar.bar_time is not None
+            else None
+        )
+        if (bar_time is not None and clock is None) or (
+            bar_time is None and seen_clock is not None
+        ):
+            return Signal(
+                type=SignalType.HOLD,
+                symbol=symbol,
+                price=close_price,
+                confidence=0.0,
+                reason="Invalid or missing bar clock after timed evaluation",
+                indicators={},
+            )
+        if clock is not None and seen_clock is not None and clock < seen_clock:
+            # Never emit a trade or mutate any state for an out-of-order poll.
+            return Signal(
+                type=SignalType.HOLD,
+                symbol=symbol,
+                price=close_price,
+                confidence=0.0,
+                reason="Ignoring older trend pullback bar",
+                indicators={},
+            )
         if bar_time is None:
             # No clock: the last evaluation is the best available reference.
             reference_bar = seen_bar if seen_bar is not None else current_bar
             self._seen_bar[symbol] = current_bar
-        elif seen_bar is None:
-            # First bar observed: nothing to compare against, so compare against itself.
+        elif seen_bar is None or seen_clock is None:
+            # A timed sequence starts fresh rather than comparing to an untimed bar.
             reference_bar = current_bar
+            self._previous_bar.pop(symbol, None)
             self._seen_bar[symbol] = current_bar
-        elif seen_bar.bar_time == bar_time:
-            # Repeated evaluation of the same closed bar: keep the reference bar fixed.
+        elif seen_clock == clock:
+            # Keep the previous reference fixed, but retain the latest corrected snapshot
+            # so the next bar compares against the latest values for this bar.
             reference_bar = self._previous_bar.get(symbol, current_bar)
+            self._seen_bar[symbol] = current_bar
         else:
             # A new bar closed: last bar becomes the reference for this one.
             reference_bar = seen_bar
