@@ -162,3 +162,50 @@ async def test_mixed_clock_offsets_are_sorted_and_equal_instants_keep_log_order(
     assert await replay.get_score("SOLUSDT", "2024-01-01T00:59:59Z") == 70
     assert await replay.get_score("SOLUSDT", "2024-01-01T01:00:00Z") == 75
     assert replay.stats()["loaded_observations"] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad", [float("nan"), float("inf"), float("-inf"), 101, -1, True, None, "bad", "1e999"]
+)
+async def test_invalid_score_starts_gap_until_valid_recovery(tmp_path, bad):
+    replay = scorer(tmp_path, [event(0, 70), event(1, bad), event(2, 90)], fallback_score=48)
+    assert await replay.get_score("SOLUSDT", BASE) == 70
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 48
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=2)) == 90
+
+
+@pytest.mark.asyncio
+async def test_decode_error_discards_partial_timeline_including_latest_lookup(tmp_path):
+    path = tmp_path / "broken.jsonl"
+    # Exceed the text decoder's buffer so one event is processed before failure.
+    path.write_bytes((json.dumps(event(0, 70)) + "\n" + " " * 10000 + "\n").encode() + b"\xff\n")
+    replay = ReplaySentimentScorer(path, fallback_score=48)
+    assert replay.stats()["loaded_observations"] == 0
+    assert await replay.get_score("SOLUSDT") == 48
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 48
+
+
+@pytest.mark.asyncio
+async def test_replay_gap_neutral_is_not_live_degradation_buy_veto(tmp_path):
+    from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
+    from src.strategy.signals import SignalType
+
+    class DegradedScorer:
+        degraded = True
+
+        async def get_score(self, symbol):
+            return 50
+
+    indicators = {
+        "time": BASE,
+        "close_price": 100,
+        "rsi_14": 20,
+        "bb_lower_dist": 0,
+        "bb_upper_dist": 1,
+    }
+    strategy = SentimentMeanReversionStrategy({"volatility_regime_filter": False})
+    strategy.set_scorer(scorer(tmp_path, [event(0, None, "error_fallback")]))
+    assert (await strategy.evaluate("SOLUSDT", indicators)).type == SignalType.BUY
+    strategy.set_scorer(DegradedScorer())
+    assert (await strategy.evaluate("SOLUSDT", indicators)).type == SignalType.HOLD

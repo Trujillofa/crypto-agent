@@ -250,3 +250,40 @@ async def test_engine_replay_uses_candle_clock_not_latest_future_score(tmp_path:
     rows = [{"time": f"2024-01-01T0{hour}:00:00+00:00", "close_price": 100.0} for hour in range(4)]
     await BacktestEngine(config, _build_reader(rows)).run()
     assert observed == [70, 50, 50, 90]
+
+
+@pytest.mark.asyncio
+async def test_parity_replay_currently_uses_open_not_close_clock(tmp_path: Path) -> None:
+    observed = []
+
+    class CapturingStrategy(SentimentMeanReversionStrategy):
+        async def evaluate(self, symbol, indicators):
+            observed.append(await self._get_sentiment(symbol, indicators))
+            return Signal(SignalType.HOLD, symbol, indicators["close_price"], 0.0, "Hold", {})
+
+    log = tmp_path / "events.jsonl"
+    log.write_text(
+        "\n".join(
+            json.dumps({"type": "sentiment_score", "ts": ts, "payload": payload})
+            for ts, payload in [
+                ("2024-01-01T00:00:00Z", {"symbol": "SOLUSDT", "score": 70}),
+                ("2024-01-01T00:30:00Z", {"symbol": "SOLUSDT", "source": "error_fallback"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config = BacktestConfig(
+        symbol="SOLUSDT",
+        timeframe="1h",
+        start_date="2024-01-01",
+        end_date="2024-01-02",
+        strategy_classes=[CapturingStrategy],
+        replay_sentiment_path=str(log),
+        execution_profile="execution_parity_v2",
+    )
+    rows = [
+        {"time": f"2024-01-01T0{hour}:00:00+00:00", "close_price": 100.0, "open_price": 100.0}
+        for hour in range(2)
+    ]
+    await BacktestEngine(config, _build_reader(rows)).run()
+    assert observed == [70, 50]

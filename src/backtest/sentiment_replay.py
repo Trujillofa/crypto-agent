@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from bisect import bisect_right
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -25,7 +26,7 @@ class ReplaySentimentScorer:
     """Replays persisted sentiment_score observations from the event log.
 
     Looks up the most recent score at or before the requested candle timestamp for a symbol.
-    Error-source observations start a gap until the next usable observation;
+    Error-source or invalid-score observations start a gap until the next usable observation;
     they never carry their synthetic score or an older score forward. Missing
     sources and non-error sources retain their historical replay behavior.
     Falls back to neutral 50.0 (or the configured fallback) during a gap or
@@ -56,6 +57,7 @@ class ReplaySentimentScorer:
             return
 
         loaded = 0
+        timeline: dict[str, list[tuple[datetime, float | None]]] = defaultdict(list)
         try:
             with self._path.open(encoding="utf-8") as handle:
                 for line in handle:
@@ -82,18 +84,30 @@ class ReplaySentimentScorer:
                         dt = _utc_timestamp(ts)
                         if is_error:
                             val = None
-                        elif score is not None:
-                            val = float(score)
                         else:
-                            continue
+                            try:
+                                val = (
+                                    float(score)
+                                    if isinstance(score, (int, float, str))
+                                    and not isinstance(score, bool)
+                                    else None
+                                )
+                                if val is not None and (
+                                    not math.isfinite(val) or not 0 <= val <= 100
+                                ):
+                                    val = None
+                            except (ValueError, TypeError, OverflowError):
+                                val = None
                     except (ValueError, TypeError, OverflowError):
                         continue
-                    self._timeline[str(symbol)].append((dt, val))
+                    timeline[str(symbol)].append((dt, val))
                     loaded += 1
 
-            for symbol, items in self._timeline.items():
+            for symbol, items in timeline.items():
                 items.sort(key=lambda x: x[0])
                 self._timestamps[symbol] = [ts for ts, _ in items]
+
+            self._timeline = timeline
 
             self._logger.info(
                 "Loaded %d replay sentiment observations across %d symbols from %s",
@@ -102,6 +116,8 @@ class ReplaySentimentScorer:
                 self._path,
             )
         except Exception as exc:  # noqa: BLE001
+            self._timeline.clear()
+            self._timestamps.clear()
             self._logger.error("Failed to load replay sentiment log %s: %s", self._path, exc)
 
     async def get_score_for_candle(self, symbol: str, at_time: datetime | str | None) -> float:
