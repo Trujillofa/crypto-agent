@@ -49,7 +49,8 @@ If someone tries to skip straight to step 4, the repo will not stop them from ma
 ### Monitoring & Notifications
 - Prometheus metrics server
 - Telegram notifications and summaries
-- optional xAI-powered overseer / sentiment hooks
+- optional multi-provider LLM overseer / sentiment hooks (Z.AI primary for
+  sentiment-macro; see `docs/sentiment-provider-chain.md`)
 - startup diagnostics and health updates
 
 ## Current Runtime Shape

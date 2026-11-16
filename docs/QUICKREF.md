@@ -55,6 +55,7 @@ curl http://localhost:8000/metrics  # Local metrics
 | Execution | `src/execution/executor.py` |
 | Risk Manager | `src/risk/manager.py` |
 | Telegram | `src/notifications/telegram.py` |
+| Sentiment providers | `docs/sentiment-provider-chain.md` |
 | Backtest | `scripts/run_backtest.py` |
 | Math models (PARKED contingency) | `docs/MATH_MODELS_ROADMAP.md` |
 

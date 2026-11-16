@@ -8,7 +8,9 @@ to capacity; the successful probe does not guarantee stable availability, future
 or capacity. Verify compatibility and cost before opting in. It is used only after other
 providers fail, not for general overseer chat.
 The 50-second sentiment chain reserves its final ten seconds for Command Code when
-available; earlier providers may be interrupted.
+available; earlier providers may be interrupted. Command Code is the last step in the
+sentiment provider chain — see [sentiment-provider-chain.md](./sentiment-provider-chain.md)
+for the complete order, budgets, NVIDIA model fallback, and cooldown rules.
 
 ## Future rollout, only after explicit approval
 
@@ -57,5 +59,5 @@ startup or forced termination is not guaranteed to run this cleanup.
 Rollback requires removing the marker and performing an approved base-only rebuild
 which recreates the sentiment service without the overlay; then revoke the key and
 remove the env file and any retained copies as appropriate. Removing the file or marker
-alone does not erase the environment of an existing container. This document and
-uncommitted overlay do not modify a running deployment.
+alone does not erase the environment of an existing container. This document and the
+committed overlay do not modify a running deployment on their own.

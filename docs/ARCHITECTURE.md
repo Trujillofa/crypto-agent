@@ -141,7 +141,8 @@ Directories:
 Responsibilities:
 - Telegram notifications
 - daily summaries
-- optional xAI-powered overseer / sentiment support
+- optional multi-provider LLM overseer / sentiment support (Z.AI primary for
+  sentiment-macro; see `sentiment-provider-chain.md`)
 
 Key files:
 - `notifications/telegram.py`

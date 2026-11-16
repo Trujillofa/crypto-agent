@@ -69,8 +69,9 @@ def _is_model_specific_nvidia_error(exc: Exception, *, sentiment: bool = False) 
     Timeouts are not model-specific here: NVIDIA's free tier slows down as a
     provider, so a swap cannot recover the request inside the chain budget.
     429, auth/permission, transport, and generic service failures are likewise
-    provider/account-wide. Existing non-sentiment chat keeps its previous
-    model-failover behavior.
+    provider/account-wide. Non-sentiment chat attempts the alternate only for the
+    explicit 400/404 model errors; sentiment additionally treats an invalid payload
+    as model-specific.
     """
     if sentiment and isinstance(exc, ProviderResponseValidationError):
         return getattr(exc, "provider", None) == "nvidia"
