@@ -66,9 +66,11 @@ class ReplaySentimentScorer:
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if event.get("type") != "sentiment_score":
+                    if not isinstance(event, dict) or event.get("type") != "sentiment_score":
                         continue
-                    payload = event.get("payload", {}) or {}
+                    payload = event.get("payload")
+                    if not isinstance(payload, dict):
+                        continue
                     symbol = payload.get("symbol")
                     score = payload.get("score")
                     source = payload.get("source")
@@ -84,7 +86,7 @@ class ReplaySentimentScorer:
                             val = float(score)
                         else:
                             continue
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError, OverflowError):
                         continue
                     self._timeline[str(symbol)].append((dt, val))
                     loaded += 1

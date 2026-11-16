@@ -108,6 +108,37 @@ async def test_same_timestamp_last_event_wins_and_stale_boundary(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_row",
+    [
+        None,
+        [],
+        "text",
+        42,
+        {"type": "sentiment_score", "payload": ["invalid"]},
+        {"type": "sentiment_score", "payload": "invalid"},
+        {"type": "sentiment_score", "payload": 42},
+        {
+            "type": "sentiment_score",
+            "ts": "0001-01-01T00:00:00+14:00",
+            "payload": {"symbol": "SOLUSDT", "source": "error_fallback"},
+        },
+        {
+            "type": "sentiment_score",
+            "ts": "9999-12-31T23:59:59-14:00",
+            "payload": {"symbol": "SOLUSDT", "score": 80},
+        },
+    ],
+)
+async def test_malformed_rows_do_not_abort_or_corrupt_timeline(tmp_path, bad_row):
+    # Out-of-order valid rows also prove the loader finalized its sorted index.
+    replay = scorer(tmp_path, [event(2, 90), bad_row, event(0, 70)])
+    assert replay.stats()["loaded_observations"] == 2
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 70
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=3)) == 90
+
+
+@pytest.mark.asyncio
 async def test_strategy_clock_never_falls_through_to_future_sentiment(tmp_path):
     from src.strategy.sentiment_mean_reversion import SentimentMeanReversionStrategy
 
