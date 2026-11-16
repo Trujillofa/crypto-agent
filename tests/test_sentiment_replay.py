@@ -25,6 +25,12 @@ def scorer(tmp_path, rows, **kwargs):
     return ReplaySentimentScorer(path, **kwargs)
 
 
+def raw_scorer(tmp_path, text, **kwargs):
+    path = tmp_path / "events.jsonl"
+    path.write_text(text, encoding="utf-8")
+    return ReplaySentimentScorer(path, **kwargs)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["error_fallback", "xai_error_fallback"])
 @pytest.mark.parametrize("max_age", [None, 3600])
@@ -65,6 +71,7 @@ async def test_gap_latest_no_timestamp_symbols_and_missing_error_score(tmp_path)
         "stale_misses": 0,
         "loaded_symbols": 2,
         "loaded_observations": 3,
+        "tainted_symbols": 0,
     }
 
 
@@ -120,11 +127,6 @@ async def test_same_timestamp_last_event_wins_and_stale_boundary(tmp_path):
         {"type": "sentiment_score", "payload": 42},
         {
             "type": "sentiment_score",
-            "ts": "0001-01-01T00:00:00+14:00",
-            "payload": {"symbol": "SOLUSDT", "source": "error_fallback"},
-        },
-        {
-            "type": "sentiment_score",
             "ts": "9999-12-31T23:59:59-14:00",
             "payload": {"symbol": "SOLUSDT", "score": 80},
         },
@@ -132,6 +134,9 @@ async def test_same_timestamp_last_event_wins_and_stale_boundary(tmp_path):
 )
 async def test_malformed_rows_do_not_abort_or_corrupt_timeline(tmp_path, bad_row):
     # Out-of-order valid rows also prove the loader finalized its sorted index.
+    # An error-source row with an unusable timestamp is not in this list: it cannot be
+    # placed in time, so it conservatively extends the gap past the newest durable
+    # observation instead of being dropped (see the tail-gap regressions below).
     replay = scorer(tmp_path, [event(2, 90), bad_row, event(0, 70)])
     assert replay.stats()["loaded_observations"] == 2
     assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 70
@@ -236,3 +241,139 @@ async def test_replay_gap_neutral_is_not_live_degradation_buy_veto(tmp_path):
     assert (await strategy.evaluate("SOLUSDT", indicators)).type == SignalType.BUY
     strategy.set_scorer(DegradedScorer())
     assert (await strategy.evaluate("SOLUSDT", indicators)).type == SignalType.HOLD
+
+
+@pytest.mark.asyncio
+async def test_torn_error_tail_without_newline_gaps_every_symbol(tmp_path):
+    # EventLog always terminates a record with "\n", so an undecodable final line is a
+    # torn append whose symbol/time is unknowable: the pre-tail score must not survive.
+    torn = json.dumps(event(1, 30, "error_fallback"))[:40]
+    replay = raw_scorer(
+        tmp_path, json.dumps(event(0, 70, "xai_live")) + "\n" + torn, fallback_score=48
+    )
+    assert replay.stats()["loaded_observations"] == 1
+    assert replay.stats()["tainted_symbols"] == 1
+    assert [
+        await replay.get_score("SOLUSDT", BASE + timedelta(hours=hour)) for hour in range(3)
+    ] == [70, 48, 48]
+    assert await replay.get_score("SOLUSDT") == 48
+
+
+@pytest.mark.asyncio
+async def test_torn_score_tail_without_newline_also_gaps(tmp_path):
+    # A torn tail could have been a healthy score or an error; it cannot be replayed
+    # either way, because its value and time are unknown.
+    torn = json.dumps(event(1, 90, "xai_live"))[:30]
+    replay = raw_scorer(tmp_path, json.dumps(event(0, 70)) + "\n" + torn, fallback_score=48)
+    assert replay.stats()["loaded_observations"] == 1
+    assert [
+        await replay.get_score("SOLUSDT", BASE + timedelta(hours=hour)) for hour in range(2)
+    ] == [70, 48]
+
+
+@pytest.mark.asyncio
+async def test_complete_final_record_without_newline_is_not_treated_as_torn(tmp_path):
+    # Only an undecodable unterminated tail is a torn append; a complete last record
+    # without its newline still carries usable data.
+    replay = raw_scorer(tmp_path, json.dumps(event(0, 70, "xai_live")), fallback_score=48)
+    assert replay.stats()["tainted_symbols"] == 0
+    assert await replay.get_score("SOLUSDT", BASE) == 70
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=2)) == 70
+
+
+@pytest.mark.asyncio
+async def test_error_without_timestamp_still_gaps_symbol(tmp_path):
+    replay = scorer(
+        tmp_path,
+        [
+            event(0, 70, "xai_live"),
+            {
+                "type": "sentiment_score",
+                "payload": {"symbol": "SOLUSDT", "source": "error_fallback"},
+            },
+        ],
+        fallback_score=48,
+    )
+    assert replay.stats()["loaded_observations"] == 1
+    assert replay.stats()["tainted_symbols"] == 1
+    assert [
+        await replay.get_score("SOLUSDT", BASE + timedelta(hours=hour)) for hour in range(3)
+    ] == [70, 48, 48]
+    assert await replay.get_score("SOLUSDT") == 48
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_ts", ["0001-01-01T00:00:00+14:00", "not-a-timestamp", 10**400])
+async def test_error_with_unusable_timestamp_still_gaps_symbol(tmp_path, bad_ts):
+    replay = scorer(
+        tmp_path,
+        [
+            event(0, 70, "xai_live"),
+            {
+                "type": "sentiment_score",
+                "ts": bad_ts,
+                "payload": {"symbol": "SOLUSDT", "source": "xai_error_fallback"},
+            },
+        ],
+        fallback_score=48,
+    )
+    assert replay.stats()["loaded_observations"] == 1
+    assert [
+        await replay.get_score("SOLUSDT", BASE + timedelta(hours=hour)) for hour in range(2)
+    ] == [70, 48]
+
+
+@pytest.mark.asyncio
+async def test_unplaceable_error_time_does_not_gap_other_symbols(tmp_path):
+    replay = scorer(
+        tmp_path,
+        [
+            event(0, 70, "xai_live", "SOLUSDT"),
+            event(0, 80, "xai_live", "BTCUSDT"),
+            {
+                "type": "sentiment_score",
+                "payload": {"symbol": "SOLUSDT", "source": "error_fallback"},
+            },
+        ],
+        fallback_score=48,
+    )
+    later = BASE + timedelta(hours=1)
+    assert await replay.get_score("SOLUSDT", later) == 48
+    assert await replay.get_score("BTCUSDT", later) == 80
+    assert replay.stats()["tainted_symbols"] == 1
+
+
+@pytest.mark.asyncio
+async def test_error_without_symbol_gaps_every_symbol(tmp_path):
+    replay = scorer(
+        tmp_path,
+        [
+            event(0, 70, "xai_live", "SOLUSDT"),
+            event(0, 80, "xai_live", "BTCUSDT"),
+            {"type": "sentiment_score", "payload": {"source": "error_fallback", "score": 30}},
+        ],
+        fallback_score=48,
+    )
+    later = BASE + timedelta(hours=1)
+    assert await replay.get_score("SOLUSDT", later) == 48
+    assert await replay.get_score("BTCUSDT", later) == 48
+    assert replay.stats()["tainted_symbols"] == 2
+
+
+@pytest.mark.asyncio
+async def test_non_error_row_with_unusable_timestamp_is_skipped_without_gap(tmp_path):
+    # A valid-score row we cannot place in time is still only a lost observation.
+    replay = scorer(
+        tmp_path,
+        [
+            event(0, 70, "xai_live"),
+            {
+                "type": "sentiment_score",
+                "ts": "9999-12-31T23:59:59-14:00",
+                "payload": {"symbol": "SOLUSDT", "score": 80},
+            },
+        ],
+        fallback_score=48,
+    )
+    assert replay.stats()["tainted_symbols"] == 0
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 70

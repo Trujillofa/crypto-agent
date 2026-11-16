@@ -31,8 +31,24 @@ class ReplaySentimentScorer:
     they never carry their synthetic score or an older score forward. Missing
     sources and non-error sources retain their historical replay behavior.
     Falls back to neutral 50.0 (or the configured fallback) during a gap or
-    when no historical observation exists. Undecodable individual JSON rows
-    are skipped: their symbol and timestamp cannot be trusted to establish a gap.
+    when no historical observation exists.
+
+    Undecodable rows inside the log are skipped: their symbol and timestamp cannot be
+    trusted to establish a gap, so dropping them changes nothing that is attributable.
+    Two shapes are not attributable and are handled conservatively instead:
+
+    * A final line without a trailing newline that does not decode is a torn append
+      (``EventLog`` terminates every record with ``"\\n"``).  Its symbol, time and payload
+      are unknowable, so no pre-tail score may be replayed as current: every symbol is
+      treated as a gap after its newest durable observation.
+    * An error-source record whose timestamp is missing or cannot be normalized cannot be
+      placed in time, so the outage has no upper bound.  The affected symbol (all symbols
+      when the record carries no symbol) is treated as a gap after its newest durable
+      observation.
+
+    In both cases history at or before the newest durable observation is still replayed;
+    only the region the log can no longer vouch for falls back.  An older score is never
+    carried forward as if it were current.
     """
 
     def __init__(
@@ -48,6 +64,8 @@ class ReplaySentimentScorer:
         self._logger = get_logger(self.__class__.__name__)
         self._timeline: dict[str, list[tuple[datetime, float | None]]] = defaultdict(list)
         self._timestamps: dict[str, list[datetime]] = {}
+        self._tainted_after: dict[str, datetime] = {}
+        self._tainted_all_after: datetime | None = None
         self._hits = 0
         self._misses = 0
         self._stale_misses = 0
@@ -60,15 +78,24 @@ class ReplaySentimentScorer:
 
         loaded = 0
         timeline: dict[str, list[tuple[datetime, float | None]]] = defaultdict(list)
+        unplaceable_symbols: set[str] = set()
+        unplaceable_all = False
+        tail_undecodable = False
+        tail_terminated = True
         try:
             with self._path.open(encoding="utf-8") as handle:
                 for line in handle:
+                    # Both flags describe the line just read, so after the loop they
+                    # describe the final line, terminated or not.
+                    tail_undecodable = False
+                    tail_terminated = line.endswith("\n")
                     line = line.strip()
                     if not line:
                         continue
                     try:
                         event = json.loads(line)
                     except (ValueError, RecursionError):
+                        tail_undecodable = True
                         continue
                     if not isinstance(event, dict) or event.get("type") != "sentiment_score":
                         continue
@@ -80,7 +107,13 @@ class ReplaySentimentScorer:
                     source = payload.get("source")
                     is_error = isinstance(source, str) and source in SENTIMENT_ERROR_SOURCES
                     ts = event.get("ts")
-                    if not symbol or not ts:
+                    if not symbol:
+                        # An error we cannot attribute cannot be scoped to one symbol.
+                        unplaceable_all = unplaceable_all or is_error
+                        continue
+                    if not ts:
+                        if is_error:
+                            unplaceable_symbols.add(str(symbol))
                         continue
                     try:
                         dt = _utc_timestamp(ts)
@@ -109,15 +142,47 @@ class ReplaySentimentScorer:
                             except (ValueError, TypeError, OverflowError, InvalidOperation):
                                 val = None
                     except (ValueError, TypeError, OverflowError):
+                        if is_error:
+                            unplaceable_symbols.add(str(symbol))
                         continue
                     timeline[str(symbol)].append((dt, val))
                     loaded += 1
+
+            if tail_undecodable and not tail_terminated:
+                # Torn append: the newest record is unknowable, so no prior score may
+                # stand in for it for any symbol.
+                unplaceable_all = True
+                self._logger.error(
+                    "Sentiment replay log %s ends with an undecodable, unterminated record "
+                    "(torn append); treating every symbol as gapped after its newest durable "
+                    "observation",
+                    self._path,
+                )
 
             for symbol, items in timeline.items():
                 items.sort(key=lambda x: x[0])
                 self._timestamps[symbol] = [ts for ts, _ in items]
 
             self._timeline = timeline
+            self._tainted_after.clear()
+            self._tainted_all_after = None
+            if unplaceable_all:
+                self._tainted_all_after = max(
+                    (items[-1][0] for items in timeline.values()), default=None
+                )
+            for tainted_symbol in unplaceable_symbols:
+                tainted_items = timeline.get(tainted_symbol)
+                if tainted_items:
+                    self._tainted_after[tainted_symbol] = tainted_items[-1][0]
+            if self._tainted_after or self._tainted_all_after is not None:
+                self._logger.warning(
+                    "Replay sentiment log %s has an unplaceable error record or a torn tail; "
+                    "gapping %s after the newest durable observation",
+                    self._path,
+                    "every symbol"
+                    if self._tainted_all_after is not None
+                    else ", ".join(sorted(self._tainted_after)),
+                )
 
             self._logger.info(
                 "Loaded %d replay sentiment observations across %d symbols from %s",
@@ -128,6 +193,8 @@ class ReplaySentimentScorer:
         except Exception as exc:  # noqa: BLE001
             self._timeline.clear()
             self._timestamps.clear()
+            self._tainted_after.clear()
+            self._tainted_all_after = None
             self._logger.error("Failed to load replay sentiment log %s: %s", self._path, exc)
 
     async def get_score_for_candle(self, symbol: str, at_time: datetime | str | None) -> float:
@@ -141,13 +208,24 @@ class ReplaySentimentScorer:
             return self._fallback_score
         return await self.get_score(symbol, when)
 
+    def _tainted_boundary(self, symbol: str) -> datetime | None:
+        """Newest durable observation after which this symbol's state is unknowable."""
+        boundaries = [
+            boundary
+            for boundary in (self._tainted_after.get(symbol), self._tainted_all_after)
+            if boundary is not None
+        ]
+        return min(boundaries) if boundaries else None
+
     async def get_score(self, symbol: str, at_time: datetime | str | None = None) -> float:
         items = self._timeline.get(symbol)
         if not items:
             self._misses += 1
             return self._fallback_score
         if at_time is None:
-            if items[-1][1] is None:
+            # Without a clock the request is for the newest observation, which an
+            # unplaceable error or torn tail may have superseded.
+            if self._tainted_boundary(symbol) is not None or items[-1][1] is None:
                 self._misses += 1
                 return self._fallback_score
             self._hits += 1
@@ -156,6 +234,10 @@ class ReplaySentimentScorer:
         try:
             at_time = _utc_timestamp(at_time)
         except (ValueError, TypeError, OverflowError):
+            self._misses += 1
+            return self._fallback_score
+        boundary = self._tainted_boundary(symbol)
+        if boundary is not None and at_time > boundary:
             self._misses += 1
             return self._fallback_score
         timestamps = self._timestamps.get(symbol, [])
@@ -184,4 +266,10 @@ class ReplaySentimentScorer:
             "stale_misses": self._stale_misses,
             "loaded_symbols": len(self._timeline),
             "loaded_observations": sum(len(v) for v in self._timeline.values()),
+            # Symbols whose newest durable observation cannot be shown to be current.
+            "tainted_symbols": (
+                len(self._timeline)
+                if self._tainted_all_after is not None
+                else len(self._tainted_after)
+            ),
         }
