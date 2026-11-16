@@ -64,7 +64,7 @@ label stays `nvidia_nim_live` for either model.
 ## Retries and cooldowns
 
 - Sentiment requests use one attempt per provider (`max_attempts=1`); the chain is the
-  retry mechanism.
+  retry mechanism. Command Code is the exception: it retries a transient 503 once.
 - A transient failure starts a **120s cooldown** for that provider, spanning two 60s
   sentiment polls. General overseer chat does not apply these transient cooldowns.
 - Auth/permission failures (401/402/403) and explicit balance/credit-exhausted
