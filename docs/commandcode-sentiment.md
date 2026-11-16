@@ -8,7 +8,9 @@ to capacity; the successful probe does not guarantee stable availability, future
 or capacity. Verify compatibility and cost before opting in. It is used only after other
 providers fail, not for general overseer chat.
 The 50-second sentiment chain reserves its final ten seconds for Command Code when
-available; earlier providers may be interrupted.
+available; earlier providers may be interrupted. Command Code is the last step in the
+sentiment provider chain — see [sentiment-provider-chain.md](./sentiment-provider-chain.md)
+for the complete order, budgets, NVIDIA model fallback, and cooldown rules.
 
 ## Future rollout, only after explicit approval
 

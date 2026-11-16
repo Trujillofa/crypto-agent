@@ -39,11 +39,13 @@ telegram:
 ai:
   enabled: true
   # Z.AI is primary; use only a general API/package credential, never a
-  # Coding Plan key for automated polling. OpenCode Go is not enabled by default.
-  # Its live model catalog must be verified before setting OPENCODE_GO_ENABLED=true.
-  # Credentials are read only from OPENCODE_GO_API_KEY in .env. The selection code
-  # fails closed rather than choosing a model whose ID is not explicitly marked free.
+  # Coding Plan key for automated polling. OpenCode Go is wired off: the
+  # application passes no Go key, and sentiment traffic is not approved for that
+  # route. The selector stays fail-closed to a reviewed allowlist for any direct
+  # construction. See docs/opencode-go-privacy-review.md.
   # Command Code is a paid, opt-in sentiment fallback; see docs/commandcode-sentiment.md.
+  # Full provider order, budgets, and NVIDIA model failover:
+  # docs/sentiment-provider-chain.md.
   provider: zai
   model: glm-5.3-flash
   polling_interval: 60.0
