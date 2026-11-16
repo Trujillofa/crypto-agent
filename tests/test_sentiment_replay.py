@@ -166,13 +166,40 @@ async def test_mixed_clock_offsets_are_sorted_and_equal_instants_keep_log_order(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "bad", [float("nan"), float("inf"), float("-inf"), 101, -1, True, None, "bad", "1e999"]
+    "bad", [float("nan"), float("inf"), float("-inf"), 101, -1, True, None, "bad", "1e999", "_1"]
 )
 async def test_invalid_score_starts_gap_until_valid_recovery(tmp_path, bad):
     replay = scorer(tmp_path, [event(0, 70), event(1, bad), event(2, 90)], fallback_score=48)
     assert await replay.get_score("SOLUSDT", BASE) == 70
     assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 48
     assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=2)) == 90
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["-1e-999", "100.00000000000000000001"])
+async def test_decimal_string_outside_exact_bounds_starts_gap(tmp_path, bad):
+    replay = scorer(tmp_path, [event(0, 70), event(1, bad), event(2, "100")], fallback_score=48)
+    assert [await replay.get_score("SOLUSDT", BASE + timedelta(hours=i)) for i in range(3)] == [
+        70,
+        48,
+        100,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_line", ['{"type":"other","n":' + "9" * 5000 + "}", "[" * 1100 + "0" + "]" * 1100]
+)
+async def test_unparseable_json_row_does_not_discard_timeline(tmp_path, bad_line):
+    path = tmp_path / "events.jsonl"
+    path.write_text(
+        "\n".join([json.dumps(event(2, 90)), bad_line, json.dumps(event(0, 70))]),
+        encoding="utf-8",
+    )
+    replay = ReplaySentimentScorer(path, fallback_score=48)
+    assert replay.stats()["loaded_observations"] == 2
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=1)) == 70
+    assert await replay.get_score("SOLUSDT", BASE + timedelta(hours=3)) == 90
 
 
 @pytest.mark.asyncio

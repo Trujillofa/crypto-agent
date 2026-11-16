@@ -5,6 +5,7 @@ import math
 from bisect import bisect_right
 from collections import defaultdict
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from src.sentiment_sources import SENTIMENT_ERROR_SOURCES
@@ -30,7 +31,8 @@ class ReplaySentimentScorer:
     they never carry their synthetic score or an older score forward. Missing
     sources and non-error sources retain their historical replay behavior.
     Falls back to neutral 50.0 (or the configured fallback) during a gap or
-    when no historical observation exists.
+    when no historical observation exists. Undecodable individual JSON rows
+    are skipped: their symbol and timestamp cannot be trusted to establish a gap.
     """
 
     def __init__(
@@ -66,7 +68,7 @@ class ReplaySentimentScorer:
                         continue
                     try:
                         event = json.loads(line)
-                    except json.JSONDecodeError:
+                    except (ValueError, RecursionError):
                         continue
                     if not isinstance(event, dict) or event.get("type") != "sentiment_score":
                         continue
@@ -86,17 +88,25 @@ class ReplaySentimentScorer:
                             val = None
                         else:
                             try:
-                                val = (
-                                    float(score)
-                                    if isinstance(score, (int, float, str))
-                                    and not isinstance(score, bool)
-                                    else None
-                                )
+                                if isinstance(score, str):
+                                    # Check exact bounds before float rounding or underflow.
+                                    exact = Decimal(score)
+                                    val = (
+                                        float(score)
+                                        if exact.is_finite() and 0 <= exact <= 100
+                                        else None
+                                    )
+                                elif isinstance(score, (int, float)) and not isinstance(
+                                    score, bool
+                                ):
+                                    val = float(score)
+                                else:
+                                    val = None
                                 if val is not None and (
                                     not math.isfinite(val) or not 0 <= val <= 100
                                 ):
                                     val = None
-                            except (ValueError, TypeError, OverflowError):
+                            except (ValueError, TypeError, OverflowError, InvalidOperation):
                                 val = None
                     except (ValueError, TypeError, OverflowError):
                         continue
