@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from src.strategy.base import BaseStrategy
 from src.strategy.signals import Signal, SignalType
+
+
+@dataclass(frozen=True)
+class _BarSnapshot:
+    """Indicator values of one bar, used as the recovery-check reference point."""
+
+    bar_time: object
+    rsi: float
+    macd_hist: float
+    close: float
 
 
 class TrendPullbackStrategy(BaseStrategy):
@@ -65,9 +76,9 @@ class TrendPullbackStrategy(BaseStrategy):
             self._config.get("deep_reclaim_arm_max_vwap_distance_pct", 0.05)
         )
 
-        self._previous_rsi: dict[str, float] = {}
-        self._previous_macd_hist: dict[str, float] = {}
-        self._previous_close: dict[str, float] = {}
+        # Per-bar recovery state: the bar last seen, and the bar before it.
+        self._seen_bar: dict[str, _BarSnapshot] = {}
+        self._previous_bar: dict[str, _BarSnapshot] = {}
         self._deep_reclaim_armed_bars_remaining: dict[str, int] = {}
 
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
@@ -102,12 +113,38 @@ class TrendPullbackStrategy(BaseStrategy):
                 indicators={},
             )
 
-        previous_rsi = self._previous_rsi.get(symbol, rsi_14)
-        previous_macd_hist = self._previous_macd_hist.get(symbol, macd_hist)
-        previous_close = self._previous_close.get(symbol, close_price)
-        self._previous_rsi[symbol] = rsi_14
-        self._previous_macd_hist[symbol] = macd_hist
-        self._previous_close[symbol] = close_price
+        # The recovery checks below compare the current bar against the previous one,
+        # so this state must advance once per CLOSED BAR, not once per evaluation.
+        # The live engine re-evaluates the same newest closed bar every poll (60s);
+        # advancing per call makes the second poll of a bar compare the bar against
+        # itself (previous == current), which suppresses every recovery check and makes
+        # repeated polls of one bar disagree with the single per-bar evaluation the
+        # backtest performs. Callers that supply no bar clock keep the per-call
+        # behaviour, because there is nothing to key the state on.
+        bar_time = indicators.get("time")
+        current_bar = _BarSnapshot(
+            bar_time=bar_time, rsi=rsi_14, macd_hist=macd_hist, close=close_price
+        )
+        seen_bar = self._seen_bar.get(symbol)
+        if bar_time is None:
+            # No clock: the last evaluation is the best available reference.
+            reference_bar = seen_bar if seen_bar is not None else current_bar
+            self._seen_bar[symbol] = current_bar
+        elif seen_bar is None:
+            # First bar observed: nothing to compare against, so compare against itself.
+            reference_bar = current_bar
+            self._seen_bar[symbol] = current_bar
+        elif seen_bar.bar_time == bar_time:
+            # Repeated evaluation of the same closed bar: keep the reference bar fixed.
+            reference_bar = self._previous_bar.get(symbol, current_bar)
+        else:
+            # A new bar closed: last bar becomes the reference for this one.
+            reference_bar = seen_bar
+            self._previous_bar[symbol] = seen_bar
+            self._seen_bar[symbol] = current_bar
+        previous_rsi = reference_bar.rsi
+        previous_macd_hist = reference_bar.macd_hist
+        previous_close = reference_bar.close
 
         trend_strength_pct = (ema_50 - ema_200) / ema_200 if ema_200 > 0 else 0.0
         distance_from_ema50_pct = abs(close_price - ema_50) / ema_50 if ema_50 > 0 else 0.0
