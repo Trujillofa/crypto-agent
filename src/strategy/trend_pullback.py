@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -97,6 +98,32 @@ class TrendPullbackStrategy(BaseStrategy):
         self._seen_bar: dict[str, _BarSnapshot] = {}
         self._previous_bar: dict[str, _BarSnapshot] = {}
         self._deep_reclaim_armed_bars_remaining: dict[str, int] = {}
+
+    def refresh_previous_bar(
+        self, symbol: str, previous: dict[str, float], current: dict[str, float]
+    ) -> None:
+        """Refresh only a known reference; never replay a bar or alter reclaim state."""
+        previous_clock = _bar_clock(previous.get("time"))
+        current_clock = _bar_clock(current.get("time"))
+        seen = self._seen_bar.get(symbol)
+        seen_clock = _bar_clock(seen.bar_time) if seen else None
+        if previous_clock is None or current_clock is None or seen_clock is None:
+            return
+        if previous_clock >= current_clock or current_clock < seen_clock:
+            return
+        values: list[float] = []
+        for key in ("rsi_14", "macd_hist", "close_price"):
+            value = previous.get(key)
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                return
+            values.append(value)
+        snapshot = _BarSnapshot(previous["time"], values[0], values[1], values[2])
+        if current_clock > seen_clock and previous_clock == seen_clock:
+            self._seen_bar[symbol] = snapshot
+        elif current_clock == seen_clock:
+            reference = self._previous_bar.get(symbol)
+            if reference and _bar_clock(reference.bar_time) == previous_clock:
+                self._previous_bar[symbol] = snapshot
 
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
         required_indicators = {
