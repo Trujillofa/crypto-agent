@@ -31,6 +31,12 @@ class BaseStrategy(ABC):
         """
         self._config = config or {}
 
+    def refresh_previous_bar(
+        self, symbol: str, previous: dict[str, float], current: dict[str, float]
+    ) -> None:
+        """Optionally refresh an already observed reference without evaluating it."""
+        return None
+
     @abstractmethod
     async def evaluate(self, symbol: str, indicators: dict[str, float]) -> Signal:
         """Evaluate indicators and generate a trading signal.

@@ -207,6 +207,7 @@ class StrategyEngine:
             named_signals: list[tuple[str, Signal]] = []
             for strategy in self._strategies.get(symbol, []):
                 try:
+                    strategy.refresh_previous_bar(symbol, indicator_rows[0], indicators)
                     signal = await strategy.evaluate(symbol, indicators)
                     generated_signals.append(signal)
                     named_signals.append((strategy.get_name(), signal))
