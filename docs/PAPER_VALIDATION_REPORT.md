@@ -21,7 +21,6 @@ PnL, win rate, drawdown, trade quality, and operational logs.
 Current monitored paper agents:
 
 - `agent_sol_panic_block_paper`
-- `agent_sentiment_macro`
 
 Optional probe agents are not included until their compose services are explicitly
 enabled and added to `config/prometheus/agents.json`. As of 2026-06-03,
@@ -29,8 +28,8 @@ enabled and added to `config/prometheus/agents.json`. As of 2026-06-03,
 probe because it passed the `probe_1h` gate but missed the standard WFO trade
 count gate.
 
-`agent_sentiment_macro` is included because `config/settings.sentiment_macro.yaml` is disarmed
-to paper mode with real execution disabled.
+`agent_sentiment_macro` was removed 2026-11-19 (CR-4 option (b)): sentiment recording
+stopped and the agent disarmed.
 `agent_avax` is disabled because its prior walk-forward edge did not persist in live trading.
 `agent_sol_sparse` was retired 2026-11-19 (CR-5) after 2 signals in its lifetime.
 

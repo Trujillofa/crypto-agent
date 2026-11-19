@@ -1,6 +1,6 @@
 # DeepSeek sentiment-macro paper evidence window
 
-**Status:** LOCKED — pre-registered 2026-08-31, before any post-T0 P&L review
+**Status:** ~~LOCKED~~ → **TERMINATED 2026-11-19** by human decision (CR-4 option (b), `docs/specs/NEXT-WORKFLOW-2026-11.md`) per the interruption table below ("Provider, config, strategy, threshold, or sizing change → Terminate"); was LOCKED — pre-registered 2026-08-31, before any post-T0 P&L review
 **What this is:** a prospective paper evidence protocol for the deployed
 sentiment-macro agent on funded DeepSeek.
 **What this is not:** a live-promotion gate, a strategy retune, or a score of the

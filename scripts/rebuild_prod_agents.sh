@@ -5,53 +5,16 @@ set -euo pipefail
 ROOT="${DEPLOY_ROOT:-/opt/crypto-agent}"
 cd "$ROOT"
 
-# Durable host-local opt-in. Never source this file: it is data, not shell.
+# Durable host-local opt-in, removed with the sentiment disarm. Never source this
+# file: it is data, not shell. The overlay only fed agent_sentiment_macro, which
+# CR-4 (b) removed on 2026-11-19; the overlay and its opt-in went with it. A leftover
+# host marker is inert: warn so the host gets cleaned up, never block a deploy on it.
 COMMANDCODE_DEPLOY_CONFIG="${COMMANDCODE_DEPLOY_CONFIG:-/etc/crypto-agent/commandcode.deploy}"
 COMPOSE=(docker compose -f docker-compose.prod.yml)
 if [ -e "$COMMANDCODE_DEPLOY_CONFIG" ] || [ -L "$COMMANDCODE_DEPLOY_CONFIG" ]; then
-  if [ ! -f "$COMMANDCODE_DEPLOY_CONFIG" ] || [ -L "$COMMANDCODE_DEPLOY_CONFIG" ] || [ ! -r "$COMMANDCODE_DEPLOY_CONFIG" ]; then
-    echo "ERROR: Command Code deploy config must be a readable regular file, not a symlink" >&2
-    exit 1
-  fi
-  mapfile -t COMMANDCODE_CONFIG_LINES < "$COMMANDCODE_DEPLOY_CONFIG"
-  if [ "${#COMMANDCODE_CONFIG_LINES[@]}" -ne 1 ] || [ "${COMMANDCODE_CONFIG_LINES[0]}" != enabled ]; then
-    echo "ERROR: Command Code deploy config must contain exactly: enabled" >&2
-    exit 1
-  fi
-  export COMMANDCODE_ENV_FILE="${COMMANDCODE_ENV_FILE:-/etc/crypto-agent/commandcode.env}"
-  if [ ! -f "$COMMANDCODE_ENV_FILE" ] || [ -L "$COMMANDCODE_ENV_FILE" ] || [ ! -r "$COMMANDCODE_ENV_FILE" ] ||
-     [ "$(stat -c '%a:%u' "$COMMANDCODE_ENV_FILE")" != "600:$(id -u)" ]; then
-    echo "ERROR: Command Code env file must be a readable regular file owned by the deploy user with mode 0600" >&2
-    exit 1
-  fi
-  if [ ! -f docker-compose.commandcode.yml ]; then
-    echo "ERROR: Command Code overlay is missing" >&2
-    exit 1
-  fi
-  # Reject an overlay that adds or removes services before --remove-orphans.
-  BASE_SERVICES=$("${COMPOSE[@]}" config --services | sort)
-  COMPOSE+=(-f docker-compose.commandcode.yml)
-  OVERLAY_SERVICES=$("${COMPOSE[@]}" config --services | sort)
-  if [ "$BASE_SERVICES" != "$OVERLAY_SERVICES" ]; then
-    echo "ERROR: Command Code overlay must not add or remove services" >&2
-    exit 1
-  fi
-  # Check resolved service values, without emitting the secret to logs.
-  if ! "${COMPOSE[@]}" config --format json | python3 -c '
-import json, sys
-try:
-    env = json.load(sys.stdin)["services"]["agent_sentiment_macro"]["environment"]
-    valid = (env.get("COMMANDCODE_ENABLED", "").lower() == "true"
-             and bool(env.get("COMMANDCODE_API_KEY", "").strip())
-             and bool(env.get("COMMANDCODE_MODEL", "").strip()))
-except (ValueError, KeyError, TypeError, AttributeError):
-    valid = False
-sys.exit(0 if valid else 1)
-'; then
-    echo "ERROR: Command Code overlay requires enabled=true and nonempty key and model" >&2
-    exit 1
-  fi
-  echo "Command Code overlay enabled"
+  echo "WARNING: Command Code was removed with the sentiment disarm (CR-4, 2026-11-19)." >&2
+  echo "WARNING: ignoring stale marker $COMMANDCODE_DEPLOY_CONFIG; remove it and" >&2
+  echo "WARNING: /etc/crypto-agent/commandcode.env, and revoke the key at the provider." >&2
 fi
 
 AGENTS=$("${COMPOSE[@]}" config --services | grep '^agent_' | sort | tr '\n' ' ')

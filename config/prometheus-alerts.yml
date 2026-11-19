@@ -44,15 +44,14 @@ groups:
       # Ids mirror config/prometheus/agents.json.
       - alert: ScrapeTargetGone
         expr: |
-          absent(up{job="trading-agent",agent_id="sentiment-macro-bot"})
-          or absent(up{job="trading-agent",agent_id="sol-4h-panic-block-paper"})
+          absent(up{job="trading-agent",agent_id="sol-4h-panic-block-paper"})
           or absent(up{job="trading-agent",agent_id="sol-1h-trend-pullback-overlay-live"})
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "A trading-agent scrape target vanished"
-          description: "One configured file_sd agent is missing from up{job=\"trading-agent\"}: sentiment-macro-bot, sol-4h-panic-block-paper, sol-1h-trend-pullback-overlay-live."
+          description: "One configured file_sd agent is missing from up{job=\"trading-agent\"}: sol-4h-panic-block-paper, sol-1h-trend-pullback-overlay-live."
 
       # pg_up is emitted by postgres-exporter (job "postgres-exporter"). It is 1
       # while the exporter can reach marketdata, 0 when the connection fails.
@@ -86,7 +85,7 @@ groups:
       # Ids and bar lengths mirror the file_sd agents.
       - alert: IngestionStale
         expr: |
-          ingest_db_last_write_age_seconds{job="trading-agent",agent_id=~"^(sol-1h-trend-pullback-overlay-live|sentiment-macro-bot)$"} > 3600
+          ingest_db_last_write_age_seconds{job="trading-agent",agent_id=~"^(sol-1h-trend-pullback-overlay-live)$"} > 3600
           or ingest_db_last_write_age_seconds{job="trading-agent",agent_id=~"^(sol-4h-panic-block-paper)$"} > 14400
         for: 5m
         labels:
