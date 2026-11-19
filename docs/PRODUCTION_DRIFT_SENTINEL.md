@@ -13,7 +13,7 @@ It detects drift in:
 
 Service discovery is dynamic. The sentinel reads
 `docker compose -f docker-compose.prod.yml config --services` on the remote host, so newly
-added services such as `agent_sol_sparse` are included automatically without code changes.
+added agent services are included automatically without code changes.
 Research-only configs such as `config/settings.autoresearch.yaml` are excluded from deploy parity checks.
 
 ## One Command
@@ -30,14 +30,22 @@ python scripts/production_drift_sentinel.py \
   --expected-branch main \
   --remote-host crypto-agent \
   --remote-dir /opt/crypto-agent \
-  --watch-service agent_sol_sparse \
+  --watch-service agent_sol_panic_block_paper \
   --signal-stale-hours 24 \
   --log-tail 500 \
   --fail-on error
 ```
 
-For the SOL sparse paper rollout, use watched-service mode so the report includes
-`agent_sol_sparse`-specific strategy-cycle, consensus-signal, and paper-order visibility:
+Use watched-service mode so the report includes service-specific strategy-cycle,
+consensus-signal, and paper-order visibility. The installed systemd unit
+(`ops/systemd/crypto-agent-production-drift-sentinel.service`) watches
+`agent_sol_panic_block_paper`, the remaining agent with a regular signal cadence.
+
+**The watched service must exist.** `--watch-service` with `--durable-signals` runs
+`docker compose exec <service> printenv AGENT_ID`; if the service is gone, every run
+records `REMOTE_UNREACHABLE`, skips all remote checks, and `--dedupe-state` then
+suppresses the repeated alert. Retiring the watched service therefore requires
+updating the unit's `--watch-service` in the same change.
 
 ```bash
 python scripts/production_drift_sentinel.py \
@@ -45,7 +53,7 @@ python scripts/production_drift_sentinel.py \
   --expected-branch main \
   --remote-host crypto-agent \
   --remote-dir /opt/crypto-agent \
-  --watch-service agent_sol_sparse \
+  --watch-service agent_sol_panic_block_paper \
   --signal-stale-hours 72 \
   --log-tail 500 \
   --fail-on error
@@ -63,7 +71,7 @@ Production-local mode runs the full inspection directly on the server without ne
 python scripts/production_drift_sentinel.py \
   --production-local \
   --remote-dir /opt/crypto-agent \
-  --watch-service agent_sol_sparse \
+  --watch-service agent_sol_panic_block_paper \
   --signal-stale-hours 72 \
   --fail-on error \
   --output-prefix data/reports/production-drift-sentinel

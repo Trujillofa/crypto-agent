@@ -79,16 +79,6 @@ class PaperValidationReport:
 
 DEFAULT_PAPER_AGENTS: tuple[PaperAgentSpec, ...] = (
     PaperAgentSpec(
-        agent_id="sol-trend-pullback-sparse",
-        service="agent_sol_sparse",
-        config_path="config/settings.sol_trend_pullback_sparse.yaml",
-        symbols=("SOLUSDT",),
-        timeframe="4h",
-        validation_started_at="2026-06-01T21:45:00Z",
-        min_review_days=28,
-        min_review_trades=10,
-    ),
-    PaperAgentSpec(
         agent_id="sol-4h-panic-block-paper",
         service="agent_sol_panic_block_paper",
         config_path="config/settings.sol_4h_panic_block_paper.yaml",
