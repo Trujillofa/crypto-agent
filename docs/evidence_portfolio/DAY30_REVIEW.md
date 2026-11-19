@@ -1,6 +1,6 @@
 # Day-30 Portfolio Review — 2026-08-06
 
-**Status:** READY FOR RATIFICATION — unsigned
+**Status:** RATIFIED — signed 2026-11-19
 **Purpose:** close the 30-day evidence portfolio (2026-07-07 → ~2026-08-06) with a
 15-minute human ratification. Pre-drafted 2026-07-21; track blanks filled 2026-08-05
 and refreshed 2026-08-18. **Does not:** trade, re-arm agents, open probes, or change
@@ -107,17 +107,17 @@ Research-bucket rules in `README.md` still apply independently.
 - [x] Track table verified against gate files + 2026-08-18 readout *(agent draft)*
 - [x] Kill gate evaluated: **does not fire** *(agent draft)*
 - [x] Allocation 1–5 drafted with amendments A1–A6 *(agent draft)*
-- [ ] **Human:** track table accepted as written (or edits noted below)
-- [ ] **Human:** allocation 1–5 accepted (or amendments noted below)
-- [ ] **Human:** signature
+- [x] **Human:** track table accepted as written (or edits noted below)
+- [x] **Human:** allocation 1–5 accepted (or amendments noted below)
+- [x] **Human:** signature
 
 Human amendments: _[none yet]_
 
 | Field | Value |
 |-------|-------|
-| Ratified by | _[unsigned — human only]_ |
-| Date | _[YYYY-MM-DD]_ |
-| Notes | _[optional]_ |
+| Ratified by | Yderf |
+| Date | 2026-11-19 |
+| Notes | NFP forward row superseded by NEXT-WORKFLOW-2026-11 CR-1: v1 reached 3/3 missed captures 2026-10-02 (decision point stands at the original date, no extension; Nov 6 hot capture recorded). v2 gate drafted under CR-1; signature deferred 2026-11-19 pending capture-stack audit fixes. |
 
 ---
 
