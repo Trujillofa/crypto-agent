@@ -22,9 +22,12 @@ from scripts.nfp_forward_capture import (
     build_missed_row,
     build_row,
     first_friday,
+    latest_release_date,
+    main,
     next_scheduled_release,
     page_mentions_date,
     previous_scheduled_release,
+    read_pending,
     release_timestamp_utc,
     resolve_snapshot_timestamp,
     snapshot_timestamp,
@@ -85,6 +88,153 @@ def test_verify_accepts_point_in_time_snapshot():
     html = "<table><tr><td>Jul 03, 2026</td><td>147K</td></tr></table>"
     verified, _ = verify_snapshot_is_point_in_time(html, date(2026, 8, 7))
     assert verified is True
+
+
+def test_latest_release_date_reads_investing_label():
+    html = (
+        "<div>Latest Release Oct 02, 2026 Actual 29.00K Forecast 89.00K "
+        "Previous 133.00K</div><div>Nov 06, 2026 (Oct) 13:30 65.00K 29.00K</div>"
+    )
+    assert latest_release_date(html) == date(2026, 10, 2)
+
+
+def test_verify_accepts_upcoming_row_when_latest_release_is_previous():
+    html = (
+        "<div>Latest Release Oct 02, 2026 Actual 29.00K Forecast 89.00K "
+        "Previous 133.00K</div><div>Nov 06, 2026 (Oct) 13:30 65.00K 29.00K</div>"
+    )
+    verified, detail = verify_snapshot_is_point_in_time(html, date(2026, 11, 6))
+    assert verified is True
+    assert "2026-10-02" in detail
+
+
+def test_verify_rejects_page_whose_latest_release_is_upcoming():
+    html = "<div>Latest Release Nov 06, 2026 Actual 165.00K Forecast 65.00K</div>"
+    verified, detail = verify_snapshot_is_point_in_time(html, date(2026, 11, 6))
+    assert verified is False
+    assert "Latest Release" in detail
+
+
+def test_verify_rejects_stale_latest_release():
+    html = "<div>Latest Release Sep 04, 2026 Actual 162.00K</div>"
+    verified, detail = verify_snapshot_is_point_in_time(html, date(2026, 11, 6))
+    assert verified is False
+    assert "expected the previous release" in detail
+
+
+def test_pre_rescue_stashes_historical_snapshot_and_post_appends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    html = (
+        "<div>Latest Release Oct 02, 2026 Actual 29.00K Forecast 89.00K "
+        "Previous 133.00K</div><div>Nov 06, 2026 (Oct) 13:30 65.00K 29.00K</div>"
+    )
+    snapshot = (
+        "https://web.archive.org/web/20261106130744/"
+        "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
+    )
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: httpx.Response(200, text=html)
+    )
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "pre",
+                "--release-date",
+                "2026-11-06",
+                "--snapshot-url",
+                snapshot,
+                "--rescue",
+            ]
+        )
+        == 0
+    )
+    stashed = read_pending(pending)
+    assert stashed is not None
+    assert stashed.verified is True
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "post",
+                "--release-date",
+                "2026-11-06",
+                "--actual",
+                "165",
+                "--consensus",
+                "65",
+            ]
+        )
+        == 0
+    )
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == EVENT_TYPE
+    assert rows[0]["actual"] == "165.0"
+    assert rows[0]["consensus"] == "65.0"
+    assert rows[0]["surprise"] == "100.0"
+    assert float(rows[0]["z"]) == pytest.approx(100.0 / Z_DIVISOR)
+    assert "20261106130744" in rows[0]["source_snapshot_url"]
+
+
+def test_rescue_requires_release_date(tmp_path: Path) -> None:
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--snapshot-url",
+                "https://web.archive.org/web/20261106130744/https://example.invalid/x",
+                "--rescue",
+            ]
+        )
+        == 1
+    )
+
+
+def test_rescue_rejects_snapshot_outside_the_24h_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    html = "<div>Latest Release Oct 02, 2026</div>"
+    snapshot = (
+        "https://web.archive.org/web/20261104000000/"
+        "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
+    )
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: httpx.Response(200, text=html)
+    )
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--release-date",
+                "2026-11-06",
+                "--snapshot-url",
+                snapshot,
+                "--rescue",
+            ]
+        )
+        == 1
+    )
 
 
 def test_snapshot_timestamp_parsed_from_wayback_url():

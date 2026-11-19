@@ -32,6 +32,10 @@
     `research/nfp_forward/pending_capture.json`. If Save Page Now still fails,
     capture a PIT mirror manually and pass `--snapshot-url <url>` (Wayback or
     archive.ph); verification still runs.
+  - `pre --rescue --snapshot-url <url>` — rescue a historical snapshot for a release
+    that already passed. The 24h window is checked against the Wayback timestamp,
+    not the current time; the page's `Latest Release` must still be the previous
+    print. This is append-only evidence recovery and changes no gate rule.
   - `post --actual <n> --consensus <n>` — validate against the pending snapshot,
     compute surprise/z (full float precision — the OOS loader rejects rounded z),
     append the CSV row, clear the pending file.

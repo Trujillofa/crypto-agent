@@ -17,6 +17,10 @@ Workflow per release:
 3. ``miss`` — if no pre-release snapshot was taken, record a ``NFP_MISSED_CAPTURE``
    row. Those rows carry no verdict weight; 3 or more cap the sample.
 
+``pre --rescue --snapshot-url <url>`` recovers a historical snapshot after its
+release: the 24h window is enforced against the Wayback timestamp, and the page's
+``Latest Release`` label must still be the previous print.
+
 Rows are append-only. A committed row is never edited by this script.
 """
 
@@ -40,6 +44,8 @@ WAYBACK_SAVE_URL = f"https://web.archive.org/save/{CONSENSUS_URL}"
 WAYBACK_PREFIX = "https://web.archive.org/"
 SNAPSHOT_TS_RE = re.compile(r"/web/(\d{14})")
 HTML_TAG_RE = re.compile(r"<[^>]+>")
+LATEST_RELEASE_RE = re.compile(r"Latest Release\s+([A-Za-z]{3,9}\.?\s+\d{1,2},\s+\d{4})")
+LATEST_RELEASE_FORMATS = ("%b %d, %Y", "%B %d, %Y", "%b. %d, %Y", "%B. %d, %Y")
 
 EVENT_TYPE = "NFP"
 MISSED_EVENT_TYPE = "NFP_MISSED_CAPTURE"
@@ -171,6 +177,27 @@ def page_mentions_date(html: str, value: date) -> bool:
     return any(rendering in text for rendering in _date_renderings(value))
 
 
+def latest_release_date(html: str) -> date | None:
+    """Read the page's ``Latest Release`` date when the layout exposes it.
+
+    Investing.com shows the upcoming release as a scheduled row with a forecast
+    before the print, so merely mentioning the upcoming date is not evidence of
+    a post-release capture. The ``Latest Release`` label names the last print
+    whose data are actually published; that is the reliable pre/post signal.
+    """
+    text = " ".join(_strip_html(html).split())
+    match = LATEST_RELEASE_RE.search(text)
+    if match is None:
+        return None
+    raw = match.group(1)
+    for fmt in LATEST_RELEASE_FORMATS:
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def previous_scheduled_release(release_date: date) -> date:
     """First Friday of the month before ``release_date``."""
     year = release_date.year - 1 if release_date.month == 1 else release_date.year
@@ -181,16 +208,35 @@ def previous_scheduled_release(release_date: date) -> date:
 def verify_snapshot_is_point_in_time(html: str, release_date: date) -> tuple[bool, str]:
     """Check the archived page predates the upcoming print.
 
-    The invariant that matters: the snapshot must NOT already contain the upcoming
-    release. A page that mentions the previous release and not the upcoming one is
-    a valid point-in-time consensus capture.
+    A pre-release calendar page lists the upcoming release as a scheduled row with
+    its forecast, so the upcoming date being present is not by itself a problem.
+    When the page exposes ``Latest Release``, require it to be the previous print:
+    that means the upcoming actual has not been published. If the label is absent,
+    fall back to the older containment check (previous print present, upcoming
+    print absent).
     """
+    previous = previous_scheduled_release(release_date)
+    latest = latest_release_date(html)
+    if latest is not None:
+        if latest >= release_date:
+            return False, (
+                f"snapshot Latest Release is {latest.isoformat()}, not before the upcoming "
+                f"release {release_date.isoformat()} — it is not a point-in-time capture"
+            )
+        if latest != previous:
+            return False, (
+                f"snapshot Latest Release is {latest.isoformat()}, expected the previous "
+                f"release {previous.isoformat()}"
+            )
+        return True, (
+            f"snapshot Latest Release is {previous.isoformat()}, before {release_date.isoformat()}"
+        )
+
     if page_mentions_date(html, release_date):
         return False, (
             f"snapshot already mentions the upcoming release date {release_date.isoformat()} "
             "— it is not a point-in-time capture"
         )
-    previous = previous_scheduled_release(release_date)
     if not page_mentions_date(html, previous):
         return False, (
             f"snapshot does not mention the previous release {previous.isoformat()}; "
@@ -360,16 +406,23 @@ def cmd_pre(args: argparse.Namespace) -> int:
         )
 
     release_ts = release_timestamp_utc(release_date)
-    if now >= release_ts:
-        raise CaptureError(
-            f"release {release_date.isoformat()} already happened at {release_ts.isoformat()}; "
-            "a post-release snapshot is not a point-in-time consensus. Use `miss` instead."
-        )
-    if release_ts - now > CAPTURE_WINDOW:
-        raise CaptureError(
-            f"release {release_date.isoformat()} is more than 24h away "
-            f"({release_ts.isoformat()}); the gate wants the snapshot inside the 24h window."
-        )
+    if args.rescue:
+        if not args.release_date:
+            raise CaptureError("--rescue requires --release-date")
+        if not args.snapshot_url:
+            raise CaptureError("--rescue requires --snapshot-url")
+        print(f"[pre] rescue mode for already-passed release {release_date.isoformat()}")
+    else:
+        if now >= release_ts:
+            raise CaptureError(
+                f"release {release_date.isoformat()} already happened at {release_ts.isoformat()}; "
+                "a post-release snapshot is not a point-in-time consensus. Use `miss` instead."
+            )
+        if release_ts - now > CAPTURE_WINDOW:
+            raise CaptureError(
+                f"release {release_date.isoformat()} is more than 24h away "
+                f"({release_ts.isoformat()}); the gate wants the snapshot inside the 24h window."
+            )
 
     pending_path = Path(args.pending)
     existing = read_pending(pending_path)
@@ -411,6 +464,11 @@ def cmd_pre(args: argparse.Namespace) -> int:
     if snapshot_ts >= release_ts:
         raise CaptureError(
             f"snapshot timestamp {snapshot_ts.isoformat()} is not before the release "
+            f"{release_ts.isoformat()}"
+        )
+    if release_ts - snapshot_ts > CAPTURE_WINDOW:
+        raise CaptureError(
+            f"snapshot timestamp {snapshot_ts.isoformat()} is more than 24h before the release "
             f"{release_ts.isoformat()}"
         )
 
@@ -557,6 +615,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-unverified", action="store_true", help="stash despite a failed page check"
     )
     pre.add_argument("--force", action="store_true", help="replace an existing pending capture")
+    pre.add_argument(
+        "--rescue",
+        action="store_true",
+        help=(
+            "stash a historical snapshot for a release that already happened; "
+            "requires --snapshot-url and checks the 24h window against the snapshot timestamp"
+        ),
+    )
     pre.set_defaults(func=cmd_pre)
 
     post = subparsers.add_parser("post", help="append the row once the BLS actual is out")

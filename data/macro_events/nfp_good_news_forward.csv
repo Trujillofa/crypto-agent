@@ -1,3 +1,5 @@
 event_type,release_date_et,release_ts_utc,metric,actual,consensus,surprise,z,consensus_source,actual_source,source_snapshot_url
 NFP_MISSED_CAPTURE,2026-08-07,2026-08-07T12:30:00Z,headline_nfp_change_k,,,,,MISSED_CAPTURE,pre failed 2026-08-06T12:32Z: Wayback Save Page Now Connection reset by peer (research/nfp_forward/pre-2026-08-07.log); no pending snapshot,
 NFP_MISSED_CAPTURE,2026-09-04,2026-09-04T12:30:00Z,headline_nfp_change_k,,,,,MISSED_CAPTURE,No pre-release snapshot or pending capture existed before the 12:30 UTC release,
+NFP_MISSED_CAPTURE,2026-10-02,2026-10-02T12:30:00Z,headline_nfp_change_k,,,,,MISSED_CAPTURE,No pre-release Investing.com/Wayback snapshot in the 24h window; CDX shows a 403 on 2026-09-16 and only a post-release 200 on 2026-10-04,
+NFP,2026-11-06,2026-11-06T13:30:00Z,headline_nfp_change_k,165.0,65.0,100.0,0.4539676775013619,investing.com/Wayback,bls.gov,https://web.archive.org/web/20261106130744/https://www.investing.com/economic-calendar/nonfarm-payrolls-227
