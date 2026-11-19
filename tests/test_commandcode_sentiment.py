@@ -59,12 +59,10 @@ def test_env_opt_in_and_zai_factory(monkeypatch: pytest.MonkeyPatch) -> None:
         assert factory.call_args.kwargs["commandcode_api_key"] == ""
 
 
-def test_compose_uses_scoped_overlay() -> None:
-    overlay = yaml.safe_load(Path("docker-compose.commandcode.yml").read_text())
-    assert list(overlay["services"]) == ["agent_sentiment_macro"]
-    assert overlay["services"]["agent_sentiment_macro"]["env_file"] == [
-        "${COMMANDCODE_ENV_FILE:-/etc/crypto-agent/commandcode.env}"
-    ]
+def test_commandcode_overlay_removed_with_sentiment_disarm() -> None:
+    assert not Path("docker-compose.commandcode.yml").exists()
+    prod = yaml.safe_load(Path("docker-compose.prod.yml").read_text())
+    assert "agent_sentiment_macro" not in prod["services"]
 
 
 async def test_last_fallback_success_order_and_attribution() -> None:

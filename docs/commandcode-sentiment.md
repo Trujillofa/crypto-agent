@@ -5,9 +5,12 @@
 > recording is stopped and `agent_sentiment_macro` is disarmed (removed from both compose
 > files and from Prometheus/alert targets). No further provider-fallback work. The
 > Command Code rollout below is moot; its "only after explicit approval" gate is
-> unchanged. `docker-compose.commandcode.yml` now names a service the base compose no
-> longer defines, so with the host marker present `scripts/rebuild_prod_agents.sh` fails
-> closed at the service-set check. Sentiment history
+> unchanged. The overlay and the rebuild script's opt-in section were removed on
+> 2026-11-19: their only consumer is gone, and a live host marker would otherwise fail
+> every deploy. A leftover host marker (`/etc/crypto-agent/commandcode.deploy`,
+> `/etc/crypto-agent/commandcode.env`) is now inert — `scripts/rebuild_prod_agents.sh`
+> prints a cleanup warning and proceeds base-only; remove both files and revoke the key
+> at the provider at the next deploy. Sentiment history
 > (`data/event_log_sentiment-macro-bot.jsonl`, DB rows) is untouched.
 
 This potentially paid fallback is disabled by default and requires a primary sentiment
@@ -23,6 +26,9 @@ sentiment provider chain — see [sentiment-provider-chain.md](./sentiment-provi
 for the complete order, budgets, NVIDIA model fallback, and cooldown rules.
 
 ## Future rollout, only after explicit approval
+
+*(Removed 2026-11-19 — see the decision note above. Kept below as the historical
+procedure for a future re-introduction.)*
 
 Keep Command Code settings **out of the shared `.env`**. Provision
 `/etc/crypto-agent/commandcode.env` outside the repository, owned by the deploy user
