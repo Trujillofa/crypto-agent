@@ -1,0 +1,9 @@
+[Unit]
+Description=Run crypto-agent NFP forward capture check hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

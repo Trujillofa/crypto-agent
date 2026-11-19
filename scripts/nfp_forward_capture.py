@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 import time
@@ -42,6 +43,15 @@ import httpx
 CONSENSUS_URL = "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
 WAYBACK_SAVE_URL = f"https://web.archive.org/save/{CONSENSUS_URL}"
 WAYBACK_PREFIX = "https://web.archive.org/"
+ARCHIVE_PH_SUBMIT_URL = "https://archive.ph/submit/"
+ARCHIVE_PH_PREFIXES = (
+    "https://archive.ph/",
+    "http://archive.ph/",
+    "https://archive.today/",
+    "http://archive.today/",
+    "https://archive.is/",
+    "http://archive.is/",
+)
 SNAPSHOT_TS_RE = re.compile(r"/web/(\d{14})")
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 LATEST_RELEASE_RE = re.compile(r"Latest Release\s+([A-Za-z]{3,9}\.?\s+\d{1,2},\s+\d{4})")
@@ -292,6 +302,89 @@ def _snapshot_url_from_response(response: httpx.Response) -> str:
     )
 
 
+def _submit_archive_ph(
+    url: str,
+    timeout: float = SAVE_TIMEOUT_SECONDS,
+    *,
+    attempts: int = SAVE_MAX_ATTEMPTS,
+) -> tuple[str, str]:
+    """Submit a URL to archive.ph and return (snapshot_url, page_html)."""
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": "https://archive.ph/",
+    }
+    data = {"url": url}
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            with httpx.Client(follow_redirects=True, timeout=timeout, headers=headers) as client:
+                resp = client.post(ARCHIVE_PH_SUBMIT_URL, data=data)
+                try:
+                    final_url = str(resp.url)
+                except RuntimeError:
+                    final_url = ""
+                refresh = resp.headers.get("refresh", "")
+                if "url=" in refresh:
+                    target = refresh.split("url=", 1)[1].strip()
+                    if target.startswith("http"):
+                        final_url = target
+                if (
+                    any(final_url.startswith(p) for p in ARCHIVE_PH_PREFIXES)
+                    and final_url.rstrip("/") != "https://archive.ph/submit"
+                ):
+                    body = resp.text
+                    if not body.strip():
+                        body = client.get(final_url).text
+                    return final_url, body
+                match = re.search(
+                    r'href=["\'](https?://archive\.(?:ph|today|is)/[a-zA-Z0-9]+)["\']', resp.text
+                )
+                if match:
+                    found_url = match.group(1)
+                    body = client.get(found_url).text
+                    return found_url, body
+                raise CaptureError(
+                    f"archive.ph submit did not return a snapshot URL (status {resp.status_code}, url {resp.url})"
+                )
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= attempts - 1:
+                break
+            delay = SAVE_RETRY_DELAYS_SECONDS[min(attempt, len(SAVE_RETRY_DELAYS_SECONDS) - 1)]
+            print(
+                f"[pre] archive.ph submit failed (attempt {attempt + 1}/{attempts}): {exc}; "
+                f"retrying in {delay:.0f}s"
+            )
+            time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
+def send_telegram_alert(message: str) -> bool:
+    """Send alert via Telegram if configured in environment."""
+    enabled = os.getenv("TELEGRAM_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    if not enabled or not bot_token or not chat_id:
+        return False
+    try:
+        import urllib.parse
+        import urllib.request
+
+        payload = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode("utf-8")
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            data=payload,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return bool(data.get("ok"))
+    except Exception as exc:
+        print(f"[alert] Failed to send Telegram alert: {exc}", file=sys.stderr)
+        return False
+
+
 def snapshot_timestamp(snapshot_url: str) -> datetime:
     match = SNAPSHOT_TS_RE.search(snapshot_url)
     if match is None:
@@ -445,21 +538,36 @@ def cmd_pre(args: argparse.Namespace) -> int:
         ).text
     else:
         print(f"[pre] requesting Wayback Save Page Now for {CONSENSUS_URL}")
-        response = _http_get_with_retries(
-            WAYBACK_SAVE_URL,
-            SAVE_TIMEOUT_SECONDS,
-            label="Wayback Save Page Now",
-        )
-        snapshot_url = _snapshot_url_from_response(response)
-        snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
-        print(f"[pre] snapshot: {snapshot_url}")
-        body = response.text
-        if not body.strip():
-            body = _http_get_with_retries(
-                snapshot_url,
-                FETCH_TIMEOUT_SECONDS,
-                label="snapshot fetch",
-            ).text
+        try:
+            response = _http_get_with_retries(
+                WAYBACK_SAVE_URL,
+                SAVE_TIMEOUT_SECONDS,
+                label="Wayback Save Page Now",
+            )
+            snapshot_url = _snapshot_url_from_response(response)
+            snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
+            print(f"[pre] snapshot: {snapshot_url}")
+            body = response.text
+            if not body.strip():
+                body = _http_get_with_retries(
+                    snapshot_url,
+                    FETCH_TIMEOUT_SECONDS,
+                    label="snapshot fetch",
+                ).text
+        except (httpx.HTTPError, CaptureError) as wayback_exc:
+            print(
+                f"[pre] Wayback Save Page Now failed: {wayback_exc}; "
+                "trying fallback archive.ph submit"
+            )
+            try:
+                snapshot_url, body = _submit_archive_ph(CONSENSUS_URL)
+                snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
+                print(f"[pre] archive.ph snapshot: {snapshot_url}")
+            except Exception as archive_exc:
+                raise CaptureError(
+                    f"both Wayback and archive.ph capture attempts failed: "
+                    f"Wayback error: {wayback_exc}; archive.ph error: {archive_exc}"
+                ) from archive_exc
 
     if snapshot_ts >= release_ts:
         raise CaptureError(
@@ -589,7 +697,90 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"[status] next expected release: {upcoming.isoformat()} at {release_ts.isoformat()}")
     print(f"[status] capture window opens:  {opens.isoformat()}")
     print("[status] verify the date against https://www.bls.gov/schedule/news_release/empsit.htm")
+
+    if getattr(args, "strict", False):
+        if opens <= now < release_ts:
+            if pending is None or pending.release_date_et != upcoming.isoformat():
+                time_to_release = release_ts - now
+                hours = time_to_release.total_seconds() / 3600.0
+                err_msg = (
+                    f"[status] STRICT CHECK FAILED: release {upcoming.isoformat()} is in "
+                    f"{hours:.1f}h ({release_ts.isoformat()}) but no pending capture exists!"
+                )
+                print(err_msg, file=sys.stderr)
+                if getattr(args, "alert", False) or hours <= 3.0:
+                    alert_text = (
+                        f"CRITICAL: crypto-agent NFP consensus capture missing!\n\n"
+                        f"Next release: {upcoming.isoformat()} at {release_ts.isoformat()} UTC\n"
+                        f"Time remaining: {hours:.1f}h\n\n"
+                        f"Save {CONSENSUS_URL} via Wayback or archive.ph and run:\n"
+                        f"uv run python scripts/nfp_forward_capture.py pre --release-date {upcoming.isoformat()} --snapshot-url <URL>"
+                    )
+                    send_telegram_alert(alert_text)
+                return 1
     return 0
+
+
+def cmd_cron(args: argparse.Namespace) -> int:
+    """Automated cron routine run periodically (e.g. hourly on Hetzner host).
+
+    If within the 24h pre-release capture window:
+      - Checks if a verified pending capture already exists (if so, exits 0).
+      - If missing, attempts pre-capture (Wayback SPN -> archive.ph submit).
+      - If within 3h and capture fails or is missing, fires a Telegram alert.
+    """
+    now = datetime.now(UTC)
+    csv_path = Path(args.csv)
+    pending_path = Path(args.pending)
+
+    upcoming = next_scheduled_release(now)
+    release_ts = release_timestamp_utc(upcoming)
+    opens = release_ts - CAPTURE_WINDOW
+
+    if now < opens or now >= release_ts:
+        print(
+            f"[cron] outside capture window for {upcoming.isoformat()} "
+            f"(window opens {opens.isoformat()}, release {release_ts.isoformat()})"
+        )
+        return 0
+
+    pending = read_pending(pending_path)
+    if pending is not None and pending.release_date_et == upcoming.isoformat() and pending.verified:
+        print(f"[cron] verified pending capture already exists: {pending.snapshot_url}")
+        return 0
+
+    print(
+        f"[cron] inside capture window for {upcoming.isoformat()} (release at {release_ts.isoformat()}); "
+        "triggering automated pre-release capture"
+    )
+    pre_args = argparse.Namespace(
+        release_date=upcoming.isoformat(),
+        snapshot_url=None,
+        allow_unverified=False,
+        force=False,
+        rescue=False,
+        pending=str(pending_path),
+        csv=str(csv_path),
+    )
+    try:
+        res = cmd_pre(pre_args)
+        if res == 0:
+            print(f"[cron] successfully captured pending snapshot for {upcoming.isoformat()}")
+            return 0
+    except Exception as exc:
+        print(f"[cron] automated capture attempt failed: {exc}", file=sys.stderr)
+
+    hours_left = (release_ts - now).total_seconds() / 3600.0
+    if hours_left <= 3.0:
+        alert_text = (
+            f"CRITICAL: crypto-agent automated NFP consensus capture failed!\n\n"
+            f"Next release: {upcoming.isoformat()} at {release_ts.isoformat()} UTC\n"
+            f"Time remaining: {hours_left:.1f}h\n\n"
+            f"Please save {CONSENSUS_URL} manually via Wayback or archive.ph and stash:\n"
+            f"uv run python scripts/nfp_forward_capture.py pre --release-date {upcoming.isoformat()} --snapshot-url <URL>"
+        )
+        send_telegram_alert(alert_text)
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -644,7 +835,20 @@ def build_parser() -> argparse.ArgumentParser:
     miss.set_defaults(func=cmd_miss)
 
     status = subparsers.add_parser("status", help="show pending capture and the next release")
+    status.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit non-zero if next release is <24h away with no pending capture",
+    )
+    status.add_argument(
+        "--alert",
+        action="store_true",
+        help="send Telegram alert if strict check fails or release is <3h away",
+    )
     status.set_defaults(func=cmd_status)
+
+    cron = subparsers.add_parser("cron", help="automated capture check / trigger for cron or timer")
+    cron.set_defaults(func=cmd_cron)
     return parser
 
 

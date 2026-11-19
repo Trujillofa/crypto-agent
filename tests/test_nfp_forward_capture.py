@@ -354,3 +354,296 @@ def test_missed_capture_still_blocks_a_later_duplicate(tmp_path: Path):
     append_row(csv_path, build_missed_row(date(2026, 10, 2), ""))
     with pytest.raises(CaptureError):
         append_row(csv_path, build_row(date(2026, 10, 2), 1.0, 0.0, "https://web.archive.org/d"))
+
+
+def test_submit_archive_ph_extracts_url(monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    fake_html = "<html>Latest Release Oct 02, 2026 Actual 29.00K</html>"
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, data=None):
+            return httpx.Response(
+                200,
+                headers={"refresh": "0;url=https://archive.ph/test1234"},
+                text=fake_html,
+                request=httpx.Request("POST", "https://archive.ph/submit/"),
+            )
+
+        def get(self, url):
+            return httpx.Response(
+                200,
+                text=fake_html,
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr(mod.httpx, "Client", FakeClient)
+    url, body = mod._submit_archive_ph("https://example.com")
+    assert url == "https://archive.ph/test1234"
+    assert "Oct 02, 2026" in body
+
+
+def test_pre_falls_back_to_archive_ph_when_wayback_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    html = (
+        "<div>Latest Release Nov 06, 2026 Actual 165.00K Forecast 65.00K "
+        "Previous 29.00K</div><div>Dec 04, 2026 (Nov) 13:30 140.00K 165.00K</div>"
+    )
+
+    def fake_get_retries(url, timeout, **kwargs):
+        if "web.archive.org/save" in url:
+            raise httpx.ConnectError("Connection reset by peer")
+        return httpx.Response(200, text=html)
+
+    monkeypatch.setattr(mod, "_http_get_with_retries", fake_get_retries)
+    monkeypatch.setattr(
+        mod,
+        "_submit_archive_ph",
+        lambda url, **kwargs: ("https://archive.ph/dec2026", html),
+    )
+
+    # Freeze 'now' inside the 24h capture window for Dec 04, 2026 (release is 13:30 UTC)
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+
+    pending = tmp_path / "pending.json"
+    assert (
+        main(
+            [
+                "--pending",
+                str(pending),
+                "pre",
+                "--release-date",
+                "2026-12-04",
+            ]
+        )
+        == 0
+    )
+    stashed = read_pending(pending)
+    assert stashed is not None
+    assert stashed.snapshot_url == "https://archive.ph/dec2026"
+    assert stashed.verified is True
+
+
+def test_status_strict_passes_outside_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    # 'now' is well before Dec 4, 2026 (e.g. Nov 19)
+    outside_window = datetime(2026, 11, 19, 12, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return outside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "status",
+                "--strict",
+            ]
+        )
+        == 0
+    )
+
+
+def test_status_strict_fails_inside_window_without_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    # Release is 2026-12-04 13:30 UTC; test at 2026-12-03 16:00 UTC (inside 24h window)
+    inside_window = datetime(2026, 12, 3, 16, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+
+    alerts = []
+    monkeypatch.setattr(mod, "send_telegram_alert", lambda msg: alerts.append(msg))
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "status",
+                "--strict",
+            ]
+        )
+        == 1
+    )
+    # Outside 3h, no alert unless --alert is passed
+    assert len(alerts) == 0
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "status",
+                "--strict",
+                "--alert",
+            ]
+        )
+        == 1
+    )
+    assert len(alerts) == 1
+    assert "NFP consensus capture missing" in alerts[0]
+
+
+def test_status_strict_alerts_when_under_3h(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    # Release is 2026-12-04 13:30 UTC; test at 2026-12-04 11:30 UTC (2h before release)
+    under_3h = datetime(2026, 12, 4, 11, 30, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return under_3h
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+
+    alerts = []
+    monkeypatch.setattr(mod, "send_telegram_alert", lambda msg: alerts.append(msg))
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "status",
+                "--strict",
+            ]
+        )
+        == 1
+    )
+    assert len(alerts) == 1
+    assert "Time remaining: 2.0h" in alerts[0]
+
+
+def test_cron_skips_when_outside_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    outside_window = datetime(2026, 11, 19, 12, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return outside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "cron",
+            ]
+        )
+        == 0
+    )
+
+
+def test_cron_captures_when_inside_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    html = (
+        "<div>Latest Release Nov 06, 2026 Actual 165.00K Forecast 65.00K "
+        "Previous 29.00K</div><div>Dec 04, 2026 (Nov) 13:30 140.00K 165.00K</div>"
+    )
+    monkeypatch.setattr(
+        mod,
+        "_submit_archive_ph",
+        lambda url, **kwargs: ("https://archive.ph/dec2026", html),
+    )
+
+    def fake_get_retries(url, timeout, **kwargs):
+        raise httpx.ConnectError("Wayback down")
+
+    monkeypatch.setattr(mod, "_http_get_with_retries", fake_get_retries)
+
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "cron",
+            ]
+        )
+        == 0
+    )
+    stashed = read_pending(pending)
+    assert stashed is not None
+    assert stashed.snapshot_url == "https://archive.ph/dec2026"
+
+    # Second cron run sees existing verified capture and exits 0 immediately
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "cron",
+            ]
+        )
+        == 0
+    )

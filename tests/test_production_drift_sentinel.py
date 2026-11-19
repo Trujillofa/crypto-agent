@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from src.utils.production_drift_sentinel import (
     IGNORED_CONFIG_FILES,
@@ -514,3 +516,41 @@ def test_dedupe_clean_run_resets_state_so_next_drift_alerts(tmp_path) -> None:
     assert script._apply_dedupe(0, state, script._findings_fingerprint([])) == 0
     assert not state.exists()
     assert script._apply_dedupe(1, state, fingerprint) == 1
+
+
+def test_check_nfp_pending_capture_outside_window(tmp_path: Path) -> None:
+    from src.utils.production_drift_sentinel import check_nfp_pending_capture
+
+    # Nov 19 2026 is outside the 24h window for Dec 4 2026 release
+    now = datetime(2026, 11, 19, 12, 0, 0, tzinfo=UTC)
+    assert check_nfp_pending_capture(repo_root=tmp_path, now=now) is None
+
+
+def test_check_nfp_pending_capture_missing_inside_window(tmp_path: Path) -> None:
+    from src.utils.production_drift_sentinel import Severity, check_nfp_pending_capture
+
+    # Dec 04 2026 13:30 UTC is the release. Test at Dec 03 18:00 UTC (~19.5h away)
+    now = datetime(2026, 12, 3, 18, 0, 0, tzinfo=UTC)
+    finding = check_nfp_pending_capture(repo_root=tmp_path, now=now)
+    assert finding is not None
+    assert finding.code == "NFP_PENDING_CAPTURE_MISSING"
+    assert finding.severity == Severity.WARNING
+
+    # Test under 3h: Dec 04 11:30 UTC (2h away) -> Severity.ERROR
+    now_urgent = datetime(2026, 12, 4, 11, 30, 0, tzinfo=UTC)
+    finding_urgent = check_nfp_pending_capture(repo_root=tmp_path, now=now_urgent)
+    assert finding_urgent is not None
+    assert finding_urgent.code == "NFP_PENDING_CAPTURE_MISSING"
+    assert finding_urgent.severity == Severity.ERROR
+
+
+def test_check_nfp_pending_capture_present_inside_window(tmp_path: Path) -> None:
+    from src.utils.production_drift_sentinel import check_nfp_pending_capture
+
+    now = datetime(2026, 12, 3, 18, 0, 0, tzinfo=UTC)
+    pending_dir = tmp_path / "research" / "nfp_forward"
+    pending_dir.mkdir(parents=True)
+    (pending_dir / "pending_capture.json").write_text(
+        json.dumps({"release_date_et": "2026-12-04"}), encoding="utf-8"
+    )
+    assert check_nfp_pending_capture(repo_root=tmp_path, now=now) is None
