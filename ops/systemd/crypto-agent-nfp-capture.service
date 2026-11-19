@@ -6,14 +6,18 @@ OnFailure=crypto-agent-telegram-failure@%n.service
 
 [Service]
 Type=oneshot
-User=emilio
+User=root
 WorkingDirectory=/opt/crypto-agent
-EnvironmentFile=/opt/crypto-agent/.env
-# The capture script needs httpx; the system python lacks project deps, so run it
-# through the uv-managed project env (same pattern as incentive_ops_daily_tick).
-# The pending stash lives outside the checkout so deploys can git pull --ff-only.
+# Scoped env: only the Telegram alert vars, not the full .env (audit L3).
+# Create with: grep -E '^(TELEGRAM_ENABLED|TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID)=' \
+#   /opt/crypto-agent/.env > /etc/crypto-agent/nfp-capture.env && chmod 600
+EnvironmentFile=/etc/crypto-agent/nfp-capture.env
+# The capture script needs httpx; the system python lacks project deps, so run
+# it through the uv-managed project env. uv must be installed at the absolute
+# path below (no login-shell PATH games in a systemd unit):
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
 Environment=NFP_PENDING_CAPTURE_PATH=/var/lib/crypto-agent/nfp_forward/pending_capture.json
-ExecStart=/bin/bash -lc 'uv run --project /opt/crypto-agent python scripts/nfp_forward_capture.py cron'
+ExecStart=/root/.local/bin/uv run --project /opt/crypto-agent python scripts/nfp_forward_capture.py cron
 
 [Install]
 WantedBy=multi-user.target
