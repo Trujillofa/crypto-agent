@@ -9,7 +9,11 @@ Type=oneshot
 User=emilio
 WorkingDirectory=/opt/crypto-agent
 EnvironmentFile=/opt/crypto-agent/.env
-ExecStart=/usr/bin/python3 scripts/nfp_forward_capture.py cron
+# The capture script needs httpx; the system python lacks project deps, so run it
+# through the uv-managed project env (same pattern as incentive_ops_daily_tick).
+# The pending stash lives outside the checkout so deploys can git pull --ff-only.
+Environment=NFP_PENDING_CAPTURE_PATH=/var/lib/crypto-agent/nfp_forward/pending_capture.json
+ExecStart=/bin/bash -lc 'uv run --project /opt/crypto-agent python scripts/nfp_forward_capture.py cron'
 
 [Install]
 WantedBy=multi-user.target

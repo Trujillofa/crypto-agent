@@ -99,3 +99,12 @@ config/nginx/ssl/
 
 # incentive_ops baseline runtime lock (not an artifact)
 research/a1-incentive-farming/runs/.baseline.lock
+
+/.crew/
+/.crew
+!.crew/artifacts/
+!.crew/graphs/
+!.crew/artifacts/.gitkeep
+!.crew/graphs/.gitkeep
+# NFP forward capture runtime state (M4: keep the checkout clean for --ff-only deploys)
+research/nfp_forward/pending_capture.json
