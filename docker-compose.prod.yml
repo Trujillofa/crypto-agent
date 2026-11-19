@@ -262,15 +262,6 @@ services:
       AGENT_ID: sol-1h-trend-pullback-overlay-live
       SETTINGS_PATH: config/settings.sol_1h_trend_pullback_overlay_live.yaml
 
-  agent_sentiment_macro:
-    <<: *agent-common
-    environment:
-      POSTGRES_HOST: timescaledb
-      POSTGRES_PORT: "5432"
-      PROMETHEUS_PORT: "8000"
-      AGENT_ID: sentiment-macro-bot
-      SETTINGS_PATH: config/settings.sentiment_macro.yaml
-
   # nginx: DISABLED 2026-06-01 — tailscaled owns the host HTTPS listener on port 443.
   # Keep Grafana internal-only until ingress is intentionally consolidated.
   # nginx:

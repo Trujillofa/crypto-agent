@@ -1,5 +1,15 @@
 # Optional Command Code sentiment fallback
 
+> **Decision 2026-11-19 — sentiment disarmed (CR-4 option (b)).** Per
+> `docs/specs/NEXT-WORKFLOW-2026-11.md` CR-4, the human chose option (b): sentiment
+> recording is stopped and `agent_sentiment_macro` is disarmed (removed from both compose
+> files and from Prometheus/alert targets). No further provider-fallback work. The
+> Command Code rollout below is moot; its "only after explicit approval" gate is
+> unchanged. `docker-compose.commandcode.yml` now names a service the base compose no
+> longer defines, so with the host marker present `scripts/rebuild_prod_agents.sh` fails
+> closed at the service-set check. Sentiment history
+> (`data/event_log_sentiment-macro-bot.jsonl`, DB rows) is untouched.
+
 This potentially paid fallback is disabled by default and requires a primary sentiment
 provider, `COMMANDCODE_ENABLED=true`, a nonempty `COMMANDCODE_API_KEY` and an explicitly
 chosen, nonempty `COMMANDCODE_MODEL`. A direct probe using `reflection/beam:free` returned

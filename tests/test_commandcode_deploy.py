@@ -116,7 +116,8 @@ def test_overlay_preflight_rejects_invalid_configuration_before_build(
     assert all(" build " not in call and " up " not in call for call in calls)
 
 
-def test_real_compose_merge_preserves_services_and_scopes_dummy_environment(tmp_path: Path) -> None:
+def test_real_compose_merge_fails_closed_after_sentiment_removal(tmp_path: Path) -> None:
+    """CR-4 (b) removed agent_sentiment_macro; the overlay must not resurrect it."""
     if shutil.which("docker") is None:
         pytest.skip("docker CLI not installed")
     for name in ("docker-compose.prod.yml", "docker-compose.commandcode.yml"):
@@ -133,33 +134,24 @@ def test_real_compose_merge_preserves_services_and_scopes_dummy_environment(tmp_
     env = {key: env[key] for key in ("PATH", "HOME") if key in env}
     env["COMMANDCODE_ENV_FILE"] = str(secret)
 
-    def config(*files: str) -> dict:
+    def config(*files: str) -> subprocess.CompletedProcess[str]:
         args = ["docker", "compose"]
         for file in files:
             args.extend(["-f", file])
-        result = subprocess.run(
+        return subprocess.run(
             args + ["config", "--format", "json"],
             cwd=tmp_path,
             env=env,
             capture_output=True,
             text=True,
-            check=True,
         )
-        return json.loads(result.stdout)
 
     base = config("docker-compose.prod.yml")
+    assert base.returncode == 0, base.stderr
+    assert "agent_sentiment_macro" not in json.loads(base.stdout)["services"]
     merged = config("docker-compose.prod.yml", "docker-compose.commandcode.yml")
-    assert base["services"].keys() == merged["services"].keys()
-    assert {"prometheus", "postgres_exporter", "node_exporter"} <= merged["services"].keys()
-    for name, service in merged["services"].items():
-        if name == "agent_sentiment_macro":
-            assert service["environment"]["COMMANDCODE_API_KEY"] == "dummy-key"
-            assert service["environment"]["COMMANDCODE_MODEL"] == "dummy-model"
-            for key in ("COMMANDCODE_API_KEY", "COMMANDCODE_ENABLED", "COMMANDCODE_MODEL"):
-                service["environment"].pop(key)
-        else:
-            assert "COMMANDCODE_API_KEY" not in service.get("environment", {})
-        assert service == base["services"][name]
+    assert merged.returncode != 0
+    assert "agent_sentiment_macro" in merged.stderr
 
 
 @pytest.mark.parametrize(

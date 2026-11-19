@@ -60,9 +60,6 @@ def test_env_opt_in_and_zai_factory(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_compose_uses_scoped_overlay() -> None:
-    for filename in ("docker-compose.yml", "docker-compose.prod.yml"):
-        compose = yaml.safe_load(Path(filename).read_text())
-        assert ".env" in compose["services"]["agent_sentiment_macro"]["env_file"]
     overlay = yaml.safe_load(Path("docker-compose.commandcode.yml").read_text())
     assert list(overlay["services"]) == ["agent_sentiment_macro"]
     assert overlay["services"]["agent_sentiment_macro"]["env_file"] == [

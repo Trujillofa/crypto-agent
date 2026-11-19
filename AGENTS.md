@@ -68,14 +68,14 @@ ssh crypto-agent "DEPLOY_ROOT=/opt/crypto-agent bash /opt/crypto-agent/scripts/r
 ## Architecture Surprises
 
 ### Multi-agent runtime
-`docker-compose.prod.yml` currently runs 3 strategy-agent containers simultaneously, each with its own config:
-- Agent identity is set via `AGENT_ID` env var (e.g., `sol-1h-trend-pullback-overlay-live`, `sentiment-macro-bot`, `sol-4h-panic-block-paper`)
+`docker-compose.prod.yml` currently runs 2 strategy-agent containers simultaneously, each with its own config:
+- Agent identity is set via `AGENT_ID` env var (e.g., `sol-1h-trend-pullback-overlay-live`, `sol-4h-panic-block-paper`)
 - Config is selected via `SETTINGS_PATH` env var (e.g., `config/settings.sol_1h_trend_pullback_overlay_live.yaml`)
 - All agents share one TimescaleDB instance, isolated by `agent_id` columns (see `migrations/005_add_agent_isolation.sql`)
 
 Historically disabled agents (`agent`, `agent_2`, `agent_btc`, `agent_eth`, `agent_avax`,
-`agent_sol_sparse`) have been
-removed from the compose file along with their config files. See `CLAUDE.md` for the rationale table
+`agent_sol_sparse`, `agent_sentiment_macro`) have been
+removed from the compose file (`agent_sentiment_macro` keeps its settings file for research tooling). See `CLAUDE.md` for the rationale table
 and git history for the prior definitions.
 
 ### Futures execution gotchas

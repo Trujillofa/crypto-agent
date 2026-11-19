@@ -486,7 +486,6 @@ The system supports running multiple isolated trading agents simultaneously. The
 | Agent | Config | Description |
 |-------|--------|-------------|
 | `agent_sol_1h_trend_pullback_overlay_live` | `config/settings.sol_1h_trend_pullback_overlay_live.yaml` | **Disarmed to paper 2026-07-06** (monitor only) — threshold sweep 2026-06-18 found no tradeable buy_threshold with an edge at corrected costs; do not re-arm without a new pre-registered WFO pass |
-| `agent_sentiment_macro` | `config/settings.sentiment_macro.yaml` | **Disarmed to paper 2026-07-06** (kept for sentiment feed recording; Z.AI primary with provider fallbacks) — vol-filter sweep #101 found no setting that trades AND holds an edge; last 15 live trades 2W/13L |
 | `agent_sol_panic_block_paper` | `config/settings.sol_4h_panic_block_paper.yaml` | SOL panic-block paper validation |
 
 **Historically disabled agents (configs removed — see git history for prior definitions):**
@@ -499,6 +498,7 @@ The system supports running multiple isolated trading agents simultaneously. The
 | `agent_eth` | ETHUSDT 4h | 12% win rate on simple_ma, no edge across any strategy. WFO sweep: all candidates failed quality gates. | commit `5be9a0d`, `docs/reports/mtf-ethusdt-sweep-analysis.md` |
 | `agent_avax` | AVAXUSDT 4h | Live performance degraded to 2W/11L and `-$9.58`; prior WFO edge did not persist. | commit `23e3174` |
 | `agent_sol_sparse` | SOLUSDT 4h trend_pullback (paper) | Retired 2026-11-19 (CR-5, human decision): 2 signals ever (2026-04-25, 2026-05-05), both from an intrabar ratchet on forming candles; drought is by design. Paper only, no capital. | `docs/specs/NEXT-WORKFLOW-2026-11.md` CR-5, `docs/reports/strategy-drought-rebaseline-2026-10-22.md` |
+| `agent_sentiment_macro` | SOLUSDT 1h sentiment mean-reversion (paper since 2026-07-06) | Removed 2026-11-19 (CR-4 option (b), human decision): sentiment recording stopped, agent disarmed. Vol-filter sweep #101 found no setting that trades AND holds an edge; last 15 live trades 2W/13L. `config/settings.sentiment_macro.yaml` kept: research tooling and the terminated DeepSeek window lock reference it. | `docs/specs/NEXT-WORKFLOW-2026-11.md` CR-4, `docs/commandcode-sentiment.md` |
 
 Agents are isolated via `AGENT_ID` environment variable. Database tables use `agent_id` columns for state separation (see `migrations/005_add_agent_isolation.sql`).
 

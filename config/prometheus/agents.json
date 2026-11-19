@@ -1,13 +1,6 @@
 [
 	{
 		"labels": {
-			"service": "agent_sentiment_macro",
-			"agent_id": "sentiment-macro-bot"
-		},
-		"targets": ["agent_sentiment_macro:8000"]
-	},
-	{
-		"labels": {
 			"service": "agent_sol_panic_block_paper",
 			"agent_id": "sol-4h-panic-block-paper"
 		},
