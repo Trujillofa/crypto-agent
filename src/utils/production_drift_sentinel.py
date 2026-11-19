@@ -6,10 +6,11 @@ import re
 import shlex
 import subprocess
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
 PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
@@ -830,6 +831,53 @@ def parse_iso_timestamp(value: str) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def check_nfp_pending_capture(
+    repo_root: Path = Path("."),
+    now: datetime | None = None,
+) -> Finding | None:
+    """Check if the next scheduled NFP release is within 24h and missing a pending capture."""
+    now = now or datetime.now(UTC)
+    first = date(now.year, now.month, 1)
+    cand = first + timedelta(days=(4 - first.weekday()) % 7)
+    local_ts = datetime(cand.year, cand.month, cand.day, 8, 30, tzinfo=ZoneInfo("America/New_York"))
+    release_ts = local_ts.astimezone(UTC)
+    if release_ts <= now:
+        year = now.year + 1 if now.month == 12 else now.year
+        month = 1 if now.month == 12 else now.month + 1
+        first = date(year, month, 1)
+        cand = first + timedelta(days=(4 - first.weekday()) % 7)
+        local_ts = datetime(
+            cand.year, cand.month, cand.day, 8, 30, tzinfo=ZoneInfo("America/New_York")
+        )
+        release_ts = local_ts.astimezone(UTC)
+
+    capture_window = timedelta(hours=24)
+    opens = release_ts - capture_window
+    if opens <= now < release_ts:
+        pending_path = repo_root / "research" / "nfp_forward" / "pending_capture.json"
+        has_pending = False
+        if pending_path.exists():
+            try:
+                data = json.loads(pending_path.read_text(encoding="utf-8"))
+                if data.get("release_date_et") == cand.isoformat():
+                    has_pending = True
+            except Exception:
+                has_pending = False
+        if not has_pending:
+            hours = (release_ts - now).total_seconds() / 3600.0
+            sev = Severity.ERROR if hours <= 3.0 else Severity.WARNING
+            return Finding(
+                severity=sev,
+                code="NFP_PENDING_CAPTURE_MISSING",
+                message=(
+                    f"NFP release {cand.isoformat()} is at {release_ts.isoformat()} "
+                    f"({hours:.1f}h away, <24h) but no pending capture exists in {pending_path}"
+                ),
+                recommendation="Run: uv run python scripts/nfp_forward_capture.py pre",
+            )
+    return None
+
+
 def analyze_drift(
     *,
     expected_branch: str,
@@ -846,6 +894,8 @@ def analyze_drift(
     remote_checks_enabled: bool = True,
     durable_signal_snapshot: DurableSignalSnapshot | None = None,
     durable_watched_service_snapshot: DurableWatchedServiceSnapshot | None = None,
+    repo_root: Path = Path("."),
+    now: datetime | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
 
@@ -877,6 +927,9 @@ def analyze_drift(
                     recommendation="Use this only for feature testing; deploy from the expected branch.",
                 )
             )
+        nfp_finding = check_nfp_pending_capture(repo_root=repo_root, now=now)
+        if nfp_finding is not None:
+            findings.append(nfp_finding)
 
     if not remote_checks_enabled:
         return findings

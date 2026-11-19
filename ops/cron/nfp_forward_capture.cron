@@ -1,0 +1,4 @@
+# Crypto-agent NFP forward capture schedule
+# Runs hourly to check and capture consensus within the 24h pre-release window
+# (e.g. at release - 23h, release - 6h, and alerts at release - 3h if missing).
+0 * * * * cd /opt/crypto-agent && /usr/bin/python3 scripts/nfp_forward_capture.py cron >> /opt/crypto-agent/data/logs/nfp_capture.log 2>&1
