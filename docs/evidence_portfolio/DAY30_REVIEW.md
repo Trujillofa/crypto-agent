@@ -16,7 +16,7 @@ locked thresholds.
 | Edge probe #2 (fee-marginal) | **DELETED_NOT_NAMED** (2026-07-09) | `FEE_MARGINAL_PREREG.md` — no eligible family; budget slot consumed, not replaced |
 | A1 incentive farming | **CLOSED, no Scale** (2026-07-14) | `A1_THRESHOLD_LOCK.md` — Legion = weekly watch only; galxe → controls; tick timer disabled |
 | cTrader FX (external) | **IN PROGRESS — not gate-closed** | See §cTrader snapshot. Boundary + measurements in `CTRADER_EXTERNAL_GATE.md` (through 2026-07-28). Challenge-ready criteria **not met**. |
-| NFP forward gate | **SIGNED, in force** (2026-07-21) | `NFP_FORWARD_GATE.md`, PR #155. First print 2026-08-07 = `MISSED_CAPTURE` (**1/3**); booked in `data/macro_events/nfp_good_news_forward.csv` (`6860d13`). Next print **2026-09-04**. Pre-flight 2026-08-18: BLS + Investing confirm Sep 4 08:30 ET / 12:30 UTC; Wayback SPN still `ECONNRESET`; use `--snapshot-url` if SPN fails. |
+| NFP forward gate | **SIGNED, in force** (2026-07-21) | `NFP_FORWARD_GATE.md`, PR #155. Aug 7, Sep 4 and Oct 2 = `MISSED_CAPTURE` (**3/3**); Nov 6 captured (forecast 65.0K, actual 165.0K, +100.0K hot, z=0.454). Misses cap the sample at the original decision date; no extension. Evidence: `docs/reports/nfp-forward-rescue-2026-10-11.md`. |
 
 ### cTrader snapshot (external; for this table only)
 
