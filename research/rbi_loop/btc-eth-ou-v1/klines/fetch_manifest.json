@@ -1,0 +1,35 @@
+{
+  "source": "https://api.binance.com/api/v3/klines",
+  "api_key": false,
+  "scope_start_utc": "2023-04-24T00:00:00+00:00",
+  "scope_end_exclusive_utc": "2026-01-01T00:00:00+00:00",
+  "holdout_fetched": false,
+  "symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "path": "research/rbi_loop/btc-eth-ou-v1/klines/BTCUSDT_1d.csv",
+      "requests": [
+        {
+          "url": "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=1682294400000&endTime=1767225599999&limit=1000",
+          "fetched_at_utc": "2026-11-19T20:37:24.378901+00:00",
+          "rows": 983
+        }
+      ],
+      "rows": 983,
+      "sha256": "9d9e84b4079bec501f8e558e07a0558ffec7c20da86331c2cd60b3ccc7c929ad"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "path": "research/rbi_loop/btc-eth-ou-v1/klines/ETHUSDT_1d.csv",
+      "requests": [
+        {
+          "url": "https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1d&startTime=1682294400000&endTime=1767225599999&limit=1000",
+          "fetched_at_utc": "2026-11-19T20:37:24.686289+00:00",
+          "rows": 983
+        }
+      ],
+      "rows": 983,
+      "sha256": "d83ca58c829d0fedbf2d59c77de2abb40affe1ffa88dd0021764547d40d5b506"
+    }
+  ]
+}
