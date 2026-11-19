@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from src.utils.production_drift_sentinel import (
     IGNORED_CONFIG_FILES,
     RepoSnapshot,
@@ -518,17 +520,33 @@ def test_dedupe_clean_run_resets_state_so_next_drift_alerts(tmp_path) -> None:
     assert script._apply_dedupe(1, state, fingerprint) == 1
 
 
-def test_check_nfp_pending_capture_outside_window(tmp_path: Path) -> None:
+def _write_nfp_schedule(root: Path) -> None:
+    schedule_dir = root / "data" / "macro_events"
+    schedule_dir.mkdir(parents=True, exist_ok=True)
+    (schedule_dir / "nfp_release_schedule.csv").write_text(
+        "release_date_et\n2026-11-06\n2026-12-04\n2027-01-08\n", encoding="utf-8"
+    )
+
+
+def test_check_nfp_pending_capture_outside_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.utils.production_drift_sentinel import check_nfp_pending_capture
 
+    monkeypatch.delenv("NFP_PENDING_CAPTURE_PATH", raising=False)
+    _write_nfp_schedule(tmp_path)
     # Nov 19 2026 is outside the 24h window for Dec 4 2026 release
     now = datetime(2026, 11, 19, 12, 0, 0, tzinfo=UTC)
     assert check_nfp_pending_capture(repo_root=tmp_path, now=now) is None
 
 
-def test_check_nfp_pending_capture_missing_inside_window(tmp_path: Path) -> None:
+def test_check_nfp_pending_capture_missing_inside_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.utils.production_drift_sentinel import Severity, check_nfp_pending_capture
 
+    monkeypatch.delenv("NFP_PENDING_CAPTURE_PATH", raising=False)
+    _write_nfp_schedule(tmp_path)
     # Dec 04 2026 13:30 UTC is the release. Test at Dec 03 18:00 UTC (~19.5h away)
     now = datetime(2026, 12, 3, 18, 0, 0, tzinfo=UTC)
     finding = check_nfp_pending_capture(repo_root=tmp_path, now=now)
@@ -544,9 +562,13 @@ def test_check_nfp_pending_capture_missing_inside_window(tmp_path: Path) -> None
     assert finding_urgent.severity == Severity.ERROR
 
 
-def test_check_nfp_pending_capture_present_inside_window(tmp_path: Path) -> None:
+def test_check_nfp_pending_capture_present_inside_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.utils.production_drift_sentinel import check_nfp_pending_capture
 
+    monkeypatch.delenv("NFP_PENDING_CAPTURE_PATH", raising=False)
+    _write_nfp_schedule(tmp_path)
     now = datetime(2026, 12, 3, 18, 0, 0, tzinfo=UTC)
     pending_dir = tmp_path / "research" / "nfp_forward"
     pending_dir.mkdir(parents=True)
@@ -554,3 +576,16 @@ def test_check_nfp_pending_capture_present_inside_window(tmp_path: Path) -> None
         json.dumps({"release_date_et": "2026-12-04"}), encoding="utf-8"
     )
     assert check_nfp_pending_capture(repo_root=tmp_path, now=now) is None
+
+
+def test_check_nfp_pending_capture_fails_closed_without_schedule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.utils.production_drift_sentinel import Severity, check_nfp_pending_capture
+
+    monkeypatch.delenv("NFP_PENDING_CAPTURE_PATH", raising=False)
+    now = datetime(2026, 12, 3, 18, 0, 0, tzinfo=UTC)
+    finding = check_nfp_pending_capture(repo_root=tmp_path, now=now)
+    assert finding is not None
+    assert finding.code == "NFP_SCHEDULE_UNREADABLE"
+    assert finding.severity == Severity.ERROR

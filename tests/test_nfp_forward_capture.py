@@ -1,11 +1,13 @@
 """Tests for the NFP forward-gate capture tool.
 
-No network access: every test exercises pure date/CSV/verification logic.
+No network access: every test exercises pure date/CSV/verification logic, the
+verified release schedule, and the capture-refusal guards.
 """
 
 from __future__ import annotations
 
 import csv
+import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -20,8 +22,10 @@ from scripts.nfp_forward_capture import (
     CaptureError,
     append_row,
     build_missed_row,
+    build_parser,
     build_row,
-    first_friday,
+    consensus_source_for,
+    extract_consensus_from_page,
     latest_release_date,
     main,
     next_scheduled_release,
@@ -31,8 +35,43 @@ from scripts.nfp_forward_capture import (
     release_timestamp_utc,
     resolve_snapshot_timestamp,
     snapshot_timestamp,
+    snapshot_ts_from_served_url,
+    validate_metric_value,
     verify_snapshot_is_point_in_time,
 )
+from src.utils.nfp_schedule import (
+    ScheduleError,
+    load_schedule,
+    next_release,
+    release_ts_utc,
+)
+
+GOOD_SNAPSHOT_HTML = (
+    "<div>Latest Release Oct 02, 2026 Actual 29.00K Forecast 89.00K "
+    "Previous 133.00K</div><div>Nov 06, 2026 (Oct) 13:30 65.00K 29.00K</div>"
+)
+
+
+def snap_response(url: str, text: str) -> httpx.Response:
+    """A fetched response whose final (served) URL is ``url``."""
+    return httpx.Response(200, text=text, request=httpx.Request("GET", url))
+
+
+def write_pending_capture(path: Path, release_date: str, *, verified: bool = True) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "release_date_et": release_date,
+                "release_ts_utc": "2026-12-04T13:30:00Z",
+                "snapshot_url": "https://web.archive.org/web/20261203070000/x",
+                "snapshot_ts_utc": "2026-12-03T07:00:00Z",
+                "captured_at_utc": "2026-12-03T07:00:00Z",
+                "verified": verified,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_release_timestamp_is_dst_aware():
@@ -47,22 +86,53 @@ def test_release_timestamp_matches_committed_oos_rows():
     assert release_timestamp_utc(date(2021, 4, 2)) == datetime(2021, 4, 2, 12, 30, tzinfo=UTC)
 
 
-def test_first_friday_and_previous_release():
-    assert first_friday(2026, 8) == date(2026, 8, 7)
-    assert first_friday(2026, 5) == date(2026, 5, 1)
-    assert previous_scheduled_release(date(2026, 8, 7)) == date(2026, 7, 3)
-    assert previous_scheduled_release(date(2026, 1, 2)) == date(2025, 12, 5)
+def test_schedule_file_pins_committed_and_verified_bls_dates():
+    """The checked-in schedule carries the committed prints and the official BLS dates.
+
+    2027-01-08 (not the Jan 1 holiday) and 2027-10-08 are exactly the dates a
+    first-Friday heuristic gets wrong.
+    """
+    schedule = load_schedule()
+    for pinned in ("2026-08-07", "2026-11-06", "2026-12-04", "2027-01-08", "2027-10-08"):
+        assert date.fromisoformat(pinned) in schedule, pinned
+    assert date(2027, 1, 1) not in schedule
 
 
-def test_next_scheduled_release_rolls_after_the_print():
+def test_next_release_crosses_year_boundary_on_the_verified_schedule():
+    # BLS: the first Friday of January 2027 is the New Year holiday; the print is Jan 8.
+    assert next_release(datetime(2026, 12, 5, 0, 0, tzinfo=UTC)) == date(2027, 1, 8)
+    assert next_release(datetime(2026, 12, 31, 23, 0, tzinfo=UTC)) == date(2027, 1, 8)
+
+
+def test_next_release_rolls_after_the_print():
     before = datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
     after = datetime(2026, 8, 7, 13, 0, tzinfo=UTC)
     assert next_scheduled_release(before) == date(2026, 8, 7)
     assert next_scheduled_release(after) == date(2026, 9, 4)
 
 
-def test_next_scheduled_release_crosses_year_boundary():
-    assert next_scheduled_release(datetime(2026, 12, 5, 0, 0, tzinfo=UTC)) == date(2027, 1, 1)
+def test_next_release_fails_closed_past_the_horizon(tmp_path: Path):
+    schedule = tmp_path / "schedule.csv"
+    schedule.write_text("release_date_et\n2026-08-07\n", encoding="utf-8")
+    with pytest.raises(ScheduleError, match="extend"):
+        next_release(datetime(2026, 8, 8, tzinfo=UTC), schedule)
+
+
+def test_load_schedule_rejects_missing_and_malformed(tmp_path: Path):
+    with pytest.raises(ScheduleError, match="not found"):
+        load_schedule(tmp_path / "absent.csv")
+    bad = tmp_path / "bad.csv"
+    bad.write_text("release_date_et\nnot-a-date\n", encoding="utf-8")
+    with pytest.raises(ScheduleError, match="bad date"):
+        load_schedule(bad)
+
+
+def test_previous_release_uses_schedule_then_friday_fallback():
+    # On the schedule: the previous print before Dec 4 is Nov 6.
+    assert previous_scheduled_release(date(2026, 12, 4)) == date(2026, 11, 6)
+    # Before the schedule's first row: first-Friday fallback for historical rescues.
+    assert previous_scheduled_release(date(2026, 8, 7)) == date(2026, 7, 3)
+    assert previous_scheduled_release(date(2026, 1, 2)) == date(2025, 12, 5)
 
 
 def test_page_mentions_date_handles_html_and_formats():
@@ -122,121 +192,6 @@ def test_verify_rejects_stale_latest_release():
     assert "expected the previous release" in detail
 
 
-def test_pre_rescue_stashes_historical_snapshot_and_post_appends(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    from scripts import nfp_forward_capture as mod
-
-    html = (
-        "<div>Latest Release Oct 02, 2026 Actual 29.00K Forecast 89.00K "
-        "Previous 133.00K</div><div>Nov 06, 2026 (Oct) 13:30 65.00K 29.00K</div>"
-    )
-    snapshot = (
-        "https://web.archive.org/web/20261106130744/"
-        "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
-    )
-    monkeypatch.setattr(
-        mod, "_http_get_with_retries", lambda *_a, **_k: httpx.Response(200, text=html)
-    )
-    pending = tmp_path / "pending.json"
-    csv_path = tmp_path / "forward.csv"
-
-    assert (
-        main(
-            [
-                "--csv",
-                str(csv_path),
-                "--pending",
-                str(pending),
-                "pre",
-                "--release-date",
-                "2026-11-06",
-                "--snapshot-url",
-                snapshot,
-                "--rescue",
-            ]
-        )
-        == 0
-    )
-    stashed = read_pending(pending)
-    assert stashed is not None
-    assert stashed.verified is True
-
-    assert (
-        main(
-            [
-                "--csv",
-                str(csv_path),
-                "--pending",
-                str(pending),
-                "post",
-                "--release-date",
-                "2026-11-06",
-                "--actual",
-                "165",
-                "--consensus",
-                "65",
-            ]
-        )
-        == 0
-    )
-    with csv_path.open(encoding="utf-8", newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    assert len(rows) == 1
-    assert rows[0]["event_type"] == EVENT_TYPE
-    assert rows[0]["actual"] == "165.0"
-    assert rows[0]["consensus"] == "65.0"
-    assert rows[0]["surprise"] == "100.0"
-    assert float(rows[0]["z"]) == pytest.approx(100.0 / Z_DIVISOR)
-    assert "20261106130744" in rows[0]["source_snapshot_url"]
-
-
-def test_rescue_requires_release_date(tmp_path: Path) -> None:
-    assert (
-        main(
-            [
-                "--pending",
-                str(tmp_path / "pending.json"),
-                "pre",
-                "--snapshot-url",
-                "https://web.archive.org/web/20261106130744/https://example.invalid/x",
-                "--rescue",
-            ]
-        )
-        == 1
-    )
-
-
-def test_rescue_rejects_snapshot_outside_the_24h_window(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    from scripts import nfp_forward_capture as mod
-
-    html = "<div>Latest Release Oct 02, 2026</div>"
-    snapshot = (
-        "https://web.archive.org/web/20261104000000/"
-        "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
-    )
-    monkeypatch.setattr(
-        mod, "_http_get_with_retries", lambda *_a, **_k: httpx.Response(200, text=html)
-    )
-    assert (
-        main(
-            [
-                "--pending",
-                str(tmp_path / "pending.json"),
-                "pre",
-                "--release-date",
-                "2026-11-06",
-                "--snapshot-url",
-                snapshot,
-                "--rescue",
-            ]
-        )
-        == 1
-    )
-
-
 def test_snapshot_timestamp_parsed_from_wayback_url():
     url = "https://web.archive.org/web/20260806131415/https://www.investing.com/x"
     assert snapshot_timestamp(url) == datetime(2026, 8, 6, 13, 14, 15, tzinfo=UTC)
@@ -262,6 +217,23 @@ def test_resolve_snapshot_timestamp_falls_back_to_capture_time_for_manual_mirror
     captured = datetime(2026, 9, 3, 13, 0, tzinfo=UTC)
     assert resolve_snapshot_timestamp(url, captured_at=captured) == captured
     assert "not a Wayback" in capsys.readouterr().out
+
+
+def test_snapshot_ts_from_served_url_reads_archive_timestamped_form():
+    url = "https://archive.ph/20261203120000/https://www.investing.com/x"
+    assert snapshot_ts_from_served_url(url) == datetime(2026, 12, 3, 12, 0, tzinfo=UTC)
+
+
+def test_snapshot_ts_from_served_url_rejects_bare_archive_id():
+    with pytest.raises(CaptureError, match="timestamped form"):
+        snapshot_ts_from_served_url("https://archive.ph/abcd1234")
+
+
+def test_snapshot_ts_from_served_url_rejects_live_page():
+    with pytest.raises(CaptureError, match="not an archived snapshot"):
+        snapshot_ts_from_served_url(
+            "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
+        )
 
 
 def test_http_get_with_retries_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch):
@@ -307,7 +279,16 @@ def test_build_row_keeps_full_float_precision():
     assert row["z"] == repr(15.0 / Z_DIVISOR)
     assert row["release_ts_utc"] == "2026-08-07T12:30:00Z"
     assert row["event_type"] == EVENT_TYPE
+    assert row["consensus_source"] == "investing.com/Wayback"
     assert set(row) == set(CSV_COLUMNS)
+
+
+def test_build_row_labels_the_actual_snapshot_source():
+    wayback = build_row(date(2026, 8, 7), 175.0, 160.0, "https://web.archive.org/web/2026/x")
+    archive = build_row(date(2026, 8, 7), 175.0, 160.0, "https://archive.ph/abcd1234")
+    assert wayback["consensus_source"] == "investing.com/Wayback"
+    assert archive["consensus_source"] == "investing.com/archive.ph"
+    assert consensus_source_for("https://mirror.example/spot") == "manual/mirror.example"
 
 
 def test_build_row_handles_negative_surprise():
@@ -392,6 +373,298 @@ def test_submit_archive_ph_extracts_url(monkeypatch: pytest.MonkeyPatch):
     assert "Oct 02, 2026" in body
 
 
+def test_pre_rescue_stashes_historical_snapshot_and_post_appends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    html = GOOD_SNAPSHOT_HTML
+    snapshot = (
+        "https://web.archive.org/web/20261106130744/"
+        "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
+    )
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(snapshot, html)
+    )
+    pending = tmp_path / "pending.json"
+    csv_path = tmp_path / "forward.csv"
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "pre",
+                "--release-date",
+                "2026-11-06",
+                "--snapshot-url",
+                snapshot,
+                "--rescue",
+            ]
+        )
+        == 0
+    )
+    stashed = read_pending(pending)
+    assert stashed is not None
+    assert stashed.verified is True
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "post",
+                "--release-date",
+                "2026-11-06",
+                "--actual",
+                "165",
+                "--consensus",
+                "65",
+            ]
+        )
+        == 0
+    )
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == EVENT_TYPE
+    assert rows[0]["actual"] == "165.0"
+    assert rows[0]["consensus"] == "65.0"
+    assert rows[0]["surprise"] == "100.0"
+    assert float(rows[0]["z"]) == pytest.approx(100.0 / Z_DIVISOR)
+    assert "20261106130744" in rows[0]["source_snapshot_url"]
+    assert rows[0]["consensus_source"] == "investing.com/Wayback"
+
+
+def test_rescue_requires_release_date(tmp_path: Path) -> None:
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--snapshot-url",
+                "https://web.archive.org/web/20261106130744/https://example.invalid/x",
+                "--rescue",
+            ]
+        )
+        == 1
+    )
+
+
+def test_rescue_rejects_snapshot_outside_the_24h_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    html = "<div>Latest Release Oct 02, 2026</div>"
+    snapshot = (
+        "https://web.archive.org/web/20261104000000/"
+        "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
+    )
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(snapshot, html)
+    )
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--release-date",
+                "2026-11-06",
+                "--snapshot-url",
+                snapshot,
+                "--rescue",
+            ]
+        )
+        == 1
+    )
+
+
+def test_manual_snapshot_uses_the_served_timestamp_not_the_typed_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """M1: Wayback serves the nearest capture; the served ts governs the window."""
+    from scripts import nfp_forward_capture as mod
+
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+
+    # Typed URL claims a Dec-03 timestamp, but Wayback serves the Nov-20 capture.
+    typed = "https://web.archive.org/web/20261203120000/https://www.investing.com/x"
+    served = "https://web.archive.org/web/20261120120000/https://www.investing.com/x"
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(served, GOOD_SNAPSHOT_HTML)
+    )
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--release-date",
+                "2026-12-04",
+                "--snapshot-url",
+                typed,
+            ]
+        )
+        == 1
+    )
+    # Nothing stashed: the pending file must not exist.
+    assert not (tmp_path / "pending.json").exists()
+
+
+def test_manual_snapshot_rejects_live_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    live = "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(live, GOOD_SNAPSHOT_HTML)
+    )
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--release-date",
+                "2026-12-04",
+                "--snapshot-url",
+                live,
+            ]
+        )
+        == 1
+    )
+    assert not (tmp_path / "pending.json").exists()
+
+
+def test_pre_refuses_a_date_not_on_the_schedule(tmp_path: Path):
+    """H1: 2027-01-01 is a federal holiday, not a scheduled print; refuse it."""
+    pending = tmp_path / "pending.json"
+    assert (
+        main(
+            [
+                "--pending",
+                str(pending),
+                "pre",
+                "--release-date",
+                "2027-01-01",
+            ]
+        )
+        == 1
+    )
+    assert not pending.exists()
+
+
+def test_pre_force_overrides_the_schedule_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    inside_window = datetime(2026, 12, 31, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    snapshot = "https://web.archive.org/web/20261231150000/https://www.investing.com/x"
+    html = "<div>Latest Release Dec 04, 2026 Actual 1.00K</div>"
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(snapshot, html)
+    )
+    pending = tmp_path / "pending.json"
+    assert (
+        main(
+            [
+                "--pending",
+                str(pending),
+                "pre",
+                "--release-date",
+                "2027-01-01",
+                "--snapshot-url",
+                snapshot,
+                "--force",
+            ]
+        )
+        == 0
+    )
+    stashed = read_pending(pending)
+    assert stashed is not None
+    assert stashed.release_date_et == "2027-01-01"
+
+
+def test_pre_falls_back_to_archive_ph_when_wayback_verification_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """H3: Wayback captured the 403 challenge page; the archive.ph leg must still run."""
+    from scripts import nfp_forward_capture as mod
+
+    challenge_html = "<html>Access denied. Error 403.</html>"
+    good_for_december = (
+        "<div>Latest Release Nov 06, 2026 Actual 165.00K Forecast 65.00K "
+        "Previous 29.00K</div><div>Dec 04, 2026 (Nov) 13:30 140.00K 165.00K</div>"
+    )
+
+    def fake_get_retries(url, timeout, **kwargs):
+        return snap_response(
+            "https://web.archive.org/web/20261203190000/https://www.investing.com/x",
+            challenge_html,
+        )
+
+    monkeypatch.setattr(mod, "_http_get_with_retries", fake_get_retries)
+    monkeypatch.setattr(
+        mod,
+        "_submit_archive_ph",
+        lambda url, **kwargs: ("https://archive.ph/dec2026", good_for_december),
+    )
+
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+
+    pending = tmp_path / "pending.json"
+    assert (
+        main(
+            [
+                "--pending",
+                str(pending),
+                "pre",
+                "--release-date",
+                "2026-12-04",
+            ]
+        )
+        == 0
+    )
+    stashed = read_pending(pending)
+    assert stashed is not None
+    assert stashed.snapshot_url == "https://archive.ph/dec2026"
+    assert stashed.verified is True
+
+
 def test_pre_falls_back_to_archive_ph_when_wayback_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -405,7 +678,7 @@ def test_pre_falls_back_to_archive_ph_when_wayback_fails(
     def fake_get_retries(url, timeout, **kwargs):
         if "web.archive.org/save" in url:
             raise httpx.ConnectError("Connection reset by peer")
-        return httpx.Response(200, text=html)
+        return snap_response("https://archive.ph/dec2026", html)
 
     monkeypatch.setattr(mod, "_http_get_with_retries", fake_get_retries)
     monkeypatch.setattr(
@@ -441,6 +714,351 @@ def test_pre_falls_back_to_archive_ph_when_wayback_fails(
     assert stashed is not None
     assert stashed.snapshot_url == "https://archive.ph/dec2026"
     assert stashed.verified is True
+
+
+def test_pre_reports_both_legs_when_both_fail_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from scripts import nfp_forward_capture as mod
+
+    challenge_html = "<html>Access denied. Error 403.</html>"
+
+    monkeypatch.setattr(
+        mod,
+        "_http_get_with_retries",
+        lambda url, timeout, **kwargs: snap_response(
+            "https://web.archive.org/web/20261203190000/https://www.investing.com/x",
+            challenge_html,
+        ),
+    )
+    monkeypatch.setattr(
+        mod,
+        "_submit_archive_ph",
+        lambda url, **kwargs: ("https://archive.ph/dec2026", challenge_html),
+    )
+
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--release-date",
+                "2026-12-04",
+            ]
+        )
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "no capture attempt verified" in err
+    assert "Wayback Save Page Now" in err
+    assert "archive.ph submit" in err
+    assert not (tmp_path / "pending.json").exists()
+
+
+def test_pre_wip_snapshot_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    inside_window = datetime(2026, 12, 3, 20, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return inside_window
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    wip = "https://archive.ph/wip/abc123"
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(wip, "<html>saving</html>")
+    )
+    assert (
+        main(
+            [
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "pre",
+                "--release-date",
+                "2026-12-04",
+                "--snapshot-url",
+                wip,
+            ]
+        )
+        == 1
+    )
+    assert not (tmp_path / "pending.json").exists()
+
+
+def test_extract_consensus_from_page_reads_the_upcoming_forecast():
+    html = (
+        "<div>Latest Release Oct 02, 2026 Actual 29.00K Forecast 89.00K "
+        "Previous 133.00K</div><div>Nov 06, 2026 (Oct) 13:30 65.00K 29.00K</div>"
+    )
+    assert extract_consensus_from_page(html, date(2026, 11, 6)) == 65.0
+    assert extract_consensus_from_page("<div>nothing</div>", date(2026, 11, 6)) is None
+
+
+def test_validate_metric_value_bounds():
+    validate_metric_value(165.0, "--actual", force=False)
+    validate_metric_value(-800.0, "--actual", force=False)
+    with pytest.raises(CaptureError, match="finite"):
+        validate_metric_value(float("nan"), "--actual", force=True)
+    with pytest.raises(CaptureError, match="finite"):
+        validate_metric_value(float("inf"), "--consensus", force=True)
+    with pytest.raises(CaptureError, match="plausible"):
+        validate_metric_value(165000.0, "--actual", force=False)
+    # Out-of-range is overridable with --force; nan/inf never is.
+    validate_metric_value(165000.0, "--actual", force=True)
+
+
+def test_post_refuses_implausible_and_nonfinite_numbers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    pending = tmp_path / "pending.json"
+    write_pending_capture(pending, "2026-11-06")
+    csv_path = tmp_path / "forward.csv"
+    monkeypatch.setattr(
+        mod,
+        "_http_get_with_retries",
+        lambda *_a, **_k: (_ for _ in ()).throw(httpx.ConnectError("offline")),
+    )
+
+    for bad_actual in ("165000", "nan"):
+        assert (
+            main(
+                [
+                    "--csv",
+                    str(csv_path),
+                    "--pending",
+                    str(pending),
+                    "post",
+                    "--actual",
+                    bad_actual,
+                    "--consensus",
+                    "65",
+                ]
+            )
+            == 1
+        )
+    assert not csv_path.exists()
+
+
+def test_post_cross_check_refuses_a_mismatched_consensus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    pending = tmp_path / "pending.json"
+    write_pending_capture(pending, "2026-11-06")
+    csv_path = tmp_path / "forward.csv"
+    snapshot = "https://web.archive.org/web/20261106130744/https://www.investing.com/x"
+    monkeypatch.setattr(
+        mod, "_http_get_with_retries", lambda *_a, **_k: snap_response(snapshot, GOOD_SNAPSHOT_HTML)
+    )
+    # The page shows 65.00K; a typed consensus of 90 must be refused.
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "post",
+                "--actual",
+                "165",
+                "--consensus",
+                "90",
+            ]
+        )
+        == 1
+    )
+    assert not csv_path.exists()
+
+
+def test_post_refuses_unscheduled_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    frozen = datetime(2027, 1, 2, 12, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    write_pending_capture(pending, "2027-01-01")
+    csv_path = tmp_path / "forward.csv"
+    monkeypatch.setattr(
+        mod,
+        "_http_get_with_retries",
+        lambda *_a, **_k: (_ for _ in ()).throw(httpx.ConnectError("offline")),
+    )
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "post",
+                "--actual",
+                "150",
+                "--consensus",
+                "140",
+            ]
+        )
+        == 1
+    )
+    # --force overrides the schedule refusal.
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "post",
+                "--actual",
+                "150",
+                "--consensus",
+                "140",
+                "--force",
+            ]
+        )
+        == 0
+    )
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["release_date_et"] == "2027-01-01"
+
+
+def test_miss_refuses_future_release_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    frozen = datetime(2026, 12, 5, 12, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    csv_path = tmp_path / "forward.csv"
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "miss",
+                "--release-date",
+                "2027-01-08",
+            ]
+        )
+        == 1
+    )
+    assert not csv_path.exists()
+
+
+def test_miss_force_overrides_the_future_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from scripts import nfp_forward_capture as mod
+
+    frozen = datetime(2026, 12, 5, 12, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    csv_path = tmp_path / "forward.csv"
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(tmp_path / "pending.json"),
+                "miss",
+                "--release-date",
+                "2027-01-08",
+                "--force",
+            ]
+        )
+        == 0
+    )
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["event_type"] == MISSED_EVENT_TYPE
+
+
+def test_miss_refuses_to_discard_a_verified_pending_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from scripts import nfp_forward_capture as mod
+
+    frozen = datetime(2026, 11, 19, 12, 0, 0, tzinfo=UTC)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(mod, "datetime", FrozenDatetime)
+    pending = tmp_path / "pending.json"
+    write_pending_capture(pending, "2026-11-06")
+    csv_path = tmp_path / "forward.csv"
+
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "miss",
+                "--release-date",
+                "2026-11-06",
+            ]
+        )
+        == 1
+    )
+    assert pending.exists()
+    assert not csv_path.exists()
+
+    # --force discards the verified pending capture and records the miss.
+    assert (
+        main(
+            [
+                "--csv",
+                str(csv_path),
+                "--pending",
+                str(pending),
+                "miss",
+                "--release-date",
+                "2026-11-06",
+                "--force",
+            ]
+        )
+        == 0
+    )
+    assert not pending.exists()
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows[0]["event_type"] == MISSED_EVENT_TYPE
 
 
 def test_status_strict_passes_outside_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -647,3 +1265,17 @@ def test_cron_captures_when_inside_window(tmp_path: Path, monkeypatch: pytest.Mo
         )
         == 0
     )
+
+
+def test_pending_path_defaults_to_the_environment_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    override = tmp_path / "state" / "pending_capture.json"
+    monkeypatch.setenv("NFP_PENDING_CAPTURE_PATH", str(override))
+    args = build_parser().parse_args(["status"])
+    assert args.pending == str(override)
+
+
+def test_release_ts_utc_matches_the_gate_rows():
+    assert release_ts_utc(date(2026, 12, 4)) == datetime(2026, 12, 4, 13, 30, tzinfo=UTC)
+    assert release_ts_utc(date(2027, 1, 8)) == datetime(2027, 1, 8, 13, 30, tzinfo=UTC)

@@ -35,3 +35,13 @@ Event types are fixed before any return measurement. No ECB/PCE/jobless-claims.
 
 - `us_macro_releases.csv` — columns: `event_type`, `release_date_et`, `release_ts_utc`, `source`
 - `us_macro_surprises.csv` — CPI/NFP actual, consensus, surprise, z (see `README_SURPRISES.md`)
+
+## NFP release schedule (`nfp_release_schedule.csv`)
+
+Verified BLS Employment Situation release dates — the single source of release
+dates for `scripts/nfp_forward_capture.py` and the production drift sentinel.
+Dates not on the file are refused by every caller, and `next_release` fails
+closed once the horizon passes. Verified against
+https://www.bls.gov/schedule/news_release/empsit.htm on 2026-11-19 (published
+horizon: 2027-12-03). Extend the file from that page when BLS publishes new
+dates.

@@ -2,15 +2,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shlex
 import subprocess
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+
+from src.utils.nfp_schedule import (
+    CAPTURE_WINDOW,
+    DEFAULT_SCHEDULE_CSV,
+    ScheduleError,
+    next_release,
+    release_ts_utc,
+)
 
 IGNORED_CONFIG_FILES = {"settings.autoresearch.yaml"}
 PRODUCTION_COMPOSE = "docker compose -f docker-compose.prod.yml"
@@ -19,10 +27,13 @@ PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB = "data/reports/production-drift-sentinel-
 REQUIRED_SYSTEMD_TIMERS = (
     "crypto-agent-paper-validation-report.timer",
     "crypto-agent-production-drift-sentinel.timer",
+    "crypto-agent-nfp-capture.timer",
 )
 TIMER_ARTIFACT_POLICIES = {
     "crypto-agent-paper-validation-report.timer": (PAPER_VALIDATION_REPORT_GLOB, 36),
     "crypto-agent-production-drift-sentinel.timer": (PRODUCTION_DRIFT_SENTINEL_REPORT_GLOB, 2),
+    # The NFP timer produces no periodic report artifact; health check only.
+    "crypto-agent-nfp-capture.timer": None,
 }
 
 # Durable signal events, read from the shared agent-data volume.
@@ -91,6 +102,7 @@ class TimerState:
     exec_main_status: str
     latest_report_at: str | None
     max_report_age_hours: int
+    expects_report: bool = True
 
 
 @dataclass(frozen=True)
@@ -291,9 +303,7 @@ def collect_remote_timer_snapshot(
 ) -> TimerSnapshot:
     states: list[TimerState] = []
     for timer in timers:
-        report_glob, max_report_age_hours = TIMER_ARTIFACT_POLICIES.get(
-            timer, (PAPER_VALIDATION_REPORT_GLOB, 36)
-        )
+        policy = TIMER_ARTIFACT_POLICIES.get(timer, (PAPER_VALIDATION_REPORT_GLOB, 36))
         rendered_timer = shlex.quote(timer)
         enabled = run_remote_command(
             host,
@@ -321,17 +331,22 @@ def collect_remote_timer_snapshot(
             f"systemctl show {rendered_service} --property=ExecMainStatus --value",
             ssh_config=ssh_config,
         )
-        latest_report_epoch = run_remote_command(
-            host,
-            remote_dir,
-            (
-                f"find {shlex.quote(str(Path(report_glob).parent))} "
-                f"-maxdepth 1 -type f -name {shlex.quote(Path(report_glob).name)} "
-                "-printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1"
-            ),
-            ssh_config=ssh_config,
-        )
-        latest_report_at = epoch_to_iso_timestamp(latest_report_epoch)
+        if policy is None:
+            latest_report_at = None
+            max_report_age_hours = 0
+        else:
+            report_glob, max_report_age_hours = policy
+            latest_report_epoch = run_remote_command(
+                host,
+                remote_dir,
+                (
+                    f"find {shlex.quote(str(Path(report_glob).parent))} "
+                    f"-maxdepth 1 -type f -name {shlex.quote(Path(report_glob).name)} "
+                    "-printf '%T@\\n' 2>/dev/null | sort -nr | head -n 1"
+                ),
+                ssh_config=ssh_config,
+            )
+            latest_report_at = epoch_to_iso_timestamp(latest_report_epoch)
         states.append(
             TimerState(
                 timer=timer,
@@ -341,6 +356,7 @@ def collect_remote_timer_snapshot(
                 exec_main_status=exec_main_status or "unknown",
                 latest_report_at=latest_report_at,
                 max_report_age_hours=max_report_age_hours,
+                expects_report=policy is not None,
             )
         )
     return TimerSnapshot(timers=states)
@@ -837,24 +853,29 @@ def check_nfp_pending_capture(
 ) -> Finding | None:
     """Check if the next scheduled NFP release is within 24h and missing a pending capture."""
     now = now or datetime.now(UTC)
-    first = date(now.year, now.month, 1)
-    cand = first + timedelta(days=(4 - first.weekday()) % 7)
-    local_ts = datetime(cand.year, cand.month, cand.day, 8, 30, tzinfo=ZoneInfo("America/New_York"))
-    release_ts = local_ts.astimezone(UTC)
-    if release_ts <= now:
-        year = now.year + 1 if now.month == 12 else now.year
-        month = 1 if now.month == 12 else now.month + 1
-        first = date(year, month, 1)
-        cand = first + timedelta(days=(4 - first.weekday()) % 7)
-        local_ts = datetime(
-            cand.year, cand.month, cand.day, 8, 30, tzinfo=ZoneInfo("America/New_York")
+    schedule_path = repo_root / DEFAULT_SCHEDULE_CSV
+    try:
+        cand = next_release(now, schedule_path)
+    except ScheduleError as exc:
+        return Finding(
+            severity=Severity.ERROR,
+            code="NFP_SCHEDULE_UNREADABLE",
+            message=f"NFP release schedule is unusable: {exc}",
+            recommendation=(
+                "Keep data/macro_events/nfp_release_schedule.csv current with "
+                "https://www.bls.gov/schedule/news_release/empsit.htm"
+            ),
         )
-        release_ts = local_ts.astimezone(UTC)
+    release_ts = release_ts_utc(cand)
 
-    capture_window = timedelta(hours=24)
-    opens = release_ts - capture_window
+    opens = release_ts - CAPTURE_WINDOW
     if opens <= now < release_ts:
-        pending_path = repo_root / "research" / "nfp_forward" / "pending_capture.json"
+        pending_path = Path(
+            os.environ.get(
+                "NFP_PENDING_CAPTURE_PATH",
+                str(repo_root / "research" / "nfp_forward" / "pending_capture.json"),
+            )
+        )
         has_pending = False
         if pending_path.exists():
             try:
@@ -873,7 +894,10 @@ def check_nfp_pending_capture(
                     f"NFP release {cand.isoformat()} is at {release_ts.isoformat()} "
                     f"({hours:.1f}h away, <24h) but no pending capture exists in {pending_path}"
                 ),
-                recommendation="Run: uv run python scripts/nfp_forward_capture.py pre",
+                recommendation=(
+                    "Run: uv run python scripts/nfp_forward_capture.py pre "
+                    f"--release-date {cand.isoformat()}"
+                ),
             )
     return None
 
@@ -1062,7 +1086,9 @@ def analyze_drift(
                         recommendation="Inspect the timer service journal and rerun the report.",
                     )
                 )
-            if timer.latest_report_at is None:
+            if not timer.expects_report:
+                pass
+            elif timer.latest_report_at is None:
                 findings.append(
                     Finding(
                         severity=Severity.ERROR,

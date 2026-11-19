@@ -29,16 +29,35 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from urllib.parse import urlparse
 
 import httpx
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.utils.nfp_schedule import (  # noqa: E402
+    CAPTURE_WINDOW,
+    DEFAULT_SCHEDULE_CSV,
+    ScheduleError,
+    is_scheduled,
+)
+from src.utils.nfp_schedule import (
+    next_release as next_scheduled_release,
+)
+from src.utils.nfp_schedule import (
+    previous_release as previous_scheduled_release,
+)
+from src.utils.nfp_schedule import (
+    release_ts_utc as release_timestamp_utc,
+)
 
 CONSENSUS_URL = "https://www.investing.com/economic-calendar/nonfarm-payrolls-227"
 WAYBACK_SAVE_URL = f"https://web.archive.org/save/{CONSENSUS_URL}"
@@ -60,17 +79,12 @@ LATEST_RELEASE_FORMATS = ("%b %d, %Y", "%B %d, %Y", "%b. %d, %Y", "%B. %d, %Y")
 EVENT_TYPE = "NFP"
 MISSED_EVENT_TYPE = "NFP_MISSED_CAPTURE"
 METRIC = "headline_nfp_change_k"
-CONSENSUS_SOURCE = "investing.com/Wayback"
 ACTUAL_SOURCE = "bls.gov"
 MISSED_SENTINEL = "MISSED_CAPTURE"
 
 # Frozen by the gate for reporting continuity only. The entry condition is
 # surprise > 0, which is equivalent to z > 0 for any positive divisor.
 Z_DIVISOR = 220.28
-
-RELEASE_TIME_ET = (8, 30)
-EASTERN = ZoneInfo("America/New_York")
-CAPTURE_WINDOW = timedelta(hours=24)
 
 CSV_COLUMNS = (
     "event_type",
@@ -135,29 +149,6 @@ class PendingCapture:
         )
 
 
-def release_timestamp_utc(release_date: date) -> datetime:
-    """Return the 08:30 America/New_York release instant in UTC (DST-aware)."""
-    hour, minute = RELEASE_TIME_ET
-    local = datetime(release_date.year, release_date.month, release_date.day, hour, minute)
-    return local.replace(tzinfo=EASTERN).astimezone(UTC)
-
-
-def first_friday(year: int, month: int) -> date:
-    """Return the first Friday of the given month (the usual NFP release day)."""
-    first = date(year, month, 1)
-    return first + timedelta(days=(4 - first.weekday()) % 7)
-
-
-def next_scheduled_release(now: datetime) -> date:
-    """Best-guess next NFP date. Always verify against the BLS release schedule."""
-    candidate = first_friday(now.year, now.month)
-    if release_timestamp_utc(candidate) > now:
-        return candidate
-    year = now.year + 1 if now.month == 12 else now.year
-    month = 1 if now.month == 12 else now.month + 1
-    return first_friday(year, month)
-
-
 def parse_release_date(raw: str) -> date:
     try:
         return date.fromisoformat(raw.strip())
@@ -208,14 +199,9 @@ def latest_release_date(html: str) -> date | None:
     return None
 
 
-def previous_scheduled_release(release_date: date) -> date:
-    """First Friday of the month before ``release_date``."""
-    year = release_date.year - 1 if release_date.month == 1 else release_date.year
-    month = 12 if release_date.month == 1 else release_date.month - 1
-    return first_friday(year, month)
-
-
-def verify_snapshot_is_point_in_time(html: str, release_date: date) -> tuple[bool, str]:
+def verify_snapshot_is_point_in_time(
+    html: str, release_date: date, schedule_path: Path | None = None
+) -> tuple[bool, str]:
     """Check the archived page predates the upcoming print.
 
     A pre-release calendar page lists the upcoming release as a scheduled row with
@@ -225,7 +211,7 @@ def verify_snapshot_is_point_in_time(html: str, release_date: date) -> tuple[boo
     fall back to the older containment check (previous print present, upcoming
     print absent).
     """
-    previous = previous_scheduled_release(release_date)
+    previous = previous_scheduled_release(release_date, schedule_path)
     latest = latest_release_date(html)
     if latest is not None:
         if latest >= release_date:
@@ -405,6 +391,183 @@ def resolve_snapshot_timestamp(snapshot_url: str, *, captured_at: datetime) -> d
     return captured_at.astimezone(UTC)
 
 
+ARCHIVE_TS_RE = re.compile(r"archive\.(?:ph|today|is)/(?:newest/)?(\d{14})(?:/|$)")
+FORECAST_K_RE = re.compile(r"(-?\d+(?:\.\d+)?)K")
+PLAUSIBLE_MIN_K = -25000.0
+PLAUSIBLE_MAX_K = 5000.0
+
+
+def snapshot_ts_from_served_url(served_url: str) -> datetime:
+    """Strict timestamp for a manually supplied snapshot: machine-readable or refuse.
+
+    Wayback serves the capture nearest the requested URL, so the SERVED timestamp is
+    authoritative, never the typed one. Live (non-archived) URLs are refused outright.
+    """
+    wayback = SNAPSHOT_TS_RE.search(served_url)
+    if wayback:
+        return datetime.strptime(wayback.group(1), "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+    archive = ARCHIVE_TS_RE.search(served_url)
+    if archive:
+        return datetime.strptime(archive.group(1), "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+    if any(served_url.startswith(prefix) for prefix in ARCHIVE_PH_PREFIXES):
+        raise CaptureError(
+            f"cannot read a capture timestamp from {served_url}; use the timestamped form "
+            f"https://archive.ph/<YYYYMMDDHHMMSS>/{CONSENSUS_URL} so the 24h window can be verified"
+        )
+    raise CaptureError(
+        f"served URL {served_url} is not an archived snapshot; refusing a live page as a "
+        f"consensus source (use a Wayback /web/<ts>/ URL or an archive.ph capture of {CONSENSUS_URL})"
+    )
+
+
+def ensure_scheduled(release_date: date, args: argparse.Namespace, *, command: str) -> None:
+    """Refuse dates not on the verified BLS schedule; --force overrides with a warning."""
+    schedule_path = Path(args.schedule)
+    if is_scheduled(release_date, schedule_path):
+        return
+    if args.force:
+        print(
+            f"[warn] {command}: release date {release_date.isoformat()} is NOT on the verified "
+            f"schedule {schedule_path}; proceeding because --force was passed"
+        )
+        return
+    raise CaptureError(
+        f"{command}: release date {release_date.isoformat()} is not on the verified schedule "
+        f"{schedule_path}. Employment Situation releases are not always the first Friday "
+        "(2027-01-08, 2027-10-08). Confirm against "
+        "https://www.bls.gov/schedule/news_release/empsit.htm, extend the schedule file, "
+        "or pass --force if this really is a scheduled print."
+    )
+
+
+def validate_metric_value(value: float, label: str, *, force: bool) -> None:
+    """Headline NFP change in thousands; nan/inf never, absurd units only with --force."""
+    if not math.isfinite(value):
+        raise CaptureError(f"{label} must be a finite number, got {value!r}")
+    if not PLAUSIBLE_MIN_K <= value <= PLAUSIBLE_MAX_K:
+        if force:
+            print(
+                f"[post] {label}={value} is outside the plausible NFP range "
+                f"[{PLAUSIBLE_MIN_K:.0f}, {PLAUSIBLE_MAX_K:.0f}]K; proceeding because --force was passed"
+            )
+            return
+        raise CaptureError(
+            f"{label}={value} is outside the plausible NFP headline range "
+            f"[{PLAUSIBLE_MIN_K:.0f}, {PLAUSIBLE_MAX_K:.0f}]K; the metric is thousands of jobs "
+            "(165, not 165000). Re-check the BLS headline, or pass --force only if it really is."
+        )
+
+
+def consensus_source_for(snapshot_url: str) -> str:
+    if snapshot_url.startswith(("https://web.archive.org/", "http://web.archive.org/")):
+        return "investing.com/Wayback"
+    if any(snapshot_url.startswith(prefix) for prefix in ARCHIVE_PH_PREFIXES):
+        return "investing.com/archive.ph"
+    return f"manual/{urlparse(snapshot_url).hostname or 'unknown'}"
+
+
+def extract_consensus_from_page(html: str, release_date: date) -> float | None:
+    """Best-effort forecast read off a frozen snapshot page; None when unreadable."""
+    text = " ".join(_strip_html(html).split())
+    for rendering in _date_renderings(release_date):
+        idx = text.find(rendering)
+        if idx < 0:
+            continue
+        match = FORECAST_K_RE.search(text[idx : idx + 120])
+        if match:
+            return float(match.group(1).replace(",", ""))
+    return None
+
+
+def _cross_check_consensus(snapshot_url: str, release_date: date, args: argparse.Namespace) -> None:
+    """Best-effort cross-check of the typed consensus against the frozen page."""
+    try:
+        response = _http_get_with_retries(
+            snapshot_url,
+            FETCH_TIMEOUT_SECONDS,
+            label="snapshot re-fetch for cross-check",
+        )
+        page_consensus = extract_consensus_from_page(response.text, release_date)
+    except Exception as exc:
+        print(f"[post] skipping the consensus cross-check (snapshot re-fetch failed: {exc})")
+        return
+    if page_consensus is None:
+        print("[post] skipping the consensus cross-check (no forecast found on the page)")
+        return
+    if abs(page_consensus - float(args.consensus)) > 1.0:
+        if args.force:
+            print(
+                f"[post] page forecast {page_consensus}K differs from --consensus "
+                f"{args.consensus}K; proceeding because --force was passed"
+            )
+            return
+        raise CaptureError(
+            f"the snapshot page shows forecast {page_consensus}K but --consensus {args.consensus}K "
+            "was given; re-read the consensus off the snapshot, or pass --force if the page "
+            "extraction is wrong"
+        )
+    print(f"[post] consensus cross-check passed: page shows {page_consensus}K")
+
+
+def _fetch_wayback_snapshot() -> tuple[str, datetime, str]:
+    print(f"[pre] requesting Wayback Save Page Now for {CONSENSUS_URL}")
+    response = _http_get_with_retries(
+        WAYBACK_SAVE_URL,
+        SAVE_TIMEOUT_SECONDS,
+        label="Wayback Save Page Now",
+    )
+    snapshot_url = _snapshot_url_from_response(response)
+    snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=datetime.now(UTC))
+    print(f"[pre] Wayback snapshot: {snapshot_url}")
+    body = response.text
+    if not body.strip():
+        body = _http_get_with_retries(
+            snapshot_url,
+            FETCH_TIMEOUT_SECONDS,
+            label="snapshot fetch",
+        ).text
+    return snapshot_url, snapshot_ts, body
+
+
+def _fetch_archive_ph_snapshot() -> tuple[str, datetime, str]:
+    print("[pre] submitting to archive.ph (redundant capture leg)")
+    snapshot_url, body = _submit_archive_ph(CONSENSUS_URL)
+    snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=datetime.now(UTC))
+    print(f"[pre] archive.ph snapshot: {snapshot_url}")
+    return snapshot_url, snapshot_ts, body
+
+
+def _fetch_manual_snapshot(requested_url: str) -> tuple[str, datetime, str]:
+    print(f"[pre] using manual --snapshot-url (skipped Wayback Save Page Now): {requested_url}")
+    response = _http_get_with_retries(
+        requested_url,
+        FETCH_TIMEOUT_SECONDS,
+        label="snapshot fetch",
+    )
+    served_url = str(response.url)
+    body = response.text
+    if "/wip/" in served_url:
+        raise CaptureError(
+            f"snapshot {served_url} is still being created (archive.ph /wip/); retry once it completes"
+        )
+    snapshot_ts = snapshot_ts_from_served_url(served_url)
+    print(f"[pre] served snapshot: {served_url} (captured {snapshot_ts.isoformat()})")
+    return served_url, snapshot_ts, body
+
+
+def _check_snapshot_window(snapshot_ts: datetime, release_ts: datetime) -> None:
+    if snapshot_ts >= release_ts:
+        raise CaptureError(
+            f"snapshot timestamp {snapshot_ts.isoformat()} is not before the release "
+            f"{release_ts.isoformat()}"
+        )
+    if release_ts - snapshot_ts > CAPTURE_WINDOW:
+        raise CaptureError(
+            f"snapshot timestamp {snapshot_ts.isoformat()} is more than 24h before the release "
+            f"{release_ts.isoformat()}"
+        )
+
+
 def read_pending(path: Path) -> PendingCapture | None:
     if not path.exists():
         return None
@@ -465,7 +628,7 @@ def build_row(
         "consensus": repr(consensus),
         "surprise": repr(surprise),
         "z": repr(z),
-        "consensus_source": CONSENSUS_SOURCE,
+        "consensus_source": consensus_source_for(snapshot_url),
         "actual_source": ACTUAL_SOURCE,
         "source_snapshot_url": snapshot_url,
     }
@@ -489,14 +652,15 @@ def build_missed_row(release_date: date, note: str) -> dict[str, str]:
 
 def cmd_pre(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
+    schedule_path = Path(args.schedule)
     release_date = parse_release_date(args.release_date) if args.release_date else None
     if release_date is None:
-        release_date = next_scheduled_release(now)
+        release_date = next_scheduled_release(now, schedule_path)
         print(
-            f"[warn] no --release-date given; assuming next first Friday "
-            f"{release_date.isoformat()}. Verify against "
-            "https://www.bls.gov/schedule/news_release/empsit.htm"
+            f"[pre] no --release-date given; next scheduled release per {schedule_path} "
+            f"is {release_date.isoformat()}"
         )
+    ensure_scheduled(release_date, args, command="pre")
 
     release_ts = release_timestamp_utc(release_date)
     if args.rescue:
@@ -525,72 +689,73 @@ def cmd_pre(args: argparse.Namespace) -> int:
             "run `post` (or `miss`) first, or pass --force to replace it"
         )
 
-    body = ""
     if args.snapshot_url:
-        snapshot_url = str(args.snapshot_url).strip()
-        print("[pre] using manual --snapshot-url (skipped Wayback Save Page Now)")
-        print(f"[pre] snapshot: {snapshot_url}")
-        snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
-        body = _http_get_with_retries(
-            snapshot_url,
-            FETCH_TIMEOUT_SECONDS,
-            label="snapshot fetch",
-        ).text
-    else:
-        print(f"[pre] requesting Wayback Save Page Now for {CONSENSUS_URL}")
-        try:
-            response = _http_get_with_retries(
-                WAYBACK_SAVE_URL,
-                SAVE_TIMEOUT_SECONDS,
-                label="Wayback Save Page Now",
-            )
-            snapshot_url = _snapshot_url_from_response(response)
-            snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
-            print(f"[pre] snapshot: {snapshot_url}")
-            body = response.text
-            if not body.strip():
-                body = _http_get_with_retries(
-                    snapshot_url,
-                    FETCH_TIMEOUT_SECONDS,
-                    label="snapshot fetch",
-                ).text
-        except (httpx.HTTPError, CaptureError) as wayback_exc:
-            print(
-                f"[pre] Wayback Save Page Now failed: {wayback_exc}; "
-                "trying fallback archive.ph submit"
-            )
-            try:
-                snapshot_url, body = _submit_archive_ph(CONSENSUS_URL)
-                snapshot_ts = resolve_snapshot_timestamp(snapshot_url, captured_at=now)
-                print(f"[pre] archive.ph snapshot: {snapshot_url}")
-            except Exception as archive_exc:
+        snapshot_url, snapshot_ts, body = _fetch_manual_snapshot(str(args.snapshot_url).strip())
+        _check_snapshot_window(snapshot_ts, release_ts)
+        verified, detail = verify_snapshot_is_point_in_time(body, release_date, schedule_path)
+        if verified:
+            print(f"[pre] verified: {detail}")
+        else:
+            print(f"[pre] NOT VERIFIED: {detail}")
+            if not args.allow_unverified:
                 raise CaptureError(
-                    f"both Wayback and archive.ph capture attempts failed: "
-                    f"Wayback error: {wayback_exc}; archive.ph error: {archive_exc}"
-                ) from archive_exc
-
-    if snapshot_ts >= release_ts:
-        raise CaptureError(
-            f"snapshot timestamp {snapshot_ts.isoformat()} is not before the release "
-            f"{release_ts.isoformat()}"
-        )
-    if release_ts - snapshot_ts > CAPTURE_WINDOW:
-        raise CaptureError(
-            f"snapshot timestamp {snapshot_ts.isoformat()} is more than 24h before the release "
-            f"{release_ts.isoformat()}"
-        )
-
-    verified, detail = verify_snapshot_is_point_in_time(body, release_date)
-    if verified:
-        print(f"[pre] verified: {detail}")
+                    "refusing to stash an unverified snapshot. Open the snapshot URL, confirm the "
+                    "listed latest release is the previous print, then re-run with --allow-unverified."
+                )
+            print("[pre] stashing anyway because --allow-unverified was passed")
     else:
-        print(f"[pre] NOT VERIFIED: {detail}")
-        if not args.allow_unverified:
-            raise CaptureError(
-                "refusing to stash an unverified snapshot. Open the snapshot URL, confirm the "
-                "listed latest release is the previous print, then re-run with --allow-unverified."
-            )
-        print("[pre] stashing anyway because --allow-unverified was passed")
+        chosen: tuple[str, datetime, bool, str] | None = None
+        first_unverified: tuple[str, datetime, str] | None = None
+        failures: list[str] = []
+        for label, fetch in (
+            ("Wayback Save Page Now", _fetch_wayback_snapshot),
+            ("archive.ph submit", _fetch_archive_ph_snapshot),
+        ):
+            try:
+                snapshot_url, snapshot_ts, body = fetch()
+            except Exception as exc:
+                failures.append(f"{label}: {exc}")
+                print(f"[pre] {label} failed: {exc}")
+                continue
+            if "/wip/" in snapshot_url:
+                failures.append(f"{label}: {snapshot_url} is still in progress (/wip/)")
+                print(f"[pre] {label}: {snapshot_url} is still in progress (/wip/)")
+                continue
+            try:
+                _check_snapshot_window(snapshot_ts, release_ts)
+            except CaptureError as exc:
+                failures.append(f"{label}: {exc}")
+                print(f"[pre] {label}: {exc}")
+                continue
+            verified, detail = verify_snapshot_is_point_in_time(body, release_date, schedule_path)
+            if verified:
+                chosen = (snapshot_url, snapshot_ts, True, detail)
+                break
+            failures.append(f"{label}: {detail}")
+            print(f"[pre] {label} did not verify: {detail}")
+            if first_unverified is None:
+                first_unverified = (snapshot_url, snapshot_ts, detail)
+        if chosen is None:
+            if first_unverified is None:
+                raise CaptureError(
+                    "both capture attempts failed: "
+                    + "; ".join(failures)
+                    + f". Capture manually: save {CONSENSUS_URL} via Wayback or archive.ph and "
+                    "re-run `pre` with --snapshot-url."
+                )
+            if not args.allow_unverified:
+                raise CaptureError(
+                    "no capture attempt verified as point-in-time; refusing to stash. "
+                    + "; ".join(failures)
+                    + ". Open a snapshot URL, confirm the Latest Release label is the previous "
+                    "print, then re-run with --allow-unverified (or capture manually)."
+                )
+            print(f"[pre] NOT VERIFIED: {first_unverified[2]}")
+            print("[pre] stashing anyway because --allow-unverified was passed")
+            chosen = (first_unverified[0], first_unverified[1], False, first_unverified[2])
+        snapshot_url, snapshot_ts, verified, detail = chosen
+        if verified:
+            print(f"[pre] verified: {detail}")
 
     pending = PendingCapture(
         release_date_et=release_date.isoformat(),
@@ -620,6 +785,8 @@ def cmd_post(args: argparse.Namespace) -> int:
             f"pending capture is for {pending.release_date_et}, not {args.release_date}"
         )
 
+    ensure_scheduled(release_date, args, command="post")
+
     now = datetime.now(UTC)
     release_ts = release_timestamp_utc(release_date)
     if now < release_ts:
@@ -630,6 +797,10 @@ def cmd_post(args: argparse.Namespace) -> int:
         raise CaptureError(
             "pending snapshot was stashed unverified; re-run with --allow-unverified to commit it"
         )
+
+    validate_metric_value(args.actual, "--actual", force=args.force)
+    validate_metric_value(args.consensus, "--consensus", force=args.force)
+    _cross_check_consensus(pending.snapshot_url, release_date, args)
 
     row = build_row(release_date, args.actual, args.consensus, pending.snapshot_url)
     csv_path = Path(args.csv)
@@ -651,15 +822,35 @@ def cmd_post(args: argparse.Namespace) -> int:
 
 def cmd_miss(args: argparse.Namespace) -> int:
     release_date = parse_release_date(args.release_date)
-    row = build_missed_row(release_date, args.note)
-    csv_path = Path(args.csv)
-    append_row(csv_path, row)
+    ensure_scheduled(release_date, args, command="miss")
+
+    now = datetime.now(UTC)
+    if release_date > now.date() and not args.force:
+        raise CaptureError(
+            f"miss: release date {release_date.isoformat()} is in the future; a MISSED_CAPTURE "
+            "row can only be committed after the print. Pass --force only to correct a "
+            "scheduling mistake."
+        )
 
     pending_path = Path(args.pending)
     pending = read_pending(pending_path)
+    if (
+        pending is not None
+        and pending.release_date_et == release_date.isoformat()
+        and pending.verified
+        and not args.force
+    ):
+        raise CaptureError(
+            f"miss: a VERIFIED pending capture for {release_date.isoformat()} exists at "
+            f"{pending_path}; run `post` with the BLS actual instead. Pass --force to discard it."
+        )
+
+    row = build_missed_row(release_date, args.note)
+    csv_path = Path(args.csv)
+    append_row(csv_path, row)
     if pending is not None and pending.release_date_et == release_date.isoformat():
         pending_path.unlink()
-        print(f"[miss] cleared stale pending capture {pending_path}")
+        print(f"[miss] cleared pending capture {pending_path}")
 
     misses = sum(1 for value in _read_event_types(csv_path) if value == MISSED_EVENT_TYPE)
     print(f"[miss] recorded MISSED_CAPTURE for {release_date.isoformat()} -> {csv_path}")
@@ -691,12 +882,16 @@ def cmd_status(args: argparse.Namespace) -> int:
         flag = "verified" if pending.verified else "UNVERIFIED"
         print(f"[status] pending: {pending.release_date_et} ({flag}) {pending.snapshot_url}")
 
-    upcoming = next_scheduled_release(now)
+    try:
+        upcoming = next_scheduled_release(now, Path(args.schedule))
+    except ScheduleError as exc:
+        print(f"[status] error: {exc}", file=sys.stderr)
+        return 1
     release_ts = release_timestamp_utc(upcoming)
     opens = release_ts - CAPTURE_WINDOW
-    print(f"[status] next expected release: {upcoming.isoformat()} at {release_ts.isoformat()}")
+    print(f"[status] next scheduled release: {upcoming.isoformat()} at {release_ts.isoformat()}")
     print(f"[status] capture window opens:  {opens.isoformat()}")
-    print("[status] verify the date against https://www.bls.gov/schedule/news_release/empsit.htm")
+    print(f"[status] schedule: {args.schedule} (keep current with bls.gov/schedule)")
 
     if getattr(args, "strict", False):
         if opens <= now < release_ts:
@@ -732,8 +927,13 @@ def cmd_cron(args: argparse.Namespace) -> int:
     now = datetime.now(UTC)
     csv_path = Path(args.csv)
     pending_path = Path(args.pending)
+    schedule_path = Path(args.schedule)
 
-    upcoming = next_scheduled_release(now)
+    try:
+        upcoming = next_scheduled_release(now, schedule_path)
+    except ScheduleError as exc:
+        print(f"[cron] error: {exc}", file=sys.stderr)
+        return 1
     release_ts = release_timestamp_utc(upcoming)
     opens = release_ts - CAPTURE_WINDOW
 
@@ -761,6 +961,7 @@ def cmd_cron(args: argparse.Namespace) -> int:
         rescue=False,
         pending=str(pending_path),
         csv=str(csv_path),
+        schedule=str(schedule_path),
     )
     try:
         res = cmd_pre(pre_args)
@@ -789,12 +990,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--csv", default=str(DEFAULT_FORWARD_CSV), help="append-only forward CSV")
     parser.add_argument(
-        "--pending", default=str(DEFAULT_PENDING_JSON), help="pending capture stash"
+        "--pending",
+        default=os.environ.get("NFP_PENDING_CAPTURE_PATH", str(DEFAULT_PENDING_JSON)),
+        help="pending capture stash (env: NFP_PENDING_CAPTURE_PATH)",
+    )
+    parser.add_argument(
+        "--schedule",
+        default=str(DEFAULT_SCHEDULE_CSV),
+        help="verified NFP release schedule (BLS Employment Situation)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     pre = subparsers.add_parser("pre", help="freeze the pre-release consensus via Wayback")
-    pre.add_argument("--release-date", help="ISO release date; defaults to the next first Friday")
+    pre.add_argument(
+        "--release-date", help="ISO release date; defaults to the next scheduled release"
+    )
     pre.add_argument(
         "--snapshot-url",
         help=(
@@ -805,7 +1015,11 @@ def build_parser() -> argparse.ArgumentParser:
     pre.add_argument(
         "--allow-unverified", action="store_true", help="stash despite a failed page check"
     )
-    pre.add_argument("--force", action="store_true", help="replace an existing pending capture")
+    pre.add_argument(
+        "--force",
+        action="store_true",
+        help="replace an existing pending capture and override the schedule refusal",
+    )
     pre.add_argument(
         "--rescue",
         action="store_true",
@@ -827,11 +1041,21 @@ def build_parser() -> argparse.ArgumentParser:
     post.add_argument(
         "--allow-unverified", action="store_true", help="commit an unverified snapshot"
     )
+    post.add_argument(
+        "--force",
+        action="store_true",
+        help="override the schedule/units/cross-check refusals with a warning",
+    )
     post.set_defaults(func=cmd_post)
 
     miss = subparsers.add_parser("miss", help="record a print with no pre-release capture")
     miss.add_argument("--release-date", required=True, help="ISO release date")
     miss.add_argument("--note", default="", help="short reason, recorded in the row")
+    miss.add_argument(
+        "--force",
+        action="store_true",
+        help="override the schedule/future-date/verified-pending refusals with a warning",
+    )
     miss.set_defaults(func=cmd_miss)
 
     status = subparsers.add_parser("status", help="show pending capture and the next release")
@@ -856,7 +1080,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return int(args.func(args))
-    except CaptureError as exc:
+    except (CaptureError, ScheduleError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except httpx.HTTPError as exc:
