@@ -1,5 +1,10 @@
 # SOL Trend Pullback Sparse
 
+> **Retired 2026-11-19** (CR-5 in `docs/specs/NEXT-WORKFLOW-2026-11.md`, human decision).
+> The `agent_sol_sparse` service and its config files were removed; this runbook is kept
+> as history. The agent produced 2 signals ever; see
+> `docs/reports/strategy-drought-rebaseline-2026-10-22.md`.
+
 This document is the operator runbook for the validated sparse-trend paper strategy.
 
 ## Baseline

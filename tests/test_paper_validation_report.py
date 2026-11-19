@@ -38,7 +38,6 @@ def test_default_paths_handle_default_and_named_agents() -> None:
 
 def test_default_paper_agents_match_active_paper_services() -> None:
     assert [spec.service for spec in DEFAULT_PAPER_AGENTS] == [
-        "agent_sol_sparse",
         "agent_sol_panic_block_paper",
         "agent_sentiment_macro",
     ]
@@ -251,7 +250,7 @@ async def test_collect_agent_report_aggregates_db_and_files(tmp_path: Path) -> N
 
 @pytest.mark.asyncio
 async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path) -> None:
-    spec = DEFAULT_PAPER_AGENTS[1]
+    spec = DEFAULT_PAPER_AGENTS[0]
     data_dir = tmp_path
     default_risk_state_path(spec.agent_id, data_dir).write_text(
         json.dumps(
@@ -305,7 +304,7 @@ async def test_collect_agent_report_flags_risk_state_day_mismatch(tmp_path: Path
 
 def test_render_markdown_contains_key_sections() -> None:
     report = PaperAgentReport(
-        agent=DEFAULT_PAPER_AGENTS[1],
+        agent=DEFAULT_PAPER_AGENTS[0],
         day="2026-03-19",
         events=EventSummary(
             signal_count=2,

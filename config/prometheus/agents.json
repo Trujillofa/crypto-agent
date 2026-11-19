@@ -1,13 +1,6 @@
 [
 	{
 		"labels": {
-			"service": "agent_sol_sparse",
-			"agent_id": "sol-trend-pullback-sparse"
-		},
-		"targets": ["agent_sol_sparse:8000"]
-	},
-	{
-		"labels": {
 			"service": "agent_sentiment_macro",
 			"agent_id": "sentiment-macro-bot"
 		},

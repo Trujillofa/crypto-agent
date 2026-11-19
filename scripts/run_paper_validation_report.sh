@@ -9,7 +9,7 @@ REPORT_OUTPUT_DIR="${REPORT_OUTPUT_DIR:-data/reports}"
 REPORT_DAY="${1:-$(date -u -d 'yesterday' +%F)}"
 REPORT_PREFIX="${REPORT_OUTPUT_DIR%/}/paper-validation-report-${REPORT_DAY}"
 CONTAINER_REPORT_PREFIX="/tmp/paper-validation-report-${REPORT_DAY}"
-REPORT_SERVICE="agent_sol_sparse"
+REPORT_SERVICE="agent_sol_panic_block_paper"
 PRODUCTION_COMPOSE=(docker compose -f docker-compose.prod.yml)
 
 cd "$PROJECT_DIR"

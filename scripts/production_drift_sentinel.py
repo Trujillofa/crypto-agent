@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-tail", type=int, default=500)
     parser.add_argument(
         "--watch-service",
-        help="Optional docker compose service to inspect separately (for example: agent_sol_sparse)",
+        help="Optional docker compose service to inspect separately (for example: agent_sol_panic_block_paper)",
     )
     parser.add_argument(
         "--durable-signals",
